@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Shall We Swim Today?</title>
+    <style>
+    h1, h2, h3, h4, h5, h6 {
+      font-family: "Helvetica", "Arial", sans-serif;
+    }
+    .title {
+      font-family: "Helvetica", "Arial", sans-serif;
+      font-size: 64px;
+      font-weight: bold;
+    }
+    .infobox {
+      padding-left: 20px;
+    }
+    .current {
+      font-size: 32px;
+    }
+    .tides {
+      font-size: 32px;
+    }
+    .plot {
+      width: 100%;
+      max-width: 1200px;
+    }
+    .webcam {
+      position: relative;
+      overflow: hidden;
+      width: 950px;
+      height: 534px;
+    }
+    .webcamframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      border: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .windyframe {
+      padding-left: 13px;
+      width: 924px;
+      height: 400px;
+    }
+    </style>
+  </head>
+  <body>
+    <p><span class="title">shall we swim today ?</span>
+    ...at <a href="https://cibbows.org/about/essentials/">Grimaldo's Chair</a>
+    </p>
+    <div class="infobox">
+      <div class="current">
+        The water is currently <strong>{{ current_temp }}°F</strong>
+      </div> at the Battery as of {{ current_time|fmt_datetime }}.
+      <div class="tides">
+        <p>Last <strong>{{ past_tides[-1]['type'] }}</strong> tide
+           was at <strong>{{ past_tides[-1]['time']|fmt_datetime }}</strong></p>
+        <p>Next <strong>{{ next_tides[0]['type'] }}</strong> tide
+        is at <strong>{{ next_tides[0]['time']|fmt_datetime }}</strong></p>
+        <p>Next <strong>{{ next_tides[1]['type'] }}</strong> tide
+        is at <strong>{{ next_tides[1]['time']|fmt_datetime }}</strong></p>
+      </div>
+    </div>
+
+    <h2>Live Seagate Webcam</h2>
+    <div class="webcam">
+      <iframe
+        class="webcamframe"
+        scrolling="no"
+        allowfullscreen="true"
+        webkitallowfullscreen="true"
+        mozallowfullscreen="true"
+        src="https://balticlivecam.com/cameras/united-states/new-york/brighton-beach/?embed"
+      /></iframe>
+    </div>
+
+    <h2>Waves</h2>
+    <iframe class="windyframe" width="640px" height="450px" src="https://embed.windy.com/embed2.html?lat=40.573&lon=-73.954&detailLat=40.710&detailLon=-73.959&width=640&height=450&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=%C2%B0F&radarRange=-1" frameborder="0"></iframe>
+
+    <h2>Temperature Trends</h2>
+      <img class="plot" src="/plot"/>
+    <h2>Source</h2>
+      <p>
+        Water temperatures provided by:
+        <a href="https://tidesandcurrents.noaa.gov/stationhome.html?id=8518750">
+          The Battery, NY - Station ID: 8518750
+        </a> (NOAA Tides and Currents)
+      </p>
+      <p>
+        Tides provided by:
+        <a href="https://tidesandcurrents.noaa.gov/stationhome.html?id=8517741">
+          Coney Island, NY - Station ID: 8517741
+        </a> (NOAA Tides and Currents)
+      </p>
+      <p>
+        Webcam provided by:
+        <a href="https://balticlivecam.com/cameras/united-states/new-york/brighton-beach/">Baltic Live Cam</a>
+      </p>
+      <p>
+        Site source on github:
+        <a href="https://github.com/jeremywhelchel/shallweswim.today">shallweswim.today</a>
+      </p>
+  </body>
+</html>

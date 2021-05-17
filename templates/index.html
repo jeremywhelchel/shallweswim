@@ -12,6 +12,9 @@
       font-size: 64px;
       font-weight: bold;
     }
+    .grimaldo {
+      font-size: 32px;
+    }
     .infobox {
       padding-left: 20px;
     }
@@ -44,13 +47,16 @@
     .windyframe {
       padding-left: 13px;
       width: 924px;
-      height: 400px;
+      height: 450px;
     }
     </style>
   </head>
   <body>
-    <p><span class="title">shall we swim today ?</span>
-    ...at <a href="https://cibbows.org/about/essentials/">Grimaldo's Chair</a>
+    <p>
+      <span class="title">shall we swim today?</span>
+      <span class="grimaldo">
+      ...at <a href="https://cibbows.org/about/essentials/">Grimaldo's Chair</a>
+      </span>
     </p>
     <div class="infobox">
       <div class="current">
@@ -78,8 +84,9 @@
       /></iframe>
     </div>
 
-    <h2>Waves</h2>
-    <iframe class="windyframe" width="640px" height="450px" src="https://embed.windy.com/embed2.html?lat=40.573&lon=-73.954&detailLat=40.710&detailLon=-73.959&width=640&height=450&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=%C2%B0F&radarRange=-1" frameborder="0"></iframe>
+    <h2>Wind and Wave Forecast</h2>
+    <iframe class="windyframe" width="640px" height="450px"
+      src="https://embed.windy.com/embed2.html?lat=40.573&lon=-73.954&detailLat=40.573&detailLon=-73.959&width=640&height=450&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1" frameborder="0"></iframe>
 
     <h2>Temperature Trends</h2>
       <img class="plot" src="/plot"/>

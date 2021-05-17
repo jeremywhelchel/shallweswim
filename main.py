@@ -1,11 +1,10 @@
+#!/usr/bin/env python3
+
 from flask import Flask, Response, redirect, render_template, url_for
 import logging
 import os
 
 import data
-
-# XXX
-logging.getLogger().setLevel(logging.INFO)
 
 data = data.Data()
 data.Start()

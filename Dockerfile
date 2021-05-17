@@ -10,7 +10,7 @@ COPY . ./
 # Install production dependencies.
 RUN pip install Flask gunicorn
 RUN pip install pandas seaborn
-# XXX Broken?
+# This build seems to be broken at the moment
 # RUN pip install pyarrow fastparquet
 # Run the web service on container startup. Here we use the gunicorn
 # webserver, with one worker process and 8 threads.

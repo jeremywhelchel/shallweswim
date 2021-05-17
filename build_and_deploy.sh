@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-gcloud builds submit --tag gcr.io/watertemp/watertemp && \
-gcloud run deploy --image gcr.io/watertemp/watertemp --platform managed watertemp
+gcloud builds submit --tag gcr.io/shallweswim/shallweswim && \
+gcloud run deploy --image gcr.io/shallweswim/shallweswim --platform managed shallweswim

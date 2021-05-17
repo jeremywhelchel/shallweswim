@@ -12,6 +12,7 @@ RUN pip install Flask gunicorn
 RUN pip install pandas seaborn
 # This build seems to be broken at the moment
 # RUN pip install pyarrow fastparquet
+RUN pip install google-cloud-logging
 # Run the web service on container startup. Here we use the gunicorn
 # webserver, with one worker process and 8 threads.
 # For environments with multiple CPU cores, increase the number of workers

@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
 from flask import Flask, Response, redirect, render_template, url_for
+import google.cloud.logging
 import logging
 import os
 
-import data
+import data as data_lib
 
-data = data.Data()
-data.Start()
 
 app = Flask(__name__)
 
@@ -42,5 +41,15 @@ def favicon():
 
 
 if __name__ == "__main__":
+    # Setup Google Cloud logging
+    # By default this captures all logs at INFO level and higher
+    log_client = google.cloud.logging.Client()
+    log_client.get_default_handler()
+    log_client.setup_logging()
+
+    global data
+    data = data_lib.Data()
+    data.Start()
+
     logging.info("Running app.run()")
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

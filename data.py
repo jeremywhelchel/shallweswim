@@ -43,7 +43,7 @@ class NoaaApi(object):
     def _Request(cls, params: dict) -> pd.DataFrame:
         url_params = dict(cls.BASE_PARAMS, **params)
         url = cls.BASE_URL + "?" + urllib.parse.urlencode(url_params)
-        logging.info(url)
+        logging.info('Fetching NOAA API: %s', url)
         return pd.read_csv(url)
 
     @classmethod
@@ -149,7 +149,6 @@ class Data(object):
     def LiveTemps(self) -> pd.DataFrame:
         """Get last N days of air and water temperatures."""
         if self.live_temps is not None and (time.time() < self.live_temps_expiration):
-            logging.info("reusing chached temps")
             return self.live_temps
 
         begin_date = datetime.datetime.today() - datetime.timedelta(days=8)

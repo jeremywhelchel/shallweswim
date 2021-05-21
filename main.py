@@ -7,6 +7,8 @@ import os
 
 import data as data_lib
 
+data = data_lib.Data()
+data.Start()
 
 app = Flask(__name__)
 
@@ -47,9 +49,10 @@ if __name__ == "__main__":
     log_client.get_default_handler()
     log_client.setup_logging()
 
-    global data
-    data = data_lib.Data()
-    data.Start()
+    # XXX This isn't working properly...
+    # global data
+    # data = data_lib.Data()
+    # data.Start()
 
     logging.info("Running app.run()")
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

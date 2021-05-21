@@ -43,7 +43,7 @@ class NoaaApi(object):
     def _Request(cls, params: dict) -> pd.DataFrame:
         url_params = dict(cls.BASE_PARAMS, **params)
         url = cls.BASE_URL + "?" + urllib.parse.urlencode(url_params)
-        logging.info('Fetching NOAA API: %s', url)
+        logging.info("Fetching NOAA API: %s", url)
         return pd.read_csv(url)
 
     @classmethod
@@ -154,12 +154,17 @@ class Data(object):
         begin_date = datetime.datetime.today() - datetime.timedelta(days=8)
         end_date = datetime.datetime.today()
         # XXX Resample to 6min
-        self.live_temps = pd.concat(
-            [
-                NoaaApi.Temperature("air_temperature", begin_date, end_date),
-                NoaaApi.Temperature("water_temperature", begin_date, end_date),
-            ],
-            axis=1,
+        self.live_temps = (
+            pd.concat(
+                [
+                    NoaaApi.Temperature("air_temperature", begin_date, end_date),
+                    NoaaApi.Temperature("water_temperature", begin_date, end_date),
+                ],
+                axis=1,
+            )
+            # Drop a bad reading
+            # XXX Find an automated way to drop these solo outliers
+            .drop(pd.to_datetime("2021-05-18 22:24:00"))
         )
         self.live_temps_expiration = time.time() + 60
         return self.live_temps

@@ -146,6 +146,8 @@ class Data(object):
 
     # XXX Cache last temps and use those if Noaa call fails
     # XXX Test by disabling local wifi briefly
+    # XXX Prefetch. We know this comes every 6 minutes. So fetch at ~7 mins past
+    # last reading.
     def LiveTemps(self) -> pd.DataFrame:
         """Get last N days of air and water temperatures."""
         if self.live_temps is not None and (time.time() < self.live_temps_expiration):

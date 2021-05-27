@@ -222,7 +222,7 @@ class Data(object):
         try:
             self.tides = NoaaApi.Tides()
             self._tides_timestamp = Now()
-        except urllib.error.HTTPError as e:
+        except urllib.error.URLError as e:
             logging.warning("Tide fetch error: %s", e)
 
     def _FetchHistoricTemps(self):
@@ -257,7 +257,7 @@ class Data(object):
                 .first()
             )
             self._historic_temps_timestamp = Now()
-        except urllib.error.HTTPError as e:
+        except urllib.error.URLError as e:
             logging.warning("Historic temp fetch error: %s", e)
 
     # XXX Test by disabling local wifi briefly
@@ -282,7 +282,7 @@ class Data(object):
             )
             self._live_temps_timestamp = Now()
             logging.info("Fetched live temps. Age: %s", self.Age("live_temps_latest"))
-        except urllib.error.HTTPError as e:
+        except urllib.error.URLError as e:
             logging.warning("Live temp fetch error: %s", e)
 
 

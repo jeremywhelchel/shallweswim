@@ -166,7 +166,7 @@ class Data(object):
             )
             # Drop a bad reading
             # XXX Find an automated way to drop these solo outliers
-            .drop(pd.to_datetime("2021-05-18 22:24:00"))
+            # .drop(pd.to_datetime("2021-05-18 22:24:00"))
         )
         self.live_temps_expiration = time.time() + 60
         return self.live_temps

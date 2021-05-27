@@ -35,12 +35,6 @@ def freshness():
     return jsonify(data.Freshness())
 
 
-@app.route("/plot")
-def plot():
-    plot = data.LiveTempPlot()
-    return Response(plot, mimetype="image/svg+xml")
-
-
 @app.route("/favicon.ico")
 def favicon():
     return redirect(url_for("static", filename="favicon.ico"))

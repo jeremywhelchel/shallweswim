@@ -152,6 +152,8 @@ class Data(object):
             live_temps_age = self.Age("live_temps_latest")
             if not live_temps_age or live_temps_age > datetime.timedelta(minutes=10):
                 self._FetchLiveTemps()
+                if self.live_temps is not None:
+                    GenerateLiveTempPlot(self.live_temps)
 
             # Hourly fetch historic temps + generate charts
             # XXX Flag this
@@ -185,29 +187,6 @@ class Data(object):
             return datetime.time(0), 0.0
         ((time, temp),) = self.live_temps.tail(1)["water_temp"].items()
         return time, temp
-
-    def LiveTempPlot(self) -> Optional[bytes]:
-        if self.live_temps is None:
-            return None
-        raw = self.live_temps["water_temp"]
-        trend = raw.rolling(10 * 2, center=True).mean()
-        df = pd.DataFrame(
-            {
-                "live": raw,
-                "trend (2-hr)": trend,
-            }
-        ).tail(10 * 24 * 2)
-        fig = Figure(figsize=(16, 8))
-        LiveTempPlot(
-            df,
-            fig,
-            "Battery NYC Water Temperature",
-            "48-hour, live",
-            "%a %-I %p",
-        )
-        buf = io.BytesIO()
-        fig.savefig(buf, format="svg")
-        return buf.getvalue()
 
     def Freshness(self):
         timestamps = {
@@ -303,7 +282,6 @@ class Data(object):
             )
             self._live_temps_timestamp = Now()
             logging.info("Fetched live temps. Age: %s", self.Age("live_temps_latest"))
-            # XXX Generate live temp plot
         except urllib.error.HTTPError as e:
             logging.warning("Live temp fetch error: %s", e)
 
@@ -356,6 +334,27 @@ def LiveTempPlot(
     #     color="r",
     # )
     return ax
+
+
+def GenerateLiveTempPlot(live_temps):
+    logging.info("Generating live temp plot")
+    raw = live_temps["water_temp"]
+    trend = raw.rolling(10 * 2, center=True).mean()
+    df = pd.DataFrame(
+        {
+            "live": raw,
+            "trend (2-hr)": trend,
+        }
+    ).tail(10 * 24 * 2)
+    fig = Figure(figsize=(16, 8))
+    LiveTempPlot(
+        df,
+        fig,
+        "Battery NYC Water Temperature",
+        "48-hour, live",
+        "%a %-I %p",
+    )
+    fig.savefig("static/plots/live_temps.svg", format="svg")
 
 
 def GenerateHistoricPlots(hist_temps):

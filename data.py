@@ -43,7 +43,7 @@ class NoaaApi(object):
     def _Request(cls, params: dict) -> pd.DataFrame:
         url_params = dict(cls.BASE_PARAMS, **params)
         url = cls.BASE_URL + "?" + urllib.parse.urlencode(url_params)
-        logging.info("NOAA API: %s", url)
+        logging.info(f"NOAA API: {url}")
         return pd.read_csv(url)
 
     @classmethod
@@ -223,7 +223,7 @@ class Data(object):
             self.tides = NoaaApi.Tides()
             self._tides_timestamp = Now()
         except urllib.error.URLError as e:
-            logging.warning("Tide fetch error: %s", e)
+            logging.warning(f"Tide fetch error: {e}")
 
     def _FetchHistoricTemps(self):
         """Get hourly temp data since 2011."""
@@ -258,7 +258,7 @@ class Data(object):
             )
             self._historic_temps_timestamp = Now()
         except urllib.error.URLError as e:
-            logging.warning("Historic temp fetch error: %s", e)
+            logging.warning(f"Historic temp fetch error: {e}")
 
     # XXX Test by disabling local wifi briefly
     def _FetchLiveTemps(self):
@@ -281,9 +281,9 @@ class Data(object):
                 # .drop(pd.to_datetime("2021-05-18 22:24:00"))
             )
             self._live_temps_timestamp = Now()
-            logging.info("Fetched live temps. Age: %s", self.Age("live_temps_latest"))
+            logging.info("Fetched live temps. Age: %s" % self.Age("live_temps_latest"))
         except urllib.error.URLError as e:
-            logging.warning("Live temp fetch error: %s", e)
+            logging.warning(f"Live temp fetch error: {e}")
 
 
 def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):

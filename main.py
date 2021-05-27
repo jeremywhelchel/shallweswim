@@ -42,28 +42,23 @@ def favicon():
 
 # XXX This is used for gunicorn.
 def start_app():
-    logging.getLogger().setLevel(logging.INFO)  # XXX Main thing
-    gunicorn_logger = logging.getLogger('gunicorn.info')
-    gunicorn_logger.setLevel(logging.INFO)
-    app.logger.handlers = gunicorn_logger.handlers
-    app.logger.setLevel(gunicorn_logger.level)
-    app.logger.info('INFO LOG')
-    app.logger.warning('WARN LOG')
-    gunicorn_logger.warn('WARN LOG')
+    # If running in Google Cloud Run, use cloud logging
+    if 'K_SERVICE' in os.environ:
+        # Setup Google Cloud logging
+        # By default this captures all logs at INFO level and higher
+        log_client = google.cloud.logging.Client()
+        log_client.get_default_handler()
+        log_client.setup_logging()
+        logging.info('Using google cloud logging')
+    else:
+        logging.getLogger().setLevel(logging.INFO)
+        logging.info('Using standard logging')
 
     logging.info('Starting app')
-    app.logger.info('App logger')
-    # XXX There may be a better way to kick off this thread in gunicorn
     data.Start()
     return app
 
 
 if __name__ == "__main__":  # Run Flask dev-server directly
-    # Setup Google Cloud logging
-    # By default this captures all logs at INFO level and higher
-    log_client = google.cloud.logging.Client()
-    log_client.get_default_handler()
-    log_client.setup_logging()
-
     logging.info("Running app.run()")
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

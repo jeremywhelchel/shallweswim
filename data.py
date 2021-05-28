@@ -33,7 +33,7 @@ class NoaaApi(object):
 
     BASE_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
     BASE_PARAMS = {
-        "application": "sws.today",
+        "application": "shallweswim",
         "time_zone": "lst_ldt",
         "units": "english",
         "format": "csv",

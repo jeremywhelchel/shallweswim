@@ -10,6 +10,7 @@ import data as data_lib
 data = data_lib.Data()
 
 app = Flask(__name__)
+app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True
 
 
 @app.route("/")

@@ -117,6 +117,12 @@ def Now():
     return datetime.datetime.now(tz=EASTERN_TZ).replace(tzinfo=None)
 
 
+def LatestTimeValue(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
+    if df is None:
+        return None
+    return df.index[-1].to_pydatetime()
+
+
 def PivotYear(df):
     """Move year dimension to columns."""
     df = df.assign(year=df.index.year)
@@ -139,39 +145,46 @@ class Data(object):
         self._live_temps_timestamp = None
         self._historic_temps_timestamp = None
 
+        self.expirations = {
+            # Tidal predictions already cover a wide past/present window
+            "tides": datetime.timedelta(hours=24),
+            # Live temperature readings ouccur every 6 minutes, and are
+            # generally already 5 minutes old when a new reading first appears.
+            "live_temps": datetime.timedelta(minutes=10),
+            # Hourly fetch historic temps + generate charts
+            "historic_temps": datetime.timedelta(hours=3),
+        }
+
+    def _Expired(self, dataset: str) -> bool:
+        age_seconds = self.Freshness()[dataset]["fetch"]["age_seconds"]
+        return not age_seconds or (
+            age_seconds > self.expirations[dataset].total_seconds()
+        )
+
     def _Update(self):
         """Daemon thread to continuously updating data."""
         while True:
-            # Tidal predictions already cover a wide past/present window
-            tide_age = self.Age("tides")
-            if not tide_age or tide_age > datetime.timedelta(hours=24):
+            if self._Expired("tides"):
                 self._FetchTides()
 
-            # Live temperature readings ouccur every 6 minutes, and are
-            # generally already 5 minutes old when a new reading first appears.
-            live_temps_age = self.Age("live_temps_latest")
-            if not live_temps_age or live_temps_age > datetime.timedelta(minutes=10):
+            if self._Expired("live_temps"):
                 self._FetchLiveTemps()
-                if self.live_temps is not None:
-                    GenerateLiveTempPlot(self.live_temps)
+                GenerateLiveTempPlot(self.live_temps)
 
-            # Hourly fetch historic temps + generate charts
             # XXX Flag this
-            historic_temps_age = self.Age("historic_temps_latest")
-            if not historic_temps_age or historic_temps_age > datetime.timedelta(
-                hours=3
-            ):
+            if self._Expired("historic_temps"):
                 self._FetchHistoricTemps()
-                if self.historic_temps is not None:
-                    GenerateHistoricPlots(self.historic_temps)
+                GenerateHistoricPlots(self.historic_temps)
 
+            # XXX Can probably be increased to 1s even... but would need to add API spam buffer
             time.sleep(60)
 
     def Start(self):
         """Start the background data fetching process."""
+        # XXX Assert current thread not already running
         logging.info("Starting data fetch thread")
-        thread = threading.Thread(target=self._Update, daemon=True)
-        thread.start()
+        self._update_thread = threading.Thread(target=self._Update, daemon=True)
+        self._update_thread.start()
 
     def PrevNextTide(self):
         """Return previous tide and next two tides."""
@@ -189,33 +202,39 @@ class Data(object):
         return time, temp
 
     def Freshness(self):
-        timestamps = {
-            "tides": self._tides_timestamp,
-            "live_temps_fetch": self._live_temps_timestamp,
-            "live_temps_latest": self.live_temps.index[-1]
-            if self.live_temps is not None
-            else None,
-            "historic_temps_fetch": self._historic_temps_timestamp,
-            "historic_temps_latest": self.historic_temps.index[-1]
-            if self.historic_temps is not None
-            else None,
+        # XXX Consistent dtype
+        # XXX EST timezone for timestamps
+        ret = {
+            "tides": {
+                "fetch": {"time": self._tides_timestamp},
+                "latest_value": {"time": LatestTimeValue(self.tides)},
+            },
+            "live_temps": {
+                "fetch": {"time": self._live_temps_timestamp},
+                "latest_value": {"time": LatestTimeValue(self.live_temps)},
+            },
+            "historic_temps": {
+                "fetch": {"time": self._historic_temps_timestamp},
+                "latest_value": {"time": LatestTimeValue(self.historic_temps)},
+            },
         }
-        for label in list(timestamps.keys()):
-            freshness = timestamps[label]
-            if freshness:
-                age = Now() - freshness
-                # XXX can't serialize timedelta. get seconds
-                timestamps[label + "_age_seconds"] = age.total_seconds()
-                # XXX timestamps[label + "_age"] = age.isoformat()
-        return timestamps
 
-    # XXX Add age to dictionary above directly
-    def Age(self, label):
-        freshness = self.Freshness()
-        assert label in freshness, (label, freshness)
-        if freshness[label] is None:
-            return None
-        return Now() - freshness[label]
+        # Calculate current ages
+        now = Now()
+        for dataset, info in ret.items():
+            for label in list(info.keys()):
+                freshness = info[label]["time"]
+                if freshness:
+                    age = now - freshness
+                    age_sec = age.total_seconds()
+                    age_str = str(datetime.timedelta(seconds=int(age_sec)))
+                else:
+                    age = None
+                    age_sec = None
+                    age_str = None
+                ret[dataset][label]["age"] = age_str
+                ret[dataset][label]["age_seconds"] = age_sec
+        return ret
 
     def _FetchTides(self):
         logging.info("Fetching tides")
@@ -281,7 +300,8 @@ class Data(object):
                 # .drop(pd.to_datetime("2021-05-18 22:24:00"))
             )
             self._live_temps_timestamp = Now()
-            logging.info("Fetched live temps. Age: %s" % self.Age("live_temps_latest"))
+            age = self.Freshness()["live_temps"]["latest_value"]["age"]
+            logging.info(f"Fetched live temps. Last datapoint age: {age}")
         except urllib.error.URLError as e:
             logging.warning(f"Live temp fetch error: {e}")
 
@@ -337,6 +357,8 @@ def LiveTempPlot(
 
 
 def GenerateLiveTempPlot(live_temps):
+    if live_temps is None:
+        return
     logging.info("Generating live temp plot")
     raw = live_temps["water_temp"]
     trend = raw.rolling(10 * 2, center=True).mean()
@@ -358,6 +380,8 @@ def GenerateLiveTempPlot(live_temps):
 
 
 def GenerateHistoricPlots(hist_temps):
+    if hist_temps is None:
+        return
     year_df = PivotYear(hist_temps)
 
     # 2 Month plot

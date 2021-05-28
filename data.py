@@ -21,6 +21,10 @@ sns.set_theme()
 sns.axes_style("darkgrid")
 
 
+class NoaaApiError(Exception):
+    """Error in a NOAA API Call."""
+
+
 class NoaaApi(object):
     """Static class to fetch data from the NOAA Tides and Currents API.
 
@@ -44,7 +48,13 @@ class NoaaApi(object):
         url_params = dict(cls.BASE_PARAMS, **params)
         url = cls.BASE_URL + "?" + urllib.parse.urlencode(url_params)
         logging.info(f"NOAA API: {url}")
-        return pd.read_csv(url)
+        try:
+            df = pd.read_csv(url)
+        except urllib.error.URLError as e:
+            raise NoaaApiError(e)
+        if len(df)==1:
+            raise NoaaApiError(df.iloc[0].values[0])
+        return df
 
     @classmethod
     def Tides(cls) -> pd.DataFrame:
@@ -241,7 +251,7 @@ class Data(object):
         try:
             self.tides = NoaaApi.Tides()
             self._tides_timestamp = Now()
-        except urllib.error.URLError as e:
+        except NoaaApiError as e:
             logging.warning(f"Tide fetch error: {e}")
 
     def _FetchHistoricTemps(self):
@@ -276,7 +286,7 @@ class Data(object):
                 .first()
             )
             self._historic_temps_timestamp = Now()
-        except urllib.error.URLError as e:
+        except NoaaApiError as e:
             logging.warning(f"Historic temp fetch error: {e}")
 
     # XXX Test by disabling local wifi briefly
@@ -302,7 +312,7 @@ class Data(object):
             self._live_temps_timestamp = Now()
             age = self.Freshness()["live_temps"]["latest_value"]["age"]
             logging.info(f"Fetched live temps. Last datapoint age: {age}")
-        except urllib.error.URLError as e:
+        except NoaaApiError as e:
             logging.warning(f"Live temp fetch error: {e}")
 
 

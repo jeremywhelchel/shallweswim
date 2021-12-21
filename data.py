@@ -87,7 +87,7 @@ class NoaaApi(object):
         product: str,
         begin_date: datetime.date,
         end_date: datetime.date,
-        interval: str = None,
+        interval: Optional[str] = None,
     ) -> pd.DataFrame:
         """Fetch buoy temperature dataset."""
         assert product in ["air_temperature", "water_temperature"], product

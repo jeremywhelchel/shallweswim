@@ -191,7 +191,11 @@ class Data(object):
 
     def Start(self):
         """Start the background data fetching process."""
-        # XXX Assert current thread not already running
+        for thread in threading.enumerate():
+            assert (
+                thread.name != "DataUpdateThread"
+            ), "Data update thread already running"
+
         logging.info("Starting data fetch thread")
         self._update_thread = threading.Thread(
             target=self._Update, name="DataUpdateThread", daemon=True

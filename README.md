@@ -2,6 +2,9 @@
 Website to display swimming conditions at Coney Island / Brighton Beach
 
 ## Dependencies
+
+These can be installed with `pip3 install ...`
+
 ```
 Flask
 google-cloud-logging
@@ -22,5 +25,5 @@ Hosted on Google Cloud Run
 
 ## Development
 
-Format with `black *.py`
-Type check with `pytype *.py`
+- Format with `black *.py`
+- Type check with `pytype *.py`

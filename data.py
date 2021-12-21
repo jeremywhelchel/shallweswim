@@ -52,7 +52,7 @@ class NoaaApi(object):
             df = pd.read_csv(url)
         except urllib.error.URLError as e:
             raise NoaaApiError(e)
-        if len(df)==1:
+        if len(df) == 1:
             raise NoaaApiError(df.iloc[0].values[0])
         return df
 
@@ -193,7 +193,9 @@ class Data(object):
         """Start the background data fetching process."""
         # XXX Assert current thread not already running
         logging.info("Starting data fetch thread")
-        self._update_thread = threading.Thread(target=self._Update, name='DataUpdateThread', daemon=True)
+        self._update_thread = threading.Thread(
+            target=self._Update, name="DataUpdateThread", daemon=True
+        )
         self._update_thread.start()
 
     def PrevNextTide(self):
@@ -369,7 +371,7 @@ def LiveTempPlot(
 def GenerateLiveTempPlot(live_temps):
     if live_temps is None:
         return
-    plot_filename = 'static/plots/live_temps.svg'
+    plot_filename = "static/plots/live_temps.svg"
     logging.info("Generating live temp plot: %s", plot_filename)
     raw = live_temps["water_temp"]
     trend = raw.rolling(10 * 2, center=True).mean()

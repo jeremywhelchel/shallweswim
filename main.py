@@ -41,25 +41,25 @@ def favicon():
     return redirect(url_for("static", filename="favicon.ico"))
 
 
-# XXX This is used for gunicorn.
 def start_app():
     # If running in Google Cloud Run, use cloud logging
-    if 'K_SERVICE' in os.environ:
+    if "K_SERVICE" in os.environ:
         # Setup Google Cloud logging
         # By default this captures all logs at INFO level and higher
         log_client = google.cloud.logging.Client()
         log_client.get_default_handler()
         log_client.setup_logging()
-        logging.info('Using google cloud logging')
+        logging.info("Using google cloud logging")
     else:
         logging.getLogger().setLevel(logging.INFO)
-        logging.info('Using standard logging')
+        logging.info("Using standard logging")
 
-    logging.info('Starting app')
+    logging.info("Starting app")
     data.Start()
     return app
 
 
 if __name__ == "__main__":  # Run Flask dev-server directly
     logging.info("Running app.run()")
+    start_app()
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

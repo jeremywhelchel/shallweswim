@@ -369,7 +369,8 @@ def LiveTempPlot(
 def GenerateLiveTempPlot(live_temps):
     if live_temps is None:
         return
-    logging.info("Generating live temp plot")
+    plot_filename = 'static/plots/live_temps.svg'
+    logging.info("Generating live temp plot: %s", plot_filename)
     raw = live_temps["water_temp"]
     trend = raw.rolling(10 * 2, center=True).mean()
     df = pd.DataFrame(
@@ -386,7 +387,7 @@ def GenerateLiveTempPlot(live_temps):
         "48-hour, live",
         "%a %-I %p",
     )
-    fig.savefig("static/plots/live_temps.svg", format="svg")
+    fig.savefig(plot_filename, format="svg")
 
 
 def GenerateHistoricPlots(hist_temps):
@@ -395,7 +396,8 @@ def GenerateHistoricPlots(hist_temps):
     year_df = PivotYear(hist_temps)
 
     # 2 Month plot
-    logging.info("Generating 2 month plot")
+    two_mo_plot_filename = "static/plots/historic_temps_2mo_24h_mean.svg"
+    logging.info("Generating 2 month plot: %s", two_mo_plot_filanem)
     df = (
         year_df["water_temp"]
         .loc[
@@ -415,10 +417,11 @@ def GenerateHistoricPlots(hist_temps):
     )
     ax.xaxis.set_major_formatter(md.DateFormatter("%b %d"))
     ax.xaxis.set_major_locator(md.WeekdayLocator(byweekday=1))
-    fig.savefig("static/plots/historic_temps_2mo_24h_mean.svg", format="svg")
+    fig.savefig(two_mo_plot_filename, format="svg")
 
     # Full year
-    logging.info("Generating full time plot")
+    yr_plot_filename = "static/plots/historic_temps_12mo_24h_mean.svg"
+    logging.info("Generating full time plot: %s", yr_plot_filename)
     df = (
         year_df["water_temp"]
         .rolling(24, center=True)
@@ -438,4 +441,4 @@ def GenerateHistoricPlots(hist_temps):
     ax.set_xticklabels("")
     ax.xaxis.set_minor_locator(md.MonthLocator(bymonthday=15))
     ax.xaxis.set_minor_formatter(md.DateFormatter("%b"))
-    fig.savefig("static/plots/historic_temps_12mo_24h_mean.svg", format="svg")
+    fig.savefig(yr_plot_filename, format="svg")

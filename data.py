@@ -193,7 +193,7 @@ class Data(object):
         """Start the background data fetching process."""
         # XXX Assert current thread not already running
         logging.info("Starting data fetch thread")
-        self._update_thread = threading.Thread(target=self._Update, daemon=True)
+        self._update_thread = threading.Thread(target=self._Update, name='DataUpdateThread', daemon=True)
         self._update_thread.start()
 
     def PrevNextTide(self):
@@ -397,7 +397,7 @@ def GenerateHistoricPlots(hist_temps):
 
     # 2 Month plot
     two_mo_plot_filename = "static/plots/historic_temps_2mo_24h_mean.svg"
-    logging.info("Generating 2 month plot: %s", two_mo_plot_filanem)
+    logging.info("Generating 2 month plot: %s", two_mo_plot_filename)
     df = (
         year_df["water_temp"]
         .loc[

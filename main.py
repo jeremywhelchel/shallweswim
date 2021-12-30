@@ -15,14 +15,34 @@ app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True
 
 @app.route("/")
 def index():
-    current_time, current_temp = data.CurrentReading()
+    current_time, current_temp = data.LiveTempReading()
     past_tides, next_tides = data.PrevNextTide()
+    last_tide_hrs_ago, tide_chart_filename = data.CurrentPrediction()
     return render_template(
         "index.html",
         current_time=current_time,
         current_temp=current_temp,
         past_tides=past_tides,
         next_tides=next_tides,
+        last_tide_hrs_ago = round(last_tide_hrs_ago, 1),
+        tide_chart_filename = tide_chart_filename,
+    )
+
+
+@app.route("/current")
+def water_current():
+    # XXX
+    current_time, current_temp = data.LiveTempReading()
+    past_tides, next_tides = data.PrevNextTide()
+    last_tide_hrs_ago, tide_chart_filename = data.CurrentPrediction()
+    return render_template(
+        "current.html",
+        current_time=current_time,
+        current_temp=current_temp,
+        past_tides=past_tides,
+        next_tides=next_tides,
+        last_tide_hrs_ago = round(last_tide_hrs_ago, 1),
+        tide_chart_filename = tide_chart_filename,
     )
 
 

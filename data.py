@@ -40,7 +40,9 @@ class NoaaApi(object):
     }
     STATIONS = {
         "battery": 8518750,
-        "coney": 8517741,
+        "coney": 8517741,  # tide predictions only
+        "coney_channel": "ACT3876",  # current predictions only
+        "rockaway_inlet": "NYH1905",  # current predictions only
     }
 
     @classmethod
@@ -57,7 +59,10 @@ class NoaaApi(object):
         return df
 
     @classmethod
-    def Tides(cls) -> pd.DataFrame:
+    def Tides(
+        cls,
+        station: str = STATIONS["coney"],
+    ) -> pd.DataFrame:
         """Return tide predictions from yesterday to two days from now."""
         return (
             cls._Request(
@@ -70,7 +75,7 @@ class NoaaApi(object):
                     "end_date": (
                         datetime.datetime.today() + datetime.timedelta(days=2)
                     ).strftime("%Y%m%d"),
-                    "station": cls.STATIONS["coney"],
+                    "station": station,
                     "interval": "hilo",
                 }
             )
@@ -79,6 +84,44 @@ class NoaaApi(object):
             .assign(type=lambda x: x["type"].map({"L": "low", "H": "high"}))[
                 ["prediction", "type"]
             ]
+        )
+
+    @classmethod
+    def Currents(
+        cls,
+        station: str,
+    ) -> pd.DataFrame:
+        return (
+            cls._Request(
+                {
+                    "product": "currents_predictions",
+                    "datum": "MLLW",
+                    "begin_date": (
+                        datetime.datetime.today() - datetime.timedelta(days=1)
+                    ).strftime("%Y%m%d"),
+                    "end_date": (
+                        datetime.datetime.today() + datetime.timedelta(days=2)
+                    ).strftime("%Y%m%d"),
+                    "station": station,
+                    "interval": "MAX_SLACK",
+                }
+            )
+            .rename(columns={"Time": "Date Time"})  # XXX param to FixTime
+            .pipe(cls._FixTime)
+            .rename(
+                columns={
+                    " Depth": "depth",
+                    " Type": "type",
+                    " Velocity_Major": "velocity",
+                    " meanFloodDir": "mean_flood_dir",
+                    " Bin": "bin",
+                }
+            )
+            # Data is just flood/slack/ebb datapoints. This creates a smooth curve
+            .resample("60s")
+            .interpolate("polynomial", order=2)
+            # XXX Normalize to proper interval to make mean make sense... (one is at depth, the other isn't...)
+            # probably doesn't really matter though, tbh
         )
 
     @classmethod
@@ -156,6 +199,7 @@ class Data(object):
         self._historic_temps_timestamp = None
 
         self.expirations = {
+            # XXX tidesandcurrents
             # Tidal predictions already cover a wide past/present window
             "tides": datetime.timedelta(hours=24),
             # Live temperature readings ouccur every 6 minutes, and are
@@ -176,10 +220,13 @@ class Data(object):
         while True:
             if self._Expired("tides"):
                 self._FetchTides()
+                GenerateTideCurrentPlot(self.tides, self.currents)
 
             if self._Expired("live_temps"):
                 self._FetchLiveTemps()
                 GenerateLiveTempPlot(self.live_temps)
+
+                # XXX Do currents here too...?
 
             # XXX Flag this
             if self._Expired("historic_temps"):
@@ -211,7 +258,19 @@ class Data(object):
         next_tides = self.tides[Now() :].head(2).reset_index().to_dict(orient="records")
         return past_tides, next_tides
 
-    def CurrentReading(self) -> Tuple[pd.Timestamp, float]:
+    def CurrentPrediction(self) -> Tuple[float, str]:
+        # XXX cleanup
+        t = Now()
+        row = self.tides.loc[self.tides.index.asof(t)]
+        offset = t - row.name
+        offset_hrs = offset.seconds / (60 * 60)
+        filename = "%s+%s.png" % (row["type"], round(offset_hrs))
+
+        print("It is %0.1f hours since the last %s tide" % (offset_hrs, row["type"]))
+        print(t, row["type"], offset, offset_hrs, filename)
+        return offset_hrs, filename
+
+    def LiveTempReading(self) -> Tuple[pd.Timestamp, float]:
         if self.live_temps is None:
             return datetime.time(0), 0.0
         ((time, temp),) = self.live_temps.tail(1)["water_temp"].items()
@@ -256,6 +315,13 @@ class Data(object):
         logging.info("Fetching tides")
         try:
             self.tides = NoaaApi.Tides()
+
+            # XXX Currents. Explain Mean
+            currents_coney = NoaaApi.Currents(NoaaApi.STATIONS['coney_channel'])
+            currents_ri = NoaaApi.Currents(NoaaApi.STATIONS['rockaway_inlet'])
+            self.currents = pd.concat([currents_coney,
+                currents_ri]).groupby(level=0).mean()
+
             self._tides_timestamp = Now()
         except NoaaApiError as e:
             logging.warning(f"Tide fetch error: {e}")
@@ -393,7 +459,7 @@ def GenerateLiveTempPlot(live_temps):
         "48-hour, live",
         "%a %-I %p",
     )
-    fig.savefig(plot_filename, format="svg")
+    fig.savefig(plot_filename, format="svg", bbox_inches='tight')
 
 
 def GenerateHistoricPlots(hist_temps):
@@ -423,7 +489,7 @@ def GenerateHistoricPlots(hist_temps):
     )
     ax.xaxis.set_major_formatter(md.DateFormatter("%b %d"))
     ax.xaxis.set_major_locator(md.WeekdayLocator(byweekday=1))
-    fig.savefig(two_mo_plot_filename, format="svg")
+    fig.savefig(two_mo_plot_filename, format="svg", bbox_inches='tight')
 
     # Full year
     yr_plot_filename = "static/plots/historic_temps_12mo_24h_mean.svg"
@@ -447,4 +513,64 @@ def GenerateHistoricPlots(hist_temps):
     ax.set_xticklabels("")
     ax.xaxis.set_minor_locator(md.MonthLocator(bymonthday=15))
     ax.xaxis.set_minor_formatter(md.DateFormatter("%b"))
-    fig.savefig(yr_plot_filename, format="svg")
+    fig.savefig(yr_plot_filename, format="svg", bbox_inches='tight')
+
+
+def GenerateTideCurrentPlot(tides, currents):
+    if tides is None or currents is None:
+        return
+    plot_filename = "static/plots/tides_currents.svg"
+    logging.info("Generating tide and current plot: %s", plot_filename)
+
+    # XXX Do this directly in tide dataset?
+    tides = tides.resample('60s').interpolate('polynomial', order=2)
+
+    df = pd.DataFrame({
+        'tide': tides['prediction'],
+        'tide_type': tides['type'],
+        'current': currents['velocity'],
+    })
+    df = df[Now()-datetime.timedelta(hours=3):
+            Now()+datetime.timedelta(hours=9)
+            ]
+
+    fig = Figure(figsize=(16,8))
+
+    ax = fig.subplots()
+
+    sns.lineplot(data=df['tide'], ax=ax, color='b')
+    ax.set_ylabel('Tide (ft)', color='b')
+
+    # XXX Align the 0 line on both
+
+    ax2=ax.twinx()
+    ax2.xaxis.set_major_formatter(md.DateFormatter('%a %-I %p'))
+    sns.lineplot(data=df['current'],
+                 ax=ax2, color='g')
+    ax2.grid(False)
+    ax2.set_ylabel('Current (kts)', color='g')
+
+    # Attempts to line up 0 on both axises...
+    #ax.set_ylim(-5,5)  naturally -1,5
+    #ax2.set_ylim(-2,2)  naturally -1.5 to 1
+
+    # Draw lines at 0
+    ax.axhline(0, color='b', linestyle=':', alpha=0.8)#, linewidth=0.8)
+    ax2.axhline(0, color='g', linestyle=':', alpha=0.8)#, linewidth=0.8)
+
+    ax.axvline(Now(), color='r')
+
+    # Useful plot that indicates how the current (which?) LEADS the tide
+    # XXX
+    # Peak flood ~2hrs before high tide
+    # Peak ebb XX mins before low tide
+
+    # Label high and low tide points
+    tt = df[df['tide_type'].notnull()][['tide','tide_type']]
+    tt['tide_type']=tt['tide_type'] + ' tide'
+    sns.scatterplot(data=tt, ax=ax, legend=False)
+    for t, row in tt.iterrows():
+      ax.annotate(row['tide_type'], (t, row['tide']), color='b', xytext=(-24,8),
+              textcoords='offset pixels')
+
+    fig.savefig(plot_filename, format="svg", bbox_inches='tight')

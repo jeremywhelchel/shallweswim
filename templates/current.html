@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Shall We Swim Today?</title>
+    <style>
+    h1, h2, h3, h4, h5, h6 {
+      font-family: "Helvetica", "Arial", sans-serif;
+    }
+    .title {
+      margin-bottom: 0px;
+    }
+    .infobox {
+      padding-left: 20px;
+    }
+
+    .plot {
+      width: 100%;
+      max-width: 980px;
+      display: block;
+    }
+
+    /* Small screens (Phones) */
+    @media (max-width: 600px) {
+      .current {
+        font-size: 24px;
+      }
+      .note {
+        font-size: 12px;
+      }
+      .tides {
+        font-size: 15px;
+      }
+      .webcamdiv {
+        max-width: 950px;
+        height: 220px;
+      }
+    }
+
+    /* Large screens */
+    @media (min-width: 601px) {
+      .current {
+        font-size: 32px;
+      }
+      .note {
+        font-size: 18px;
+      }
+      .tides {
+        font-size: 24px;
+      }
+      .webcamdiv {
+        max-width: 950px;
+        height: 534px;
+      }
+    }
+
+    .webcamframe {
+      /*position: absolute;*/
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      border: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .windyframe {
+      /*
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      border: 1;
+      */
+      /*
+      padding-left: 13px;
+      width: 924px;
+      height: 450px;
+       */
+      width: 100%;
+      max-width: 950px;
+      display: block;
+      /*width="640px" height="450px"*/
+      height: 350px;
+    }
+
+    #snow {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#000099"/>
+    <meta name="description"
+          content="Coney Island Brighton Beach open water swimming conditions">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="manifest" href="/static/manifest.json">
+  </head>
+  <body>
+
+    <p>
+      <h1 class="title">shall we swim today?</h1>
+      <span class="note">
+      ...at <a href="https://cibbows.org/about/essentials/">Grimaldo's Chair</a>
+      </span>
+    </p>
+
+    <h2>Note</h2>
+    <div>
+      This is a work-in-progress. Take it with a grain of salt, and please send
+      me feedback.
+    </div>
+
+    <h2>Current Prediction</h2>
+      <div class="tides">
+        It has been {{ last_tide_hrs_ago }} hours since the last {{ past_tides[-1]['type'] }} tide.
+
+        It is most likely that the tide will be INCOMING / EASTWARD or OUTGOING
+        / WESTWARD and WEAK/STRONG and will be getting STRONGER / WEAKER
+      </div>
+
+    <h2>Tide Current Projection</h2>
+    <img class="plot" src="/static/plots/tides_currents.svg"
+         alt="Tide and Current plot"
+    >
+
+    <h2>Legacy map</h2>
+    <div>Many years ago, the US Deptartment of Commerce published hourly tides
+      for the NY harbor. This is the most closely matching chart.</div>
+    <div>
+      <img class="plot" src="static/tidecharts/{{ tide_chart_filename }}"
+           alt="Area tide chart"
+      >
+    </div>
+
+    <h2>What??</h2>
+    <div>
+      There are two relatively nearby NOAA current prediction stations at
+      opposite ends of the waters off Coney/Brighton. This takes a mean of
+      those predictions to estimate a current prediction for our swimming area.
+      <br/><br/>
+      Currents are measured in estimated knots. A positive value indicates a
+      flood tide, which will be going from west to east at Grimaldo's. A
+      negative value indicates an ebb tide, which will be going from east to
+      west at Grimaldo's.
+      <br/><br/>
+      Generally you should swim into the current at the start of your swim when
+      you are fresh, so that you will have an easier time on the return trip.
+      Longer swims that occur near a tide flip may want to take that into
+      account...so the first half of the swim is with one part of the tide (e.g.
+      ride the flood eastward to Manhattan Beach), and the second half will take
+      the opposite (e.g. riding the ebb on the return).
+      <br/><br/>
+      NOTE! The current at our beach changes near the aquarium!
+    </div>
+
+    <h2>Sources</h2>
+    <ul>
+      <li>
+        Current prediction provided by:
+        <a href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=NYH1905_12">
+          Rockaway Inlet Entrance (NYH1905) Depth: 5 feet</a> (NOAA Tides and Currents)
+        XXX Also coney island current...
+      </li>
+      <li>
+        Base map by Liam Hartigan
+      </li>
+      <li>
+        <a href="https://catalog.hathitrust.org/Record/011421935">
+          Tidal current charts, New York Harbor</a> U.S. Department of Commerce, Coast and Geodetic Survey (1946)
+      </li>
+    </ul>
+
+  </body>
+</html>

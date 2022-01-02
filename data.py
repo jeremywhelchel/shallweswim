@@ -465,8 +465,7 @@ def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
     ax.set_ylabel("Water Temp (°F)", fontsize=18)
 
     # Current year
-    # XXX When we have other than 10 years, need to select properly.
-    line = ax.lines[11]
+    line = ax.lines[len(df.columns)-1]
     line.set_linewidth(3)
     line.set_linestyle("-")
     line.set_color("r")
@@ -611,25 +610,24 @@ def GenerateTideCurrentPlot(
     fig = Figure(figsize=(16, 8))
 
     ax = fig.subplots()
-
-    sns.lineplot(data=df["tide"], ax=ax, color="b")
-    ax.set_ylabel("Tide Height (ft)", color="b")
+    ax.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
+    sns.lineplot(data=df["current"], ax=ax, color="g")
+    ax.set_ylabel("Current Speed (kts)", color="g")
 
     # XXX Align the 0 line on both
 
     ax2 = ax.twinx()
-    ax2.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
-    sns.lineplot(data=df["current"], ax=ax2, color="g")
+    sns.lineplot(data=df["tide"], ax=ax2, color="b")
+    ax2.set_ylabel("Tide Height (ft)", color="b")
     ax2.grid(False)
-    ax2.set_ylabel("Current Speed (kts)", color="g")
 
     # Attempts to line up 0 on both axises...
-    # ax.set_ylim(-5,5)  naturally -1,5
-    # ax2.set_ylim(-2,2)  naturally -1.5 to 1
+    # ax.set_ylim(-2,2)  naturally -1.5 to 1
+    # ax2.set_ylim(-5,5)  naturally -1,5
 
     # Draw lines at 0
-    ax.axhline(0, color="b", linestyle=":", alpha=0.8)  # , linewidth=0.8)
-    ax2.axhline(0, color="g", linestyle=":", alpha=0.8)  # , linewidth=0.8)
+    ax.axhline(0, color="g", linestyle=":", alpha=0.8)  # , linewidth=0.8)
+    ax2.axhline(0, color="b", linestyle=":", alpha=0.8)  # , linewidth=0.8)
 
     ax.axvline(t, color="r", linestyle="-", alpha=0.6)
 
@@ -641,9 +639,9 @@ def GenerateTideCurrentPlot(
     # Label high and low tide points
     tt = df[df["tide_type"].notnull()][["tide", "tide_type"]]
     tt["tide_type"] = tt["tide_type"] + " tide"
-    sns.scatterplot(data=tt, ax=ax, legend=False)
+    sns.scatterplot(data=tt, ax=ax2, legend=False)
     for t, row in tt.iterrows():
-        ax.annotate(
+        ax2.annotate(
             row["tide_type"],
             (t, row["tide"]),
             color="b",
@@ -654,6 +652,8 @@ def GenerateTideCurrentPlot(
     fig.savefig(plot_filename, format="svg", bbox_inches="tight")
 
 
+# XXX Set a TTL on all these generated images, since they tend to get cached in
+# some contexts
 def GenerateCurrentChart(ef: str, magnitude_pct: float):
     assert (magnitude_pct >= 0) and (magnitude_pct <= 1.0), magnitude_pct
 

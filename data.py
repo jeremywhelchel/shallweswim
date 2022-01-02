@@ -1,10 +1,12 @@
 """Data fetching and management."""
 
 from matplotlib.figure import Figure
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple, Union
 import datetime
 import io
 import logging
+import math
+import matplotlib.image as mpimg
 import matplotlib.dates as md
 import numpy as np
 import pandas as pd
@@ -61,7 +63,7 @@ class NoaaApi(object):
     @classmethod
     def Tides(
         cls,
-        station: str = STATIONS["coney"],
+        station: Union[str, int] = STATIONS["coney"],
     ) -> pd.DataFrame:
         """Return tide predictions from yesterday to two days from now."""
         return (
@@ -191,6 +193,7 @@ class Data(object):
 
     def __init__(self):
         self.tides = None
+        self.currents = None
         self.historic_temps = None
         self.live_temps = None
 
@@ -226,8 +229,6 @@ class Data(object):
                 self._FetchLiveTemps()
                 GenerateLiveTempPlot(self.live_temps)
 
-                # XXX Do currents here too...?
-
             # XXX Flag this
             if self._Expired("historic_temps"):
                 self._FetchHistoricTemps()
@@ -258,17 +259,83 @@ class Data(object):
         next_tides = self.tides[Now() :].head(2).reset_index().to_dict(orient="records")
         return past_tides, next_tides
 
-    def CurrentPrediction(self) -> Tuple[float, str]:
-        # XXX cleanup
-        t = Now()
+    def LegacyChartInfo(
+        self, t: Optional[datetime.datetime] = None
+    ) -> Tuple[float, str, str, str]:
+        if not t:
+            t = Now()
         row = self.tides.loc[self.tides.index.asof(t)]
+        # XXX Break this into a function
+        tide_type = row["type"]
         offset = t - row.name
         offset_hrs = offset.seconds / (60 * 60)
-        filename = "%s+%s.png" % (row["type"], round(offset_hrs))
+        if offset_hrs > 5.5:
+            chart_num = 0
+            INVERT = {"high": "low", "low": "high"}
+            chart_type = INVERT[tide_type]
+            # XXX last tide type will be wrong here in the chart
+        else:
+            chart_num = round(offset_hrs)
+            chart_type = tide_type
 
-        print("It is %0.1f hours since the last %s tide" % (offset_hrs, row["type"]))
-        print(t, row["type"], offset, offset_hrs, filename)
-        return offset_hrs, filename
+        legacy_map_title = "%s Water at New York" % chart_type.capitalize()
+        if chart_num:
+            legacy_map_title = (
+                "%i Hour%s after " % (chart_num, "s" if chart_num > 1 else "")
+                + legacy_map_title
+            )
+        filename = "%s+%s.png" % (chart_type, chart_num)
+
+        print("It is %0.1f hours since the last %s tide" % (offset_hrs, tide_type))
+        print(chart_num)
+        print(t, tide_type, offset, offset_hrs)
+        print(filename, legacy_map_title)
+        return offset_hrs, tide_type, filename, legacy_map_title
+
+    def CurrentPrediction(
+        self, t: Optional[datetime.datetime] = None
+    ) -> Tuple[datetime.datetime, str, float, float, str]:
+        if not t:
+            t = Now()
+
+        v = self.currents["velocity"]
+        df = pd.DataFrame(
+            {
+                "v": v,
+                "magnitude": v.abs(),
+                "slope": v.abs().shift(-1) - v.abs().shift(1),
+            }
+        )  # XXX trend...
+        df["ef"] = (df["v"] > 0).map({True: "flooding", False: "ebbing"})
+
+        # XXX This doesn't work when df has a stronger current in a different
+        # tidal cycle. Try to only look at +/- til we get to 0 or something
+        df["mag_pct"] = df.groupby("ef")["magnitude"].rank(pct=True)
+
+        row = df[t:].iloc[0]
+
+        STRONG_THRESHOLD = 0.85  # 30% on either side of peak
+        WEAK_THRESHOLD = 0.15  # 30% on either side of bottom
+        magnitude = row["magnitude"]
+        print(row)
+
+        # XXX Move to template
+        if row["mag_pct"] < WEAK_THRESHOLD:
+            msg = "at its weakest (slack)"
+        elif row["mag_pct"] > STRONG_THRESHOLD:
+            msg = "at its strongest"
+        elif row["slope"] < 0:
+            msg = "getting weaker"
+        elif row["slope"] > 0:
+            msg = "getting stronger"
+        else:
+            raise ValueError(row)
+
+        tstr = t.strftime("%A, %B %-d at %-I:%M %p")
+        ef = row["ef"]
+
+        # Return mag_pct, for determining arrow size
+        return t, ef, magnitude, row["mag_pct"], msg
 
     def LiveTempReading(self) -> Tuple[pd.Timestamp, float]:
         if self.live_temps is None:
@@ -317,10 +384,11 @@ class Data(object):
             self.tides = NoaaApi.Tides()
 
             # XXX Currents. Explain Mean
-            currents_coney = NoaaApi.Currents(NoaaApi.STATIONS['coney_channel'])
-            currents_ri = NoaaApi.Currents(NoaaApi.STATIONS['rockaway_inlet'])
-            self.currents = pd.concat([currents_coney,
-                currents_ri]).groupby(level=0).mean()
+            currents_coney = NoaaApi.Currents(NoaaApi.STATIONS["coney_channel"])
+            currents_ri = NoaaApi.Currents(NoaaApi.STATIONS["rockaway_inlet"])
+            self.currents = (
+                pd.concat([currents_coney, currents_ri]).groupby(level=0).mean()
+            )
 
             self._tides_timestamp = Now()
         except NoaaApiError as e:
@@ -398,7 +466,7 @@ def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
 
     # Current year
     # XXX When we have other than 10 years, need to select properly.
-    line = ax.lines[10]
+    line = ax.lines[11]
     line.set_linewidth(3)
     line.set_linestyle("-")
     line.set_color("r")
@@ -459,7 +527,7 @@ def GenerateLiveTempPlot(live_temps):
         "48-hour, live",
         "%a %-I %p",
     )
-    fig.savefig(plot_filename, format="svg", bbox_inches='tight')
+    fig.savefig(plot_filename, format="svg", bbox_inches="tight")
 
 
 def GenerateHistoricPlots(hist_temps):
@@ -489,7 +557,7 @@ def GenerateHistoricPlots(hist_temps):
     )
     ax.xaxis.set_major_formatter(md.DateFormatter("%b %d"))
     ax.xaxis.set_major_locator(md.WeekdayLocator(byweekday=1))
-    fig.savefig(two_mo_plot_filename, format="svg", bbox_inches='tight')
+    fig.savefig(two_mo_plot_filename, format="svg", bbox_inches="tight")
 
     # Full year
     yr_plot_filename = "static/plots/historic_temps_12mo_24h_mean.svg"
@@ -513,52 +581,57 @@ def GenerateHistoricPlots(hist_temps):
     ax.set_xticklabels("")
     ax.xaxis.set_minor_locator(md.MonthLocator(bymonthday=15))
     ax.xaxis.set_minor_formatter(md.DateFormatter("%b"))
-    fig.savefig(yr_plot_filename, format="svg", bbox_inches='tight')
+    fig.savefig(yr_plot_filename, format="svg", bbox_inches="tight")
 
 
-def GenerateTideCurrentPlot(tides, currents):
+def GenerateTideCurrentPlot(
+    tides: pd.DataFrame, currents: pd.DataFrame, t: Optional[datetime.datetime] = None
+):
     if tides is None or currents is None:
         return
+    if not t:
+        t = Now()
     plot_filename = "static/plots/tides_currents.svg"
     logging.info("Generating tide and current plot: %s", plot_filename)
 
     # XXX Do this directly in tide dataset?
-    tides = tides.resample('60s').interpolate('polynomial', order=2)
+    tides = tides.resample("60s").interpolate("polynomial", order=2)
 
-    df = pd.DataFrame({
-        'tide': tides['prediction'],
-        'tide_type': tides['type'],
-        'current': currents['velocity'],
-    })
-    df = df[Now()-datetime.timedelta(hours=3):
-            Now()+datetime.timedelta(hours=9)
-            ]
+    df = pd.DataFrame(
+        {
+            "tide": tides["prediction"],
+            "tide_type": tides["type"],
+            "current": currents["velocity"],
+        }
+    )
+    # XXX
+    df = df[Now() - datetime.timedelta(hours=3) : Now() +
+            datetime.timedelta(hours=21)]
 
-    fig = Figure(figsize=(16,8))
+    fig = Figure(figsize=(16, 8))
 
     ax = fig.subplots()
 
-    sns.lineplot(data=df['tide'], ax=ax, color='b')
-    ax.set_ylabel('Tide (ft)', color='b')
+    sns.lineplot(data=df["tide"], ax=ax, color="b")
+    ax.set_ylabel("Tide Height (ft)", color="b")
 
     # XXX Align the 0 line on both
 
-    ax2=ax.twinx()
-    ax2.xaxis.set_major_formatter(md.DateFormatter('%a %-I %p'))
-    sns.lineplot(data=df['current'],
-                 ax=ax2, color='g')
+    ax2 = ax.twinx()
+    ax2.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
+    sns.lineplot(data=df["current"], ax=ax2, color="g")
     ax2.grid(False)
-    ax2.set_ylabel('Current (kts)', color='g')
+    ax2.set_ylabel("Current Speed (kts)", color="g")
 
     # Attempts to line up 0 on both axises...
-    #ax.set_ylim(-5,5)  naturally -1,5
-    #ax2.set_ylim(-2,2)  naturally -1.5 to 1
+    # ax.set_ylim(-5,5)  naturally -1,5
+    # ax2.set_ylim(-2,2)  naturally -1.5 to 1
 
     # Draw lines at 0
-    ax.axhline(0, color='b', linestyle=':', alpha=0.8)#, linewidth=0.8)
-    ax2.axhline(0, color='g', linestyle=':', alpha=0.8)#, linewidth=0.8)
+    ax.axhline(0, color="b", linestyle=":", alpha=0.8)  # , linewidth=0.8)
+    ax2.axhline(0, color="g", linestyle=":", alpha=0.8)  # , linewidth=0.8)
 
-    ax.axvline(Now(), color='r')
+    ax.axvline(t, color="r", linestyle="-", alpha=0.6)
 
     # Useful plot that indicates how the current (which?) LEADS the tide
     # XXX
@@ -566,11 +639,71 @@ def GenerateTideCurrentPlot(tides, currents):
     # Peak ebb XX mins before low tide
 
     # Label high and low tide points
-    tt = df[df['tide_type'].notnull()][['tide','tide_type']]
-    tt['tide_type']=tt['tide_type'] + ' tide'
+    tt = df[df["tide_type"].notnull()][["tide", "tide_type"]]
+    tt["tide_type"] = tt["tide_type"] + " tide"
     sns.scatterplot(data=tt, ax=ax, legend=False)
     for t, row in tt.iterrows():
-      ax.annotate(row['tide_type'], (t, row['tide']), color='b', xytext=(-24,8),
-              textcoords='offset pixels')
+        ax.annotate(
+            row["tide_type"],
+            (t, row["tide"]),
+            color="b",
+            xytext=(-24, 8),
+            textcoords="offset pixels",
+        )
 
-    fig.savefig(plot_filename, format="svg", bbox_inches='tight')
+    fig.savefig(plot_filename, format="svg", bbox_inches="tight")
+
+
+def GenerateCurrentChart(ef: str, magnitude_pct: float):
+    assert (magnitude_pct >= 0) and (magnitude_pct <= 1.0), magnitude_pct
+
+    fig = Figure(figsize=(16, 6))  # Dims: 2596 × 967
+    plot_filename = "static/plots/current_chart.png"
+
+    ax = fig.subplots()
+    map_img = mpimg.imread("static/base_coney_map.png")
+    ax.imshow(map_img)
+    ax.axis("off")
+    ax.grid(False)
+
+    ax.annotate(
+        "Grimaldos\nChair", (1850, 400), fontsize=16, fontweight="bold", color="#ff4000"
+    )
+
+    # x,y (for centerpoint), flood_direction(degrees)
+    ARROWS = [
+        (600, 800, 260),
+        (900, 750, 260),
+        (1150, 850, 335),
+        (1300, 820, 20),
+        (1520, 700, 75),
+        (1800, 640, 75),
+        (2050, 600, 75),
+        (2350, 550, 75),
+    ]
+    length = 80 + 80 * magnitude_pct
+    width = 4 + 12 * magnitude_pct
+
+    if ef == "flooding":
+        flip = 0
+        color = "g"
+    elif ef == "ebbing":
+        flip = 180
+        color = "r"
+    else:
+        raise ValueError(ef)
+
+    for (x, y, angle) in ARROWS:
+        dx = length * math.sin(math.radians(angle + flip))
+        dy = length * math.cos(math.radians(angle + flip))
+        ax.arrow(
+            x - dx / 2,
+            y + dy / 2,
+            dx,
+            -dy,
+            width=width,
+            color=color,
+            length_includes_head=True,
+        )
+
+    fig.savefig(plot_filename, format="png", bbox_inches="tight")

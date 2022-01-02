@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from flask import Flask, jsonify, Response, redirect, render_template, url_for
+import datetime
+from flask import Flask, jsonify, Response, redirect, render_template, request, url_for
 import google.cloud.logging
 import logging
 import os
@@ -17,32 +18,60 @@ app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True
 def index():
     current_time, current_temp = data.LiveTempReading()
     past_tides, next_tides = data.PrevNextTide()
-    last_tide_hrs_ago, tide_chart_filename = data.CurrentPrediction()
     return render_template(
         "index.html",
         current_time=current_time,
         current_temp=current_temp,
         past_tides=past_tides,
         next_tides=next_tides,
-        last_tide_hrs_ago = round(last_tide_hrs_ago, 1),
-        tide_chart_filename = tide_chart_filename,
     )
 
 
 @app.route("/current")
 def water_current():
+    # Optionally shift current time
+    t = data_lib.Now()
+    shift = request.args.get("shift")
+    if shift:
+        shift = int(shift)
+        t = t + datetime.timedelta(minutes=shift)
+    else:
+        shift = 0
+    fwd = shift + 60
+    back = shift - 60
+
     # XXX
-    current_time, current_temp = data.LiveTempReading()
-    past_tides, next_tides = data.PrevNextTide()
-    last_tide_hrs_ago, tide_chart_filename = data.CurrentPrediction()
+    data_lib.GenerateTideCurrentPlot(data.tides, data.currents, t)
+
+    (
+        last_tide_hrs_ago,
+        last_tide_type,
+        tide_chart_filename,
+        legacy_map_title,
+    ) = data.LegacyChartInfo(t)
+
+    (
+        ts,
+        ef,
+        magnitude,
+        magnitude_pct,
+        msg,
+    ) = data.CurrentPrediction(t)
+
+    data_lib.GenerateCurrentChart(ef, magnitude_pct)  # XXX pass in magnitude and e/f
+
     return render_template(
         "current.html",
-        current_time=current_time,
-        current_temp=current_temp,
-        past_tides=past_tides,
-        next_tides=next_tides,
-        last_tide_hrs_ago = round(last_tide_hrs_ago, 1),
-        tide_chart_filename = tide_chart_filename,
+        last_tide_hrs_ago=round(last_tide_hrs_ago, 1),
+        last_tide_type=last_tide_type,
+        tide_chart_filename=tide_chart_filename,
+        legacy_map_title=legacy_map_title,
+        ts=ts,
+        ef=ef,
+        magnitude=round(magnitude, 1),
+        msg=msg,
+        fwd=fwd,
+        back=back,
     )
 
 

@@ -27,38 +27,52 @@ def index():
     )
 
 
+MIN_SHIFT_LIMIT = -180  # 3 hours
+MAX_SHIFT_LIMIT = 1260  # 21 hours
+
+
+def EffectiveTime() -> datetime.datetime:
+    """Return the effective time for displaying charts based on query parameters."""
+
+    # XXX Add an optional absolute time parameter here
+    t = data_lib.Now()
+
+    # Optionally shift current time
+    shift = request.args.get("shift", 0, int)
+    # Clamp the shift limit
+    shift = max(MIN_SHIFT_LIMIT, min(shift, MAX_SHIFT_LIMIT))
+    t = t + datetime.timedelta(minutes=shift)
+
+    return t
+
+
 @app.route("/current")
 def water_current():
-    # Optionally shift current time
-    t = data_lib.Now()
-    shift = request.args.get("shift")
-    if shift:
-        shift = int(shift)
-        t = t + datetime.timedelta(minutes=shift)
-    else:
-        shift = 0
-    fwd = shift + 60
-    back = shift - 60
+    ts = EffectiveTime()
 
     # XXX
-    data_lib.GenerateTideCurrentPlot(data.tides, data.currents, t)
+    data_lib.GenerateTideCurrentPlot(data.tides, data.currents, ts)
 
     (
         last_tide_hrs_ago,
         last_tide_type,
         tide_chart_filename,
         legacy_map_title,
-    ) = data.LegacyChartInfo(t)
+    ) = data.LegacyChartInfo(ts)
 
     (
-        ts,
         ef,
         magnitude,
         magnitude_pct,
         msg,
-    ) = data.CurrentPrediction(t)
+    ) = data.CurrentPrediction(ts)
 
     data_lib.GenerateCurrentChart(ef, magnitude_pct)  # XXX pass in magnitude and e/f
+
+    # Get fwd/back shift values
+    shift = request.args.get("shift", 0, int)
+    fwd = min(shift + 60, MAX_SHIFT_LIMIT)
+    back = max(shift - 60, MIN_SHIFT_LIMIT)
 
     return render_template(
         "current.html",

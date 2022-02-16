@@ -168,7 +168,7 @@ class NoaaApi(object):
         )
 
 
-def Now():
+def Now() -> datetime.datetime:
     return datetime.datetime.now(tz=EASTERN_TZ).replace(tzinfo=None)
 
 
@@ -294,7 +294,7 @@ class Data(object):
 
     def CurrentPrediction(
         self, t: Optional[datetime.datetime] = None
-    ) -> Tuple[datetime.datetime, str, float, float, str]:
+    ) -> Tuple[str, float, float, str]:
         if not t:
             t = Now()
 
@@ -335,7 +335,7 @@ class Data(object):
         ef = row["ef"]
 
         # Return mag_pct, for determining arrow size
-        return t, ef, magnitude, row["mag_pct"], msg
+        return ef, magnitude, row["mag_pct"], msg
 
     def LiveTempReading(self) -> Tuple[pd.Timestamp, float]:
         if self.live_temps is None:

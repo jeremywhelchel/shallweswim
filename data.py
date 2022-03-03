@@ -1,5 +1,6 @@
 """Data fetching and management."""
 
+from concurrent import futures
 from matplotlib.figure import Figure
 from typing import Optional, Sequence, Tuple, Union
 import datetime
@@ -393,28 +394,29 @@ class Data(object):
         except NoaaApiError as e:
             logging.warning(f"Tide fetch error: {e}")
 
+    def _FetchHistoricTempYear(self, year):
+        begin_date = datetime.date(year, 1, 1)
+        end_date = datetime.date(year, 12, 31)
+        return pd.concat(
+            [
+                NoaaApi.Temperature(
+                    "air_temperature", begin_date, end_date, interval="h"
+                ),
+                NoaaApi.Temperature(
+                    "water_temperature", begin_date, end_date, interval="h"
+                ),
+            ],
+            axis=1,
+        )
+
     def _FetchHistoricTemps(self):
         """Get hourly temp data since 2011."""
         logging.info("Fetching historic temps")
         try:
-            # XXX This takes a moment. Fetch these in parallel
-            year_frames = []
-            for year in range(2011, Now().year + 1):
-                begin_date = datetime.date(year, 1, 1)
-                end_date = datetime.date(year, 12, 31)
-                year_frames.append(
-                    pd.concat(
-                        [
-                            NoaaApi.Temperature(
-                                "air_temperature", begin_date, end_date, interval="h"
-                            ),
-                            NoaaApi.Temperature(
-                                "water_temperature", begin_date, end_date, interval="h"
-                            ),
-                        ],
-                        axis=1,
-                    )
-                )
+            threadpool = futures.ThreadPoolExecutor(20)
+            year_frames = threadpool.map(
+                self._FetchHistoricTempYear, range(2011, Now().year + 1)
+            )
             self.historic_temps = (
                 pd.concat(year_frames)
                 # These samples have erroneous data
@@ -665,32 +667,21 @@ def BinMagnitude(magnitude_pct: float) -> int:
     return MAGNITUDE_BINS[i]
 
 
-# XXX take a bin here
 def GetCurrentChartFilename(ef: str, magnitude_bin: int) -> str:
     # magnitude_bin = BinMagnitude(magnitude_pct)
     plot_filename = f"static/plots/current_chart_{ef}_{magnitude_bin}.png"
     return plot_filename
 
 
-from memory_profiler import profile  # XXX
-
-
-# XXX Set a TTL on all these generated images, since they tend to get cached in
-# some contexts
-# XXX This should be returned as a blob. and parameterized.
-# OR just generated statically
 def GenerateCurrentChart(ef: str, magnitude_bin: int):
     assert (magnitude_bin >= 0) and (magnitude_bin <= 100), magnitude_bin
     magnitude_pct = magnitude_bin / 100
 
-    # XXX
-    print("Currentchart: ", ef, magnitude_pct)
-
     fig = Figure(figsize=(16, 6))  # Dims: 2596 × 967
-    # XXX
-    # plot_filename = f"static/plots/current_chart_{ef}_{magnitude_bin}.png"
     plot_filename = GetCurrentChartFilename(ef, magnitude_bin)
-    print(plot_filename)
+    logging.info(
+        "Generating current map with pct %.2f: %s", magnitude_pct, plot_filename
+    )
 
     ax = fig.subplots()
     map_img = mpimg.imread("static/base_coney_map.png")

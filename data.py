@@ -286,10 +286,6 @@ class Data(object):
             )
         filename = "%s+%s.png" % (chart_type, chart_num)
 
-        print("It is %0.1f hours since the last %s tide" % (offset_hrs, tide_type))
-        print(chart_num)
-        print(t, tide_type, offset, offset_hrs)
-        print(filename, legacy_map_title)
         return offset_hrs, tide_type, filename, legacy_map_title
 
     def CurrentPrediction(
@@ -317,7 +313,6 @@ class Data(object):
         STRONG_THRESHOLD = 0.85  # 30% on either side of peak
         WEAK_THRESHOLD = 0.15  # 30% on either side of bottom
         magnitude = row["magnitude"]
-        print(row)
 
         # XXX Move to template
         if row["mag_pct"] < WEAK_THRESHOLD:

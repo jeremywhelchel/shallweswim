@@ -46,12 +46,16 @@ def EffectiveTime() -> datetime.datetime:
     return t
 
 
+@app.route("/current_tide_plot")
+def current_tide_plot():
+    ts = EffectiveTime()
+    plot = data_lib.GenerateTideCurrentPlot(data.tides, data.currents, ts)
+    return Response(plot, mimetype="image/svg+xml")
+
+
 @app.route("/current")
 def water_current():
     ts = EffectiveTime()
-
-    # XXX
-    data_lib.GenerateTideCurrentPlot(data.tides, data.currents, ts)
 
     (
         last_tide_hrs_ago,
@@ -66,8 +70,6 @@ def water_current():
         magnitude_pct,
         msg,
     ) = data.CurrentPrediction(ts)
-
-    data_lib.GenerateCurrentChart(ef, magnitude_pct)  # XXX pass in magnitude and e/f
 
     # Get fwd/back shift values
     shift = request.args.get("shift", 0, int)
@@ -86,6 +88,10 @@ def water_current():
         msg=msg,
         fwd=fwd,
         back=back,
+        current_chart_filename=data_lib.GetCurrentChartFilename(
+            ef, data_lib.BinMagnitude(magnitude_pct)
+        ),
+        query_string=request.query_string.decode(),
     )
 
 

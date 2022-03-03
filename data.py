@@ -223,7 +223,6 @@ class Data(object):
         while True:
             if self._Expired("tides"):
                 self._FetchTides()
-                GenerateTideCurrentPlot(self.tides, self.currents)
 
             if self._Expired("live_temps"):
                 self._FetchLiveTemps()
@@ -398,6 +397,7 @@ class Data(object):
         """Get hourly temp data since 2011."""
         logging.info("Fetching historic temps")
         try:
+            # XXX This takes a moment. Fetch these in parallel
             year_frames = []
             for year in range(2011, Now().year + 1):
                 begin_date = datetime.date(year, 1, 1)
@@ -465,7 +465,7 @@ def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
     ax.set_ylabel("Water Temp (°F)", fontsize=18)
 
     # Current year
-    line = ax.lines[len(df.columns)-1]
+    line = ax.lines[len(df.columns) - 1]
     line.set_linewidth(3)
     line.set_linestyle("-")
     line.set_color("r")
@@ -583,15 +583,15 @@ def GenerateHistoricPlots(hist_temps):
     fig.savefig(yr_plot_filename, format="svg", bbox_inches="tight")
 
 
+# XXX Return a tide image. Dont write it to filesystem
 def GenerateTideCurrentPlot(
     tides: pd.DataFrame, currents: pd.DataFrame, t: Optional[datetime.datetime] = None
-):
+) -> Optional[io.StringIO]:
     if tides is None or currents is None:
         return
     if not t:
         t = Now()
-    plot_filename = "static/plots/tides_currents.svg"
-    logging.info("Generating tide and current plot: %s", plot_filename)
+    logging.info("Generating tide and current plot for: %s", t)
 
     # XXX Do this directly in tide dataset?
     tides = tides.resample("60s").interpolate("polynomial", order=2)
@@ -604,8 +604,7 @@ def GenerateTideCurrentPlot(
         }
     )
     # XXX
-    df = df[Now() - datetime.timedelta(hours=3) : Now() +
-            datetime.timedelta(hours=21)]
+    df = df[Now() - datetime.timedelta(hours=3) : Now() + datetime.timedelta(hours=21)]
 
     fig = Figure(figsize=(16, 8))
 
@@ -649,20 +648,54 @@ def GenerateTideCurrentPlot(
             textcoords="offset pixels",
         )
 
-    fig.savefig(plot_filename, format="svg", bbox_inches="tight")
+    svg_io = io.StringIO()
+    fig.savefig(svg_io, format="svg", bbox_inches="tight")
+    svg_io.seek(0)
+    return svg_io
+
+
+MAGNITUDE_BINS = [0, 10, 30, 45, 55, 70, 90, 100]  # XXX Something off with these
+
+
+# XXX These bins are weird. Likely should be using the midpoint or some such
+# Which image is representative for the full range?
+def BinMagnitude(magnitude_pct: float) -> int:
+    assert magnitude_pct >= 0 and magnitude_pct <= 1.0, magnitude_pct
+    i = np.digitize([magnitude_pct * 100], MAGNITUDE_BINS, right=True)[0]
+    return MAGNITUDE_BINS[i]
+
+
+# XXX take a bin here
+def GetCurrentChartFilename(ef: str, magnitude_bin: int) -> str:
+    # magnitude_bin = BinMagnitude(magnitude_pct)
+    plot_filename = f"static/plots/current_chart_{ef}_{magnitude_bin}.png"
+    return plot_filename
+
+
+from memory_profiler import profile  # XXX
 
 
 # XXX Set a TTL on all these generated images, since they tend to get cached in
 # some contexts
-def GenerateCurrentChart(ef: str, magnitude_pct: float):
-    assert (magnitude_pct >= 0) and (magnitude_pct <= 1.0), magnitude_pct
+# XXX This should be returned as a blob. and parameterized.
+# OR just generated statically
+def GenerateCurrentChart(ef: str, magnitude_bin: int):
+    assert (magnitude_bin >= 0) and (magnitude_bin <= 100), magnitude_bin
+    magnitude_pct = magnitude_bin / 100
+
+    # XXX
+    print("Currentchart: ", ef, magnitude_pct)
 
     fig = Figure(figsize=(16, 6))  # Dims: 2596 × 967
-    plot_filename = "static/plots/current_chart.png"
+    # XXX
+    # plot_filename = f"static/plots/current_chart_{ef}_{magnitude_bin}.png"
+    plot_filename = GetCurrentChartFilename(ef, magnitude_bin)
+    print(plot_filename)
 
     ax = fig.subplots()
     map_img = mpimg.imread("static/base_coney_map.png")
     ax.imshow(map_img)
+    del map_img
     ax.axis("off")
     ax.grid(False)
 

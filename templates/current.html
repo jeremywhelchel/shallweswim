@@ -143,14 +143,14 @@
 
     <h2>Current map</h2>
     <div>
-      <img class="plot" src="static/plots/current_chart.png"
+      <img class="plot" src="{{ current_chart_filename }}"
            alt="Area tide chart"
       >
       The size of the arrows approximate the strength of the current
     </div>
 
     <h2>Tide Current Projection</h2>
-    <img class="plot" src="/static/plots/tides_currents.svg"
+    <img class="plot" src="/current_tide_plot?{{ query_string }}"
          alt="Tide and Current plot"
     >
     The currents here <i>lead</i> the tide by about 2 hours. The max flood

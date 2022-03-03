@@ -413,10 +413,9 @@ class Data(object):
         """Get hourly temp data since 2011."""
         logging.info("Fetching historic temps")
         try:
-            threadpool = futures.ThreadPoolExecutor(20)
-            year_frames = threadpool.map(
-                self._FetchHistoricTempYear, range(2011, Now().year + 1)
-            )
+            years = range(2011, Now().year + 1)
+            threadpool = futures.ThreadPoolExecutor(len(years))
+            year_frames = threadpool.map(self._FetchHistoricTempYear, years)
             self.historic_temps = (
                 pd.concat(year_frames)
                 # These samples have erroneous data

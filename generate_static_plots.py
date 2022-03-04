@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate static plots."""
+"""Generate static maps."""
 
 import data
 import logging

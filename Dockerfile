@@ -8,7 +8,7 @@ ENV APP_HOME /app
 WORKDIR $APP_HOME
 COPY . ./
 # Install production dependencies.
-RUN pip install Flask google-cloud-logging gunicorn pandas seaborn
+RUN pip install Flask google-cloud-logging gunicorn pandas scipy seaborn
 # Run the web service on container startup. Here we use the gunicorn
 # webserver, with one worker process and 8 threads.
 # For environments with multiple CPU cores, increase the number of workers

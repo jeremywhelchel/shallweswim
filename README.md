@@ -3,7 +3,7 @@ Website to display swimming conditions at Coney Island / Brighton Beach
 
 ## Dependencies
 
-See [requirements.txt]
+See [`requirements.txt`](requirements.txt)
 
 These can be installed with `pip3 install -r requirements.txt`
 

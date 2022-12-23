@@ -11,5 +11,5 @@ jobs:
       with:
         python-version: 3.x
     - run: pip install --upgrade pip
-    - run: pip install pytype
+    - run: pip install pytype==2022.12.15
     - run: pytype $(git ls-files '*.py')

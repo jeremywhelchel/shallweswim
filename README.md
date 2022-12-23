@@ -3,15 +3,9 @@ Website to display swimming conditions at Coney Island / Brighton Beach
 
 ## Dependencies
 
-These can be installed with `pip3 install ...`
+See [requirements.txt]
 
-```
-Flask
-google-cloud-logging
-gunicorn
-pandas
-seaborn
-```
+These can be installed with `pip3 install -r requirements.txt`
 
 ## Run locally
 1. `PORT=12345 python3 main.py`

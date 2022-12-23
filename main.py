@@ -34,7 +34,7 @@ MAX_SHIFT_LIMIT = 1260  # 21 hours
 def EffectiveTime() -> datetime.datetime:
     """Return the effective time for displaying charts based on query parameters."""
 
-    # XXX Add an optional absolute time parameter here
+    # XXX Add an optional absolute time parameter here.
     t = data_lib.Now()
 
     # Optionally shift current time

@@ -11,5 +11,6 @@ jobs:
       with:
         python-version: 3.9
     - run: pip install --upgrade pip
+    - run: pip install -r requirements.txt
     - run: pip install pytype
     - run: pytype $(git ls-files '*.py')

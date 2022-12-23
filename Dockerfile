@@ -8,7 +8,10 @@ ENV APP_HOME /app
 WORKDIR $APP_HOME
 COPY . ./
 # Install production dependencies.
-RUN pip install Flask google-cloud-logging gunicorn pandas scipy seaborn
+# Note Numpy 1.24.0 is causing issues with seaborn:
+# https://github.com/mwaskom/seaborn/issues/3192
+# TODO: remove when 1.24.1 available
+RUN pip install Flask google-cloud-logging gunicorn numpy==1.23.5 pandas scipy seaborn
 # Run the web service on container startup. Here we use the gunicorn
 # webserver, with one worker process and 8 threads.
 # For environments with multiple CPU cores, increase the number of workers

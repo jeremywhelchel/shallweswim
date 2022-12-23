@@ -452,6 +452,8 @@ class Data(object):
             logging.warning(f"Live temp fetch error: {e}")
 
 
+# XXX Add second Y axis in Celsius
+
 def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
     ax = sns.lineplot(data=df, ax=fig.subplots())
 

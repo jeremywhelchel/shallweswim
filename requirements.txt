@@ -3,8 +3,7 @@ google-cloud-logging
 gunicorn
 # Note Numpy 1.24.0 is causing issues with seaborn:
 # https://github.com/mwaskom/seaborn/issues/3192
-# XXX: remove when 1.24.1 available
-numpy==1.23.5
+numpy
 pandas
 scipy
-seaborn
+seaborn==0.11.2

@@ -6,4 +6,4 @@ gunicorn
 numpy
 pandas
 scipy
-seaborn==0.11.2
+seaborn

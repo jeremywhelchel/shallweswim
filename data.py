@@ -545,6 +545,9 @@ def GenerateHistoricPlots(hist_temps):
         ]
         .rolling(24, center=True)
         .mean()
+        # Some years may have 0 data at this filtering level. All-NA columns
+        # will cause plotting errors, so we remove them here.
+        .dropna(axis=1, how='all')
     )
     fig = Figure(figsize=(16, 8))
     ax = MultiYearPlot(
@@ -566,6 +569,9 @@ def GenerateHistoricPlots(hist_temps):
         .mean()
         # Kludge to prevent seaborn from connecting over nan gaps.
         .fillna(np.inf)
+        # Some years may have 0 data at this filtering level. All-NA columns
+        # will cause plotting errors, so we remove them here.
+        .dropna(axis=1, how='all')
     )
     fig = Figure(figsize=(16, 8))
     ax = MultiYearPlot(

@@ -452,7 +452,9 @@ class Data(object):
             logging.warning(f"Live temp fetch error: {e}")
 
 
-# XXX Add second Y axis in Celsius
+def F2C(temp: float) -> float:
+    """Convert Fahrenheit temp to Celsius."""
+    return (5.0 / 9.0) * (temp - 32)
 
 
 def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
@@ -462,6 +464,13 @@ def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
     ax.set_title(subtitle, fontsize=18)
     ax.set_xlabel("Date", fontsize=18)
     ax.set_ylabel("Water Temp (°F)", fontsize=18)
+
+    # Add second Y axis with Celsius
+    ax2 = ax.twinx()
+    fmin, fmax = ax.get_ylim()
+    ax2.set_ylim(F2C(fmin), F2C(fmax))
+    ax2.set_ylabel("Water Temp (°C)", fontsize=18)
+    ax2.grid(None)
 
     # Current year
     line = ax.lines[len(df.columns) - 1]
@@ -492,15 +501,13 @@ def LiveTempPlot(
     ax.set_xlabel("Time", fontsize=18)
     ax.set_ylabel("Water Temp (°F)", fontsize=18)
 
-    # This gets confusing to plot on a second axis, since temps don't align
-    # ax2 = ax.twinx()
-    # ax2.set_ylabel('Air Temp', fontsize=18)
-    # ax2.grid(False)
-    # sns.lineplot(
-    #     data=df["air_temp"],
-    #     ax=ax2,
-    #     color="r",
-    # )
+    # Add second Y axis with Celsius
+    ax2 = ax.twinx()
+    fmin, fmax = ax.get_ylim()
+    ax2.set_ylim(F2C(fmin), F2C(fmax))
+    ax2.set_ylabel("Water Temp (°C)", fontsize=18)
+    ax2.grid(None)
+
     return ax
 
 

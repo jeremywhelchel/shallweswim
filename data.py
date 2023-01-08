@@ -547,7 +547,7 @@ def GenerateHistoricPlots(hist_temps):
         .mean()
         # Some years may have 0 data at this filtering level. All-NA columns
         # will cause plotting errors, so we remove them here.
-        .dropna(axis=1, how='all')
+        .dropna(axis=1, how="all")
     )
     fig = Figure(figsize=(16, 8))
     ax = MultiYearPlot(
@@ -571,7 +571,7 @@ def GenerateHistoricPlots(hist_temps):
         .fillna(np.inf)
         # Some years may have 0 data at this filtering level. All-NA columns
         # will cause plotting errors, so we remove them here.
-        .dropna(axis=1, how='all')
+        .dropna(axis=1, how="all")
     )
     fig = Figure(figsize=(16, 8))
     ax = MultiYearPlot(

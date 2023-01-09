@@ -1,14 +1,14 @@
 # shallweswim.today
 Website to display swimming conditions at Coney Island / Brighton Beach
 
-## Dependencies
-
-See [`requirements.txt`](requirements.txt)
-
-These can be installed with `pip3 install -r requirements.txt`
-
-## Run locally
+## Run locally (directly)
+1. `pip3 install -r requirements.txt`
 1. `PORT=12345 python3 main.py`
+1. Visit http://localhost:12345
+
+## Run locally (via Docker)
+1. `docker build -t shallweswim .`
+1. `docker run -e PORT=80 -p 12345:80 shallweswim`
 1. Visit http://localhost:12345
 
 ## Deploy

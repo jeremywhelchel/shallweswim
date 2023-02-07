@@ -739,4 +739,4 @@ def GenerateCurrentChart(ef: str, magnitude_bin: int):
             length_includes_head=True,
         )
 
-    SaveFig(fig, plot_filename, format="png")
+    SaveFig(fig, plot_filename, fmt="png")

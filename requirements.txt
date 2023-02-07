@@ -1,7 +1,0 @@
-Flask
-google-cloud-logging
-gunicorn
-numpy
-pandas
-scipy
-seaborn

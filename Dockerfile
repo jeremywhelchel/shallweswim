@@ -6,9 +6,15 @@ ENV PYTHONUNBUFFERED True
 # Copy local code to the container image.
 ENV APP_HOME /app
 WORKDIR $APP_HOME
+# Install production dependencies via Poetry
+COPY pyproject.toml ./
+RUN pip install poetry
+RUN poetry config virtualenvs.create false
+RUN poetry install --only main
+# Copy code and data
+# XXX Switch to something more limited like
+# COPY *.py templates static ./
 COPY . ./
-# Install production dependencies.
-RUN pip install -r requirements.txt
 # Run the web service on container startup. Here we use the gunicorn
 # webserver, with one worker process and 8 threads.
 # For environments with multiple CPU cores, increase the number of workers

@@ -2,8 +2,8 @@
 Website to display swimming conditions at Coney Island / Brighton Beach
 
 ## Run locally (directly)
-1. `pip3 install -r requirements.txt`
-1. `PORT=12345 python3 main.py`
+1. `poetry install`
+1. `PORT=12345 poetry run python main.py`
 1. Visit http://localhost:12345
 
 ## Run locally (via Docker)

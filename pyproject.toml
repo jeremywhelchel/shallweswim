@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "shallweswim"
+version = "0.1.0"
+description = "Website to display swimming conditions at Coney Island / Brighton Beach"
+authors = ["Jeremy Whelchel <jeremy@whelchel.me>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.11"
+flask = "^2.2.2"
+google-cloud-logging = "^3.5.0"
+gunicorn = "^20.1.0"
+numpy = "^1.24.2"
+pandas = "^1.5.3"
+seaborn = "^0.12.2"
+scipy = "^1.10.0"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.1.0"
+pytype = "^2023.1.31"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

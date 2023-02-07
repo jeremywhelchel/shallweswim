@@ -472,16 +472,14 @@ def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
     ax2.set_ylabel("Water Temp (°C)", fontsize=18)
     ax2.grid(None)
 
-    # Current year
-    line = ax.lines[len(df.columns) - 1]
-    line.set_linewidth(3)
-    line.set_linestyle("-")
-    line.set_color("r")
+    # Make current year stand out with bold red line.
+    data_line = [l for l in ax.lines if len(l.get_xdata())][-1]
+    legend_line = ax.legend().get_lines()[-1]
+    for line in [data_line, legend_line]:
+      line.set_linewidth(3)
+      line.set_linestyle("-")
+      line.set_color("r")
 
-    line = ax.legend().get_lines()[-1]
-    line.set_linewidth(3)
-    line.set_linestyle("-")
-    line.set_color("r")
     return ax
 
 
@@ -552,9 +550,6 @@ def GenerateHistoricPlots(hist_temps):
         ]
         .rolling(24, center=True)
         .mean()
-        # Some years may have 0 data at this filtering level. All-NA columns
-        # will cause plotting errors, so we remove them here.
-        .dropna(axis=1, how="all")
     )
     fig = Figure(figsize=(16, 8))
     ax = MultiYearPlot(

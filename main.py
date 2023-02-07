@@ -27,6 +27,19 @@ def index():
     )
 
 
+@app.route("/embed")
+def embed():
+    current_time, current_temp = data.LiveTempReading()
+    past_tides, next_tides = data.PrevNextTide()
+    return render_template(
+        "embed.html",
+        current_time=current_time,
+        current_temp=current_temp,
+        past_tides=past_tides,
+        next_tides=next_tides,
+    )
+
+
 MIN_SHIFT_LIMIT = -180  # 3 hours
 MAX_SHIFT_LIMIT = 1260  # 21 hours
 

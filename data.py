@@ -509,6 +509,10 @@ def LiveTempPlot(
     return ax
 
 
+def SaveFig(fig: Figure, dst, fmt: str = "svg"):
+    fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
+
+
 def GenerateLiveTempPlot(live_temps):
     if live_temps is None:
         return
@@ -530,7 +534,7 @@ def GenerateLiveTempPlot(live_temps):
         "48-hour, live",
         "%a %-I %p",
     )
-    fig.savefig(plot_filename, format="svg", bbox_inches="tight")
+    SaveFig(fig, plot_filename)
 
 
 def GenerateHistoricPlots(hist_temps):
@@ -560,7 +564,7 @@ def GenerateHistoricPlots(hist_temps):
     )
     ax.xaxis.set_major_formatter(md.DateFormatter("%b %d"))
     ax.xaxis.set_major_locator(md.WeekdayLocator(byweekday=1))
-    fig.savefig(two_mo_plot_filename, format="svg", bbox_inches="tight")
+    SaveFig(fig, two_mo_plot_filename)
 
     # Full year
     yr_plot_filename = "static/plots/historic_temps_12mo_24h_mean.svg"
@@ -587,7 +591,7 @@ def GenerateHistoricPlots(hist_temps):
     ax.set_xticklabels("")
     ax.xaxis.set_minor_locator(md.MonthLocator(bymonthday=15))
     ax.xaxis.set_minor_formatter(md.DateFormatter("%b"))
-    fig.savefig(yr_plot_filename, format="svg", bbox_inches="tight")
+    SaveFig(fig, yr_plot_filename)
 
 
 # XXX Return a tide image. Dont write it to filesystem
@@ -656,7 +660,7 @@ def GenerateTideCurrentPlot(
         )
 
     svg_io = io.StringIO()
-    fig.savefig(svg_io, format="svg", bbox_inches="tight")
+    SaveFig(fig, svg_io)
     svg_io.seek(0)
     return svg_io
 
@@ -735,4 +739,4 @@ def GenerateCurrentChart(ef: str, magnitude_bin: int):
             length_includes_head=True,
         )
 
-    fig.savefig(plot_filename, format="png", bbox_inches="tight")
+    SaveFig(fig, plot_filename, format="png")

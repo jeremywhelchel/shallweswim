@@ -6,11 +6,10 @@ jobs:
     runs-on: ubuntu-latest
     name: Pytype
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-python@v2
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
       with:
-        python-version: 3.9
-    - run: pip install --upgrade pip
-    - run: pip install -r requirements.txt
-    - run: pip install pytype
+        python-version: 3.10
+    - run: pip install poetry
+    - run: poetry install
     - run: pytype $(git ls-files '*.py')

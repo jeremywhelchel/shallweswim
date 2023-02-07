@@ -6,7 +6,7 @@ authors = ["Jeremy Whelchel <jeremy@whelchel.me>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.11"
+python = "~3.10"
 flask = "^2.2.2"
 google-cloud-logging = "^3.5.0"
 gunicorn = "^20.1.0"

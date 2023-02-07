@@ -476,9 +476,9 @@ def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
     data_line = [l for l in ax.lines if len(l.get_xdata())][-1]
     legend_line = ax.legend().get_lines()[-1]
     for line in [data_line, legend_line]:
-      line.set_linewidth(3)
-      line.set_linestyle("-")
-      line.set_color("r")
+        line.set_linewidth(3)
+        line.set_linestyle("-")
+        line.set_color("r")
 
     return ax
 

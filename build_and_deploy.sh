@@ -1,3 +1,8 @@
 #!/usr/bin/env bash
-gcloud builds submit --tag gcr.io/shallweswim/shallweswim && \
-gcloud run deploy --image gcr.io/shallweswim/shallweswim --platform managed shallweswim
+
+set -e;
+
+IMAGE_TAG="gcr.io/shallweswim/shallweswim"
+
+gcloud builds submit --tag ${IMAGE_TAG}
+gcloud run deploy --image ${IMAGE_TAG} shallweswim

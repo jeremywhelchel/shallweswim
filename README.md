@@ -24,3 +24,11 @@ Hosted on Google Cloud Run
 
 - Format with `black *.py`
 - Type check with `pytype *.py`
+- HTML/MD/Yaml formatted with `prettier`
+
+Setup with:
+
+```
+# Install poetry from its website (`brew install` version seems problematic on mac)
+poetry run pre-commit install
+```

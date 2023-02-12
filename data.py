@@ -726,7 +726,7 @@ def GenerateCurrentChart(ef: str, magnitude_bin: int):
     else:
         raise ValueError(ef)
 
-    for (x, y, angle) in ARROWS:
+    for x, y, angle in ARROWS:
         dx = length * math.sin(math.radians(angle + flip))
         dy = length * math.cos(math.radians(angle + flip))
         ax.arrow(

@@ -5,7 +5,7 @@ Website to display swimming conditions at Coney Island / Brighton Beach
 ## Run locally (directly)
 
 1. `poetry install`
-1. `PORT=12345 poetry run python main.py`
+1. `PORT=12345 poetry run python shallweswim/main.py`
 1. Visit http://localhost:12345
 
 ## Run locally (via Docker)

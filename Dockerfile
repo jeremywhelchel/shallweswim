@@ -12,9 +12,9 @@ RUN pip install poetry
 RUN poetry config virtualenvs.create false
 RUN poetry install --only main
 # Copy code and data
-# XXX Switch to something more limited like
-# COPY *.py templates static ./
-COPY . ./
+COPY shallweswim .
+COPY templates templates
+COPY static static
 # Run the web service on container startup. Here we use the gunicorn
 # webserver, with one worker process and 8 threads.
 # For environments with multiple CPU cores, increase the number of workers

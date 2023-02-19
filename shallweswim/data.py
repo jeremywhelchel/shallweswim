@@ -510,11 +510,12 @@ def LiveTempPlot(
     return ax
 
 
-def SaveFig(fig: Figure, dst, fmt: str = "svg"):
+def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg"):
     # If running outside the 'shallweswim' directory, prepend it to all paths
-    assert dst.startswith("static/"), dst
-    if not os.path.exists("static/") and os.path.exists("shallweswim/static/"):
-        dst = f"shallweswim/{dst}"
+    if isinstance(dst, str):
+        assert dst.startswith("static/"), dst
+        if not os.path.exists("static/") and os.path.exists("shallweswim/static/"):
+            dst = f"shallweswim/{dst}"
     fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
 
 

@@ -27,3 +27,9 @@ repos:
         entry: poetry run pytest
         pass_filenames: false
         always_run: true
+      - id: pytype
+        name: pytype
+        language: system
+        entry: bash -c "poetry run pytype $(git ls-files '*.py')"
+        pass_filenames: false
+        always_run: true

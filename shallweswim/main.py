@@ -6,7 +6,7 @@ import google.cloud.logging
 import logging
 import os
 
-import data as data_lib
+from shallweswim import data as data_lib
 
 data = data_lib.Data()
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate static maps."""
 
-import data
 import logging
+from shallweswim import data
 
 
 if __name__ == "__main__":

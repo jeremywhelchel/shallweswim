@@ -10,6 +10,7 @@ import math
 import matplotlib.image as mpimg
 import matplotlib.dates as md
 import numpy as np
+import os
 import pandas as pd
 import pytz
 import seaborn as sns
@@ -510,6 +511,10 @@ def LiveTempPlot(
 
 
 def SaveFig(fig: Figure, dst, fmt: str = "svg"):
+    # If running outside the 'shallweswim' directory, prepend it to all paths
+    assert dst.startswith("static/"), dst
+    if not os.path.exists("static/") and os.path.exists("shallweswim/static/"):
+        dst = f"shallweswim/{dst}"
     fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
 
 

@@ -18,7 +18,7 @@ class TestData(unittest.TestCase):
         )
 
         cols = ["air_temp", "water_temp"]
-        years = range(2012, 2023 + 1)
+        years = range(2011, 2023 + 1)
         pd.testing.assert_index_equal(
             pd.MultiIndex.from_product([cols, years], names=[None, "year"]), got.columns
         )

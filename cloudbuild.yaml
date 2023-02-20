@@ -1,0 +1,37 @@
+# Build and deploy Dockerfile to Cloud Run
+# https://cloud.google.com/build/docs/build-config-file-schema
+# https://cloud.google.com/build/docs/deploying-builds/deploy-cloud-run
+
+substitutions:
+  _REGION: "us-east4"
+  _SERVICE_NAME: "shallweswim"
+  _IMAGE_NAME: "${_REGION}-docker.pkg.dev/${PROJECT_ID}/gcr/${_SERVICE_NAME}"
+
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    id: docker_build
+    args: ["build", "-t", "${_IMAGE_NAME}", "."]
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: docker_push
+    args: ["push", "${_IMAGE_NAME}"]
+
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    id: cloud_run_deploy
+    entrypoint: gcloud
+    args:
+      [
+        "run",
+        "deploy",
+        "${_SERVICE_NAME}",
+        "--image",
+        "${_IMAGE_NAME}",
+        "--region",
+        "${_REGION}",
+      ]
+
+images:
+  - "${_IMAGE_NAME}"
+
+options:
+  dynamic_substitutions: true

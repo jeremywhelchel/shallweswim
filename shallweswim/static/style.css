@@ -1,0 +1,152 @@
+body {
+  background-color: #fcffff;
+}
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Helvetica", "Arial", sans-serif;
+}
+.title {
+  margin-bottom: 0px;
+}
+.infobox {
+  padding-left: 20px;
+}
+
+.plot {
+  width: 100%;
+  max-width: 980px;
+  display: block;
+}
+.webcamdiv {
+  /* 720 x 410 is starter */
+  /*padding-bottom: 36.21%;*/
+  /* 210 good for phone */
+  /* 534 good for desktop */
+}
+
+/* Small screens (Phones) */
+@media (max-width: 600px) {
+  .current {
+    font-size: 24px;
+  }
+  .note {
+    font-size: 12px;
+  }
+  .tides {
+    font-size: 15px;
+  }
+  .webcamdiv {
+    max-width: 950px;
+    height: 220px;
+  }
+}
+
+/* Large screens */
+@media (min-width: 601px) {
+  .current {
+    font-size: 32px;
+  }
+  .note {
+    font-size: 18px;
+  }
+  .tides {
+    font-size: 24px;
+  }
+  .webcamdiv {
+    max-width: 950px;
+    height: 534px;
+  }
+}
+
+.webcamframe {
+  /*position: absolute;*/
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  border: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.windyframe {
+  /*
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      border: 1;
+      */
+  /*
+      padding-left: 13px;
+      width: 924px;
+      height: 450px;
+       */
+  width: 100%;
+  max-width: 950px;
+  display: block;
+  /*width="640px" height="450px"*/
+  height: 350px;
+}
+
+.status-green {
+  color: rgb(46, 204, 64);
+}
+.status-yellow {
+  color: rgb(255, 226, 31);
+}
+.status-orange {
+  color: rgb(255, 133, 27);
+}
+.status-red {
+  color: rgb(255, 105, 94);
+}
+.status-white {
+  color: white;
+}
+.transit-div {
+  width: 100%;
+  display: flex;
+}
+.train-div {
+  width: 450px;
+  margin-left: 10px;
+  margin-right: 10px;
+}
+.train-header {
+  text-align: center;
+}
+.centering-div {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.chip {
+  margin-top: 10px;
+  margin-bottom: 5px;
+  text-align: center;
+  font-weight: bold;
+  border-radius: 25px;
+  padding: 5px 15px 5px 15px;
+}
+.train-status {
+  background-color: #1256ba;
+}
+.train-alert-div {
+  display: none;
+}
+.train-delay {
+  color: red;
+}
+.train-service-change {
+  color: black;
+  background-color: yellow;
+}
+.train-service-irregularity {
+  /* color: white; */
+  background-color: orange;
+}

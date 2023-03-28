@@ -98,6 +98,64 @@
         /*width="640px" height="450px"*/
         height: 350px;
       }
+
+      .status-green {
+        color: rgb(46, 204, 64);
+      }
+      .status-yellow {
+        color: rgb(255, 226, 31);
+      }
+      .status-orange {
+        color: rgb(255, 133, 27);
+      }
+      .status-red {
+        color: rgb(255, 105, 94);
+      }
+      .status-white {
+        color: white;
+      }
+      .transit-div {
+        width: 100%;
+        display: flex;
+      }
+      .train-div {
+        width: 450px;
+        margin-left: 10px;
+        margin-right: 10px;
+      }
+      .train-header {
+        text-align: center;
+      }
+      .centering-div {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .chip {
+        margin-top: 10px;
+        margin-bottom: 5px;
+        text-align: center;
+        font-weight: bold;
+        border-radius: 25px;
+        padding: 5px 15px 5px 15px;
+      }
+      .train-status {
+        background-color: #1256ba;
+      }
+      .train-alert-div {
+        display: none;
+      }
+      .train-delay {
+        color: red;
+      }
+      .train-service-change {
+        color: black;
+        background-color: yellow;
+      }
+      .train-service-irregularity {
+        /* color: white; */
+        background-color: orange;
+      }
     </style>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000099" />
@@ -123,8 +181,66 @@
       href="/static/favicon-16x16.png"
     />
     <link rel="manifest" href="/static/manifest.json" />
+    <script>
+      const STATUSES = {
+        Delay: "status-red",
+        "No Service": "status-black",
+        "Service Change": "status-orange",
+        Slow: "status-yellow",
+        "Not Good": "status-yellow",
+        "Good Service": "status-green",
+        "Not Scheduled": "status-white",
+        "No Data": "status-white",
+        // 'Not Scheduled': 'status-black',
+        // 'No Data': 'status-black',
+      };
+      function load_trains(trains) {
+        get_train_status("Q");
+        get_train_status("B");
+      }
+      function display_value(element, value) {
+        if (!value || (Array.isArray(value) && value.length == 0)) {
+          document.getElementById(element + "_div").style.display = "none";
+          return;
+        }
+        document.getElementById(element).textContent = value;
+        document.getElementById(element + "_div").style.display = "block";
+      }
+      function get_train_status(train) {
+        const t = train; //.toLowerCase();
+        fetch("https://goodservice.io/api/routes/" + train)
+          .then((response) => response.json())
+          .then((data) => {
+            status_str = "...";
+            if (data.status == "Not Scheduled") {
+              status_str = "Not Scheduled";
+            } else {
+              status_str = data.direction_statuses.south;
+            }
+            const status_class = STATUSES[status_str];
+
+            document.getElementById(t + "_status").textContent = status_str;
+            document.getElementById(t + "_status").className = status_class;
+
+            if (data.status != "Not Scheduled") {
+              document.getElementById(t + "_destination").textContent =
+                data.destinations.south[0];
+              display_value(t + "_delay", data.delay_summaries.south);
+              const changes =
+                data.service_change_summaries.both +
+                data.service_change_summaries.south;
+              display_value(t + "_service_change", changes);
+              display_value(
+                t + "_service_irregularity",
+                data.service_irregularity_summaries.south,
+              );
+            }
+          })
+          .catch((error) => console.error(error));
+      }
+    </script>
   </head>
-  <body>
+  <body onload="load_trains();">
     <h1 class="title">shall we swim today?</h1>
     <p>
       <span class="note">
@@ -220,6 +336,44 @@
       ></iframe>
     </div>
     -->
+    <h2>Transit Status</h2>
+    <div class="transit-div">
+      {% for train in ['Q','B'] %}
+      <div class="train-div">
+        <div class="train-header">
+          <a href="https://goodservice.io/trains/{{train}}/S" target="_blank">
+            <img src="/static/{{train}}-train.svg" width="50" height="50" />
+            <br />to <span id="{{train}}_destination">...</span>
+          </a>
+        </div>
+        <div class="centering-div">
+          <div class="chip train-status">
+            <span id="{{train}}_status">...</span>
+          </div>
+        </div>
+        <div class="train-alert-div" id="{{train}}_delay_div">
+          <div class="centering-div">
+            <div class="chip train-delay">Delay</div>
+          </div>
+          <span id="{{train}}_delay">...</span>
+        </div>
+        <div class="train-alert-div" id="{{train}}_service_change_div">
+          <div class="centering-div">
+            <div class="chip train-service-change">Service Change</div>
+          </div>
+          <span id="{{train}}_service_change">...</span>
+        </div>
+        <div class="train-alert-div" id="{{train}}_service_irregularity_div">
+          <div class="centering-div">
+            <div class="chip train-service-irregularity">
+              Service Irregularity
+            </div>
+          </div>
+          <span id="{{train}}_service_irregularity">...</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
 
     <h2>Sources</h2>
     <ul>
@@ -236,6 +390,10 @@
           Coney Island, NY - Station ID: 8517741</a
         >
         (NOAA Tides and Currents)
+      </li>
+      <li>
+        MTA train status provided by:
+        <a href="https://goodservice.io"> goodservice.io</a>
       </li>
       <li>
         Site source on github:

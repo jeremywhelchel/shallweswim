@@ -1,3 +1,38 @@
+// Youtube Webcam Embed
+function onYouTubeIframeAPIReady() {
+  console.log("Creating player");
+  var bbcam_player;
+  bbcam_player = new YT.Player("bbcam_player", {
+    playerVars: {
+      autoplay: 1,
+      playsinline: 1,
+      fs: 1,
+      controls: 0,
+      iv_load_policy: 3, // disable video annotations
+      rel: 0,
+    },
+    events: {
+      onReady: onYTPlayerReady,
+      onError: onYTPlayerError,
+      onStateChange: onYTPlayerStateChange,
+    },
+  });
+  console.log("Created player");
+}
+function onYTPlayerReady(event) {
+  console.log("onPlayerReady");
+  // Autoplay will only work if video is already muted.
+  event.target.mute();
+  event.target.playVideo();
+}
+function onYTPlayerError(event) {
+  console.log("onPlayerError");
+}
+function onYTPlayerStateChange(event) {
+  console.log("onPlayerStateChange");
+}
+
+// Train status
 const STATUSES = {
   Delay: "status-red",
   "No Service": "status-black",

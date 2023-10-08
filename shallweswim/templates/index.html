@@ -28,7 +28,8 @@
       href="/static/favicon-16x16.png"
     />
     <link rel="manifest" href="/static/manifest.json" />
-    <script src="/static/main.js"></script>
+    <script async src="/static/main.js"></script>
+    <script async src="https://www.youtube.com/iframe_api"></script>
   </head>
   <body onload="load_trains();">
     <h1 class="title">shall we swim today?</h1>
@@ -74,23 +75,18 @@
     ></iframe>
 
     <h2>Live Webcam</h2>
-    <div class="note">
-      Our Brighton 4th street webcam is currently down for maintenance. Stay
-      tuned!
-    </div>
-    <!--
     <div class="webcamdiv">
       <iframe
         class="webcamframe"
         title="Live webcam"
+        id="bbcam_player"
         scrolling="no"
         allowfullscreen="true"
         webkitallowfullscreen="true"
         mozallowfullscreen="true"
-        src="https://www.youtube.com/embed/YlnyBlUlFNY?autoplay=1"
+        src="https://www.youtube.com/embed/live_stream?channel=UChh9yX1PSFFreQFmnnIPGuQ&enablejsapi=1"
       ></iframe>
     </div>
-    -->
     <div class="note">
       Alternative option:
       <ul>

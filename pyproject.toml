@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "~3.10"
-flask = "^2.3"
+flask = "^3.0"
 google-cloud-logging = "^3.8"
 gunicorn = "^21"
 numpy = "^1.26"

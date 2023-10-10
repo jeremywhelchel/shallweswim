@@ -379,11 +379,12 @@ class Data(object):
         try:
             self.tides = NoaaApi.Tides()
 
-            # XXX Currents. Explain Mean
             currents_coney = NoaaApi.Currents(NoaaApi.STATIONS["coney_channel"])
             currents_ri = NoaaApi.Currents(NoaaApi.STATIONS["rockaway_inlet"])
             self.currents = (
-                pd.concat([currents_coney, currents_ri]).groupby(level=0).mean()
+                pd.concat([currents_coney, currents_ri])[["velocity"]]
+                .groupby(level=0)
+                .mean()
             )
 
             self._tides_timestamp = Now()

@@ -141,4 +141,4 @@ Thumbs.db
 TODO.md
 
 # Static plots that get updated every new run
-shallweswim/static/plots/*.svg
+shallweswim/static/plots/**/*.svg

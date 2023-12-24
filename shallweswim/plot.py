@@ -78,7 +78,10 @@ def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg"):
         assert dst.startswith("static/"), dst
         if not os.path.exists("static/") and os.path.exists("shallweswim/static/"):
             dst = f"shallweswim/{dst}"
-    # XXX mkdir if it doesnt yet exist
+    # Create directory if it doesn't exist
+    dirname = os.path.dirname(dst)
+    if not os.path.isdir(dirname):
+        os.mkdir(dirname)
     fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
 
 

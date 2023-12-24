@@ -8,6 +8,7 @@ import pandas as pd
 EASTERN_TZ = pytz.timezone("US/Eastern")
 
 
+# XXX Needs a parameter here...
 def Now() -> datetime.datetime:
     return datetime.datetime.now(tz=EASTERN_TZ).replace(tzinfo=None)
 

@@ -97,6 +97,8 @@ class NoaaApi(object):
                     " Bin": "bin",
                 }
             )
+            # only return velocity for now to avoid some issues with other columns
+            [["velocity"]]
         )
         if interpolate:
             # Data is just flood/slack/ebb datapoints. This creates a smooth curve

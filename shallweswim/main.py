@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-# XXX
 import datetime
 from flask import Flask, jsonify, Response, redirect, render_template, request, url_for
 import google.cloud.logging

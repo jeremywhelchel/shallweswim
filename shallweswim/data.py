@@ -69,12 +69,15 @@ class Data(object):
 
             if self._Expired("live_temps"):
                 self._FetchLiveTemps()
-                plot.GenerateLiveTempPlot(self.live_temps)
+                plot.GenerateLiveTempPlot(
+                    self.live_temps, self.config.temp_station_name
+                )
 
-            # XXX Flag this
             if self._Expired("historic_temps"):
                 self._FetchHistoricTemps()
-                plot.GenerateHistoricPlots(self.historic_temps)
+                plot.GenerateHistoricPlots(
+                    self.historic_temps, self.config.temp_station_name
+                )
 
             # XXX Can probably be increased to 1s even... but would need to add API spam buffer
             time.sleep(60)

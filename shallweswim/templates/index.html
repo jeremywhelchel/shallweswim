@@ -26,7 +26,9 @@
     />
     <link rel="manifest" href="/static/manifest.json" />
     <script async src="/static/main.js"></script>
+    {% if config.code == 'nyc' %}
     <script async src="https://www.youtube.com/iframe_api"></script>
+    {% endif %}
   </head>
   <body onload="load_trains();">
     <h1 class="title">shall we swim today?</h1>
@@ -73,6 +75,7 @@
       frameborder="0"
     ></iframe>
 
+    {% if config.code == 'nyc' %}
     <h2>Live Webcam</h2>
     <div class="webcamdiv">
       <iframe
@@ -99,6 +102,7 @@
         </li>
       </ul>
     </div>
+    {% endif %}
 
     <h2>Temperature Trends</h2>
     <img
@@ -117,6 +121,7 @@
       alt="12 month temperature plot, all years"
     />
 
+    {% if config.code == 'nyc' %}
     <h2>Transit Status</h2>
     <div class="transit-div">
       {% for train in ['Q','B'] %}
@@ -155,6 +160,7 @@
       </div>
       {% endfor %}
     </div>
+    {% endif %}
 
     <h2>Sources</h2>
     <ul>
@@ -170,11 +176,15 @@
       </li>
       <li>
         Tides provided by:
-        <a href="https://tidesandcurrents.noaa.gov/stationhome.html?id=8517741">
-          Coney Island, NY - Station ID: 8517741</a
+        <a
+          href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.tide_station }}"
+        >
+          {{ config.tide_station_name }} - Station ID: {{ config.tide_station
+          }}</a
         >
         (NOAA Tides and Currents)
       </li>
+      {% if config.code == 'nyc' %}
       <li>
         <a href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
           >Webcam</a
@@ -185,6 +195,7 @@
         MTA train status provided by:
         <a href="https://goodservice.io"> goodservice.io</a>
       </li>
+      {% endif %}
       <li>
         Site source on github:
         <a href="https://github.com/jeremywhelchel/shallweswim"

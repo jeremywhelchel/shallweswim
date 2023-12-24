@@ -81,7 +81,7 @@ def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg"):
     fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
 
 
-def GenerateLiveTempPlot(live_temps):
+def GenerateLiveTempPlot(live_temps, station_name: str):
     if live_temps is None:
         return
     plot_filename = "static/plots/live_temps.svg"
@@ -98,14 +98,14 @@ def GenerateLiveTempPlot(live_temps):
     LiveTempPlot(
         df,
         fig,
-        "Battery NYC Water Temperature",
+        f"{station_name} Water Temperature",
         "48-hour, live",
         "%a %-I %p",
     )
     SaveFig(fig, plot_filename)
 
 
-def GenerateHistoricPlots(hist_temps):
+def GenerateHistoricPlots(hist_temps, station_name: str):
     if hist_temps is None:
         return
     year_df = util.PivotYear(hist_temps)
@@ -127,7 +127,7 @@ def GenerateHistoricPlots(hist_temps):
     ax = MultiYearPlot(
         df,
         fig,
-        "Battery NYC Water Temperature",
+        f"{station_name} Water Temperature",
         "2 month, all years, 24-hour mean",
     )
     ax.xaxis.set_major_formatter(md.DateFormatter("%b %d"))
@@ -151,7 +151,7 @@ def GenerateHistoricPlots(hist_temps):
     ax = MultiYearPlot(
         df,
         fig,
-        "Battery NYC Water Temperature",
+        f"{station_name} Water Temperature",
         "all years, 24-hour mean",
     )
     ax.xaxis.set_major_locator(md.MonthLocator(bymonthday=1))

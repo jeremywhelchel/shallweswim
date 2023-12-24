@@ -13,7 +13,7 @@ class LocationConfig(pydantic.BaseModel):
     description: str
     latitude: float
     longitude: float
-    # XXX add windy params: zoom. ratio (height/width)
+    # TODO: may need to add more windy params (e.g. zoom, aspect ratio)
     timezone: str
 
     current_predictions: bool = False
@@ -22,13 +22,11 @@ class LocationConfig(pydantic.BaseModel):
     # Water/met stations are 7 digit ints. Currents station ids are strings.
     temp_station: int | None = None
     tide_station: int | None = None
-    # XXX This may need to be a list to take avg velocity
-    # e.g. mean of coney_channel and rockaway_inlet
+    # XXX still need to generalize currents
     currents_stations: list[str] | None = None
 
-    # XXX add station names
     temp_station_name: str | None = None
-    # XXX add tide station name
+    tide_station_name: str | None = None
 
 
 NYC = LocationConfig(
@@ -40,9 +38,9 @@ NYC = LocationConfig(
     longitude=-73.954,
     timezone="US/Eastern",
     current_predictions=True,
-    temp_station=8518750,  # battery NYC
+    temp_station=8518750,
     temp_station_name="The Battery, NY",
-    tide_station=8517741,  # coney island
+    tide_station=8517741,
     tide_station_name="Coney Island, NY",
     currents_stations=[
         "ACT3876",  # Coney Island Channel

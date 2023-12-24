@@ -1,6 +1,6 @@
 """NOAA tides and current API client."""
 
-from typing import Optional
+from typing import Literal, Optional
 import datetime
 import logging
 import pandas as pd
@@ -41,7 +41,7 @@ class NoaaApi(object):
     @classmethod
     def Tides(
         cls,
-        station: str | int,
+        station: int,
     ) -> pd.DataFrame:
         """Return tide predictions from yesterday to two days from now."""
         return (
@@ -70,8 +70,9 @@ class NoaaApi(object):
     def Currents(
         cls,
         station: str,
+        interpolate: bool = True,
     ) -> pd.DataFrame:
-        return (
+        currents = (
             cls._Request(
                 {
                     "product": "currents_predictions",
@@ -86,8 +87,7 @@ class NoaaApi(object):
                     "interval": "MAX_SLACK",
                 }
             )
-            .rename(columns={"Time": "Date Time"})  # XXX param to FixTime
-            .pipe(cls._FixTime)
+            .pipe(cls._FixTime, time_col="Time")
             .rename(
                 columns={
                     " Depth": "depth",
@@ -97,18 +97,22 @@ class NoaaApi(object):
                     " Bin": "bin",
                 }
             )
-            # Data is just flood/slack/ebb datapoints. This creates a smooth curve
-            .resample("60s")
-            .interpolate("polynomial", order=2)
-            # XXX Normalize to proper interval to make mean make sense... (one is at depth, the other isn't...)
-            # probably doesn't really matter though, tbh
         )
+        if interpolate:
+            # Data is just flood/slack/ebb datapoints. This creates a smooth curve
+            currents = (
+                currents.resample("60s").interpolate("polynomial", order=2)
+                # XXX Normalize to proper interval to make mean make sense...
+                # (one is at depth, the other isn't...)
+                # probably doesn't really matter though, tbh
+            )
+        return currents
 
     @classmethod
     def Temperature(
         cls,
-        station: int | str,
-        product: str,
+        station: int,
+        product: Literal["air_temperature", "water_temperature"],
         begin_date: datetime.date,
         end_date: datetime.date,
         interval: Optional[str] = None,
@@ -137,10 +141,10 @@ class NoaaApi(object):
         )
 
     @classmethod
-    def _FixTime(cls, df):
+    def _FixTime(cls, df, time_col="Date Time"):
         return (
-            df.assign(time=lambda x: pd.to_datetime(x["Date Time"], utc=True))
-            .drop(columns="Date Time")
+            df.assign(time=lambda x: pd.to_datetime(x[time_col], utc=True))
+            .drop(columns=time_col)
             .set_index("time")
             # Drop timezone info. Already in local time (LST/LDT in request)
             .tz_localize(None)

@@ -139,4 +139,6 @@ Thumbs.db
 .pyre/
 
 TODO.md
-shallweswim/static/*
+
+# Static plots that get updated every new run
+shallweswim/static/plots/*.svg

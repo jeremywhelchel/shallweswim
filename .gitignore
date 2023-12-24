@@ -139,4 +139,4 @@ Thumbs.db
 .pyre/
 
 TODO.md
-shallweswim/static/plots/*.svg
+shallweswim/static/*

@@ -18,6 +18,8 @@ import threading
 import time
 import urllib
 
+from shallweswim import noaa
+
 
 EASTERN_TZ = pytz.timezone("US/Eastern")
 
@@ -25,149 +27,12 @@ sns.set_theme()
 sns.axes_style("darkgrid")
 
 
-class NoaaApiError(Exception):
-    """Error in a NOAA API Call."""
-
-
-class NoaaApi(object):
-    """Static class to fetch data from the NOAA Tides and Currents API.
-
-    API is documented here: https://api.tidesandcurrents.noaa.gov/api/prod/
-    """
-
-    BASE_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-    BASE_PARAMS = {
-        "application": "shallweswim",
-        "time_zone": "lst_ldt",
-        "units": "english",
-        "format": "csv",
-    }
-    STATIONS = {
-        "battery": 8518750,
-        "coney": 8517741,  # tide predictions only
-        "coney_channel": "ACT3876",  # current predictions only
-        "rockaway_inlet": "NYH1905",  # current predictions only
-    }
-
-    @classmethod
-    def _Request(cls, params: dict) -> pd.DataFrame:
-        url_params = dict(cls.BASE_PARAMS, **params)
-        url = cls.BASE_URL + "?" + urllib.parse.urlencode(url_params)
-        logging.info(f"NOAA API: {url}")
-        try:
-            df = pd.read_csv(url)
-        except urllib.error.URLError as e:
-            raise NoaaApiError(e)
-        if len(df) == 1:
-            raise NoaaApiError(df.iloc[0].values[0])
-        return df
-
-    @classmethod
-    def Tides(
-        cls,
-        station: Union[str, int] = STATIONS["coney"],
-    ) -> pd.DataFrame:
-        """Return tide predictions from yesterday to two days from now."""
-        return (
-            cls._Request(
-                {
-                    "product": "predictions",
-                    "datum": "MLLW",
-                    "begin_date": (
-                        datetime.datetime.today() - datetime.timedelta(days=1)
-                    ).strftime("%Y%m%d"),
-                    "end_date": (
-                        datetime.datetime.today() + datetime.timedelta(days=2)
-                    ).strftime("%Y%m%d"),
-                    "station": station,
-                    "interval": "hilo",
-                }
-            )
-            .pipe(cls._FixTime)
-            .rename(columns={" Prediction": "prediction", " Type": "type"})
-            .assign(type=lambda x: x["type"].map({"L": "low", "H": "high"}))[
-                ["prediction", "type"]
-            ]
-        )
-
-    @classmethod
-    def Currents(
-        cls,
-        station: str,
-    ) -> pd.DataFrame:
-        return (
-            cls._Request(
-                {
-                    "product": "currents_predictions",
-                    "datum": "MLLW",
-                    "begin_date": (
-                        datetime.datetime.today() - datetime.timedelta(days=1)
-                    ).strftime("%Y%m%d"),
-                    "end_date": (
-                        datetime.datetime.today() + datetime.timedelta(days=2)
-                    ).strftime("%Y%m%d"),
-                    "station": station,
-                    "interval": "MAX_SLACK",
-                }
-            )
-            .rename(columns={"Time": "Date Time"})  # XXX param to FixTime
-            .pipe(cls._FixTime)
-            .rename(
-                columns={
-                    " Depth": "depth",
-                    " Type": "type",
-                    " Velocity_Major": "velocity",
-                    " meanFloodDir": "mean_flood_dir",
-                    " Bin": "bin",
-                }
-            )
-            # Data is just flood/slack/ebb datapoints. This creates a smooth curve
-            .resample("60s")
-            .interpolate("polynomial", order=2)
-            # XXX Normalize to proper interval to make mean make sense... (one is at depth, the other isn't...)
-            # probably doesn't really matter though, tbh
-        )
-
-    @classmethod
-    def Temperature(
-        cls,
-        product: str,
-        begin_date: datetime.date,
-        end_date: datetime.date,
-        interval: Optional[str] = None,
-    ) -> pd.DataFrame:
-        """Fetch buoy temperature dataset."""
-        assert product in ["air_temperature", "water_temperature"], product
-        return (
-            cls._Request(
-                {
-                    "product": product,
-                    "begin_date": begin_date.strftime("%Y%m%d"),
-                    "end_date": end_date.strftime("%Y%m%d"),
-                    "station": cls.STATIONS["battery"],
-                    # No 'interval' specified...returns 6-minute intervals
-                    "interval": interval,
-                }
-            )
-            .pipe(cls._FixTime)
-            .rename(
-                columns={
-                    " Water Temperature": "water_temp",
-                    " Air Temperature": "air_temp",
-                }
-            )
-            .drop(columns=[" X", " N", " R "])  # No idea what these mean
-        )
-
-    @classmethod
-    def _FixTime(cls, df):
-        return (
-            df.assign(time=lambda x: pd.to_datetime(x["Date Time"], utc=True))
-            .drop(columns="Date Time")
-            .set_index("time")
-            # Drop timezone info. Already in local time (LST/LDT in request)
-            .tz_localize(None)
-        )
+NOAA_STATIONS = {
+    "battery": 8518750,  # temperature
+    "coney": 8517741,  # tide predictions only
+    "coney_channel": "ACT3876",  # current predictions only
+    "rockaway_inlet": "NYH1905",  # current predictions only
+}
 
 
 def Now() -> datetime.datetime:
@@ -377,10 +242,10 @@ class Data(object):
     def _FetchTides(self):
         logging.info("Fetching tides")
         try:
-            self.tides = NoaaApi.Tides()
+            self.tides = noaa.NoaaApi.Tides(station=NOAA_STATIONS["coney"])
 
-            currents_coney = NoaaApi.Currents(NoaaApi.STATIONS["coney_channel"])
-            currents_ri = NoaaApi.Currents(NoaaApi.STATIONS["rockaway_inlet"])
+            currents_coney = noaa.NoaaApi.Currents(NOAA_STATIONS["coney_channel"])
+            currents_ri = noaa.NoaaApi.Currents(NOAA_STATIONS["rockaway_inlet"])
             self.currents = (
                 pd.concat([currents_coney, currents_ri])[["velocity"]]
                 .groupby(level=0)
@@ -388,7 +253,7 @@ class Data(object):
             )
 
             self._tides_timestamp = Now()
-        except NoaaApiError as e:
+        except noaa.NoaaApiError as e:
             logging.warning(f"Tide fetch error: {e}")
 
     def _FetchHistoricTempYear(self, year):
@@ -396,11 +261,19 @@ class Data(object):
         end_date = datetime.date(year, 12, 31)
         return pd.concat(
             [
-                NoaaApi.Temperature(
-                    "air_temperature", begin_date, end_date, interval="h"
+                noaa.NoaaApi.Temperature(
+                    NOAA_STATIONS["battery"],
+                    "air_temperature",
+                    begin_date,
+                    end_date,
+                    interval="h",
                 ),
-                NoaaApi.Temperature(
-                    "water_temperature", begin_date, end_date, interval="h"
+                noaa.NoaaApi.Temperature(
+                    NOAA_STATIONS["battery"],
+                    "water_temperature",
+                    begin_date,
+                    end_date,
+                    interval="h",
                 ),
             ],
             axis=1,
@@ -424,7 +297,7 @@ class Data(object):
                 .first()
             )
             self._historic_temps_timestamp = Now()
-        except NoaaApiError as e:
+        except noaa.NoaaApiError as e:
             logging.warning(f"Historic temp fetch error: {e}")
 
     # XXX Test by disabling local wifi briefly
@@ -438,8 +311,18 @@ class Data(object):
             self.live_temps = (
                 pd.concat(
                     [
-                        NoaaApi.Temperature("air_temperature", begin_date, end_date),
-                        NoaaApi.Temperature("water_temperature", begin_date, end_date),
+                        noaa.NoaaApi.Temperature(
+                            NOAA_STATIONS["battery"],
+                            "air_temperature",
+                            begin_date,
+                            end_date,
+                        ),
+                        noaa.NoaaApi.Temperature(
+                            NOAA_STATIONS["battery"],
+                            "water_temperature",
+                            begin_date,
+                            end_date,
+                        ),
                     ],
                     axis=1,
                 )
@@ -450,7 +333,7 @@ class Data(object):
             self._live_temps_timestamp = Now()
             age = self.Freshness()["live_temps"]["latest_value"]["age"]
             logging.info(f"Fetched live temps. Last datapoint age: {age}")
-        except NoaaApiError as e:
+        except noaa.NoaaApiError as e:
             logging.warning(f"Live temp fetch error: {e}")
 
 

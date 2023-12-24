@@ -8,6 +8,7 @@ import pandas as pd
 import threading
 import time
 
+from shallweswim import config as config_lib
 from shallweswim import noaa
 from shallweswim import plot
 from shallweswim import util
@@ -32,7 +33,9 @@ def LatestTimeValue(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
 class Data(object):
     """Data management for shallweswim webpage."""
 
-    def __init__(self):
+    def __init__(self, config: config_lib.LocationConfig):
+        self.config = config
+
         self.tides = None
         self.currents = None
         self.historic_temps = None
@@ -43,9 +46,8 @@ class Data(object):
         self._historic_temps_timestamp = None
 
         self.expirations = {
-            # XXX tidesandcurrents
             # Tidal predictions already cover a wide past/present window
-            "tides": datetime.timedelta(hours=24),
+            "tides_and_currents": datetime.timedelta(hours=24),
             # Live temperature readings ouccur every 6 minutes, and are
             # generally already 5 minutes old when a new reading first appears.
             "live_temps": datetime.timedelta(minutes=10),
@@ -62,8 +64,8 @@ class Data(object):
     def _Update(self):
         """Daemon thread to continuously updating data."""
         while True:
-            if self._Expired("tides"):
-                self._FetchTides()
+            if self._Expired("tides_and_currents"):
+                self._FetchTidesAndCurrents()
 
             if self._Expired("live_temps"):
                 self._FetchLiveTemps()
@@ -182,7 +184,7 @@ class Data(object):
         # XXX Consistent dtype
         # XXX EST timezone for timestamps
         ret = {
-            "tides": {
+            "tides_and_currents": {
                 "fetch": {"time": self._tides_timestamp},
                 "latest_value": {"time": LatestTimeValue(self.tides)},
             },
@@ -213,18 +215,15 @@ class Data(object):
                 ret[dataset][label]["age_seconds"] = age_sec
         return ret
 
-    def _FetchTides(self):
-        logging.info("Fetching tides")
+    def _FetchTidesAndCurrents(self):
+        logging.info("Fetching tides and currents")
         try:
-            self.tides = noaa.NoaaApi.Tides(station=NOAA_STATIONS["coney"])
+            self.tides = noaa.NoaaApi.Tides(station=self.config.tide_station)
 
-            currents_coney = noaa.NoaaApi.Currents(NOAA_STATIONS["coney_channel"])
-            currents_ri = noaa.NoaaApi.Currents(NOAA_STATIONS["rockaway_inlet"])
-            self.currents = (
-                pd.concat([currents_coney, currents_ri])[["velocity"]]
-                .groupby(level=0)
-                .mean()
-            )
+            currents = [
+                noaa.NoaaApi.Currents(stn) for stn in self.config.currents_stations
+            ]
+            self.currents = pd.concat(currents)[["velocity"]].groupby(level=0).mean()
 
             self._tides_timestamp = Now()
         except noaa.NoaaApiError as e:
@@ -236,14 +235,14 @@ class Data(object):
         return pd.concat(
             [
                 noaa.NoaaApi.Temperature(
-                    NOAA_STATIONS["battery"],
+                    self.config.temp_station,
                     "air_temperature",
                     begin_date,
                     end_date,
                     interval="h",
                 ),
                 noaa.NoaaApi.Temperature(
-                    NOAA_STATIONS["battery"],
+                    self.config.temp_station,
                     "water_temperature",
                     begin_date,
                     end_date,
@@ -286,13 +285,13 @@ class Data(object):
                 pd.concat(
                     [
                         noaa.NoaaApi.Temperature(
-                            NOAA_STATIONS["battery"],
+                            self.config.temp_station,
                             "air_temperature",
                             begin_date,
                             end_date,
                         ),
                         noaa.NoaaApi.Temperature(
-                            NOAA_STATIONS["battery"],
+                            self.config.temp_station,
                             "water_temperature",
                             begin_date,
                             end_date,

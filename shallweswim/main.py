@@ -6,10 +6,12 @@ import google.cloud.logging
 import logging
 import os
 
+from shallweswim import config
 from shallweswim import data as data_lib
 from shallweswim import plot
 
-data = data_lib.Data()
+
+data = data_lib.Data(config.Get("nyc"))
 
 app = Flask(__name__)
 app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True
@@ -21,6 +23,7 @@ def index():
     past_tides, next_tides = data.PrevNextTide()
     return render_template(
         "index.html",
+        config=config.Get("nyc"),
         current_time=current_time,
         current_temp=current_temp,
         past_tides=past_tides,
@@ -34,6 +37,7 @@ def embed():
     past_tides, next_tides = data.PrevNextTide()
     return render_template(
         "embed.html",
+        config=config.Get("nyc"),
         current_time=current_time,
         current_temp=current_temp,
         past_tides=past_tides,
@@ -92,6 +96,7 @@ def water_current():
 
     return render_template(
         "current.html",
+        config=config.Get("nyc"),
         last_tide_hrs_ago=round(last_tide_hrs_ago, 1),
         last_tide_type=last_tide_type,
         tide_chart_filename=tide_chart_filename,

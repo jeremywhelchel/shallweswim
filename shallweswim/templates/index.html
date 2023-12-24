@@ -5,10 +5,7 @@
     <title>Shall We Swim Today?</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000099" />
-    <meta
-      name="description"
-      content="Coney Island Brighton Beach open water swimming conditions"
-    />
+    <meta name="description" content="{{ config.description }}" />
     <link rel="stylesheet" type="text/css" href="/static/style.css" />
     <link
       rel="apple-touch-icon"
@@ -36,19 +33,21 @@
     <p>
       <span class="note">
         ...at
-        <a href="https://cibbows.org/about/essentials/">Grimaldo's Chair</a>
+        <a href="{{ config.swim_location_link }}">{{ config.swim_location }}</a>
       </span>
+      {% if config.current_predictions %}
       <span class="note"
         ><br />
         <b>NEW</b>: Experimental <a href="/current">current predictions</a>
       </span>
+      {% endif %}
     </p>
     <div class="infobox">
       <div class="current">
         The water is currently <strong>{{ current_temp }}°F</strong>
       </div>
       <div class="note">
-        at the Battery as of {{ current_time|fmt_datetime }}.
+        at {{ config.temp_station_name }} as of {{ current_time|fmt_datetime }}.
       </div>
       <div class="tides">
         <p>
@@ -70,7 +69,7 @@
     <iframe
       class="windyframe"
       title="Windy forecast"
-      src="https://embed.windy.com/embed2.html?lat=40.573&lon=-73.954&detailLat=40.573&detailLon=-73.959&width=640&height=350&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1"
+      src="https://embed.windy.com/embed2.html?lat={{ config.latitude }}&lon={{ config.longitude }}&detailLat={{ config.latitude }}&detailLon={{ config.longitude }}&width=640&height=350&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1"
       frameborder="0"
     ></iframe>
 
@@ -161,8 +160,11 @@
     <ul>
       <li>
         Water temperatures provided by:
-        <a href="https://tidesandcurrents.noaa.gov/stationhome.html?id=8518750">
-          The Battery, NY - Station ID: 8518750</a
+        <a
+          href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.temp_station }}"
+        >
+          {{ config.temp_station_name }} - Station ID: {{ config.temp_station
+          }}</a
         >
         (NOAA Tides and Currents)
       </li>

@@ -33,6 +33,7 @@ def index_w_location(location: str):
     )
 
 
+# TODO use some cookie to redirect to last used or saved location
 @app.route("/")
 def index():
     return index_w_location("nyc")

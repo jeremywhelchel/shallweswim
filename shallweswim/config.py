@@ -79,6 +79,25 @@ CONFIG_LIST = [
         tide_station=9414305,
         tide_station_name="North Point Pier",
         description="San Francisco Aquatic Park open water swimming conditions",
+        # webcam https://dolphinclub.org/weather/ (code in page JS source...)
+    ),
+    LocationConfig(
+        code="sdf",
+        name="Louisville",
+        swim_location="XXX",
+        swim_location_link="XXX",
+        latitude=38.2647556,
+        longitude=-85.7323204,
+        # XXX windy "waves" mode inapplicable here
+        timezone="US/Eastern",
+        description="Louisville Kentucky open water swimming conditions",
+        # TODO: add this
+        # - temp data
+        #    water velocity (mph)
+        #    https://colab.research.google.com/drive/17-oyc95BBUUI3g1GBR5QpACAm-4G5vBk#scrollTo=vMXIJh8CCQCF
+        # - webcam:
+        #    https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
+        #    https://ohiorivercam.com/
     ),
 ]
 CONFIGS = {c.code: c for c in CONFIG_LIST}

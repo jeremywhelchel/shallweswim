@@ -78,13 +78,16 @@ def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg"):
         assert dst.startswith("static/"), dst
         if not os.path.exists("static/") and os.path.exists("shallweswim/static/"):
             dst = f"shallweswim/{dst}"
+    # XXX mkdir if it doesnt yet exist
     fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
 
 
-def GenerateLiveTempPlot(live_temps, station_name: str):
+def GenerateLiveTempPlot(
+    live_temps: pd.DataFrame | None, location_code: str, station_name: str
+):
     if live_temps is None:
         return
-    plot_filename = "static/plots/live_temps.svg"
+    plot_filename = f"static/plots/{location_code}/live_temps.svg"
     logging.info("Generating live temp plot: %s", plot_filename)
     raw = live_temps["water_temp"]
     trend = raw.rolling(10 * 2, center=True).mean()
@@ -105,13 +108,17 @@ def GenerateLiveTempPlot(live_temps, station_name: str):
     SaveFig(fig, plot_filename)
 
 
-def GenerateHistoricPlots(hist_temps, station_name: str):
+def GenerateHistoricPlots(
+    hist_temps: pd.DataFrame | None, location_code: str, station_name: str
+):
     if hist_temps is None:
         return
     year_df = util.PivotYear(hist_temps)
 
     # 2 Month plot
-    two_mo_plot_filename = "static/plots/historic_temps_2mo_24h_mean.svg"
+    two_mo_plot_filename = (
+        f"static/plots/{location_code}/historic_temps_2mo_24h_mean.svg"
+    )
     logging.info("Generating 2 month plot: %s", two_mo_plot_filename)
     df = (
         year_df["water_temp"]
@@ -135,7 +142,7 @@ def GenerateHistoricPlots(hist_temps, station_name: str):
     SaveFig(fig, two_mo_plot_filename)
 
     # Full year
-    yr_plot_filename = "static/plots/historic_temps_12mo_24h_mean.svg"
+    yr_plot_filename = f"static/plots/{location_code}/historic_temps_12mo_24h_mean.svg"
     logging.info("Generating full time plot: %s", yr_plot_filename)
     df = (
         year_df["water_temp"]

@@ -11,19 +11,21 @@ from shallweswim import data as data_lib
 from shallweswim import plot
 
 
-data = data_lib.Data(config.Get("nyc"))
+# XXX automate. or use lifetime setup thing or something
+data = {code: data_lib.Data(cfg) for code, cfg in config.CONFIGS.items()}
 
 app = Flask(__name__)
 app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True
 
 
-@app.route("/")
-def index():
-    current_time, current_temp = data.LiveTempReading()
-    past_tides, next_tides = data.PrevNextTide()
+@app.route("/<location>")
+def index_w_location(location: str):
+    cfg = config.Get(location)
+    current_time, current_temp = data[location].LiveTempReading()
+    past_tides, next_tides = data[location].PrevNextTide()
     return render_template(
         "index.html",
-        config=config.Get("nyc"),
+        config=cfg,
         current_time=current_time,
         current_temp=current_temp,
         past_tides=past_tides,
@@ -31,10 +33,15 @@ def index():
     )
 
 
+@app.route("/")
+def index():
+    return index_w_location("nyc")
+
+
 @app.route("/embed")
 def embed():
-    current_time, current_temp = data.LiveTempReading()
-    past_tides, next_tides = data.PrevNextTide()
+    current_time, current_temp = data["nyc"].LiveTempReading()
+    past_tides, next_tides = data["nyc"].PrevNextTide()
     return render_template(
         "embed.html",
         config=config.Get("nyc"),
@@ -67,7 +74,7 @@ def EffectiveTime() -> datetime.datetime:
 @app.route("/current_tide_plot")
 def current_tide_plot():
     ts = EffectiveTime()
-    image = plot.GenerateTideCurrentPlot(data.tides, data.currents, ts)
+    image = plot.GenerateTideCurrentPlot(data["nyc"].tides, data["nyc"].currents, ts)
     return Response(image, mimetype="image/svg+xml")
 
 
@@ -80,14 +87,18 @@ def water_current():
         last_tide_type,
         tide_chart_filename,
         legacy_map_title,
-    ) = data.LegacyChartInfo(ts)
+    ) = data[
+        "nyc"
+    ].LegacyChartInfo(ts)
 
     (
         ef,
         magnitude,
         magnitude_pct,
         msg,
-    ) = data.CurrentPrediction(ts)
+    ) = data[
+        "nyc"
+    ].CurrentPrediction(ts)
 
     # Get fwd/back shift values
     shift = request.args.get("shift", 0, int)
@@ -121,7 +132,7 @@ def fmt_datetime(timestamp):
 
 @app.route("/freshness")
 def freshness():
-    return jsonify(data.Freshness())
+    return jsonify(data["nyc"].Freshness())
 
 
 @app.route("/favicon.ico")
@@ -143,7 +154,8 @@ def start_app():
         logging.info("Using standard logging")
 
     logging.info("Starting app")
-    data.Start()
+    for d in data.values():
+        d.Start()
     return app
 
 

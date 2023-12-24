@@ -70,13 +70,13 @@ class Data(object):
             if self._Expired("live_temps"):
                 self._FetchLiveTemps()
                 plot.GenerateLiveTempPlot(
-                    self.live_temps, self.config.temp_station_name
+                    self.live_temps, self.config.code, self.config.temp_station_name
                 )
 
             if self._Expired("historic_temps"):
                 self._FetchHistoricTemps()
                 plot.GenerateHistoricPlots(
-                    self.historic_temps, self.config.temp_station_name
+                    self.historic_temps, self.config.code, self.config.temp_station_name
                 )
 
             # XXX Can probably be increased to 1s even... but would need to add API spam buffer
@@ -84,14 +84,13 @@ class Data(object):
 
     def Start(self):
         """Start the background data fetching process."""
+        thread_name = f"DataUpdateThread_{self.config.code}"
         for thread in threading.enumerate():
-            assert (
-                thread.name != "DataUpdateThread"
-            ), "Data update thread already running"
+            assert thread.name != thread_name, "Data update thread already running"
 
         logging.info("Starting data fetch thread")
         self._update_thread = threading.Thread(
-            target=self._Update, name="DataUpdateThread", daemon=True
+            target=self._Update, name=thread_name, daemon=True
         )
         self._update_thread.start()
 
@@ -223,10 +222,13 @@ class Data(object):
         try:
             self.tides = noaa.NoaaApi.Tides(station=self.config.tide_station)
 
-            currents = [
-                noaa.NoaaApi.Currents(stn) for stn in self.config.currents_stations
-            ]
-            self.currents = pd.concat(currents)[["velocity"]].groupby(level=0).mean()
+            if self.config.currents_stations:
+                currents = [
+                    noaa.NoaaApi.Currents(stn) for stn in self.config.currents_stations
+                ]
+                self.currents = (
+                    pd.concat(currents)[["velocity"]].groupby(level=0).mean()
+                )
 
             self._tides_timestamp = Now()
         except noaa.NoaaApiError as e:

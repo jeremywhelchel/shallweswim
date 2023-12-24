@@ -29,27 +29,61 @@ class LocationConfig(pydantic.BaseModel):
     tide_station_name: str | None = None
 
 
-NYC = LocationConfig(
-    code="nyc",
-    name="New York",
-    swim_location="Grimaldo's Chair",
-    swim_location_link="https://cibbows.org/about/essentials/",
-    latitude=40.573,
-    longitude=-73.954,
-    timezone="US/Eastern",
-    current_predictions=True,
-    temp_station=8518750,
-    temp_station_name="The Battery, NY",
-    tide_station=8517741,
-    tide_station_name="Coney Island, NY",
-    currents_stations=[
-        "ACT3876",  # Coney Island Channel
-        "NYH1905",  # Rockaway Inslet
-    ],
-    description="Coney Island Brighton Beach open water swimming conditions",
-)
+CONFIG_LIST = [
+    LocationConfig(
+        code="nyc",
+        name="New York",
+        swim_location="Grimaldo's Chair",
+        swim_location_link="https://cibbows.org/about/essentials/",
+        latitude=40.573,
+        longitude=-73.954,
+        timezone="US/Eastern",
+        current_predictions=True,
+        temp_station=8518750,
+        temp_station_name="The Battery, NY",
+        tide_station=8517741,
+        tide_station_name="Coney Island, NY",
+        currents_stations=[
+            "ACT3876",  # Coney Island Channel
+            "NYH1905",  # Rockaway Inslet
+        ],
+        description="Coney Island Brighton Beach open water swimming conditions",
+    ),
+    LocationConfig(
+        code="san",
+        name="San Diego",
+        swim_location="La Jolla Cove",
+        swim_location_link="https://www.lajollacoveswimclub.com/page-1518748",
+        latitude=32.850,
+        longitude=-117.272,
+        timezone="US/Pacific",
+        temp_station=9410230,
+        temp_station_name="La Jolla, CA",
+        tide_station=9410230,
+        tida_station_name="La Jolla, CA",
+        description="La Jolla Cove open water swimming conditions",
+    ),
+    LocationConfig(
+        # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
+        code="sfo",
+        name="San Francisco",
+        swim_location="San Francisco Aquatic Park",
+        swim_location_link="https://serc.com/swimming/swimming-in-aquatic-park/",
+        latitude=37.808,
+        longitude=-122.426,
+        timezone="US/Pacific",
+        # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
+        # It is not a live reading (and not available via the same API), so we don't use it.
+        temp_station=9414290,
+        temp_station_name="San Francisco, CA",
+        tide_station=9414305,
+        tide_station_name="North Point Pier",
+        description="San Francisco Aquatic Park open water swimming conditions",
+    ),
+]
+CONFIGS = {c.code: c for c in CONFIG_LIST}
 
 
 def Get(code) -> LocationConfig:
-    assert code == "nyc", code
-    return NYC
+    assert code in CONFIGS, "bad location: " + code
+    return CONFIGS[code]

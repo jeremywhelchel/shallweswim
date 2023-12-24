@@ -84,8 +84,8 @@ CONFIG_LIST = [
     LocationConfig(
         code="sdf",
         name="Louisville",
-        swim_location="XXX",
-        swim_location_link="XXX",
+        swim_location="Louisville Community Boathouse",
+        swim_location_link="https://www.kylmsc.org/rats",
         latitude=38.2647556,
         longitude=-85.7323204,
         # XXX windy "waves" mode inapplicable here

@@ -220,7 +220,8 @@ class Data(object):
     def _FetchTidesAndCurrents(self):
         logging.info("Fetching tides and currents")
         try:
-            self.tides = noaa.NoaaApi.Tides(station=self.config.tide_station)
+            if self.config.tide_station:
+                self.tides = noaa.NoaaApi.Tides(station=self.config.tide_station)
 
             if self.config.currents_stations:
                 currents = [
@@ -259,6 +260,8 @@ class Data(object):
 
     def _FetchHistoricTemps(self):
         """Get hourly temp data since 2011."""
+        if not self.config.temp_station:
+            return
         logging.info("Fetching historic temps")
         try:
             years = range(2011, Now().year + 1)
@@ -281,6 +284,8 @@ class Data(object):
     # XXX Test by disabling local wifi briefly
     def _FetchLiveTemps(self):
         """Get last N days of air and water temperatures."""
+        if not self.config.temp_station:
+            return
         logging.info("Fetching live temps")
         begin_date = datetime.datetime.today() - datetime.timedelta(days=8)
         end_date = datetime.datetime.today()

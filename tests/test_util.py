@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import unittest
 
-from shallweswim import data
+from shallweswim import util
 
 
 class TestData(unittest.TestCase):
@@ -11,7 +11,7 @@ class TestData(unittest.TestCase):
             {"air_temp": 60, "water_temp": 50},
             index=pd.date_range("2011-06-01", "2023-03-01"),
         )
-        got = data.PivotYear(df)
+        got = util.PivotYear(df)
 
         pd.testing.assert_index_equal(
             pd.date_range("2020-01-01", "2020-12-31"), got.index

@@ -1,12 +1,9 @@
 """NOAA tides and current API client."""
 
-from typing import Optional, Sequence, Tuple, Union
+from typing import Optional
 import datetime
 import logging
-import numpy as np
-import os
 import pandas as pd
-import time
 import urllib
 
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+# XXX
 import datetime
 from flask import Flask, jsonify, Response, redirect, render_template, request, url_for
 import google.cloud.logging
@@ -7,6 +8,7 @@ import logging
 import os
 
 from shallweswim import data as data_lib
+from shallweswim import plot
 
 data = data_lib.Data()
 
@@ -62,8 +64,8 @@ def EffectiveTime() -> datetime.datetime:
 @app.route("/current_tide_plot")
 def current_tide_plot():
     ts = EffectiveTime()
-    plot = data_lib.GenerateTideCurrentPlot(data.tides, data.currents, ts)
-    return Response(plot, mimetype="image/svg+xml")
+    image = plot.GenerateTideCurrentPlot(data.tides, data.currents, ts)
+    return Response(image, mimetype="image/svg+xml")
 
 
 @app.route("/current")
@@ -101,8 +103,8 @@ def water_current():
         msg=msg,
         fwd=fwd,
         back=back,
-        current_chart_filename=data_lib.GetCurrentChartFilename(
-            ef, data_lib.BinMagnitude(magnitude_pct)
+        current_chart_filename=plot.GetCurrentChartFilename(
+            ef, plot.BinMagnitude(magnitude_pct)
         ),
         query_string=request.query_string.decode(),
     )

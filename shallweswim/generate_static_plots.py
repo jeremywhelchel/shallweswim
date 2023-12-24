@@ -2,12 +2,12 @@
 """Generate static maps."""
 
 import logging
-from shallweswim import data
+from shallweswim import plot
 
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
     logging.info("Generating static files")
     for ef in ["flooding", "ebbing"]:
-        for magnitude_bin in data.MAGNITUDE_BINS:
-            data.GenerateCurrentChart(ef, magnitude_bin)
+        for magnitude_bin in plot.MAGNITUDE_BINS:
+            plot.GenerateCurrentChart(ef, magnitude_bin)

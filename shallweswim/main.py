@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 
 import datetime
-from flask import Flask, jsonify, Response, redirect, render_template, request, url_for
+from flask import (
+    abort,
+    Flask,
+    jsonify,
+    Response,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 import google.cloud.logging
 import logging
 import os
@@ -21,6 +30,9 @@ app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True
 @app.route("/<location>")
 def index_w_location(location: str):
     cfg = config.Get(location)
+    if not cfg:
+        abort(404)
+
     current_time, current_temp = data[location].LiveTempReading()
     past_tides, next_tides = data[location].PrevNextTide()
     return render_template(
@@ -139,6 +151,11 @@ def freshness():
 @app.route("/favicon.ico")
 def favicon():
     return redirect(url_for("static", filename="favicon.ico"))
+
+
+@app.route("/robots.txt")
+def robots():
+    return redirect(url_for("static", filename="robots.txt"))
 
 
 def start_app():

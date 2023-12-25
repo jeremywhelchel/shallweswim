@@ -103,6 +103,7 @@ CONFIG_LIST = [
 CONFIGS = {c.code: c for c in CONFIG_LIST}
 
 
-def Get(code) -> LocationConfig:
-    assert code in CONFIGS, "bad location: " + code
+def Get(code) -> LocationConfig | None:
+    if code not in CONFIGS:
+        return None
     return CONFIGS[code]

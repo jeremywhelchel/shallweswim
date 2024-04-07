@@ -274,7 +274,7 @@ class Data(object):
                 .drop(pd.to_datetime("2017-05-23 11:00:00"))
                 .drop(pd.to_datetime("2017-05-23 12:00:00"))
                 .drop(pd.to_datetime("2020-05-22 13:00:00"))
-                .resample("H")
+                .resample("h")
                 .first()
             )
             self._historic_temps_timestamp = Now()

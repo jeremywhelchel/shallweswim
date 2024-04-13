@@ -7,21 +7,21 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "~3.11"
-google-cloud-logging = "^3.8"
-numpy = "^1.26"
-pandas = "^2.1"
-seaborn = "^0.13"
-scipy = "^1.11"
+google-cloud-logging = "^3"
+numpy = "^1"
+pandas = "^2"
+seaborn = "^0"
+scipy = "^1"
 pydantic = "^2.5.3"
 uvicorn = "^0.29.0"
 fastapi = "^0.110.1"
 jinja2 = "^3.1.3"
 
 [tool.poetry.group.dev.dependencies]
-black = "^23"
-pytype = "^2023"
-pytest = "^7.4"
-pre-commit = "^3.4"
+black = "^24"
+pytype = "^2024"
+pytest = "^8"
+pre-commit = "^3"
 
 [build-system]
 requires = ["poetry-core"]

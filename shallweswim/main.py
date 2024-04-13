@@ -175,10 +175,8 @@ async def robots():
 async def index_w_location(request: fastapi.Request, location: str):
     cfg = config.Get(location)
     if not cfg:
-        logging.error("bad location: ", location)
-        raise HTTPException(
-            status_code=404, detail=f"bad config for location:{location}"
-        )
+        logging.warning(f"Bad location: {location}")
+        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
 
     current_time, current_temp = data[location].LiveTempReading()
     past_tides, next_tides = data[location].PrevNextTide()

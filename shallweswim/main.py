@@ -1,67 +1,66 @@
 #!/usr/bin/env python3
 
+import contextlib
 import datetime
-from flask import (
-    abort,
-    Flask,
-    jsonify,
-    Response,
-    redirect,
-    render_template,
-    request,
-    url_for,
-)
+
+import fastapi
+from fastapi import HTTPException
+from fastapi import staticfiles
+from fastapi import templating
+
 import google.cloud.logging
 import logging
 import os
+import uvicorn
 
 from shallweswim import config
 from shallweswim import data as data_lib
 from shallweswim import plot
 
 
-# XXX automate. or use lifetime setup thing or something
-data = {code: data_lib.Data(cfg) for code, cfg in config.CONFIGS.items()}
-
-app = Flask(__name__)
-app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True
+data = {}
 
 
-@app.route("/<location>")
-def index_w_location(location: str):
-    cfg = config.Get(location)
-    if not cfg:
-        abort(404)
+@contextlib.asynccontextmanager
+async def lifespan(app: fastapi.FastAPI):
+    # XXX Try not to reload this if already there...
+    for code, cfg in config.CONFIGS.items():
+        data[code] = data_lib.Data(cfg)
+        data[code].Start()
+    yield
+    # Nothing to cleanup, but it would happen here
 
-    current_time, current_temp = data[location].LiveTempReading()
-    past_tides, next_tides = data[location].PrevNextTide()
-    return render_template(
-        "index.html",
-        config=cfg,
-        current_time=current_time,
-        current_temp=current_temp,
-        past_tides=past_tides,
-        next_tides=next_tides,
-    )
+
+app = fastapi.FastAPI(lifespan=lifespan)
+
+app.mount(
+    "/static", staticfiles.StaticFiles(directory="shallweswim/static"), name="static"
+)
+
+templates = templating.Jinja2Templates(directory="shallweswim/templates")
 
 
 # TODO use some cookie to redirect to last used or saved location
-@app.route("/")
-def index():
-    return index_w_location("nyc")
+@app.get("/")
+async def index():
+    return fastapi.responses.RedirectResponse("/nyc")
 
 
-@app.route("/embed")
-def embed():
+# XXX locationify properly
+@app.get("/embed")
+async def embed(request: fastapi.Request):
     current_time, current_temp = data["nyc"].LiveTempReading()
     past_tides, next_tides = data["nyc"].PrevNextTide()
-    return render_template(
-        "embed.html",
-        config=config.Get("nyc"),
-        current_time=current_time,
-        current_temp=current_temp,
-        past_tides=past_tides,
-        next_tides=next_tides,
+    return templates.TemplateResponse(
+        request=request,
+        name="embed.html",
+        context=dict(
+            config=config.Get("nyc"),
+            current_time=current_time,
+            current_temp=current_temp,
+            past_tides=past_tides,
+            next_tides=next_tides,
+        ),
     )
 
 
@@ -69,14 +68,12 @@ MIN_SHIFT_LIMIT = -180  # 3 hours
 MAX_SHIFT_LIMIT = 1260  # 21 hours
 
 
-def EffectiveTime() -> datetime.datetime:
+def EffectiveTime(shift: int = 0) -> datetime.datetime:
     """Return the effective time for displaying charts based on query parameters."""
 
     # XXX Add an optional absolute time parameter here.
     t = data_lib.Now()
 
-    # Optionally shift current time
-    shift = request.args.get("shift", 0, int)
     # Clamp the shift limit
     shift = max(MIN_SHIFT_LIMIT, min(shift, MAX_SHIFT_LIMIT))
     t = t + datetime.timedelta(minutes=shift)
@@ -84,16 +81,19 @@ def EffectiveTime() -> datetime.datetime:
     return t
 
 
-@app.route("/current_tide_plot")
-def current_tide_plot():
-    ts = EffectiveTime()
+@app.get("/current_tide_plot")
+async def current_tide_plot(shift: int = 0):
+    ts = EffectiveTime(shift)
     image = plot.GenerateTideCurrentPlot(data["nyc"].tides, data["nyc"].currents, ts)
-    return Response(image, mimetype="image/svg+xml")
+    assert image
+    return fastapi.responses.Response(
+        content=image.getvalue(), media_type="image/svg+xml"
+    )
 
 
-@app.route("/current")
-def water_current():
-    ts = EffectiveTime()
+@app.get("/current")
+async def water_current(request: fastapi.Request, shift: int = 0):
+    ts = EffectiveTime(shift)
 
     (
         last_tide_hrs_ago,
@@ -114,48 +114,85 @@ def water_current():
     ].CurrentPrediction(ts)
 
     # Get fwd/back shift values
-    shift = request.args.get("shift", 0, int)
     fwd = min(shift + 60, MAX_SHIFT_LIMIT)
     back = max(shift - 60, MIN_SHIFT_LIMIT)
 
-    return render_template(
-        "current.html",
-        config=config.Get("nyc"),
-        last_tide_hrs_ago=round(last_tide_hrs_ago, 1),
-        last_tide_type=last_tide_type,
-        tide_chart_filename=tide_chart_filename,
-        legacy_map_title=legacy_map_title,
-        ts=ts,
-        ef=ef,
-        magnitude=round(magnitude, 1),
-        msg=msg,
-        fwd=fwd,
-        back=back,
-        current_chart_filename=plot.GetCurrentChartFilename(
-            ef, plot.BinMagnitude(magnitude_pct)
+    return templates.TemplateResponse(
+        request=request,
+        name="current.html",
+        context=dict(
+            config=config.Get("nyc"),
+            last_tide_hrs_ago=round(last_tide_hrs_ago, 1),
+            last_tide_type=last_tide_type,
+            tide_chart_filename=tide_chart_filename,
+            legacy_map_title=legacy_map_title,
+            ts=ts,
+            ef=ef,
+            magnitude=round(magnitude, 1),
+            msg=msg,
+            shift=shift,
+            fwd=fwd,
+            back=back,
+            current_chart_filename=plot.GetCurrentChartFilename(
+                ef, plot.BinMagnitude(magnitude_pct)
+            ),
         ),
-        query_string=request.query_string.decode(),
     )
 
 
-@app.template_filter()
 def fmt_datetime(timestamp):
     return timestamp.strftime("%A, %B %-d at %-I:%M %p")
 
 
-@app.route("/freshness")
-def freshness():
-    return jsonify(data["nyc"].Freshness())
+templates.env.filters["fmt_datetime"] = fmt_datetime
 
 
-@app.route("/favicon.ico")
-def favicon():
-    return redirect(url_for("static", filename="favicon.ico"))
+# XXX locationify
 
 
-@app.route("/robots.txt")
-def robots():
-    return redirect(url_for("static", filename="robots.txt"))
+@app.get("/freshness")
+async def freshness():
+    return data["nyc"].Freshness()
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return fastapi.responses.RedirectResponse(
+        "/static/favicon.ico",
+    )
+    # return redirect(url_for("static", filename="favicon.ico"))
+
+
+@app.get("/robots.txt")
+async def robots():
+    return fastapi.responses.RedirectResponse(
+        "/static/robots.txt",
+    )
+    # return redirect(url_for("static", filename="robots.txt"))
+
+
+@app.get("/{location}")
+async def index_w_location(request: fastapi.Request, location: str):
+    cfg = config.Get(location)
+    if not cfg:
+        logging.error("bad location: ", location)
+        raise HTTPException(
+            status_code=404, detail=f"bad config for location:{location}"
+        )
+
+    current_time, current_temp = data[location].LiveTempReading()
+    past_tides, next_tides = data[location].PrevNextTide()
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context=dict(
+            config=cfg,
+            current_time=current_time,
+            current_temp=current_temp,
+            past_tides=past_tides,
+            next_tides=next_tides,
+        ),
+    )
 
 
 def start_app():
@@ -172,12 +209,14 @@ def start_app():
         logging.info("Using standard logging")
 
     logging.info("Starting app")
-    for d in data.values():
-        d.Start()
     return app
 
 
-if __name__ == "__main__":  # Run Flask dev-server directly
-    logging.info("Running app.run()")
-    start_app()
-    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+if __name__ == "__main__":  # Run uvicorn app directly
+    logging.info("Running uvicorn app")
+    uvicorn.run(
+        "main:start_app",
+        port=int(os.environ.get("PORT", 8080)),
+        log_level="info",
+        reload=True,
+    )

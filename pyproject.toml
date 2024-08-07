@@ -8,6 +8,9 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "~3.11"
 google-cloud-logging = "^3"
+# This one was necessary to pin to prevent being downgraded in 8/7/24. Try to
+# remove.
+google-cloud-audit-log = "^0.2.5"
 numpy = "^1"
 pandas = "^2"
 seaborn = "^0"

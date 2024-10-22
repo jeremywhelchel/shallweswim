@@ -6,19 +6,16 @@ authors = ["Jeremy Whelchel <jeremy@whelchel.me>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "~3.11"
+python = "~3.12"
 google-cloud-logging = "^3"
-# This one was necessary to pin to prevent being downgraded in 8/7/24. Try to
-# remove.
-google-cloud-audit-log = "^0.2.5"
 numpy = "^1"
 pandas = "^2"
 seaborn = "^0"
 scipy = "^1"
-pydantic = "^2.5.3"
-uvicorn = "^0.29.0"
-fastapi = "^0.110.1"
-jinja2 = "^3.1.3"
+pydantic = "^2.9"
+uvicorn = "^0.32"
+fastapi = "^0.115"
+jinja2 = "^3.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24"

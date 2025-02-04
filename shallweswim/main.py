@@ -214,6 +214,7 @@ if __name__ == "__main__":  # Run uvicorn app directly
     logging.info("Running uvicorn app")
     uvicorn.run(
         "main:start_app",
+        host="0.0.0.0",
         port=int(os.environ.get("PORT", 8080)),
         log_level="info",
         reload=True,

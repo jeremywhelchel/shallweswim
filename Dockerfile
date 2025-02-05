@@ -10,7 +10,7 @@ WORKDIR $APP_HOME
 COPY pyproject.toml ./
 RUN pip install poetry
 RUN poetry config virtualenvs.create false
-RUN poetry install --only main
+RUN poetry install --only main --no-root
 # Copy code and data
 COPY shallweswim shallweswim
 # Run the web service on container startup.

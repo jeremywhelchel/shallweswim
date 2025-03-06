@@ -1,3 +1,4 @@
+from parameterized import parameterized
 import numpy as np
 import pandas as pd
 import unittest
@@ -24,6 +25,18 @@ class TestData(unittest.TestCase):
         )
         self.assertTrue(got["air_temp"].isin([60, np.nan]).all().all())
         self.assertTrue(got["water_temp"].isin([50, np.nan]).all().all())
+
+    @parameterized.expand(
+        [
+            ("fahrenheit", "celsius", "expected"),
+            (32, 0, 0),
+            (212, 100, 100),
+            (98.6, 37, 37),
+            (0, -17.77777777777778, -17.77777777777778),
+        ]
+    )
+    def test_f2c(self, fahrenheit, celsius, expected):
+        self.assertEqual(util.F2C(fahrenheit), celsius)
 
 
 if __name__ == "__main__":

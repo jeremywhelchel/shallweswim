@@ -5,6 +5,14 @@ import unittest
 from shallweswim import util
 
 
+import datetime
+import numpy as np
+import pandas as pd
+import unittest
+
+from shallweswim import util
+
+
 class TestData(unittest.TestCase):
     def test_pivot_year(self):
         df = pd.DataFrame(
@@ -24,6 +32,17 @@ class TestData(unittest.TestCase):
         )
         self.assertTrue(got["air_temp"].isin([60, np.nan]).all().all())
         self.assertTrue(got["water_temp"].isin([50, np.nan]).all().all())
+
+    def test_now(self):
+        now = util.Now()
+        self.assertIsInstance(now, datetime.datetime)
+        self.assertEqual(now.tzinfo.zone, "US/Eastern")
+
+    def test_f2c(self):
+        self.assertEqual(util.F2C(32), 0)
+        self.assertEqual(util.F2C(212), 100)
+        self.assertEqual(util.F2C(68), 20)
+        self.assertEqual(util.F2C(-40), -40)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import unittest
-
+import pytest
 from shallweswim import util
 
 
@@ -24,6 +24,10 @@ class TestData(unittest.TestCase):
         )
         self.assertTrue(got["air_temp"].isin([60, np.nan]).all().all())
         self.assertTrue(got["water_temp"].isin([50, np.nan]).all().all())
+
+    @pytest.mark.parametrize("fahrenheit, celsius", [(32, 0), (212, 100), (68, 20), (-40, -40)])
+    def test_f2c(self, fahrenheit, celsius):
+        self.assertAlmostEqual(util.F2C(fahrenheit), celsius, places=1)
 
 
 if __name__ == "__main__":

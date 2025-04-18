@@ -19,9 +19,15 @@ jinja2 = "^3.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24"
-pytype = "^2024"
 pytest = "^8"
 pre-commit = "^3"
+mypy = "^1.15.0"
+types-pytz = "^2025.2.0.20250326"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
 
 [build-system]
 requires = ["poetry-core"]

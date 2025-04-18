@@ -1,19 +1,19 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
   - repo: https://github.com/psf/black
-    rev: 23.9.1
+    rev: 25.1.0
     hooks:
       - id: black
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: "v3.0.3" # Use the sha or tag you want to point at
+    rev: "v4.0.0-alpha.8" # Use the sha or tag you want to point at
     hooks:
       - id: prettier
   - repo: https://github.com/python-poetry/poetry
-    rev: "1.6.0" # add version here
+    rev: "2.1.2" # add version here
     hooks:
       - id: poetry-check
       - id: poetry-lock
@@ -25,11 +25,5 @@ repos:
         name: pytest
         language: system
         entry: poetry run pytest
-        pass_filenames: false
-        always_run: true
-      - id: pytype
-        name: pytype
-        language: system
-        entry: bash -c "poetry run pytype $(git ls-files '*.py')"
         pass_filenames: false
         always_run: true

@@ -6,7 +6,7 @@ import pytest
 
 from shallweswim import util
 
-def test_now():
+def test_now() -> None:
     """Test that Now() returns current time in Eastern timezone without tzinfo."""
     now = util.Now()
     assert isinstance(now, datetime.datetime)

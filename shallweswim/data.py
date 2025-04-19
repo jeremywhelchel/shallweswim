@@ -2,7 +2,7 @@
 
 from concurrent import futures
 from typing import cast, Any, Optional, Tuple
-from shallweswim.types import FreshnessInfo, TimeInfo
+from shallweswim.types import FreshnessInfo, TimeInfo, DatasetName
 import datetime
 import logging
 import pandas as pd
@@ -56,7 +56,7 @@ class Data(object):
             "historic_temps": datetime.timedelta(hours=3),
         }
 
-    def _Expired(self, dataset: str) -> bool:
+    def _Expired(self, dataset: DatasetName) -> bool:
         age_seconds = self.Freshness()[dataset]["fetch"]["age_seconds"]
         return not age_seconds or (
             age_seconds > self.expirations[dataset].total_seconds()
@@ -188,36 +188,31 @@ class Data(object):
     def Freshness(self) -> FreshnessInfo:
         # XXX Consistent dtype
         # XXX EST timezone for timestamps
-        ret = {
+        def make_time_info(timestamp: Optional[datetime.datetime]) -> TimeInfo:
+            if timestamp is None:
+                return {"time": None, "age": None, "age_seconds": None}
+            now = Now()
+            age = now - timestamp
+            return {
+                "time": timestamp,
+                "age": str(datetime.timedelta(seconds=int(age.total_seconds()))),
+                "age_seconds": age.total_seconds(),
+            }
+
+        ret: FreshnessInfo = {
             "tides_and_currents": {
-                "fetch": {"time": self._tides_timestamp},
-                "latest_value": {"time": LatestTimeValue(self.tides)},
+                "fetch": make_time_info(self._tides_timestamp),
+                "latest_value": make_time_info(LatestTimeValue(self.tides)),
             },
             "live_temps": {
-                "fetch": {"time": self._live_temps_timestamp},
-                "latest_value": {"time": LatestTimeValue(self.live_temps)},
+                "fetch": make_time_info(self._live_temps_timestamp),
+                "latest_value": make_time_info(LatestTimeValue(self.live_temps)),
             },
             "historic_temps": {
-                "fetch": {"time": self._historic_temps_timestamp},
-                "latest_value": {"time": LatestTimeValue(self.historic_temps)},
+                "fetch": make_time_info(self._historic_temps_timestamp),
+                "latest_value": make_time_info(LatestTimeValue(self.historic_temps)),
             },
         }
-
-        # Calculate current ages
-        now = Now()
-        for dataset, info in ret.items():
-            for label in list(info.keys()):
-                freshness = info[label]["time"]
-                if freshness:
-                    age = now - freshness
-                    age_sec = age.total_seconds()
-                    age_str = str(datetime.timedelta(seconds=int(age_sec)))
-                else:
-                    age = None
-                    age_sec = None
-                    age_str = None
-                ret[dataset][label]["age"] = age_str  # type: ignore[assignment]
-                ret[dataset][label]["age_seconds"] = age_sec  # type: ignore[assignment]
         return ret
 
     def _FetchTidesAndCurrents(self) -> None:

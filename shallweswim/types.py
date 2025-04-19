@@ -1,7 +1,10 @@
 """Type definitions for shallweswim."""
 
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, Literal
 import datetime
+
+
+DatasetName = Literal["tides_and_currents", "live_temps", "historic_temps"]
 
 
 class TimeInfo(TypedDict):

@@ -3,6 +3,7 @@
 import contextlib
 import datetime
 from typing import Any, AsyncGenerator
+from shallweswim.types import FreshnessInfo
 
 import fastapi
 from fastapi import HTTPException
@@ -153,7 +154,7 @@ templates.env.filters["fmt_datetime"] = fmt_datetime
 
 
 @app.get("/freshness")
-async def freshness() -> dict[str, Any]:
+async def freshness() -> FreshnessInfo:
     return data["nyc"].Freshness()
 
 

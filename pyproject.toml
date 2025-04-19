@@ -23,6 +23,7 @@ pytest = "^8"
 pre-commit = "^3"
 mypy = "^1.15.0"
 types-pytz = "^2025.2.0.20250326"
+matplotlib-stubs = "^0.2.0"
 
 [tool.mypy]
 python_version = "3.12"

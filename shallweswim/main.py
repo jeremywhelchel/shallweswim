@@ -2,9 +2,11 @@
 
 import contextlib
 import datetime
+from typing import Any, AsyncGenerator
 
 import fastapi
 from fastapi import HTTPException
+from fastapi import responses
 from fastapi import staticfiles
 from fastapi import templating
 
@@ -22,7 +24,7 @@ data = {}
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: fastapi.FastAPI):
+async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     # XXX Try not to reload this if already there...
     for code, cfg in config.CONFIGS.items():
         data[code] = data_lib.Data(cfg)
@@ -42,13 +44,13 @@ templates = templating.Jinja2Templates(directory="shallweswim/templates")
 
 # TODO use some cookie to redirect to last used or saved location
 @app.get("/")
-async def index():
-    return fastapi.responses.RedirectResponse("/nyc")
+async def index() -> responses.RedirectResponse:
+    return responses.RedirectResponse("/nyc")
 
 
 # XXX locationify properly
 @app.get("/embed")
-async def embed(request: fastapi.Request):
+async def embed(request: fastapi.Request) -> responses.HTMLResponse:
     current_time, current_temp = data["nyc"].LiveTempReading()
     past_tides, next_tides = data["nyc"].PrevNextTide()
     return templates.TemplateResponse(
@@ -82,17 +84,17 @@ def EffectiveTime(shift: int = 0) -> datetime.datetime:
 
 
 @app.get("/current_tide_plot")
-async def current_tide_plot(shift: int = 0):
+async def current_tide_plot(shift: int = 0) -> responses.Response:
     ts = EffectiveTime(shift)
     image = plot.GenerateTideCurrentPlot(data["nyc"].tides, data["nyc"].currents, ts)
     assert image
-    return fastapi.responses.Response(
-        content=image.getvalue(), media_type="image/svg+xml"
-    )
+    return responses.Response(content=image.getvalue(), media_type="image/svg+xml")
 
 
 @app.get("/current")
-async def water_current(request: fastapi.Request, shift: int = 0):
+async def water_current(
+    request: fastapi.Request, shift: int = 0
+) -> responses.HTMLResponse:
     ts = EffectiveTime(shift)
 
     (
@@ -140,7 +142,7 @@ async def water_current(request: fastapi.Request, shift: int = 0):
     )
 
 
-def fmt_datetime(timestamp):
+def fmt_datetime(timestamp: datetime.datetime) -> str:
     return timestamp.strftime("%A, %B %-d at %-I:%M %p")
 
 
@@ -151,28 +153,30 @@ templates.env.filters["fmt_datetime"] = fmt_datetime
 
 
 @app.get("/freshness")
-async def freshness():
+async def freshness() -> dict[str, Any]:
     return data["nyc"].Freshness()
 
 
 @app.get("/favicon.ico")
-async def favicon():
-    return fastapi.responses.RedirectResponse(
+async def favicon() -> responses.RedirectResponse:
+    return responses.RedirectResponse(
         "/static/favicon.ico",
     )
     # return redirect(url_for("static", filename="favicon.ico"))
 
 
 @app.get("/robots.txt")
-async def robots():
-    return fastapi.responses.RedirectResponse(
+async def robots() -> responses.RedirectResponse:
+    return responses.RedirectResponse(
         "/static/robots.txt",
     )
     # return redirect(url_for("static", filename="robots.txt"))
 
 
 @app.get("/{location}")
-async def index_w_location(request: fastapi.Request, location: str):
+async def index_w_location(
+    request: fastapi.Request, location: str
+) -> responses.HTMLResponse:
     cfg = config.Get(location)
     if not cfg:
         logging.warning(f"Bad location: {location}")
@@ -193,14 +197,14 @@ async def index_w_location(request: fastapi.Request, location: str):
     )
 
 
-def start_app():
+def start_app() -> fastapi.FastAPI:
     # If running in Google Cloud Run, use cloud logging
     if "K_SERVICE" in os.environ:
         # Setup Google Cloud logging
         # By default this captures all logs at INFO level and higher
-        log_client = google.cloud.logging.Client()
-        log_client.get_default_handler()
-        log_client.setup_logging()
+        log_client = google.cloud.logging.Client()  # type: ignore[no-untyped-call]
+        log_client.get_default_handler()  # type: ignore[no-untyped-call]
+        log_client.setup_logging()  # type: ignore[no-untyped-call]
         logging.info("Using google cloud logging")
     else:
         logging.getLogger().setLevel(logging.INFO)

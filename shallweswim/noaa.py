@@ -1,10 +1,12 @@
 """NOAA tides and current API client."""
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 import datetime
 import logging
 import pandas as pd
 import urllib
+import urllib.parse
+import urllib.error
 
 
 class NoaaApiError(Exception):
@@ -26,7 +28,7 @@ class NoaaApi(object):
     }
 
     @classmethod
-    def _Request(cls, params: dict) -> pd.DataFrame:
+    def _Request(cls, params: dict[str, Any]) -> pd.DataFrame:
         url_params = dict(cls.BASE_PARAMS, **params)
         url = cls.BASE_URL + "?" + urllib.parse.urlencode(url_params)
         logging.info(f"NOAA API: {url}")
@@ -143,7 +145,7 @@ class NoaaApi(object):
         )
 
     @classmethod
-    def _FixTime(cls, df, time_col="Date Time"):
+    def _FixTime(cls, df: pd.DataFrame, time_col: str = "Date Time") -> pd.DataFrame:
         return (
             df.assign(time=lambda x: pd.to_datetime(x[time_col], utc=True))
             .drop(columns=time_col)

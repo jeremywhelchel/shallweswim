@@ -1,5 +1,6 @@
 """Generation SWS plots and charts."""
 
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from typing import Optional, Union
 import datetime
@@ -20,8 +21,8 @@ sns.set_theme()
 sns.axes_style("darkgrid")
 
 
-def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
-    ax = sns.lineplot(data=df, ax=fig.subplots())
+def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) -> Axes:
+    ax = sns.lineplot(data=df, ax=fig.subplots())  # type: Axes
 
     fig.suptitle(title, fontsize=24)
     ax.set_title(subtitle, fontsize=18)
@@ -42,7 +43,6 @@ def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str):
         line.set_linewidth(3)
         line.set_linestyle("-")
         line.set_color("r")
-
     return ax
 
 
@@ -52,7 +52,7 @@ def LiveTempPlot(
     title: str,
     subtitle: str,
     time_fmt: str,
-):
+) -> Axes:
     ax = fig.subplots()
     sns.lineplot(data=df, ax=ax)
     ax.xaxis.set_major_formatter(md.DateFormatter(time_fmt))
@@ -72,7 +72,7 @@ def LiveTempPlot(
     return ax
 
 
-def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg"):
+def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg") -> None:
     # If running outside the 'shallweswim' directory, prepend it to all paths
     if isinstance(dst, str):
         assert dst.startswith("static/"), dst
@@ -86,8 +86,8 @@ def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg"):
 
 
 def GenerateLiveTempPlot(
-    live_temps: pd.DataFrame | None, location_code: str, station_name: str
-):
+    live_temps: pd.DataFrame | None, location_code: str, station_name: str | None
+) -> None:
     if live_temps is None:
         return
     plot_filename = f"static/plots/{location_code}/live_temps.svg"
@@ -112,8 +112,8 @@ def GenerateLiveTempPlot(
 
 
 def GenerateHistoricPlots(
-    hist_temps: pd.DataFrame | None, location_code: str, station_name: str
-):
+    hist_temps: pd.DataFrame | None, location_code: str, station_name: str | None
+) -> None:
     if hist_temps is None:
         return
     year_df = util.PivotYear(hist_temps)
@@ -126,8 +126,8 @@ def GenerateHistoricPlots(
     df = (
         year_df["water_temp"]
         .loc[
-            util.Now().date().replace(year=2020)
-            - datetime.timedelta(days=30) : util.Now().date().replace(year=2020)
+            util.Now().date().replace(year=2020)  # type: ignore[misc]
+            - datetime.timedelta(days=30) : util.Now().date().replace(year=2020)  # type: ignore[misc]
             + datetime.timedelta(days=30)
         ]
         .rolling(24, center=True)
@@ -166,7 +166,7 @@ def GenerateHistoricPlots(
     )
     ax.xaxis.set_major_locator(md.MonthLocator(bymonthday=1))
     # X labels between gridlines
-    ax.set_xticklabels("")
+    ax.set_xticklabels("")  # type: ignore[operator]
     ax.xaxis.set_minor_locator(md.MonthLocator(bymonthday=15))
     ax.xaxis.set_minor_formatter(md.DateFormatter("%b"))
     SaveFig(fig, yr_plot_filename)
@@ -177,7 +177,7 @@ def GenerateTideCurrentPlot(
     tides: pd.DataFrame, currents: pd.DataFrame, t: Optional[datetime.datetime] = None
 ) -> Optional[io.StringIO]:
     if tides is None or currents is None:
-        return
+        return None
     if not t:
         t = util.Now()
     logging.info("Generating tide and current plot for: %s", t)
@@ -194,8 +194,8 @@ def GenerateTideCurrentPlot(
     )
     # XXX
     df = df[
-        util.Now()
-        - datetime.timedelta(hours=3) : util.Now()
+        util.Now()  # type: ignore[misc]
+        - datetime.timedelta(hours=3) : util.Now()  # type: ignore[misc]
         + datetime.timedelta(hours=21)
     ]
 
@@ -221,7 +221,7 @@ def GenerateTideCurrentPlot(
     ax.axhline(0, color="g", linestyle=":", alpha=0.8)  # , linewidth=0.8)
     ax2.axhline(0, color="b", linestyle=":", alpha=0.8)  # , linewidth=0.8)
 
-    ax.axvline(t, color="r", linestyle="-", alpha=0.6)
+    ax.axvline(t, color="r", linestyle="-", alpha=0.6)  # type: ignore[arg-type]
 
     # Useful plot that indicates how the current (which?) LEADS the tide
     # XXX
@@ -235,7 +235,7 @@ def GenerateTideCurrentPlot(
     for t, row in tt.iterrows():
         ax2.annotate(
             row["tide_type"],
-            (t, row["tide"]),
+            (t, row["tide"]),  # type: ignore[arg-type]
             color="b",
             xytext=(-24, 8),
             textcoords="offset pixels",
@@ -255,7 +255,7 @@ MAGNITUDE_BINS = [0, 10, 30, 45, 55, 70, 90, 100]  # XXX Something off with thes
 def BinMagnitude(magnitude_pct: float) -> int:
     assert magnitude_pct >= 0 and magnitude_pct <= 1.0, magnitude_pct
     i = np.digitize([magnitude_pct * 100], MAGNITUDE_BINS, right=True)[0]
-    return MAGNITUDE_BINS[i]
+    return int(MAGNITUDE_BINS[i])
 
 
 def GetCurrentChartFilename(ef: str, magnitude_bin: int) -> str:
@@ -264,7 +264,7 @@ def GetCurrentChartFilename(ef: str, magnitude_bin: int) -> str:
     return plot_filename
 
 
-def GenerateCurrentChart(ef: str, magnitude_bin: int):
+def GenerateCurrentChart(ef: str, magnitude_bin: int) -> None:
     assert (magnitude_bin >= 0) and (magnitude_bin <= 100), magnitude_bin
     magnitude_pct = magnitude_bin / 100
 

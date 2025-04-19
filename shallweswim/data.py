@@ -1,7 +1,7 @@
 """Data fetching and management."""
 
 from concurrent import futures
-from typing import Optional, Tuple
+from typing import cast, Any, Optional, Tuple
 import datetime
 import logging
 import pandas as pd
@@ -27,7 +27,7 @@ Now = util.Now
 def LatestTimeValue(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
     if df is None:
         return None
-    return df.index[-1].to_pydatetime()
+    return cast(datetime.datetime, df.index[-1].to_pydatetime())
 
 
 class Data(object):
@@ -41,9 +41,9 @@ class Data(object):
         self.historic_temps = None
         self.live_temps = None
 
-        self._tides_timestamp = None
-        self._live_temps_timestamp = None
-        self._historic_temps_timestamp = None
+        self._tides_timestamp: datetime.datetime | None = None
+        self._live_temps_timestamp: datetime.datetime | None = None
+        self._historic_temps_timestamp: datetime.datetime | None = None
 
         self.expirations = {
             # Tidal predictions already cover a wide past/present window
@@ -61,7 +61,7 @@ class Data(object):
             age_seconds > self.expirations[dataset].total_seconds()
         )
 
-    def _Update(self):
+    def _Update(self) -> None:
         """Daemon thread to continuously updating data."""
         while True:
             if self._Expired("tides_and_currents"):
@@ -82,7 +82,7 @@ class Data(object):
             # XXX Can probably be increased to 1s even... but would need to add API spam buffer
             time.sleep(60)
 
-    def Start(self):
+    def Start(self) -> None:
         """Start the background data fetching process."""
         thread_name = f"DataUpdateThread_{self.config.code}"
         for thread in threading.enumerate():
@@ -94,7 +94,7 @@ class Data(object):
         )
         self._update_thread.start()
 
-    def PrevNextTide(self):
+    def PrevNextTide(self) -> Tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Return previous tide and next two tides."""
         if self.tides is None:
             unknown = {"time": datetime.time(0)}
@@ -108,6 +108,7 @@ class Data(object):
     ) -> Tuple[float, str, str, str]:
         if not t:
             t = Now()
+        assert self.tides is not None
         row = self.tides.loc[self.tides.index.asof(t)]
         # XXX Break this into a function
         tide_type = row["type"]
@@ -138,6 +139,7 @@ class Data(object):
         if not t:
             t = Now()
 
+        assert self.currents is not None
         v = self.currents["velocity"]
         df = pd.DataFrame(
             {
@@ -182,7 +184,7 @@ class Data(object):
         ((time, temp),) = self.live_temps.tail(1)["water_temp"].items()
         return time, temp
 
-    def Freshness(self):
+    def Freshness(self) -> dict[str, Any]:
         # XXX Consistent dtype
         # XXX EST timezone for timestamps
         ret = {
@@ -213,11 +215,11 @@ class Data(object):
                     age = None
                     age_sec = None
                     age_str = None
-                ret[dataset][label]["age"] = age_str
-                ret[dataset][label]["age_seconds"] = age_sec
+                ret[dataset][label]["age"] = age_str  # type: ignore[assignment]
+                ret[dataset][label]["age_seconds"] = age_sec  # type: ignore[assignment]
         return ret
 
-    def _FetchTidesAndCurrents(self):
+    def _FetchTidesAndCurrents(self) -> None:
         logging.info("Fetching tides and currents")
         try:
             if self.config.tide_station:
@@ -235,9 +237,10 @@ class Data(object):
         except noaa.NoaaApiError as e:
             logging.warning(f"Tide fetch error: {e}")
 
-    def _FetchHistoricTempYear(self, year):
+    def _FetchHistoricTempYear(self, year: int) -> pd.DataFrame:
         begin_date = datetime.date(year, 1, 1)
         end_date = datetime.date(year, 12, 31)
+        assert self.config.temp_station is not None
         return pd.concat(
             [
                 noaa.NoaaApi.Temperature(
@@ -258,7 +261,7 @@ class Data(object):
             axis=1,
         )
 
-    def _FetchHistoricTemps(self):
+    def _FetchHistoricTemps(self) -> None:
         """Get hourly temp data since 2011."""
         if not self.config.temp_station:
             return
@@ -282,7 +285,7 @@ class Data(object):
             logging.warning(f"Historic temp fetch error: {e}")
 
     # XXX Test by disabling local wifi briefly
-    def _FetchLiveTemps(self):
+    def _FetchLiveTemps(self) -> None:
         """Get last N days of air and water temperatures."""
         if not self.config.temp_station:
             return

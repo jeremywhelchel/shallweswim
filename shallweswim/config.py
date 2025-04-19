@@ -60,7 +60,7 @@ CONFIG_LIST = [
         temp_station=9410230,
         temp_station_name="La Jolla, CA",
         tide_station=9410230,
-        tida_station_name="La Jolla, CA",
+        tide_station_name="La Jolla, CA",
         description="La Jolla Cove open water swimming conditions",
     ),
     LocationConfig(
@@ -103,7 +103,7 @@ CONFIG_LIST = [
 CONFIGS = {c.code: c for c in CONFIG_LIST}
 
 
-def Get(code) -> LocationConfig | None:
+def Get(code: str) -> LocationConfig | None:
     if code not in CONFIGS:
         return None
     return CONFIGS[code]

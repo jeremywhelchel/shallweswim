@@ -32,5 +32,6 @@ poetry run pre-commit install
 Tools used:
 
 - Format python code with `black`
-- Type check with `pytype *.py`
+- Type check with `mypy`
+  `poetry run mypy --config-file=pyproject.toml .`
 - HTML/MD/Yaml formatted with `prettier`

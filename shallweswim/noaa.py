@@ -183,8 +183,14 @@ class NoaaApi:
 
         if interpolate:
             # Data is just flood/slack/ebb datapoints. Create a smooth curve
-            # using linear interpolation for simplicity
-            currents = currents.resample("60s").interpolate(method="linear")
+            # using polynomial interpolation if we have enough points, otherwise linear
+            resampled = currents.resample("60s")
+            if len(currents) >= 3:
+                # With 3+ points, use quadratic interpolation for smoother transitions
+                currents = resampled.interpolate("polynomial", order=2)
+            else:
+                # With sparse data, fall back to linear interpolation
+                currents = resampled.interpolate(method="linear")
 
         return cast("pd.DataFrame[CurrentData]", currents)
 

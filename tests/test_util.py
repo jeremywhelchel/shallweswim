@@ -6,7 +6,8 @@ from shallweswim import util
 
 
 class TestData(unittest.TestCase):
-    def test_pivot_year(self):
+
+    def test_pivot_year(self) -> None:
         df = pd.DataFrame(
             {"air_temp": 60, "water_temp": 50},
             index=pd.date_range("2011-06-01", "2023-03-01"),

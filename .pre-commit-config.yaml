@@ -27,3 +27,11 @@ repos:
         entry: poetry run pytest
         pass_filenames: false
         always_run: true
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        language: system
+        entry: poetry run mypy shallweswim/
+        pass_filenames: false
+        always_run: true

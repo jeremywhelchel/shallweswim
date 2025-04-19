@@ -1,10 +1,11 @@
-name: Pytype
+name: "Mypy Type Checking"
+
 on: [push]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    name: Pytype
+    name: Mypy
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
@@ -12,4 +13,4 @@ jobs:
           python-version: "3.12"
       - run: pip install poetry
       - run: poetry install --with dev
-      - run: poetry run pytype $(git ls-files '*.py')
+      - run: poetry run mypy --config-file=pyproject.toml .

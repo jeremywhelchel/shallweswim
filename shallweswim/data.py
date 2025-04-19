@@ -2,6 +2,7 @@
 
 from concurrent import futures
 from typing import cast, Any, Optional, Tuple
+from shallweswim.types import FreshnessInfo, TimeInfo
 import datetime
 import logging
 import pandas as pd
@@ -184,7 +185,7 @@ class Data(object):
         ((time, temp),) = self.live_temps.tail(1)["water_temp"].items()
         return time, temp
 
-    def Freshness(self) -> dict[str, Any]:
+    def Freshness(self) -> FreshnessInfo:
         # XXX Consistent dtype
         # XXX EST timezone for timestamps
         ret = {

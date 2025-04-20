@@ -1,37 +1,63 @@
+# Pre-commit configuration for shallweswim
+# Runs the same checks as GitHub Actions workflows
 repos:
+  # Basic file hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  # Black code formatting
   - repo: https://github.com/psf/black
     rev: 25.1.0
     hooks:
       - id: black
+        language_version: python3
+
+  # Prettier for non-Python files
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: "v4.0.0-alpha.8" # Use the sha or tag you want to point at
+    rev: "v4.0.0-alpha.8"
     hooks:
       - id: prettier
+        types_or: [markdown, yaml, json, html, css, javascript]
+
+  # Poetry validation
   - repo: https://github.com/python-poetry/poetry
-    rev: "2.1.2" # add version here
+    rev: "2.1.2"
     hooks:
       - id: poetry-check
       - id: poetry-lock
-    # - id: poetry-export
-    #   args: ["-f", "requirements.txt", "-o", "requirements.txt"]
+
+  # Local hooks using poetry-managed tools
   - repo: local
     hooks:
-      - id: pytest
-        name: pytest
+      # Run unit tests (fast)
+      - id: pytest-unit
+        name: pytest unit tests
+        description: Run fast unit tests to catch breakages early
         language: system
-        entry: poetry run pytest
+        entry: poetry run pytest -v -k "not integration"
         pass_filenames: false
         always_run: true
-  - repo: local
-    hooks:
+
+      # Type checking - full project
       - id: mypy
-        name: mypy
+        name: mypy type checking
+        description: Check type annotations with mypy
         language: system
-        entry: poetry run mypy shallweswim/
+        entry: poetry run mypy --config-file=pyproject.toml .
         pass_filenames: false
         always_run: true
+
+      # Optionally run integration tests before commit (disabled by default)
+      - id: pytest-integration
+        name: pytest integration tests
+        description: Run integration tests (disabled by default, enable as needed)
+        language: system
+        entry: poetry run pytest -v -m integration --run-integration
+        pass_filenames: false
+        stages: [manual] # Not run by default, use "pre-commit run pytest-integration" to run

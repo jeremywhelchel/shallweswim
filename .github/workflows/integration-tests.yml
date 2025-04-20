@@ -3,7 +3,7 @@ name: Integration Tests
 on:
   # Run daily at midnight UTC
   schedule:
-    - cron: '0 0 * * *'
+    - cron: "0 0 * * *"
   # Allow manual triggering of the workflow
   workflow_dispatch:
   # Optionally run on PR labeled with 'run-integration-tests'
@@ -19,21 +19,21 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.12"
-      
+
       - name: Install Poetry
         run: pip install poetry
-      
+
       - name: Install dependencies
         run: poetry install --with dev
-      
+
       - name: Run integration tests
         run: poetry run pytest -v -m integration --run-integration
-      
+
       - name: Upload test report on failure
         if: failure()
         uses: actions/upload-artifact@v4

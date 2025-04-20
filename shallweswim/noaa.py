@@ -41,12 +41,12 @@ class NoaaApi:
     """
 
     """Client for the NOAA Tides and Currents API.
-    
+
     This class provides methods to fetch tide predictions, current predictions,
     and temperature data from NOAA's CO-OPS API.
-    
+
     API documentation: https://api.tidesandcurrents.noaa.gov/api/prod/
-    
+
     All methods return pandas DataFrames with timestamps localized to the station's
     local time (either standard or daylight time).
     """

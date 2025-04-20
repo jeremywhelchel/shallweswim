@@ -1,15 +1,33 @@
-name: Pytest
+name: Unit Tests
+# Run unit tests on every push to verify code functionality
 on: [push]
 
 jobs:
-  build:
+  unit-tests:
     runs-on: ubuntu-latest
-    name: Pytest
+    name: Run pytest unit tests
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
           python-version: "3.12"
-      - run: pip install poetry
-      - run: poetry install --with dev
-      - run: poetry run pytest
+          
+      - name: Install Poetry
+        run: pip install poetry
+        
+      - name: Install dependencies
+        run: poetry install --with dev
+        
+      - name: Run unit tests
+        run: poetry run pytest -v
+        
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: .pytest_cache
+          retention-days: 7

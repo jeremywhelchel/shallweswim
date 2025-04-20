@@ -22,10 +22,16 @@ Hosted on Google Cloud Run
 
 ## Development
 
-Setup with:
+### Setup
 
-```
+```bash
 # Install poetry from its website (`brew install` version seems problematic on mac)
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Install dependencies
+poetry install
+
+# Set up pre-commit hooks
 poetry run pre-commit install
 ```
 
@@ -64,9 +70,38 @@ Note: Integration tests may occasionally fail if external services are experienc
 
 ## Code Quality
 
-Tools used:
+The project uses the following tools to maintain code quality, both locally and in CI:
 
-- Format python code with `black`
-- Type check with `mypy`
-  `poetry run mypy --config-file=pyproject.toml .`
-- HTML/MD/Yaml formatted with `prettier`
+### Code Formatting
+
+```bash
+# Check formatting without making changes
+poetry run black --check .
+
+# Format all Python files
+poetry run black .
+```
+
+### Type Checking
+
+```bash
+# Run mypy type checking
+poetry run mypy --config-file=pyproject.toml .
+```
+
+### Other Tools
+
+- **prettier**: Format HTML, Markdown, and YAML files
+  ```bash
+  npx prettier --write "**/*.{html,md,yaml,yml}"
+  ```
+
+## Continuous Integration
+
+GitHub Actions workflows automatically verify the following on every push:
+
+- **Unit Tests**: All unit tests pass
+- **Type Checking**: No type errors are found by mypy
+- **Code Formatting**: All Python code follows Black style
+
+Additionally, a separate integration test workflow runs daily to ensure compatibility with external APIs.

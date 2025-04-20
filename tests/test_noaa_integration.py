@@ -29,6 +29,7 @@ TEMP_STATION = NYC_BATTERY
 
 # Basic validation functions
 
+
 def validate_tide_data(df: pd.DataFrame) -> None:
     """Validate structure and content of tide data."""
     assert isinstance(df, pd.DataFrame)
@@ -37,15 +38,19 @@ def validate_tide_data(df: pd.DataFrame) -> None:
     assert "type" in df.columns
     assert df["type"].isin(["high", "low"]).all()
     assert pd.api.types.is_float_dtype(df["prediction"])
-    
+
+
 def validate_current_data(df: pd.DataFrame) -> None:
     """Validate structure and content of current data."""
-    assert isinstance(df, pd.DataFrame) 
+    assert isinstance(df, pd.DataFrame)
     assert not df.empty
     assert "velocity" in df.columns
     assert pd.api.types.is_float_dtype(df["velocity"])
 
-def validate_temperature_data(df: pd.DataFrame, product: Literal["water_temperature", "air_temperature"]) -> None:
+
+def validate_temperature_data(
+    df: pd.DataFrame, product: Literal["water_temperature", "air_temperature"]
+) -> None:
     """Validate structure and content of temperature data."""
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
@@ -57,47 +62,48 @@ def validate_temperature_data(df: pd.DataFrame, product: Literal["water_temperat
 
 # Integration tests
 
+
 @pytest.mark.integration
-def test_live_tides_fetch(check_api_availability):
+def test_live_tides_fetch(check_api_availability: bool) -> None:
     """Test fetching real tide data from NOAA API."""
     df = NoaaApi.Tides(station=TIDE_STATION)
     validate_tide_data(df)
-    
+
     # Verify we got multiple tide predictions
     # At least 4 tide events in a 3-day period (yesterday to tomorrow)
     assert len(df) >= 4
-    
+
     # Check that timestamps are ordered correctly
     assert df.index.is_monotonic_increasing
-    
+
     # Check that we have some predictions in the past and some in the future
     now = pd.Timestamp.now()
     assert (df.index < now).any(), "Should have at least one past prediction"
     assert (df.index > now).any(), "Should have at least one future prediction"
-    
+
     # Verify that high and low tides alternate (or at least both exist)
     assert df["type"].value_counts()["high"] > 0, "Should have high tides"
     assert df["type"].value_counts()["low"] > 0, "Should have low tides"
 
 
 @pytest.mark.integration
-def test_live_currents_fetch(check_api_availability):
+def test_live_currents_fetch(check_api_availability: bool) -> None:
     """Test fetching real current data from NOAA API."""
     df = NoaaApi.Currents(station=CURRENT_STATION)
     validate_current_data(df)
-    
+
     # Verify we have interpolated current data
     # Should have many points over 3 days
-    assert len(df) > 24  
-    
+    assert len(df) > 24
+
     # Check that timestamps are ordered correctly
     assert df.index.is_monotonic_increasing
-    
+
     # Check that we have some predictions in the past and some in the future
     now = pd.Timestamp.now()
     assert (df.index < now).any(), "Should have at least one past prediction"
     assert (df.index > now).any(), "Should have at least one future prediction"
-    
+
     # Verify we have both positive and negative currents (flood and ebb)
     assert (df["velocity"] > 0).any(), "Should have some flood currents"
     assert (df["velocity"] < 0).any(), "Should have some ebb currents"
@@ -105,25 +111,28 @@ def test_live_currents_fetch(check_api_availability):
 
 @pytest.mark.integration
 @pytest.mark.parametrize("product", ["water_temperature", "air_temperature"])
-def test_live_temperature_fetch(check_api_availability, product):
+def test_live_temperature_fetch(
+    check_api_availability: bool,
+    product: Literal["water_temperature", "air_temperature"],
+) -> None:
     """Test fetching real temperature data from NOAA API."""
     # Get data for the last 3 days
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=3)
-    
+
     try:
         df = NoaaApi.Temperature(
             station=TEMP_STATION,  # Use the station known to have temperature data
             product=product,
             begin_date=begin_date,
-            end_date=end_date
+            end_date=end_date,
         )
         validate_temperature_data(df, product)
-        
+
         # Verify we got reasonable amount of data for a 3-day period
         # Usually at least hourly readings
         assert len(df) >= 5, f"Expected several {product} readings over 3 days"
-        
+
         # Check that timestamps are ordered correctly
         assert df.index.is_monotonic_increasing
     except NoaaDataError as e:
@@ -133,12 +142,12 @@ def test_live_temperature_fetch(check_api_availability, product):
 
 
 @pytest.mark.integration
-def test_live_temperature_intervals(check_api_availability):
+def test_live_temperature_intervals(check_api_availability: bool) -> None:
     """Test temperature data with different interval settings."""
     # Get data for the last 3 days
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=1)
-    
+
     try:
         # Test hourly interval
         df_hourly = NoaaApi.Temperature(
@@ -146,34 +155,36 @@ def test_live_temperature_intervals(check_api_availability):
             product="air_temperature",  # Air temperature is more commonly available
             begin_date=begin_date,
             end_date=end_date,
-            interval="h"  # hourly
+            interval="h",  # hourly
         )
-        
+
         # Test default interval (6-minute)
         df_default = NoaaApi.Temperature(
             station=TEMP_STATION,  # Use the station known to have temperature data
             product="air_temperature",  # Air temperature is more commonly available
             begin_date=begin_date,
             end_date=end_date,
-            interval=None  # default 6-minute
+            interval=None,  # default 6-minute
         )
-        
+
         # Validate both datasets
         validate_temperature_data(df_hourly, "air_temperature")
         validate_temperature_data(df_default, "air_temperature")
-        
+
         # Hourly should have fewer points than default 6-minute interval
         # Note: This assumes that the data is actually available at both intervals
         # If this test fails, it may be because the station only provides hourly data
         if len(df_default) > 0 and len(df_hourly) > 0:
-            assert len(df_default) >= len(df_hourly), "Default interval should have more points than hourly"
+            assert len(df_default) >= len(
+                df_hourly
+            ), "Default interval should have more points than hourly"
     except NoaaDataError as e:
         # Skip test if data is not available
         pytest.skip(f"Temperature interval data not available: {e}")
 
 
 @pytest.mark.integration
-def test_api_retries(check_api_availability):
+def test_api_retries(check_api_availability: bool) -> None:
     """Test API retry mechanism with real requests."""
     # Simply test that we can make a successful request
     # This is not a proper test of the retry logic, but it at least verifies
@@ -184,7 +195,7 @@ def test_api_retries(check_api_availability):
 
 
 @pytest.mark.integration
-def test_consecutive_api_calls(check_api_availability):
+def test_consecutive_api_calls(check_api_availability: bool) -> None:
     """Test making consecutive API calls to validate rate limiting handling."""
     # Make multiple API calls in succession
     for _ in range(3):
@@ -192,5 +203,5 @@ def test_consecutive_api_calls(check_api_availability):
         validate_tide_data(df)
         # Small delay to avoid hitting rate limits
         time.sleep(0.5)
-    
+
     # If we got here without exceptions, the API handled consecutive calls properly

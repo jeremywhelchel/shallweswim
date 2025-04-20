@@ -1,0 +1,45 @@
+name: Integration Tests
+# Run integration tests on a schedule and manual trigger
+on:
+  # Run daily at midnight UTC
+  schedule:
+    - cron: '0 0 * * *'
+  # Allow manual triggering of the workflow
+  workflow_dispatch:
+  # Optionally run on PR labeled with 'run-integration-tests'
+  pull_request:
+    types: [labeled]
+
+jobs:
+  integration-tests:
+    # Only run on PRs with specific label
+    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-integration-tests') }}
+    runs-on: ubuntu-latest
+    name: Run NOAA API Integration Tests
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+      
+      - name: Install Poetry
+        run: pip install poetry
+      
+      - name: Install dependencies
+        run: poetry install --with dev
+      
+      - name: Run integration tests
+        run: poetry run pytest -v -m integration --run-integration
+      
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-report
+          path: |
+            .pytest_cache
+            pytest-report.xml
+          retention-days: 7

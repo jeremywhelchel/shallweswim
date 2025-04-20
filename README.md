@@ -29,6 +29,41 @@ Setup with:
 poetry run pre-commit install
 ```
 
+## Testing
+
+The project uses pytest for both unit and integration tests:
+
+### Unit Tests
+
+Run unit tests (fast, no external dependencies):
+
+```bash
+# Run all unit tests
+poetry run pytest
+
+# Run with verbose output
+poetry run pytest -v
+
+# Run specific test file
+poetry run pytest tests/test_noaa.py
+```
+
+### Integration Tests
+
+Integration tests connect to live external services (like the NOAA API) to verify compatibility. These tests are marked with `@pytest.mark.integration` and are skipped by default. They must be explicitly enabled with the `--run-integration` flag:
+
+```bash
+# Run all integration tests
+poetry run pytest -v -m integration --run-integration
+
+# Run both unit and integration tests
+poetry run pytest -v --run-integration
+```
+
+Note: Integration tests may occasionally fail if external services are experiencing issues or if the expected data is temporarily unavailable.
+
+## Code Quality
+
 Tools used:
 
 - Format python code with `black`

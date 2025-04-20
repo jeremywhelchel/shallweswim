@@ -10,6 +10,9 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: "3.12"
-      - run: pip install --upgrade pip
-      - run: pip install black
-      - run: black --diff --check $(git ls-files '*.py')
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Run Black formatter
+        run: poetry run black --diff --check .

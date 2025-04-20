@@ -1,18 +1,38 @@
 """Application configuration."""
 
-import pydantic
+from typing import Annotated, List, Optional
+
+from pydantic import BaseModel, Field
 
 
-class LocationConfig(pydantic.BaseModel):
-    code: str
+class LocationConfig(BaseModel):
+    """Configuration for a swimming location."""
+
+    code: Annotated[
+        str,
+        Field(
+            min_length=3,
+            max_length=3,
+            pattern=r"^[a-z]{3}$",
+            description="3-letter lowercase location code",
+        ),
+    ]
     name: str
 
     swim_location: str
     swim_location_link: str
 
     description: str
-    latitude: float
-    longitude: float
+    latitude: Annotated[
+        float,
+        Field(ge=-90, le=90, description="Latitude in decimal degrees (-90 to 90)"),
+    ]
+    longitude: Annotated[
+        float,
+        Field(
+            ge=-180, le=180, description="Longitude in decimal degrees (-180 to 180)"
+        ),
+    ]
     # TODO: may need to add more windy params (e.g. zoom, aspect ratio)
     timezone: str
 
@@ -20,13 +40,23 @@ class LocationConfig(pydantic.BaseModel):
 
     # NOAA parameters
     # Water/met stations are 7 digit ints. Currents station ids are strings.
-    temp_station: int | None = None
-    tide_station: int | None = None
+    temp_station: Annotated[
+        Optional[int],
+        Field(
+            ge=1000000, le=9999999, description="NOAA temperature station ID (7 digits)"
+        ),
+    ] = None
+    tide_station: Annotated[
+        Optional[int],
+        Field(ge=1000000, le=9999999, description="NOAA tide station ID (7 digits)"),
+    ] = None
     # XXX still need to generalize currents
-    currents_stations: list[str] | None = None
+    currents_stations: Optional[List[Annotated[str, Field(min_length=1)]]] = None
 
-    temp_station_name: str | None = None
-    tide_station_name: str | None = None
+    temp_station_name: Optional[str] = None
+    tide_station_name: Optional[str] = None
+
+    # No custom validators needed - using Pydantic's built-in constraints
 
 
 CONFIG_LIST = [
@@ -103,7 +133,13 @@ CONFIG_LIST = [
 CONFIGS = {c.code: c for c in CONFIG_LIST}
 
 
-def Get(code: str) -> LocationConfig | None:
-    if code not in CONFIGS:
-        return None
-    return CONFIGS[code]
+def Get(code: str) -> Optional[LocationConfig]:
+    """Get location config by 3-letter code.
+
+    Args:
+        code: 3-letter location code
+
+    Returns:
+        LocationConfig if found, None otherwise
+    """
+    return CONFIGS.get(code)

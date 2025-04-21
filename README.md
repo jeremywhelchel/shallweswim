@@ -1,10 +1,28 @@
-# shallweswim.today
+# Shall We Swim Today?
 
-Website to display swimming conditions for open water swim locations, including Coney Island / Brighton Beach and La Jolla Cove.
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
+[![Poetry](https://img.shields.io/badge/Poetry-Managed-blueviolet)](https://python-poetry.org/)
+
+**A web application that helps open water swimmers make informed decisions about swim conditions.**
+
+[shallweswim.today](https://shallweswim.today) provides real-time tide, current, and temperature data for popular open water swimming locations including:
+
+- Coney Island / Brighton Beach (NYC)
+- La Jolla Cove (San Diego)
+
+## Features
+
+- **Real-time conditions** from NOAA APIs
+- **Tide predictions** with high/low tide times and heights
+- **Current velocity** data with flood/ebb direction
+- **Water temperature trends** (48-hour, 2-month, and multi-year)
+- **Mobile-friendly interface** for on-the-go swimmers
+- **JSON API** for programmatic access to swim conditions
 
 ## Architecture
 
-Shall WeSwim is a FastAPI application with a simple architecture:
+Shall We Swim is a FastAPI application with a simple architecture:
 
 ### Core Components
 
@@ -25,30 +43,57 @@ Shall WeSwim is a FastAPI application with a simple architecture:
 4. **API Endpoints**: Processed data is available via JSON endpoints
 5. **Web UI**: Templates display the data with visualizations
 
-## Run locally (directly)
+## Getting Started
 
-1. `poetry install`
-1. `PORT=12345 poetry run python shallweswim/main.py`
-1. Visit http://localhost:12345
+### Prerequisites
 
-## Run locally (via Docker)
+- Python 3.12
+- [Poetry](https://python-poetry.org/) for dependency management
+- Docker (optional, for containerized deployment)
 
-1. `docker build -t shallweswim .`
-1. `docker run -e PORT=80 -p 12345:80 shallweswim`
-1. Visit http://localhost:12345
+### Run Locally
 
-## Deploy
+```bash
+# Clone the repository
+git clone https://github.com/jeremywhelchel/shallweswim.git
+cd shallweswim
 
-Hosted on Google Cloud Run
+# Install dependencies
+poetry install
 
-1. Run `./build_and_deploy.sh`
+# Run the development server
+PORT=12345 poetry run python shallweswim/main.py
+```
+
+Then visit http://localhost:12345 in your browser.
+
+### Run with Docker
+
+```bash
+# Build the Docker image
+docker build -t shallweswim .
+
+# Run the container
+docker run -e PORT=80 -p 12345:80 shallweswim
+```
+
+Then visit http://localhost:12345 in your browser.
+
+## Deployment
+
+The application is hosted on Google Cloud Run:
+
+```bash
+# Deploy to Google Cloud Run
+./build_and_deploy.sh
+```
 
 ## Development
 
 ### Setup
 
 ```bash
-# Install poetry from its website (`brew install` version seems problematic on mac)
+# Install Poetry (recommended method)
 curl -sSL https://install.python-poetry.org | python3 -
 
 # Install dependencies
@@ -58,81 +103,58 @@ poetry install
 poetry run pre-commit install
 ```
 
-## Testing
+### Testing and Code Quality
 
-The project uses pytest for both unit and integration tests:
-
-### Unit Tests
-
-Run unit tests (fast, no external dependencies):
+The project uses pytest for tests and several tools to maintain code quality. These checks are configured as pre-commit hooks:
 
 ```bash
-# Run all unit tests
-poetry run pytest
+# Run unit tests (excluding integration tests)
+poetry run pytest -v -k "not integration"
 
-# Run with verbose output
-poetry run pytest -v
-
-# Run specific test file
-poetry run pytest tests/test_noaa.py
-```
-
-### Integration Tests
-
-Integration tests connect to live external services (like the NOAA API) to verify compatibility. These tests are marked with `@pytest.mark.integration` and are skipped by default. They must be explicitly enabled with the `--run-integration` flag:
-
-```bash
-# Run all integration tests
+# Run integration tests (connects to external APIs)
 poetry run pytest -v -m integration --run-integration
 
-# Run both unit and integration tests
-poetry run pytest -v --run-integration
-```
-
-Note: Integration tests may occasionally fail if external services are experiencing issues or if the expected data is temporarily unavailable.
-
-## Code Quality
-
-The project uses the following tools to maintain code quality, both locally and in CI:
-
-### Code Formatting
-
-```bash
-# Check formatting without making changes
-poetry run black --check .
-
-# Format all Python files
-poetry run black .
-```
-
-### Type Checking
-
-```bash
-# Run mypy type checking
+# Run type checking
 poetry run mypy --config-file=pyproject.toml .
+
+# Run linting to detect unused code
+poetry run pylint shallweswim/ tests/
+
+# Format code with Black
+poetry run black .
+
+# Run all pre-commit hooks
+poetry run pre-commit run --all-files
 ```
 
-### Linting
+Additional testing commands:
 
 ```bash
-# Check for unused imports, variables, etc.
-poetry run pylint --disable=all --enable=W0611,W0612,W0613,W0614,W0641,E0704,C0415,R0801 file.py
+# Run with code coverage
+poetry run pytest --cov=shallweswim
 
-# Check entire codebase
-poetry run pylint --disable=all --enable=W0611,W0612,W0613,W0614,W0641,E0704,C0415,R0801 --recursive=y shallweswim/ tests/
-
-# Run the pre-commit hook
-poetry run pre-commit run pylint
+# Run specific NOAA API integration tests
+poetry run pytest tests/test_noaa_integration.py -v --run-integration
 ```
 
-The pylint configuration (`.pylintrc`) is specifically focused on detecting unused code while ignoring other stylistic issues that are already handled by Black and mypy. The pre-commit hook is configured to fail if unused imports, variables, or arguments are detected.
+Note: Integration tests connect to live NOAA APIs and may occasionally fail if external services are experiencing issues or if the expected data is temporarily unavailable.
 
-### Other Tools
+## API Documentation
 
-- **prettier**: Format HTML, Markdown, and YAML files
-  ```bash
-  npx prettier --write "**/*.{html,md,yaml,yml}"
-  ```
+When running locally, API documentation is available at:
+
+- Swagger UI: http://localhost:12345/docs
+- ReDoc: http://localhost:12345/redoc
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgements
+
+- [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) for tide, current, and temperature data
+- [FastAPI](https://fastapi.tiangolo.com/) for the web framework
+- [Matplotlib](https://matplotlib.org/) for data visualization
 
 ## Continuous Integration
 

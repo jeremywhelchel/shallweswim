@@ -116,16 +116,22 @@ async def location_water_current(
         context=dict(
             config=location_config,
             request=request,
+            shift=shift,  # Pass the shift parameter to the template
         ),
     )
 
 
 # Legacy route for backward compatibility
 @app.get("/current")
-async def water_current(
-    request: fastapi.Request, shift: int = 0
-) -> responses.RedirectResponse:
-    """Redirect to the locationized currents page."""
+async def water_current(shift: int = 0) -> responses.RedirectResponse:
+    """Redirect to the locationized currents page.
+
+    Args:
+        shift: Time shift in minutes from current time
+
+    Returns:
+        Redirect response to the location-specific currents page
+    """
     # Redirect to the locationized version with the same shift parameter
     redirect_url = f"/nyc/currents"
     if shift != 0:

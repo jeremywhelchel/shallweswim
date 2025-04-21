@@ -30,7 +30,7 @@ TEST_LOCATIONS = [NYC_LOCATION, SAN_LOCATION]
 
 
 @pytest.fixture(scope="module")
-def api_client(check_api_availability: Any) -> TestClient:
+def api_client(_check_api_availability: Any) -> TestClient:
     """
     Create a FastAPI test client that initializes data for all test locations.
     This directly mirrors what the lifespan function does in the main application,

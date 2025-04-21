@@ -174,7 +174,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             SVG image response with tide and current visualization
         """
         # Check if location exists
-        cfg = validate_location(location)
+        _ = validate_location(location)  # Validates location exists, result not needed
 
         # Calculate effective time with shift
         ts = util.EffectiveTime(shift)

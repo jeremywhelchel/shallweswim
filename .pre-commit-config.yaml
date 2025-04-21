@@ -51,10 +51,9 @@ repos:
         name: pylint unused code check
         description: Detect unused imports, variables, and dead code
         language: system
-        entry: bash -c 'poetry run pylint shallweswim/ tests/ || exit 0'
+        entry: poetry run pylint shallweswim/ tests/
         pass_filenames: false
         always_run: true
-        # Using a bash wrapper to ensure the hook always exits with code 0
 
       # Optionally run integration tests before commit (disabled by default)
       - id: pytest-integration

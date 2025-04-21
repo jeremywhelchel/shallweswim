@@ -1,265 +1,277 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Shall We Swim Today?</title>
-    <style>
-      h1,
-      h2,
-      h3,
-      h4,
-      h5,
-      h6 {
-        font-family: "Helvetica", "Arial", sans-serif;
+{% extends "base.html" %} {% block title %}Current Predictions - Shall We Swim
+Today?{% endblock %} {% block description %}Current predictions and water
+conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
+{{ super() }}
+<style>
+  .plot {
+    width: 100%;
+    max-width: 980px;
+    display: block;
+  }
+
+  /* Navigation controls */
+  .time-controls {
+    margin: 15px 0;
+  }
+  .time-controls a {
+    margin: 0 10px;
+    padding: 5px 10px;
+    text-decoration: none;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+  }
+  .time-controls a:hover {
+    background-color: #e0e0e0;
+  }
+
+  /* Current information */
+  .current-info {
+    margin: 20px 0;
+    font-size: 18px;
+    line-height: 1.5;
+  }
+  .current-info b {
+    font-weight: bold;
+  }
+  .direction-info {
+    margin-top: 10px;
+    font-style: italic;
+  }
+</style>
+{% endblock %} {% block head_extra %}
+<script>
+  // Function to fetch current prediction data
+  async function fetchCurrentsData() {
+    try {
+      const response = await fetch(
+        '/api/{{ config.code }}/currents{{ "?shift=" + request.query_params.get("shift", "") if request.query_params.get("shift") else "" }}',
+      );
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
       }
-      .title {
-        margin-bottom: 0px;
-      }
-      .infobox {
-        padding-left: 20px;
-      }
+      const data = await response.json();
+      updateCurrentsDisplay(data);
+    } catch (error) {
+      console.error("Error fetching currents data:", error);
+    }
+  }
 
-      .plot {
-        width: 100%;
-        max-width: 980px;
-        display: block;
-      }
+  // Function to update the display with currents data
+  function updateCurrentsDisplay(data) {
+    document.getElementById("timestamp").textContent = new Date(
+      data.timestamp,
+    ).toLocaleString();
+    document.getElementById("direction").textContent = data.current.direction;
+    document.getElementById("magnitude").textContent =
+      data.current.magnitude.toFixed(1);
+    document.getElementById("state").textContent =
+      data.current.state_description;
 
-      /* Small screens (Phones) */
-      @media (max-width: 600px) {
-        .current {
-          font-size: 24px;
-        }
-        .note {
-          font-size: 12px;
-        }
-        .tides {
-          font-size: 15px;
-        }
-        .webcamdiv {
-          max-width: 950px;
-          height: 220px;
-        }
-      }
+    // Update navigation links
+    const prevLink = document.getElementById("prev-hour-link");
+    const nextLink = document.getElementById("next-hour-link");
+    if (prevLink)
+      prevLink.href = `/{{ config.code }}/currents?shift=${data.navigation.prev_hour}`;
+    if (nextLink)
+      nextLink.href = `/{{ config.code }}/currents?shift=${data.navigation.next_hour}`;
+  }
 
-      /* Large screens */
-      @media (min-width: 601px) {
-        .current {
-          font-size: 32px;
-        }
-        .note {
-          font-size: 18px;
-        }
-        .tides {
-          font-size: 24px;
-        }
-        .webcamdiv {
-          max-width: 950px;
-          height: 534px;
-        }
-      }
+  // Load data when page loads
+  document.addEventListener("DOMContentLoaded", fetchCurrentsData);
+</script>
+{% endblock %} {% block header %}
+<h1 class="title">shall we swim today?</h1>
+<div>
+  <span class="note">
+    ...at
+    <a href="{{ config.swim_location_link|default('#') }}"
+      >{{ config.swim_location }}</a
+    >
+  </span>
+  <br />
+  <span class="note">
+    <a href="/{{ config.code }}">Back to main page</a>
+  </span>
+</div>
+{% endblock %} {% block tides_temperature %}{% endblock %} {% block content %}
+<h2>Current Predictions</h2>
+<div>
+  <p>
+    This page provides current predictions and water conditions for {{
+    config.swim_location }}.
+  </p>
+  <div class="time-controls">
+    Change the time:
+    <a id="prev-hour-link" href="#">-1 hour</a>
+    <a href="/{{ config.code }}/currents">Current time</a>
+    <a id="next-hour-link" href="#">+1 hour</a>
+  </div>
+</div>
 
-      .webcamframe {
-        /*position: absolute;*/
-        top: 0;
-        left: 0;
-        bottom: 0;
-        right: 0;
-        border: 0;
-        width: 100%;
-        height: 100%;
-        display: block;
-      }
-      .windyframe {
-        /*
-      top: 0;
-      left: 0;
-      bottom: 0;
-      right: 0;
-      border: 1;
-      */
-        /*
-      padding-left: 13px;
-      width: 924px;
-      height: 450px;
-       */
-        width: 100%;
-        max-width: 950px;
-        display: block;
-        /*width="640px" height="450px"*/
-        height: 350px;
-      }
+<h2>Current Prediction</h2>
+<div class="current-info">
+  At <span id="timestamp">loading time...</span>, we estimate the current is
+  <b><span id="direction">loading</span></b> at
+  <b><span id="magnitude">0.0</span> knots</b> and is
+  <b><span id="state">loading</span></b
+  >.
 
-      #snow {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        pointer-events: none;
-        z-index: 1000;
-      }
-    </style>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000099" />
-    <meta
-      name="description"
-      content="Coney Island Brighton Beach open water swimming conditions"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="180x180"
-      href="/static/apple-touch-icon.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="/static/favicon-32x32.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="/static/favicon-16x16.png"
-    />
-    <link rel="manifest" href="/static/manifest.json" />
-  </head>
-  <body>
-    <h1 class="title">shall we swim today?</h1>
-    <div>
-      <span class="note">
-        ...at
-        <a href="https://cibbows.org/about/essentials/"
-          >Grimaldo's Chair</a
-        > </span
-      ><br />
-      <span class="note">
-        <a href="/">Back to main page</a>
-      </span>
-    </div>
-
-    <h2>Note</h2>
-    <div>
-      This is a work-in-progress. Please don't take it too seriously yet. The
-      goal is to provide a rough estimation of what the current is doing at a
-      given time, and to illustrate it in a helpful way.
-      <br />
-      Feedback welcome.
-      <br /><br />
-      Change the time:
-      <a href="/current?shift={{ back }}">-1 hr</a>
-      <a href="/current">now</a>
-      <a href="/current?shift={{ fwd }}">+1 hr</a>
-    </div>
-
-    <h2>Current Prediction</h2>
-    <div class="tides">
-      At {{ ts|fmt_datetime }}, we estimate the current is
-      <b>{{ ef }}</b> at <b>{{ magnitude }} knots</b> and is <b>{{ msg }}</b>.
-      <br />
-      {% if ef == "flooding" %} An incoming flood tide will be going from west
-      to east at Grimaldos Chair {% elif ef == "ebbing" %} An outgoing ebb tide
-      will be going from east to west at Grimaldos Chair {% else %} ERROR {%
-      endif %}
-    </div>
-
-    <h2>Current map</h2>
-    <div>
-      <img
-        class="plot"
-        src="{{ current_chart_filename }}"
-        alt="Area tide chart"
-      />
-      The size of the arrows approximate the strength of the current
-    </div>
-
-    <h2>Tide Current Projection</h2>
-    <img
-      class="plot"
-      src="/current_tide_plot?shift={{ shift }}"
-      alt="Tide and Current plot"
-    />
-    The currents here <i>lead</i> the tide by about 2 hours. The max flood
-    current is 2 hours ahead of high tide, and the max ebb current is 2 hours
-    ahead of low tide. <br /><br />
-
-    A positive current value (above green dashed line) indicates the current is
-    flooding. A negative current value indicates the current is ebbing.
-
-    <h2>Legacy Map - {{ map_title }}</h2>
-    <div>
-      Many years ago, the US Deptartment of Commerce published hourly tides for
-      the NY harbor. This is the most closely matching chart, as it is
-      <strong>{{ last_tide_hrs_ago }} hours</strong> since the last
-      <strong>{{ last_tide_type }}</strong> tide.
-    </div>
-    <br />
-    <div>
-      <img
-        class="plot"
-        src="static/tidecharts/{{ tide_chart_filename }}"
-        alt="Historic area tide chart"
-      />
-    </div>
-
-    <h2>Where do the current estimates come from?</h2>
-    <div>
-      There are two relatively nearby NOAA current prediction stations at
-      opposite ends of the waters off Coney/Brighton, which gives us a ebb/flow
-      curve. We then take a mean of those predictions to estimate the current in
-      our local swimming area. Note that this just provides a predicted current
-      speed and ebb/flow. The actual direction shown here is based on local
-      knowledge (and could be improved still!). In the absence of a closer
-      current prediction, this seems the best approach.
-      <br /><br />
-      NOTE! The current at our beach effectively reverses near the Aquarium (see
-      the map). The direction of the current near the pier will be the opposite
-      of the current at Grimaldo's.
-      <br /><br />
-      This is an overall estimate for the area. Since it is based on NOAA
-      current precitions, it accounts for moon phase and lunar tidal cycles.
-      However this can not account for wind or local effects, e.g. jetty
-      interactions.
-    </div>
-
-    <h2>How is this useful?</h2>
-    <div>
-      Generally you should swim into the current at the start of your swim when
-      you are fresh, so that you will have an easier time on the return trip.
-      Longer swims that occur near a tide flip may want to take that into
-      account...so the first half of the swim is with one part of the tide (e.g.
-      ride the flood eastward to Manhattan Beach), and the second half will take
-      the opposite (e.g. riding the ebb on the return).
-    </div>
-
-    <h2>Sources</h2>
+  <div class="direction-info">
+    {% if config.code == "nyc" %}
+    <p>At Grimaldo's Chair:</p>
     <ul>
       <li>
-        Current predictions:
-        <a
-          href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=NYH1905_12"
-        >
-          Rockaway Inlet Entrance (NYH1905) Depth: 5 feet</a
-        >
-        and
-        <a
-          href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=ACT3876"
-        >
-          Coney Island Channel, west end</a
-        >
-        (NOAA Tides and Currents)
+        A <b>flooding</b> current flows from west to east (Coney Island →
+        Manhattan Beach)
       </li>
       <li>
-        Base beach map by
-        <a href="http://www.sheahartigan.com">Liam Hartigan</a>
-      </li>
-      <li>
-        <a href="https://catalog.hathitrust.org/Record/011421935">
-          Tidal current charts, New York Harbor</a
-        >
-        U.S. Department of Commerce, Coast and Geodetic Survey (1946)
+        An <b>ebbing</b> current flows from east to west (Manhattan Beach →
+        Coney Island)
       </li>
     </ul>
-  </body>
-</html>
+    {% else %}
+    <p>Current flow information for {{ config.swim_location }}</p>
+    {% endif %}
+  </div>
+</div>
+
+<h2>Current Map</h2>
+<div>
+  <img class="plot" id="current-chart" src="" alt="Area current chart" />
+  <p>The size of the arrows approximate the strength of the current</p>
+</div>
+
+<h2>Tide Current Projection</h2>
+<img class="plot" id="tide-current-plot" src="" alt="Tide and Current plot" />
+<p>
+  The currents here <i>lead</i> the tide by about 2 hours. The max flood current
+  is 2 hours ahead of high tide, and the max ebb current is 2 hours ahead of low
+  tide.
+</p>
+<p>
+  A positive current value (above green dashed line) indicates the current is
+  flooding. A negative current value indicates the current is ebbing.
+</p>
+
+<h2 id="legacy-map-title">Legacy Map</h2>
+<div>
+  <p>
+    Many years ago, the US Department of Commerce published hourly tides for the
+    NY harbor. These charts are displayed based on time since the last tide.
+  </p>
+</div>
+<div>
+  <img class="plot" id="legacy-chart" src="" alt="Historic area tide chart" />
+</div>
+
+<script>
+  // Update chart images when current data is loaded
+  function updateCharts(data) {
+    // Update current chart
+    document.getElementById("current-chart").src = data.current_chart_filename;
+
+    // Update tide current plot
+    document.getElementById("tide-current-plot").src =
+      `/api/${data.location.code}/current_tide_plot?shift=${data.navigation.shift}`;
+
+    // Update legacy chart
+    const legacyChart = document.getElementById("legacy-chart");
+    legacyChart.src = `/static/tidecharts/${data.legacy_chart.chart_filename}`;
+
+    // Update legacy map title
+    document.getElementById("legacy-map-title").textContent =
+      `Legacy Map - ${data.legacy_chart.map_title}`;
+  }
+
+  // Extend the updateCurrentsDisplay function
+  const originalUpdateFunction = updateCurrentsDisplay;
+  updateCurrentsDisplay = function (data) {
+    originalUpdateFunction(data);
+    updateCharts(data);
+  };
+</script>
+
+<h2>Where do the current estimates come from?</h2>
+<div>
+  {% if config.code == "nyc" %}
+  <p>
+    There are two relatively nearby NOAA current prediction stations at opposite
+    ends of the waters off Coney/Brighton, which gives us a ebb/flow curve. We
+    then take a mean of those predictions to estimate the current in our local
+    swimming area. Note that this just provides a predicted current speed and
+    ebb/flow. The actual direction shown here is based on local knowledge (and
+    could be improved still!). In the absence of a closer current prediction,
+    this seems the best approach.
+  </p>
+  <p>
+    <strong>NOTE!</strong> The current at our beach effectively reverses near
+    the Aquarium (see the map). The direction of the current near the pier will
+    be the opposite of the current at Grimaldo's.
+  </p>
+  {% else %}
+  <p>
+    Current predictions are based on NOAA current stations relevant to {{
+    config.swim_location }}.
+  </p>
+  {% endif %}
+  <p>
+    This is an overall estimate for the area. Since it is based on NOAA current
+    predictions, it accounts for moon phase and lunar tidal cycles. However this
+    can not account for wind or local effects, e.g. jetty interactions.
+  </p>
+</div>
+
+<h2>How is this useful?</h2>
+<div>
+  <p>
+    Generally you should swim into the current at the start of your swim when
+    you are fresh, so that you will have an easier time on the return trip.
+    Longer swims that occur near a tide flip may want to take that into
+    account...so the first half of the swim is with one part of the tide, and
+    the second half will take the opposite direction.
+  </p>
+  {% if config.code == "nyc" %}
+  <p>
+    For example, ride the flood eastward to Manhattan Beach, and the ebb on the
+    return.
+  </p>
+  {% endif %}
+</div>
+
+<h2>Sources</h2>
+{% if config.code == "nyc" %}
+<ul>
+  <li>
+    Current predictions:
+    <a
+      href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=NYH1905_12"
+    >
+      Rockaway Inlet Entrance (NYH1905) Depth: 5 feet</a
+    >
+    and
+    <a
+      href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=ACT3876"
+    >
+      Coney Island Channel, west end</a
+    >
+    (NOAA Tides and Currents)
+  </li>
+  <li>
+    Base beach map by
+    <a href="http://www.sheahartigan.com">Liam Hartigan</a>
+  </li>
+  <li>
+    <a href="https://catalog.hathitrust.org/Record/011421935">
+      Tidal current charts, New York Harbor</a
+    >
+    U.S. Department of Commerce, Coast and Geodetic Survey (1946)
+  </li>
+</ul>
+{% else %}
+<ul>
+  <li>
+    Current predictions from NOAA Tides and Currents stations near {{
+    config.location.swim_location }}.
+  </li>
+</ul>
+{% endif %} {% endblock %}

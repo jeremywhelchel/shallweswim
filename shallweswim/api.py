@@ -107,6 +107,34 @@ def register_routes(app: fastapi.FastAPI, data: dict[str, data_lib.Data]) -> Non
         # Return freshness information
         return data[location].Freshness()
 
+    @app.get("/api/{location}/current_tide_plot")
+    async def current_tide_plot(
+        location: str, shift: int = 0
+    ) -> fastapi.responses.Response:
+        """Generate and serve a tide and current plot for the specified location.
+
+        Args:
+            location: Location code (e.g., "nyc", "san")
+            shift: Time shift in minutes from current time
+
+        Returns:
+            SVG image response with tide and current visualization
+        """
+        # Check if location exists
+        cfg = validate_location(location)
+
+        # Calculate effective time with shift
+        ts = util.EffectiveTime(shift)
+
+        # Generate the tide/current plot
+        image = plot.GenerateTideCurrentPlot(
+            data[location].tides, data[location].currents, ts
+        )
+        assert image
+        return fastapi.responses.Response(
+            content=image.getvalue(), media_type="image/svg+xml"
+        )
+
     @app.get("/api/{location}/currents", response_model=CurrentsResponse)
     async def location_currents(location: str, shift: int = 0) -> CurrentsResponse:
         """API endpoint that returns current predictions for a specific location.
@@ -187,6 +215,6 @@ def register_routes(app: fastapi.FastAPI, data: dict[str, data_lib.Data]) -> Non
                 "next_hour": fwd,
                 "prev_hour": back,
                 "current_api_url": f"/api/{location}/currents",
-                "plot_url": f"/current_tide_plot?shift={shift}",
+                "plot_url": f"/api/{location}/current_tide_plot?shift={shift}",
             },
         )

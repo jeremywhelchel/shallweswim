@@ -21,7 +21,7 @@ import uvicorn
 from fastapi import HTTPException, responses, staticfiles, templating
 
 # Local imports
-from shallweswim import config, data as data_lib, plot, api, util
+from shallweswim import config, data as data_lib, api
 
 
 data: dict[str, data_lib.Data] = {}
@@ -155,66 +155,52 @@ async def embed(request: fastapi.Request) -> responses.HTMLResponse:
     )
 
 
-@app.get("/current_tide_plot")
-async def current_tide_plot(shift: int = 0) -> responses.Response:
-    """Generate and serve a tide and current plot.
-
-    Args:
-        shift: Time shift in minutes from current time
-
-    Returns:
-        SVG image response with tide and current visualization
-    """
-    ts = util.EffectiveTime(shift)
-    image = plot.GenerateTideCurrentPlot(data["nyc"].tides, data["nyc"].currents, ts)
-    assert image
-    return responses.Response(content=image.getvalue(), media_type="image/svg+xml")
-
-
-@app.get("/current")
-async def water_current(
-    request: fastapi.Request, shift: int = 0
+@app.get("/{location}/currents")
+async def location_water_current(
+    request: fastapi.Request, location: str, shift: int = 0
 ) -> responses.HTMLResponse:
-    """Serve the water current visualization page.
+    """Serve the water current visualization page for the specified location.
 
     Args:
         request: FastAPI request object
+        location: Location code (e.g., "nyc", "san")
         shift: Time shift in minutes from current time
 
     Returns:
         HTML response with current water conditions
     """
-    ts = util.EffectiveTime(shift)
+    # Check if location exists
+    if location not in data:
+        raise HTTPException(status_code=404, detail=f"Location {location} not found")
 
-    chart_info = data["nyc"].LegacyChartInfo(ts)
-
-    current_info = data["nyc"].CurrentPrediction(ts)
-
-    # Get fwd/back shift values
-    fwd = min(shift + 60, util.MAX_SHIFT_LIMIT)
-    back = max(shift - 60, util.MIN_SHIFT_LIMIT)
+    # Get location config
+    location_config = config.Get(location)
+    if not location_config:
+        raise HTTPException(
+            status_code=404, detail=f"Configuration for {location} not found"
+        )
 
     return templates.TemplateResponse(
         request=request,
         name="current.html",
         context=dict(
-            config=config.Get("nyc"),
-            last_tide_hrs_ago=round(chart_info.hours_since_last_tide, 1),
-            last_tide_type=chart_info.last_tide_type,
-            tide_chart_filename=chart_info.chart_filename,
-            map_title=chart_info.map_title,
-            ts=ts,
-            ef=current_info.direction,
-            magnitude=round(current_info.magnitude, 1),
-            msg=current_info.state_description,
-            shift=shift,
-            fwd=fwd,
-            back=back,
-            current_chart_filename=plot.GetCurrentChartFilename(
-                current_info.direction, plot.BinMagnitude(current_info.magnitude_pct)
-            ),
+            config=location_config,
+            request=request,
         ),
     )
+
+
+# Legacy route for backward compatibility
+@app.get("/current")
+async def water_current(
+    request: fastapi.Request, shift: int = 0
+) -> responses.RedirectResponse:
+    """Redirect to the locationized currents page."""
+    # Redirect to the locationized version with the same shift parameter
+    redirect_url = f"/nyc/currents"
+    if shift != 0:
+        redirect_url += f"?shift={shift}"
+    return responses.RedirectResponse(redirect_url)
 
 
 def fmt_datetime(timestamp: datetime.datetime) -> str:

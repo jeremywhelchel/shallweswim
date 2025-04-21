@@ -11,13 +11,6 @@ repos:
       - id: check-added-large-files
       - id: check-merge-conflict
 
-  # Black code formatting
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
-    hooks:
-      - id: black
-        language_version: python3
-
   # Prettier for non-Python files
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: "v4.0.0-alpha.8"
@@ -85,3 +78,10 @@ repos:
         entry: poetry run pytest -v -m integration --run-integration
         pass_filenames: false
         stages: [manual] # Not run by default, use "pre-commit run pytest-integration" to run
+
+  # Black code formatting (run last to ensure final formatting)
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        language_version: python3

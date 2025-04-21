@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{% block title %}Shall We Swim Today?{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000099" />
+    <meta
+      name="description"
+      content="{% block description %}{{ config.description|default('Swimming conditions') }}{% endblock %}"
+    />
+
+    {% block stylesheets %}
+    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+    {% endblock %}
+
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/static/apple-touch-icon.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/static/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="/static/favicon-16x16.png"
+    />
+    <link rel="manifest" href="/static/manifest.json" />
+
+    {% block fonts %}
+    <!-- Lato font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap"
+      rel="stylesheet"
+    />
+    {% endblock %} {% block scripts %}
+    <script src="/static/main.js"></script>
+    {% endblock %} {% block head_extra %}{% endblock %}
+  </head>
+  <body {% block body_attributes %}{% endblock %}>
+    {% block header %}{% endblock %} {% block tides_temperature %}
+    <div class="infobox">
+      <div class="current">
+        The water is currently <strong id="water-temp">Loading...</strong>
+      </div>
+      <div class="note" id="temp-station-info">at the Battery.</div>
+      <div class="tides">
+        <p>
+          Last <strong id="past-tide-type">...</strong> tide was at
+          <strong id="past-tide-time">loading</strong>
+        </p>
+        <p>
+          Next <strong id="next-tide-0-type">...</strong> tide is at
+          <strong id="next-tide-0-time">loading</strong>
+        </p>
+        <p>
+          Next <strong id="next-tide-1-type">...</strong> tide is at
+          <strong id="next-tide-1-time">loading</strong>
+        </p>
+      </div>
+    </div>
+    {% endblock %} {% block forecast %}{% endblock %} {% block content %}{%
+    endblock %} {% block footer %}{% endblock %}
+  </body>
+</html>

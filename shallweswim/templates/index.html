@@ -1,221 +1,166 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Shall We Swim Today?</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000099" />
-    <meta name="description" content="{{ config.description }}" />
-    <link rel="stylesheet" type="text/css" href="/static/style.css" />
-    <link
-      rel="apple-touch-icon"
-      sizes="180x180"
-      href="/static/apple-touch-icon.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="/static/favicon-32x32.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="/static/favicon-16x16.png"
-    />
-    <link rel="manifest" href="/static/manifest.json" />
-    <script async src="/static/main.js"></script>
-    {% if config.code == 'nyc' %}
-    <script async src="https://www.youtube.com/iframe_api"></script>
-    {% endif %}
-  </head>
-  <body onload="initPage();">
-    <div id="snow"></div>
-    <h1 class="title">shall we swim today?</h1>
-    <p>
-      <span class="note">
-        ...at
-        <a href="{{ config.swim_location_link }}">{{ config.swim_location }}</a>
-      </span>
-      {% if config.current_predictions %}
-      <span class="note"
-        ><br />
-        <b>NEW</b>: Experimental <a href="/current">current predictions</a>
-      </span>
-      {% endif %}
-    </p>
-    <div class="infobox">
-      <div class="current">
-        The water is currently <strong id="water-temp">Loading...</strong>
+{% extends "base.html" %} {% block description %}{{ config.description }}{%
+endblock %} {% block scripts %}
+<script async src="/static/main.js"></script>
+{% if config.code == 'nyc' %}
+<script async src="https://www.youtube.com/iframe_api"></script>
+{% endif %} {% endblock %} {% block body_attributes %}onload="initPage();"{%
+endblock %} {% block header %}
+<div id="snow"></div>
+<h1 class="title">shall we swim today?</h1>
+<p>
+  <span class="note">
+    ...at
+    <a href="{{ config.swim_location_link }}">{{ config.swim_location }}</a>
+  </span>
+  {% if config.current_predictions %}
+  <span class="note"
+    ><br />
+    <b>NEW</b>: Experimental <a href="/current">current predictions</a>
+  </span>
+  {% endif %}
+</p>
+{% endblock %} {% block forecast %}
+<h2>Forecast</h2>
+<iframe
+  class="windyframe"
+  title="Windy forecast"
+  src="https://embed.windy.com/embed2.html?lat={{ config.latitude }}&lon={{ config.longitude }}&detailLat={{ config.latitude }}&detailLon={{ config.longitude }}&width=640&height=350&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1"
+  frameborder="0"
+></iframe>
+{% endblock %} {% block content %} {% if config.code == 'nyc' %}
+<h2>Live Webcam</h2>
+<div class="webcamdiv">
+  <iframe
+    class="webcamframe"
+    title="Live webcam"
+    id="bbcam_player"
+    scrolling="no"
+    allowfullscreen="true"
+    webkitallowfullscreen="true"
+    mozallowfullscreen="true"
+    src="https://www.youtube.com/embed/live_stream?channel=UChh9yX1PSFFreQFmnnIPGuQ&enablejsapi=1"
+  ></iframe>
+</div>
+<div class="note">
+  Alternative option:
+  <ul>
+    <li>
+      <a
+        href="https://www.earthcam.com/usa/newyork/coneyisland/?cam=coneyisland"
+      >
+        Earth Cam Coney Island</a
+      >
+      - Great view, including the amusement park.
+    </li>
+  </ul>
+</div>
+{% elif config.code == 'sdf' %}
+<h2>Live Webcam</h2>
+<div class="note">
+  Alternative option:
+  <ul>
+    <li>
+      <a href="https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver">
+        Ohio River Webcam</a
+      >
+      - View overlooking Toehead Island swim channel
+    </li>
+  </ul>
+</div>
+{% endif %}
+
+<h2>Temperature Trends</h2>
+<img
+  class="plot"
+  src="/static/plots/{{ config.code }}/live_temps.svg"
+  alt="Live temperature plot"
+/>
+<img
+  class="plot"
+  src="/static/plots/{{ config.code }}/historic_temps_2mo_24h_mean.svg"
+  alt="2 month temperature plot, all years"
+/>
+<img
+  class="plot"
+  src="/static/plots/{{ config.code }}/historic_temps_12mo_24h_mean.svg"
+  alt="12 month temperature plot, all years"
+/>
+
+{% if config.code == 'nyc' %}
+<h2>Transit Status</h2>
+<div class="transit-div">
+  {% for train in ['Q','B'] %}
+  <div class="train-div">
+    <div class="train-header">
+      <a href="https://goodservice.io/trains/{{train}}/S" target="_blank">
+        <img src="/static/{{train}}-train.svg" width="50" height="50" />
+        <br />to <span id="{{train}}_destination">...</span>
+      </a>
+    </div>
+    <div class="centering-div">
+      <div class="chip train-status">
+        <span id="{{train}}_status">...</span>
       </div>
-      <div class="note" id="temp-station-info">at ...</div>
-      <div class="tides">
-        <p>
-          Last <strong id="past-tide-type">...</strong> tide was at
-          <strong id="past-tide-time">loading</strong>
-        </p>
-        <p>
-          Next <strong id="next-tide-0-type">...</strong> tide is at
-          <strong id="next-tide-0-time">loading</strong>
-        </p>
-        <p>
-          Next <strong id="next-tide-1-type">...</strong> tide is at
-          <strong id="next-tide-1-time">loading</strong>
-        </p>
+    </div>
+    <div class="train-alert-div" id="{{train}}_delay_div">
+      <div class="centering-div">
+        <div class="chip train-delay">Delay</div>
       </div>
+      <span id="{{train}}_delay">...</span>
     </div>
-
-    <h2>Forecast</h2>
-    <iframe
-      class="windyframe"
-      title="Windy forecast"
-      src="https://embed.windy.com/embed2.html?lat={{ config.latitude }}&lon={{ config.longitude }}&detailLat={{ config.latitude }}&detailLon={{ config.longitude }}&width=640&height=350&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1"
-      frameborder="0"
-    ></iframe>
-
-    {% if config.code == 'nyc' %}
-    <h2>Live Webcam</h2>
-    <div class="webcamdiv">
-      <iframe
-        class="webcamframe"
-        title="Live webcam"
-        id="bbcam_player"
-        scrolling="no"
-        allowfullscreen="true"
-        webkitallowfullscreen="true"
-        mozallowfullscreen="true"
-        src="https://www.youtube.com/embed/live_stream?channel=UChh9yX1PSFFreQFmnnIPGuQ&enablejsapi=1"
-      ></iframe>
-    </div>
-    <div class="note">
-      Alternative option:
-      <ul>
-        <li>
-          <a
-            href="https://www.earthcam.com/usa/newyork/coneyisland/?cam=coneyisland"
-          >
-            Earth Cam Coney Island</a
-          >
-          - Great view, including the amusement park.
-        </li>
-      </ul>
-    </div>
-    {% elif config.code == 'sdf' %}
-    <h2>Live Webcam</h2>
-    <div class="note">
-      Alternative option:
-      <ul>
-        <li>
-          <a
-            href="https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver"
-          >
-            Ohio River Webcam</a
-          >
-          - View overlooking Toehead Island swim channel
-        </li>
-      </ul>
-    </div>
-    {% endif %}
-
-    <h2>Temperature Trends</h2>
-    <img
-      class="plot"
-      src="/static/plots/{{ config.code }}/live_temps.svg"
-      alt="Live temperature plot"
-    />
-    <img
-      class="plot"
-      src="/static/plots/{{ config.code }}/historic_temps_2mo_24h_mean.svg"
-      alt="2 month temperature plot, all years"
-    />
-    <img
-      class="plot"
-      src="/static/plots/{{ config.code }}/historic_temps_12mo_24h_mean.svg"
-      alt="12 month temperature plot, all years"
-    />
-
-    {% if config.code == 'nyc' %}
-    <h2>Transit Status</h2>
-    <div class="transit-div">
-      {% for train in ['Q','B'] %}
-      <div class="train-div">
-        <div class="train-header">
-          <a href="https://goodservice.io/trains/{{train}}/S" target="_blank">
-            <img src="/static/{{train}}-train.svg" width="50" height="50" />
-            <br />to <span id="{{train}}_destination">...</span>
-          </a>
-        </div>
-        <div class="centering-div">
-          <div class="chip train-status">
-            <span id="{{train}}_status">...</span>
-          </div>
-        </div>
-        <div class="train-alert-div" id="{{train}}_delay_div">
-          <div class="centering-div">
-            <div class="chip train-delay">Delay</div>
-          </div>
-          <span id="{{train}}_delay">...</span>
-        </div>
-        <div class="train-alert-div" id="{{train}}_service_change_div">
-          <div class="centering-div">
-            <div class="chip train-service-change">Service Change</div>
-          </div>
-          <span id="{{train}}_service_change">...</span>
-        </div>
-        <div class="train-alert-div" id="{{train}}_service_irregularity_div">
-          <div class="centering-div">
-            <div class="chip train-service-irregularity">
-              Service Irregularity
-            </div>
-          </div>
-          <span id="{{train}}_service_irregularity">...</span>
-        </div>
+    <div class="train-alert-div" id="{{train}}_service_change_div">
+      <div class="centering-div">
+        <div class="chip train-service-change">Service Change</div>
       </div>
-      {% endfor %}
+      <span id="{{train}}_service_change">...</span>
     </div>
-    {% endif %}
-
-    <h2>Sources</h2>
-    <ul>
-      <li>
-        Water temperatures provided by:
-        <a
-          href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.temp_station }}"
-        >
-          {{ config.temp_station_name }} - Station ID: {{ config.temp_station
-          }}</a
-        >
-        (NOAA Tides and Currents)
-      </li>
-      <li>
-        Tides provided by:
-        <a
-          href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.tide_station }}"
-        >
-          {{ config.tide_station_name }} - Station ID: {{ config.tide_station
-          }}</a
-        >
-        (NOAA Tides and Currents)
-      </li>
-      {% if config.code == 'nyc' %}
-      <li>
-        <a href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
-          >Webcam</a
-        >
-        thanks to David K and Karol L
-      </li>
-      <li>
-        MTA train status provided by:
-        <a href="https://goodservice.io"> goodservice.io</a>
-      </li>
-      {% endif %}
-      <li>
-        Site source on github:
-        <a href="https://github.com/jeremywhelchel/shallweswim"
-          >jeremywhelchel/shallweswim</a
-        >
-      </li>
-    </ul>
-  </body>
-</html>
+    <div class="train-alert-div" id="{{train}}_service_irregularity_div">
+      <div class="centering-div">
+        <div class="chip train-service-irregularity">Service Irregularity</div>
+      </div>
+      <span id="{{train}}_service_irregularity">...</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %} {% endblock %} {% block footer %}
+<h2>Sources</h2>
+<ul>
+  <li>
+    Water temperatures provided by:
+    <a
+      href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.temp_station }}"
+    >
+      {{ config.temp_station_name }} - Station ID: {{ config.temp_station }}</a
+    >
+    (NOAA Tides and Currents)
+  </li>
+  <li>
+    Tides provided by:
+    <a
+      href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.tide_station }}"
+    >
+      {{ config.tide_station_name }} - Station ID: {{ config.tide_station }}</a
+    >
+    (NOAA Tides and Currents)
+  </li>
+  {% if config.code == 'nyc' %}
+  <li>
+    <a href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
+      >Webcam</a
+    >
+    thanks to David K and Karol L
+  </li>
+  <li>
+    MTA train status provided by:
+    <a href="https://goodservice.io"> goodservice.io</a>
+  </li>
+  {% endif %}
+  <li>
+    Site source on github:
+    <a href="https://github.com/jeremywhelchel/shallweswim"
+      >jeremywhelchel/shallweswim</a
+    >
+  </li>
+</ul>
+{% endblock %}

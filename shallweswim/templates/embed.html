@@ -1,171 +1,115 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Shall We Swim Today?</title>
-    <style>
-      body {
-        font-family: "Lato", sans-serif;
-        font-weight: 300;
-      }
-      strong {
-        font-weight: 700;
-      }
-      .title {
-        margin-bottom: 0px;
-      }
-      .infobox {
-        padding-left: 20px;
-      }
+{% extends "base.html" %} {% block description %}Coney Island Brighton Beach
+open water swimming conditions{% endblock %} {% block stylesheets %}
+<style>
+  body {
+    font-family: "Lato", sans-serif;
+    font-weight: 300;
+  }
+  strong {
+    font-weight: 700;
+  }
+  .title {
+    margin-bottom: 0px;
+  }
+  .infobox {
+    padding-left: 20px;
+  }
 
-      .plot {
-        width: 100%;
-        max-width: 980px;
-        display: block;
-      }
-      /* Webcam div settings:
-        - 720 x 410 is starter size
-        - padding-bottom: 36.21% was previously used
-        - 210px height is good for phone
-        - 534px height is good for desktop
-      */
+  .plot {
+    width: 100%;
+    max-width: 980px;
+    display: block;
+  }
+  /* Webcam div settings:
+    - 720 x 410 is starter size
+    - padding-bottom: 36.21% was previously used
+    - 210px height is good for phone
+    - 534px height is good for desktop
+  */
 
-      /* Small screens (Phones) */
-      @media (max-width: 600px) {
-        .current {
-          font-size: 24px;
-        }
-        .note {
-          font-size: 12px;
-        }
-        .tides {
-          font-size: 15px;
-        }
-        .webcamdiv {
-          max-width: 950px;
-          height: 220px;
-        }
-      }
+  /* Small screens (Phones) */
+  @media (max-width: 600px) {
+    .current {
+      font-size: 24px;
+    }
+    .note {
+      font-size: 12px;
+    }
+    .tides {
+      font-size: 15px;
+    }
+    .webcamdiv {
+      max-width: 950px;
+      height: 220px;
+    }
+  }
 
-      /* Large screens */
-      @media (min-width: 601px) {
-        .current {
-          font-size: 32px;
-        }
-        .note {
-          font-size: 18px;
-        }
-        .tides {
-          font-size: 24px;
-        }
-        .webcamdiv {
-          max-width: 950px;
-          height: 534px;
-        }
-      }
+  /* Large screens */
+  @media (min-width: 601px) {
+    .current {
+      font-size: 32px;
+    }
+    .note {
+      font-size: 18px;
+    }
+    .tides {
+      font-size: 24px;
+    }
+    .webcamdiv {
+      max-width: 950px;
+      height: 534px;
+    }
+  }
 
-      .webcamframe {
-        /*position: absolute;*/
-        top: 0;
-        left: 0;
-        bottom: 0;
-        right: 0;
-        border: 0;
-        width: 100%;
-        height: 100%;
-        display: block;
-      }
-      .windyframe {
-        /*
-      top: 0;
-      left: 0;
-      bottom: 0;
-      right: 0;
-      border: 1;
-      */
-        /*
-      padding-left: 13px;
-      width: 924px;
-      height: 450px;
-       */
-        width: 100%;
-        max-width: 950px;
-        display: block;
-        /*width="640px" height="450px"*/
-        height: 350px;
-      }
-    </style>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000099" />
-    <meta
-      name="description"
-      content="Coney Island Brighton Beach open water swimming conditions"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="180x180"
-      href="/static/apple-touch-icon.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="/static/favicon-32x32.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="/static/favicon-16x16.png"
-    />
-    <link rel="manifest" href="/static/manifest.json" />
-    <!-- Lato font -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap"
-      rel="stylesheet"
-    />
-    <script src="/static/main.js"></script>
-  </head>
-  <body onload="initEmbedPage();">
-    <div class="infobox">
-      <div class="current">
-        The water is currently <strong id="water-temp">Loading...</strong>
-      </div>
-      <div class="note" id="temp-station-info">at the Battery.</div>
-      <div class="tides">
-        <p>
-          Last <strong id="past-tide-type">...</strong> tide was at
-          <strong id="past-tide-time">loading</strong>
-        </p>
-        <p>
-          Next <strong id="next-tide-0-type">...</strong> tide is at
-          <strong id="next-tide-0-time">loading</strong>
-        </p>
-        <p>
-          Next <strong id="next-tide-1-type">...</strong> tide is at
-          <strong id="next-tide-1-time">loading</strong>
-        </p>
-      </div>
-    </div>
-
-    <!-- This embed uses an HTML Canvas, which has an issues on iOS devices. The
-      browser context will crash with an error of "A problem repeatedly
-      occurred" when the page is zoomed.
-      See: https://developer.apple.com/forums/thread/662251
-    -->
-    <iframe
-      class="windyframe"
-      title="Windy forecast"
-      src="https://embed.windy.com/embed2.html?lat=40.573&lon=-73.954&detailLat=40.573&detailLon=-73.959&width=640&height=350&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1"
-      frameborder="0"
-    ></iframe>
-    <br />
-    <br />
-    <div class="tides">
-      For more info see
-      <a href="https://shallweswim.today" target="_blank">shallweswim.today</a>.
-    </div>
-  </body>
-</html>
+  .webcamframe {
+    /*position: absolute;*/
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    border: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .windyframe {
+    /*
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  border: 1;
+  */
+    /*
+  padding-left: 13px;
+  width: 924px;
+  height: 450px;
+   */
+    width: 100%;
+    max-width: 950px;
+    display: block;
+    /*width="640px" height="450px"*/
+    height: 350px;
+  }
+</style>
+{% endblock %} {% block body_attributes %}onload="initEmbedPage();"{% endblock
+%} {% block forecast %}
+<!-- This embed uses an HTML Canvas, which has an issues on iOS devices. The
+  browser context will crash with an error of "A problem repeatedly
+  occurred" when the page is zoomed.
+  See: https://developer.apple.com/forums/thread/662251
+-->
+<iframe
+  class="windyframe"
+  title="Windy forecast"
+  src="https://embed.windy.com/embed2.html?lat=40.573&lon=-73.954&detailLat=40.573&detailLon=-73.959&width=640&height=350&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1"
+  frameborder="0"
+></iframe>
+{% endblock %} {% block footer %}
+<br />
+<br />
+<div class="tides">
+  For more info see
+  <a href="https://shallweswim.today" target="_blank">shallweswim.today</a>.
+</div>
+{% endblock %}

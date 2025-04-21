@@ -22,7 +22,6 @@ from fastapi import HTTPException, responses, staticfiles, templating
 
 # Local imports
 from shallweswim import config, data as data_lib, plot, api
-from shallweswim.types import FreshnessInfo
 
 
 data: dict[str, data_lib.Data] = {}
@@ -260,16 +259,6 @@ def fmt_datetime(timestamp: datetime.datetime) -> str:
 
 # Register the datetime formatter with Jinja2
 templates.env.filters["fmt_datetime"] = fmt_datetime
-
-
-@app.get("/freshness")
-async def freshness() -> FreshnessInfo:
-    """Return data freshness information for the NYC location.
-
-    Returns:
-        FreshnessInfo object with timestamps of last data updates
-    """
-    return data["nyc"].Freshness()
 
 
 @app.get("/favicon.ico")

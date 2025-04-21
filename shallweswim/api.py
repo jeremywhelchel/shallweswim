@@ -11,9 +11,10 @@ import fastapi
 from fastapi import HTTPException
 
 # Local imports
-from shallweswim import config, data as data_lib
+from shallweswim import config as config_lib, data as data_lib
 from shallweswim.types import (
     ApiTideEntry,
+    FreshnessInfo,
     LocationConditions,
     LocationInfo,
     TemperatureInfo,
@@ -29,6 +30,14 @@ def register_routes(app: fastapi.FastAPI, data: dict[str, data_lib.Data]) -> Non
         data: Dictionary mapping location codes to Data objects
     """
 
+    # Helper function to validate location
+    def validate_location(loc: str) -> config_lib.LocationConfig:
+        cfg = config_lib.Get(loc)
+        if not cfg:
+            logging.warning("Bad location: %s", loc)
+            raise HTTPException(status_code=404, detail=f"Location '{loc}' not found")
+        return cfg
+
     @app.get("/api/{location}/conditions", response_model=LocationConditions)
     async def location_conditions(location: str) -> LocationConditions:
         """API endpoint that returns tide and temperature data for a specific location.
@@ -42,12 +51,7 @@ def register_routes(app: fastapi.FastAPI, data: dict[str, data_lib.Data]) -> Non
         Raises:
             HTTPException: If the location is not configured
         """
-        cfg = config.Get(location)
-        if not cfg:
-            logging.warning("Bad location: %s", location)
-            raise HTTPException(
-                status_code=404, detail=f"Location '{location}' not found"
-            )
+        cfg = validate_location(location)
 
         # Get current water temperature
         current_time, current_temp = data[location].LiveTempReading()
@@ -80,3 +84,22 @@ def register_routes(app: fastapi.FastAPI, data: dict[str, data_lib.Data]) -> Non
             ),
             tides=TidesInfo(past=past_tides, next=next_tides),
         )
+
+    @app.get("/api/{location}/freshness", response_model=FreshnessInfo)
+    async def location_freshness(location: str) -> FreshnessInfo:
+        """API endpoint that returns data freshness information for a specific location.
+
+        Args:
+            location: Location code (e.g., 'nyc')
+
+        Returns:
+            FreshnessInfo object with timestamps of last data updates
+
+        Raises:
+            HTTPException: If the location is not configured
+        """
+        # Validate location exists
+        validate_location(location)
+
+        # Return freshness information
+        return data[location].Freshness()

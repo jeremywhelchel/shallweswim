@@ -1,8 +1,8 @@
-"""Integration tests for the main FastAPI application.
+"""Integration tests for the ShallWeSwim API endpoints.
 
 These tests use FastAPI's TestClient to test the API endpoints with real data.
-They verify that configured locations (currently NYC and San Diego) can be
-accessed without errors and that the API returns real data from NOAA endpoints.
+They verify that the API endpoints return correctly structured data from the
+real NOAA endpoints for the configured locations.
 
 Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 """
@@ -30,7 +30,7 @@ TEST_LOCATIONS = [NYC_LOCATION, SAN_LOCATION]
 
 
 @pytest.fixture(scope="module")
-def api_client(_check_api_availability: Any) -> TestClient:
+def api_client(check_api_availability: Any) -> TestClient:
     """
     Create a FastAPI test client that initializes data for all test locations.
     This directly mirrors what the lifespan function does in the main application,
@@ -57,47 +57,59 @@ def api_client(_check_api_availability: Any) -> TestClient:
     return client
 
 
-def validate_location_response(
+def validate_conditions_response(
     response: httpx.Response, location_code: str = NYC_LOCATION
 ) -> None:
-    """Validate the response from a location endpoint."""
+    """Validate the response from the conditions API endpoint."""
     assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
+    assert "application/json" in response.headers["content-type"]
 
-    # Check for key elements in the response
-    response_text = response.text
-    assert "<html" in response_text.lower()
-    assert "</html>" in response_text.lower()
-    assert "<title>" in response_text.lower()
+    # Parse JSON response
+    data = response.json()
 
-    # Verify that no exceptions occurred in the template
-    assert "Internal Server Error" not in response_text
-    assert "Exception:" not in response_text
+    # Validate top-level structure
+    assert "location" in data, "Missing location data"
+    assert "temperature" in data, "Missing temperature data"
+    assert "tides" in data, "Missing tides data"
 
-    # Look for identifiable elements in the page
-    assert "shall we swim today?" in response_text.lower()
-    assert "water temperatures provided by" in response_text.lower()
+    # Validate location details
+    location = data["location"]
+    assert (
+        location["code"] == location_code
+    ), f"Expected location code {location_code}, got {location['code']}"
+    assert "name" in location, "Missing location name"
+    assert "swim_location" in location, "Missing swim location"
 
-    # Get location config and verify station information is present
+    # Validate temperature data
+    temp = data["temperature"]
+    assert "timestamp" in temp, "Missing temperature timestamp"
+    assert "water_temp" in temp, "Missing water temperature value"
+    assert "units" in temp, "Missing temperature units"
+    assert isinstance(
+        temp["water_temp"], (int, float)
+    ), "Water temperature is not a number"
+
+    # Validate tides data
+    tides = data["tides"]
+    assert "past" in tides, "Missing past tides data"
+    assert "next" in tides, "Missing next tides data"
+    assert len(tides["past"]) > 0, "No past tides data"
+    assert len(tides["next"]) > 0, "No next tides data"
+
+    # Validate tide entry structure
+    past_tide = tides["past"][0]
+    assert "time" in past_tide, "Missing tide time"
+    assert "type" in past_tide, "Missing tide type"
+    assert "prediction" in past_tide, "Missing tide prediction"
+    assert past_tide["type"] in [
+        "high",
+        "low",
+        "unknown",
+    ], f"Invalid tide type: {past_tide['type']}"
+
+    # Get location config for additional checks
     location_config = config.Get(location_code)
     assert location_config is not None, f"Config for {location_code} not found"
-
-    # Check that tide station information is in the response
-    assert location_config.tide_station_name is not None, "Tide station name is None"
-    assert location_config.tide_station is not None, "Tide station ID is None"
-    assert (
-        location_config.tide_station_name in response_text
-    ), "Tide station name missing"
-    assert str(location_config.tide_station) in response_text, "Tide station ID missing"
-
-    # Check for NOAA reference
-    assert "NOAA Tides and Currents" in response_text
-
-    # If location has current predictions enabled, verify current-related content
-    if location_config.current_predictions:
-        assert (
-            "currents" in response_text.lower() or "current" in response_text.lower()
-        ), "No current data mentioned"
 
 
 @pytest.mark.integration
@@ -110,27 +122,34 @@ def test_root_redirect(api_client: TestClient) -> None:
 
 @pytest.mark.integration
 def test_nyc_location(api_client: TestClient) -> None:
-    """Test that the NYC location returns a valid response with real data."""
+    """Test that the NYC location HTML endpoint returns a valid response."""
     response = api_client.get(f"/{NYC_LOCATION}")
-    validate_location_response(response, NYC_LOCATION)
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
 
-    # Additional checks for NYC-specific content
+    # Verify that the response contains HTML
     response_text = response.text
+    assert "<html" in response_text.lower()
+    assert "</html>" in response_text.lower()
+
     # Check for expected content elements specific to NYC
-    assert "Coney Island" in response_text
     assert "Battery" in response_text  # NYC Battery station should be mentioned
 
 
 @pytest.mark.integration
 def test_san_diego_location(api_client: TestClient) -> None:
-    """Test that the San Diego location returns a valid response with real data."""
+    """Test that the San Diego location HTML endpoint returns a valid response."""
     response = api_client.get(f"/{SAN_LOCATION}")
-    validate_location_response(response, SAN_LOCATION)
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
 
-    # Additional checks for San Diego-specific content
+    # Verify that the response contains HTML
     response_text = response.text
+    assert "<html" in response_text.lower()
+    assert "</html>" in response_text.lower()
+
     # Check for expected content elements specific to San Diego
-    assert "La Jolla Cove" in response_text
+    assert "La Jolla" in response_text
     assert "9410230" in response_text  # San Diego station ID should be mentioned
 
 
@@ -142,13 +161,14 @@ def test_invalid_location(api_client: TestClient) -> None:
     assert "Bad location" in response.text
 
 
-@pytest.mark.integration
-def test_freshness_endpoint(api_client: TestClient) -> None:
-    """Test the freshness endpoint for data freshness information."""
-    response = api_client.get("/freshness")
+def validate_freshness_response(
+    response: httpx.Response, location_code: str = NYC_LOCATION
+) -> None:
+    """Validate the response from the freshness API endpoint."""
     assert response.status_code == 200
+    assert "application/json" in response.headers["content-type"]
 
-    # Check that the response is JSON
+    # Parse JSON response
     data = response.json()
 
     # Verify the structure of the freshness data (real data)
@@ -157,14 +177,75 @@ def test_freshness_endpoint(api_client: TestClient) -> None:
         dataset = data[dataset_name]
 
         # Check for expected fields in each dataset
-        assert "fetch" in dataset
-        assert "latest_value" in dataset
+        assert "fetch" in dataset, f"Missing fetch info in {dataset_name}"
+        assert "latest_value" in dataset, f"Missing latest_value in {dataset_name}"
 
-        # We only check for the presence of the keys, but don't check values
-        # as they might be null during the initial data loading phase
-        assert "time" in dataset["fetch"]
-        assert "time" in dataset["latest_value"]
+        # Check for time and age information in fetch data
+        fetch = dataset["fetch"]
+        assert "time" in fetch, f"Missing time in {dataset_name}.fetch"
+        assert "age" in fetch, f"Missing age in {dataset_name}.fetch"
+        assert "age_seconds" in fetch, f"Missing age_seconds in {dataset_name}.fetch"
 
-        # Check for age information which should be present
-        assert "age" in dataset["fetch"]
-        assert "age" in dataset["latest_value"]
+        # Check for time and age information in latest_value data
+        latest = dataset["latest_value"]
+        assert "time" in latest, f"Missing time in {dataset_name}.latest_value"
+        assert "age" in latest, f"Missing age in {dataset_name}.latest_value"
+        assert (
+            "age_seconds" in latest
+        ), f"Missing age_seconds in {dataset_name}.latest_value"
+
+
+@pytest.mark.integration
+def test_conditions_api_nyc(api_client: TestClient) -> None:
+    """Test the conditions API endpoint for NYC location."""
+    response = api_client.get(f"/api/{NYC_LOCATION}/conditions")
+    validate_conditions_response(response, NYC_LOCATION)
+
+    # Additional NYC-specific checks
+    data = response.json()
+    assert "Grimaldo's Chair" in data["location"]["swim_location"]
+    assert "New York" in data["location"]["name"]
+
+
+@pytest.mark.integration
+def test_conditions_api_san_diego(api_client: TestClient) -> None:
+    """Test the conditions API endpoint for San Diego location."""
+    response = api_client.get(f"/api/{SAN_LOCATION}/conditions")
+    validate_conditions_response(response, SAN_LOCATION)
+
+    # Additional San Diego-specific checks
+    data = response.json()
+    assert "La Jolla" in data["location"]["swim_location"]
+    assert "San Diego" in data["location"]["name"]
+
+
+@pytest.mark.integration
+def test_freshness_api_nyc(api_client: TestClient) -> None:
+    """Test the freshness API endpoint for NYC location."""
+    response = api_client.get(f"/api/{NYC_LOCATION}/freshness")
+    validate_freshness_response(response, NYC_LOCATION)
+
+
+@pytest.mark.integration
+def test_freshness_api_san_diego(api_client: TestClient) -> None:
+    """Test the freshness API endpoint for San Diego location."""
+    response = api_client.get(f"/api/{SAN_LOCATION}/freshness")
+    validate_freshness_response(response, SAN_LOCATION)
+
+
+@pytest.mark.integration
+def test_invalid_api_location(api_client: TestClient) -> None:
+    """Test that API requests for invalid locations return 404 errors."""
+    # Test conditions endpoint
+    response = api_client.get("/api/invalid_location/conditions")
+    assert response.status_code == 404
+    error_data = response.json()
+    assert "detail" in error_data
+    assert "not found" in error_data["detail"].lower()
+
+    # Test freshness endpoint
+    response = api_client.get("/api/invalid_location/freshness")
+    assert response.status_code == 404
+    error_data = response.json()
+    assert "detail" in error_data
+    assert "not found" in error_data["detail"].lower()

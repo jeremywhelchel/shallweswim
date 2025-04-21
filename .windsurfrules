@@ -1,0 +1,3 @@
+1. This project is managed by poetry / pyproject.toml
+2. All commands should be run via poetry (e.g. poetry run pytest, etc)
+3. Precommit hooks are configured in .pre-commit-config.yaml and should be run after major changes

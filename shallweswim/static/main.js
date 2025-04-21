@@ -69,32 +69,32 @@ function initializeWithApi() {
 }
 
 // Fetch conditions data from API and update page
-function fetchAndUpdateConditions(location) {
-  fetch(`/api/${location}/conditions`)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
-      }
-      return response.json();
-    })
-    .then((data) => {
-      updatePageWithConditions(data);
-    })
-    .catch((error) => {
-      console.error("Error fetching conditions:", error);
+async function fetchAndUpdateConditions(location) {
+  try {
+    // Using the same pattern as the currents page which works on Safari
+    const response = await fetch(`/api/${location}/conditions`);
 
-      // Update UI even on error to avoid infinite "Loading..." state
-      const tempElement = document.getElementById("water-temp");
-      if (tempElement && tempElement.textContent === "Loading...") {
-        tempElement.textContent = "Data unavailable";
-      }
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
 
-      const tempStationElement = document.getElementById("temp-station-info");
-      if (tempStationElement) {
-        tempStationElement.textContent =
-          "Unable to retrieve current data. Please try again later.";
-      }
-    });
+    const data = await response.json();
+    updatePageWithConditions(data);
+  } catch (error) {
+    console.error("Error fetching conditions:", error);
+
+    // Update UI even on error to avoid infinite "Loading..." state
+    const tempElement = document.getElementById("water-temp");
+    if (tempElement && tempElement.textContent === "Loading...") {
+      tempElement.textContent = "Data unavailable";
+    }
+
+    const tempStationElement = document.getElementById("temp-station-info");
+    if (tempStationElement) {
+      tempStationElement.textContent =
+        "Unable to retrieve current data. Please try again later.";
+    }
+  }
 }
 
 // Update the page with data from the API

@@ -21,7 +21,7 @@ import uvicorn
 from fastapi import HTTPException, responses, staticfiles, templating
 
 # Local imports
-from shallweswim import config, data as data_lib, plot
+from shallweswim import config, data as data_lib, plot, api
 from shallweswim.types import FreshnessInfo
 
 
@@ -126,6 +126,9 @@ app.mount(
 )
 
 templates = templating.Jinja2Templates(directory="shallweswim/templates")
+
+# Register API routes
+api.register_routes(app, data)
 
 
 @app.get("/")

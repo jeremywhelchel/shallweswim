@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
+"""
+Shall We Swim - FastAPI web application for displaying swimming conditions
 
+This module contains the FastAPI application that serves tide, current, and temperature
+data to help determine if swimming conditions are favorable.
+"""
+
+# Standard library imports
 import contextlib
 import datetime
-from typing import Any, AsyncGenerator
-from shallweswim.types import FreshnessInfo
-
-import fastapi
-from fastapi import HTTPException
-from fastapi import responses
-from fastapi import staticfiles
-from fastapi import templating
-
-import google.cloud.logging
 import logging
 import os
-import uvicorn
+from typing import AsyncGenerator
 
-from shallweswim import config
-from shallweswim import data as data_lib
-from shallweswim import plot
+# Third-party imports
+import fastapi
+import google.cloud.logging
+import uvicorn
+from fastapi import HTTPException, responses, staticfiles, templating
+
+# Local imports
+from shallweswim import config, data as data_lib, plot
+from shallweswim.types import FreshnessInfo
 
 
 data = {}
@@ -26,12 +29,21 @@ data = {}
 
 @contextlib.asynccontextmanager
 async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
-    # XXX Try not to reload this if already there...
+    """Initialize data sources during application startup.
+
+    This loads data for all configured locations and starts data collection.
+
+    Args:
+        app: The FastAPI application instance
+
+    Yields:
+        None when setup is complete
+    """
     for code, cfg in config.CONFIGS.items():
         data[code] = data_lib.Data(cfg)
         data[code].Start()
     yield
-    # Nothing to cleanup, but it would happen here
+    # No cleanup needed, but would be handled here if necessary
 
 
 app = fastapi.FastAPI(lifespan=lifespan)
@@ -43,15 +55,21 @@ app.mount(
 templates = templating.Jinja2Templates(directory="shallweswim/templates")
 
 
-# TODO use some cookie to redirect to last used or saved location
 @app.get("/")
 async def index() -> responses.RedirectResponse:
+    """Redirect root path to default location (NYC).
+
+    TODO: Use cookies to redirect to last used or saved location.
+    """
     return responses.RedirectResponse("/nyc")
 
 
-# XXX locationify properly
 @app.get("/embed")
 async def embed(request: fastapi.Request) -> responses.HTMLResponse:
+    """Serve the embed view for embedding in other websites.
+
+    Currently hardcoded to NYC location. Future enhancement: support other locations.
+    """
     current_time, current_temp = data["nyc"].LiveTempReading()
     past_tides, next_tides = data["nyc"].PrevNextTide()
     return templates.TemplateResponse(
@@ -72,9 +90,15 @@ MAX_SHIFT_LIMIT = 1260  # 21 hours
 
 
 def EffectiveTime(shift: int = 0) -> datetime.datetime:
-    """Return the effective time for displaying charts based on query parameters."""
+    """Return the effective time for displaying charts based on query parameters.
 
-    # XXX Add an optional absolute time parameter here.
+    Args:
+        shift: Time shift in minutes from current time (negative for past, positive for future)
+              Will be clamped between MIN_SHIFT_LIMIT and MAX_SHIFT_LIMIT
+
+    Returns:
+        A datetime object representing the effective time to display
+    """
     t = data_lib.Now()
 
     # Clamp the shift limit
@@ -86,6 +110,14 @@ def EffectiveTime(shift: int = 0) -> datetime.datetime:
 
 @app.get("/current_tide_plot")
 async def current_tide_plot(shift: int = 0) -> responses.Response:
+    """Generate and serve an SVG plot of current tide and current data.
+
+    Args:
+        shift: Time shift in minutes from current time
+
+    Returns:
+        SVG image response with tide and current visualization
+    """
     ts = EffectiveTime(shift)
     image = plot.GenerateTideCurrentPlot(data["nyc"].tides, data["nyc"].currents, ts)
     assert image
@@ -96,6 +128,15 @@ async def current_tide_plot(shift: int = 0) -> responses.Response:
 async def water_current(
     request: fastapi.Request, shift: int = 0
 ) -> responses.HTMLResponse:
+    """Serve the water current visualization page.
+
+    Args:
+        request: FastAPI request object
+        shift: Time shift in minutes from current time
+
+    Returns:
+        HTML response with current water conditions
+    """
     ts = EffectiveTime(shift)
 
     (
@@ -144,40 +185,63 @@ async def water_current(
 
 
 def fmt_datetime(timestamp: datetime.datetime) -> str:
+    """Format a datetime object for display in templates.
+
+    Args:
+        timestamp: Datetime to format
+
+    Returns:
+        Formatted string like 'Monday, April 20 at 8:12 PM'
+    """
     return timestamp.strftime("%A, %B %-d at %-I:%M %p")
 
 
+# Register the datetime formatter with Jinja2
 templates.env.filters["fmt_datetime"] = fmt_datetime
-
-
-# XXX locationify
 
 
 @app.get("/freshness")
 async def freshness() -> FreshnessInfo:
+    """Return data freshness information for the NYC location.
+
+    Returns:
+        FreshnessInfo object with timestamps of last data updates
+    """
     return data["nyc"].Freshness()
 
 
 @app.get("/favicon.ico")
 async def favicon() -> responses.RedirectResponse:
+    """Redirect favicon requests to the static file."""
     return responses.RedirectResponse(
         "/static/favicon.ico",
     )
-    # return redirect(url_for("static", filename="favicon.ico"))
 
 
 @app.get("/robots.txt")
 async def robots() -> responses.RedirectResponse:
+    """Redirect robots.txt requests to the static file."""
     return responses.RedirectResponse(
         "/static/robots.txt",
     )
-    # return redirect(url_for("static", filename="robots.txt"))
 
 
 @app.get("/{location}")
 async def index_w_location(
     request: fastapi.Request, location: str
 ) -> responses.HTMLResponse:
+    """Serve the main page for a specific location.
+
+    Args:
+        request: FastAPI request object
+        location: Location code (e.g., 'nyc')
+
+    Returns:
+        HTML response with location-specific data
+
+    Raises:
+        HTTPException: If the location is not configured
+    """
     cfg = config.Get(location)
     if not cfg:
         logging.warning(f"Bad location: {location}")
@@ -199,6 +263,13 @@ async def index_w_location(
 
 
 def start_app() -> fastapi.FastAPI:
+    """Initialize and return the FastAPI application.
+
+    Sets up logging based on the environment (Google Cloud Run or local).
+
+    Returns:
+        Configured FastAPI application instance
+    """
     # If running in Google Cloud Run, use cloud logging
     if "K_SERVICE" in os.environ:
         # Setup Google Cloud logging
@@ -215,7 +286,8 @@ def start_app() -> fastapi.FastAPI:
     return app
 
 
-if __name__ == "__main__":  # Run uvicorn app directly
+if __name__ == "__main__":
+    """Run the application directly with uvicorn when executed as a script."""
     logging.info("Running uvicorn app")
     uvicorn.run(
         "main:start_app",

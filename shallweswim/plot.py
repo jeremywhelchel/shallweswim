@@ -1,19 +1,27 @@
-"""Generation SWS plots and charts."""
+"""Generation of plots and charts for ShallWeSwim application.
 
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
-from typing import Optional, Union
+This module handles the creation of visualizations for tides, currents, and temperature
+data. It generates both static charts and dynamic plots based on data fetched from NOAA.
+"""
+
+# Standard library imports
 import datetime
 import io
 import logging
 import math
-import matplotlib.image as mpimg
-import matplotlib.dates as md
-import numpy as np
 import os
+from typing import Optional, Union
+
+# Third-party imports
+import matplotlib.dates as md
+import matplotlib.image as mpimg
+import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
+# Local imports
 from shallweswim import util
 
 
@@ -22,6 +30,17 @@ sns.axes_style("darkgrid")
 
 
 def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) -> Axes:
+    """Create a multi-year line plot for temperature data.
+
+    Args:
+        df: DataFrame containing temperature data with date index
+        fig: Figure object to draw the plot on
+        title: Main title for the plot
+        subtitle: Subtitle/description for the plot
+
+    Returns:
+        Axes object with the configured plot
+    """
     ax = sns.lineplot(data=df, ax=fig.subplots())  # type: Axes
 
     fig.suptitle(title, fontsize=24)
@@ -53,6 +72,18 @@ def LiveTempPlot(
     subtitle: str,
     time_fmt: str,
 ) -> Axes:
+    """Create a plot of recent temperature data with custom time formatting.
+
+    Args:
+        df: DataFrame containing temperature data with datetime index
+        fig: Figure object to draw the plot on
+        title: Main title for the plot
+        subtitle: Subtitle/description for the plot
+        time_fmt: Format string for time labels on x-axis (e.g., '%a %-I %p')
+
+    Returns:
+        Axes object with the configured plot
+    """
     ax = fig.subplots()
     sns.lineplot(data=df, ax=ax)
     ax.xaxis.set_major_formatter(md.DateFormatter(time_fmt))
@@ -73,6 +104,19 @@ def LiveTempPlot(
 
 
 def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg") -> None:
+    """Save a matplotlib figure to a file or string buffer.
+
+    Handles path adjustments for running from different working directories
+    and creates directories as needed.
+
+    Args:
+        fig: Figure object to save
+        dst: Destination path (string) or buffer
+        fmt: Format to save in ('svg', 'png', etc.)
+
+    Raises:
+        AssertionError: If a string path doesn't start with 'static/'
+    """
     # If running outside the 'shallweswim' directory, prepend it to all paths
     if isinstance(dst, str):
         assert dst.startswith("static/"), dst
@@ -88,6 +132,19 @@ def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg") -> None
 def GenerateLiveTempPlot(
     live_temps: pd.DataFrame | None, location_code: str, station_name: str | None
 ) -> None:
+    """Generate and save a plot of recent water temperature data.
+
+    Creates a plot showing both raw temperature readings and a 2-hour
+    rolling average trend line for the past 48 hours.
+
+    Args:
+        live_temps: DataFrame containing temperature data or None
+        location_code: Location identifier for file naming
+        station_name: Station name for plot title or None
+
+    Returns:
+        None - Saves the plot to a file if data is available
+    """
     if live_temps is None:
         return
     plot_filename = f"static/plots/{location_code}/live_temps.svg"
@@ -114,6 +171,19 @@ def GenerateLiveTempPlot(
 def GenerateHistoricPlots(
     hist_temps: pd.DataFrame | None, location_code: str, station_name: str | None
 ) -> None:
+    """Generate and save historical temperature plots.
+
+    Creates plots showing water temperature data across multiple years,
+    including 2-month and full-year comparisons.
+
+    Args:
+        hist_temps: DataFrame containing historical temperature data or None
+        location_code: Location identifier for file naming
+        station_name: Station name for plot titles or None
+
+    Returns:
+        None - Saves the plots to files if data is available
+    """
     if hist_temps is None:
         return
     year_df = util.PivotYear(hist_temps)
@@ -172,10 +242,24 @@ def GenerateHistoricPlots(
     SaveFig(fig, yr_plot_filename)
 
 
-# XXX Return a tide image. Dont write it to filesystem
+# TODO: Return a tide image. Don't write it to filesystem
 def GenerateTideCurrentPlot(
     tides: pd.DataFrame, currents: pd.DataFrame, t: Optional[datetime.datetime] = None
 ) -> Optional[io.StringIO]:
+    """Generate a plot showing tide and current data.
+
+    Creates a dual-axis plot with tide height and current velocity, showing a 24-hour window
+    from 3 hours in the past to 21 hours in the future. Marks the specified time with a
+    vertical line and labels high/low tide points.
+
+    Args:
+        tides: DataFrame containing tide predictions
+        currents: DataFrame containing current predictions
+        t: Time point to mark on the plot, defaults to current time
+
+    Returns:
+        StringIO object containing SVG image data, or None if data is not available
+    """
     if tides is None or currents is None:
         return None
     if not t:
@@ -206,7 +290,7 @@ def GenerateTideCurrentPlot(
     sns.lineplot(data=df["current"], ax=ax, color="g")
     ax.set_ylabel("Current Speed (kts)", color="g")
 
-    # XXX Align the 0 line on both
+    # TODO: Align the 0 line on both axes
 
     ax2 = ax.twinx()
     sns.lineplot(data=df["tide"], ax=ax2, color="b")
@@ -224,7 +308,7 @@ def GenerateTideCurrentPlot(
     ax.axvline(t, color="r", linestyle="-", alpha=0.6)  # type: ignore[arg-type]
 
     # Useful plot that indicates how the current (which?) LEADS the tide
-    # XXX
+    # TODO:
     # Peak flood ~2hrs before high tide
     # Peak ebb XX mins before low tide
 
@@ -247,28 +331,64 @@ def GenerateTideCurrentPlot(
     return svg_io
 
 
-MAGNITUDE_BINS = [0, 10, 30, 45, 55, 70, 90, 100]  # XXX Something off with these
+MAGNITUDE_BINS = [0, 10, 30, 45, 55, 70, 90, 100]  # TODO: Something off with these
 
 
-# XXX These bins are weird. Likely should be using the midpoint or some such
+# TODO: These bins are weird. Likely should be using the midpoint or some such
 # Which image is representative for the full range?
 def BinMagnitude(magnitude_pct: float) -> int:
+    """Convert a magnitude percentage to a binned value.
+
+    Maps a magnitude percentage (0.0-1.0) to one of the predefined bin values
+    in MAGNITUDE_BINS to determine which current chart to display.
+
+    Args:
+        magnitude_pct: Magnitude as a percentage (0.0-1.0)
+
+    Returns:
+        The bin value (integer from MAGNITUDE_BINS)
+
+    Raises:
+        AssertionError: If magnitude_pct is outside the valid range
+    """
     assert magnitude_pct >= 0 and magnitude_pct <= 1.0, magnitude_pct
     i = np.digitize([magnitude_pct * 100], MAGNITUDE_BINS, right=True)[0]
     return int(MAGNITUDE_BINS[i])
 
 
 def GetCurrentChartFilename(ef: str, magnitude_bin: int) -> str:
+    """Generate a filename for a current chart.
+
+    Args:
+        ef: Current direction ('flooding' or 'ebbing')
+        magnitude_bin: Binned magnitude value (from BinMagnitude)
+
+    Returns:
+        Path to the PNG file for the specified current conditions
+    """
     # magnitude_bin = BinMagnitude(magnitude_pct)
     plot_filename = f"static/plots/current_chart_{ef}_{magnitude_bin}.png"
     return plot_filename
 
 
 def GenerateCurrentChart(ef: str, magnitude_bin: int) -> None:
+    """Generate a current chart showing water movement over a map.
+
+    Creates a chart with arrows indicating water movement direction and strength
+    over a base map of the area. Arrow size and width are proportional to current strength.
+
+    Args:
+        ef: Current direction ('flooding' or 'ebbing')
+        magnitude_bin: Magnitude bin value (0-100)
+
+    Raises:
+        AssertionError: If magnitude_bin is outside the valid range
+        ValueError: If ef is neither 'flooding' nor 'ebbing'
+    """
     assert (magnitude_bin >= 0) and (magnitude_bin <= 100), magnitude_bin
     magnitude_pct = magnitude_bin / 100
 
-    fig = Figure(figsize=(16, 6))  # Dims: 2596 × 967
+    fig = Figure(figsize=(16, 6))  # Dimensions: 2596 × 967
     plot_filename = GetCurrentChartFilename(ef, magnitude_bin)
     logging.info(
         "Generating current map with pct %.2f: %s", magnitude_pct, plot_filename

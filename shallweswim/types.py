@@ -1,4 +1,10 @@
-"""Type definitions for shallweswim."""
+"""Type definitions for shallweswim.
+
+This module contains type definitions used throughout the application, separated into
+two main categories:
+1. Internal types - Used for internal data processing and storage
+2. API types - Used for API request/response handling via Pydantic models
+"""
 
 # Standard library imports
 import datetime
@@ -8,30 +14,19 @@ from typing import List, Literal
 # Third-party imports
 from pydantic import BaseModel, Field
 
+#############################################################
+# INTERNAL TYPES - Used for internal data processing         #
+#############################################################
 
-# Dataset names for data freshness tracking
+# Common type literals used across the application
 DatasetName = Literal["tides_and_currents", "live_temps", "historic_temps"]
-
-# Tide types
 TideType = Literal["high", "low", "unknown"]
-
-# Current direction
 CurrentDirection = Literal["flooding", "ebbing"]
 
 
 @dataclass
-class LegacyChartInfo:
-    """Structured information about a tide chart."""
-
-    hours_since_last_tide: float
-    last_tide_type: TideType
-    chart_filename: str
-    map_title: str
-
-
-@dataclass
 class TideEntry:
-    """Information about a single tide event."""
+    """Information about a single tide event (internal representation)."""
 
     time: datetime.datetime  # Time of the tide
     type: TideType  # 'high' or 'low'
@@ -41,7 +36,7 @@ class TideEntry:
 
 @dataclass
 class TideInfo:
-    """Structured information about previous and next tides."""
+    """Structured information about previous and next tides (internal)."""
 
     past_tides: List[TideEntry]  # The most recent tide
     next_tides: List[TideEntry]  # The next two upcoming tides
@@ -49,7 +44,7 @@ class TideInfo:
 
 @dataclass
 class CurrentInfo:
-    """Structured information about water current prediction."""
+    """Structured information about water current prediction (internal)."""
 
     direction: CurrentDirection  # 'flooding' or 'ebbing'
     magnitude: float  # Current strength in knots
@@ -57,9 +52,23 @@ class CurrentInfo:
     state_description: str  # Human-readable description of current state
 
 
-# Pydantic models for API responses
+@dataclass
+class LegacyChartInfo:
+    """Structured information about a tide chart (internal)."""
+
+    hours_since_last_tide: float
+    last_tide_type: TideType
+    chart_filename: str
+    map_title: str
+
+
+#############################################################
+# API TYPES - Used for external API request/response models  #
+#############################################################
+
+
 class LocationInfo(BaseModel):
-    """Location information."""
+    """Location information for API responses."""
 
     code: str = Field(..., description="Location code (e.g., 'nyc')")
     name: str = Field(..., description="Display name of the location")
@@ -67,7 +76,7 @@ class LocationInfo(BaseModel):
 
 
 class TemperatureInfo(BaseModel):
-    """Water temperature information."""
+    """Water temperature information for API responses."""
 
     timestamp: str = Field(
         ..., description="ISO 8601 formatted timestamp of the reading"
@@ -85,14 +94,14 @@ class ApiTideEntry(BaseModel):
 
 
 class TidesInfo(BaseModel):
-    """Collection of tide information."""
+    """Collection of tide information for API responses."""
 
     past: List[ApiTideEntry] = Field(..., description="Recently occurred tides")
     next: List[ApiTideEntry] = Field(..., description="Upcoming tides")
 
 
 class CurrentPredictionInfo(BaseModel):
-    """Current prediction information."""
+    """Current prediction information for API responses."""
 
     timestamp: str = Field(
         ..., description="ISO 8601 formatted timestamp of the prediction"
@@ -110,7 +119,7 @@ class CurrentPredictionInfo(BaseModel):
 
 
 class LegacyChartDetails(BaseModel):
-    """Information about legacy tide charts."""
+    """Information about legacy tide charts for API responses."""
 
     hours_since_last_tide: float = Field(
         ..., description="Hours since the last tide event"
@@ -118,6 +127,11 @@ class LegacyChartDetails(BaseModel):
     last_tide_type: str = Field(..., description="Type of last tide ('high' or 'low')")
     chart_filename: str = Field(..., description="Filename of the legacy chart")
     map_title: str = Field(..., description="Title for the legacy map")
+
+
+#############################################################
+# API RESPONSE MODELS - Complete response objects            #
+#############################################################
 
 
 class CurrentsResponse(BaseModel):

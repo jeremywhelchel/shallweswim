@@ -30,7 +30,7 @@
     <script async src="https://www.youtube.com/iframe_api"></script>
     {% endif %}
   </head>
-  <body onload="load_trains();/*make_snow();*/">
+  <body onload="initPage();">
     <div id="snow"></div>
     <h1 class="title">shall we swim today?</h1>
     <p>
@@ -47,23 +47,21 @@
     </p>
     <div class="infobox">
       <div class="current">
-        The water is currently <strong>{{ current_temp }}°F</strong>
+        The water is currently <strong id="water-temp">Loading...</strong>
       </div>
-      <div class="note">
-        at {{ config.temp_station_name }} as of {{ current_time|fmt_datetime }}.
-      </div>
+      <div class="note" id="temp-station-info">at ...</div>
       <div class="tides">
         <p>
-          Last <strong>{{ past_tides[-1].type }}</strong> tide was at
-          <strong>{{ past_tides[-1].time|fmt_datetime }}</strong>
+          Last <strong id="past-tide-type">...</strong> tide was at
+          <strong id="past-tide-time">loading</strong>
         </p>
         <p>
-          Next <strong>{{ next_tides[0].type }}</strong> tide is at
-          <strong>{{ next_tides[0].time|fmt_datetime }}</strong>
+          Next <strong id="next-tide-0-type">...</strong> tide is at
+          <strong id="next-tide-0-time">loading</strong>
         </p>
         <p>
-          Next <strong>{{ next_tides[1].type }}</strong> tide is at
-          <strong>{{ next_tides[1].time|fmt_datetime }}</strong>
+          Next <strong id="next-tide-1-type">...</strong> tide is at
+          <strong id="next-tide-1-time">loading</strong>
         </p>
       </div>
     </div>

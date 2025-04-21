@@ -144,18 +144,13 @@ async def embed(request: fastapi.Request) -> responses.HTMLResponse:
     """Serve the embed view for embedding in other websites.
 
     Currently hardcoded to NYC location. Future enhancement: support other locations.
+    Data will be fetched client-side via API.
     """
-    current_time, current_temp = data["nyc"].LiveTempReading()
-    tide_info = data["nyc"].PrevNextTide()
     return templates.TemplateResponse(
         request=request,
         name="embed.html",
         context=dict(
             config=config.Get("nyc"),
-            current_time=current_time,
-            current_temp=current_temp,
-            past_tides=tide_info.past_tides,
-            next_tides=tide_info.next_tides,
         ),
     )
 
@@ -288,7 +283,7 @@ async def index_w_location(
         location: Location code (e.g., 'nyc')
 
     Returns:
-        HTML response with location-specific data
+        HTML response with location-specific configuration
 
     Raises:
         HTTPException: If the location is not configured
@@ -298,17 +293,12 @@ async def index_w_location(
         logging.warning("Bad location: %s", location)
         raise HTTPException(status_code=404, detail=f"Bad location: {location}")
 
-    current_time, current_temp = data[location].LiveTempReading()
-    tide_info = data[location].PrevNextTide()
+    # Just pass location config - data will be fetched client-side via API
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context=dict(
             config=cfg,
-            current_time=current_time,
-            current_temp=current_temp,
-            past_tides=tide_info.past_tides,
-            next_tides=tide_info.next_tides,
         ),
     )
 

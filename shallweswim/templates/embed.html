@@ -126,27 +126,26 @@
       href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap"
       rel="stylesheet"
     />
+    <script src="/static/main.js"></script>
   </head>
-  <body>
+  <body onload="initEmbedPage();">
     <div class="infobox">
       <div class="current">
-        The water is currently <strong>{{ current_temp }}°F</strong>
+        The water is currently <strong id="water-temp">Loading...</strong>
       </div>
-      <div class="note">
-        at the Battery as of {{ current_time|fmt_datetime }}.
-      </div>
+      <div class="note" id="temp-station-info">at the Battery.</div>
       <div class="tides">
         <p>
-          Last <strong>{{ past_tides[-1].type }}</strong> tide was at
-          <strong>{{ past_tides[-1].time|fmt_datetime }}</strong>
+          Last <strong id="past-tide-type">...</strong> tide was at
+          <strong id="past-tide-time">loading</strong>
         </p>
         <p>
-          Next <strong>{{ next_tides[0].type }}</strong> tide is at
-          <strong>{{ next_tides[0].time|fmt_datetime }}</strong>
+          Next <strong id="next-tide-0-type">...</strong> tide is at
+          <strong id="next-tide-0-time">loading</strong>
         </p>
         <p>
-          Next <strong>{{ next_tides[1].type }}</strong> tide is at
-          <strong>{{ next_tides[1].time|fmt_datetime }}</strong>
+          Next <strong id="next-tide-1-type">...</strong> tide is at
+          <strong id="next-tide-1-time">loading</strong>
         </p>
       </div>
     </div>

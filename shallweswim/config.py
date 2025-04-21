@@ -102,6 +102,13 @@ class LocationConfig(BaseModel, frozen=True):
         ),
     ] = False
 
+    temp_outliers: Annotated[
+        List[str],
+        Field(
+            description="List of timestamps (YYYY-MM-DD HH:MM:SS format) with erroneous temperature data to remove"
+        ),
+    ] = []
+
     # NOAA Data Station Parameters
 
     temp_station: Annotated[
@@ -187,6 +194,12 @@ CONFIG_LIST = [
         currents_stations=[
             "ACT3876",  # Coney Island Channel
             "NYH1905",  # Rockaway Inslet
+        ],
+        # Known erroneous temperature readings specific to NYC
+        temp_outliers=[
+            "2017-05-23 11:00:00",
+            "2017-05-23 12:00:00",
+            "2020-05-22 13:00:00",
         ],
         description="Coney Island Brighton Beach open water swimming conditions",
     ),

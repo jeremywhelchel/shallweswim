@@ -442,21 +442,45 @@ class Data(object):
             years = range(2011, Now().year + 1)
             threadpool = futures.ThreadPoolExecutor(len(years))
             year_frames = threadpool.map(self._FetchHistoricTempYear, years)
-            self.historic_temps = (
-                pd.concat(year_frames)
-                # These samples have erroneous data
-                # TODO: Find a way to identify / prune outliers automatically
-                .drop(pd.to_datetime("2017-05-23 11:00:00"))
-                .drop(pd.to_datetime("2017-05-23 12:00:00"))
-                .drop(pd.to_datetime("2020-05-22 13:00:00"))
-                .resample("h")
-                .first()
-            )
+            # Concat all the yearly data frames
+            historic_temps = pd.concat(year_frames)
+
+            # Remove outliers using the helper method
+            historic_temps = self._RemoveOutliers(historic_temps)
+
+            # Resample to hourly intervals and assign to instance variable
+            self.historic_temps = historic_temps.resample("h").first()
             self._historic_temps_timestamp = Now()
         except noaa.NoaaApiError as e:
             logging.warning(f"Historic temp fetch error: {e}")
 
         # TODO: Test by disabling local wifi briefly to ensure error handling works
+
+    def _RemoveOutliers(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Remove known erroneous data points from a DataFrame.
+
+        Uses the temp_outliers list from the location configuration to identify and
+        remove specific timestamps that are known to have bad data. This helps to
+        improve data quality by filtering out known anomalies.
+
+        Args:
+            df: DataFrame with DatetimeIndex to remove outliers from
+
+        Returns:
+            DataFrame with outliers removed
+        """
+        if not self.config.temp_outliers:
+            return df
+
+        result_df = df.copy()
+        for timestamp in self.config.temp_outliers:
+            try:
+                result_df = result_df.drop(pd.to_datetime(timestamp))
+            except KeyError:
+                # Skip if the timestamp doesn't exist in the data
+                logging.debug(f"Outlier timestamp {timestamp} not found in data")
+
+        return result_df
 
     def _FetchLiveTemps(self) -> None:
         """Fetch recent air and water temperatures (last 8 days).
@@ -475,28 +499,27 @@ class Data(object):
         end_date = datetime.datetime.today()
         # TODO: Resample to 6min for more consistent data intervals
         try:
-            self.live_temps = (
-                pd.concat(
-                    [
-                        noaa.NoaaApi.Temperature(
-                            self.config.temp_station,
-                            "air_temperature",
-                            begin_date,
-                            end_date,
-                        ),
-                        noaa.NoaaApi.Temperature(
-                            self.config.temp_station,
-                            "water_temperature",
-                            begin_date,
-                            end_date,
-                        ),
-                    ],
-                    axis=1,
-                )
-                # Drop a bad reading
-                # TODO: Find an automated way to drop these solo outliers
-                # .drop(pd.to_datetime("2021-05-18 22:24:00"))
+            # Concatenate air and water temperature data
+            temp_data = pd.concat(
+                [
+                    noaa.NoaaApi.Temperature(
+                        self.config.temp_station,
+                        "air_temperature",
+                        begin_date,
+                        end_date,
+                    ),
+                    noaa.NoaaApi.Temperature(
+                        self.config.temp_station,
+                        "water_temperature",
+                        begin_date,
+                        end_date,
+                    ),
+                ],
+                axis=1,
             )
+
+            # Remove outliers using the helper method
+            self.live_temps = self._RemoveOutliers(temp_data)
             self._live_temps_timestamp = Now()
             age = self.Freshness()["live_temps"]["latest_value"]["age"]
             logging.info(f"Fetched live temps. Last datapoint age: {age}")

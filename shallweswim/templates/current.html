@@ -39,46 +39,7 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
   }
 </style>
 {% endblock %} {% block head_extra %}
-<script>
-  // Function to fetch current prediction data
-  async function fetchCurrentsData() {
-    try {
-      const response = await fetch(
-        '/api/{{ config.code }}/currents{{ "?shift=" + request.query_params.get("shift", "") if request.query_params.get("shift") else "" }}',
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
-      }
-      const data = await response.json();
-      updateCurrentsDisplay(data);
-    } catch (error) {
-      console.error("Error fetching currents data:", error);
-    }
-  }
-
-  // Function to update the display with currents data
-  function updateCurrentsDisplay(data) {
-    document.getElementById("timestamp").textContent = new Date(
-      data.timestamp,
-    ).toLocaleString();
-    document.getElementById("direction").textContent = data.current.direction;
-    document.getElementById("magnitude").textContent =
-      data.current.magnitude.toFixed(1);
-    document.getElementById("state").textContent =
-      data.current.state_description;
-
-    // Update navigation links
-    const prevLink = document.getElementById("prev-hour-link");
-    const nextLink = document.getElementById("next-hour-link");
-    if (prevLink)
-      prevLink.href = `/{{ config.code }}/currents?shift=${data.navigation.prev_hour}`;
-    if (nextLink)
-      nextLink.href = `/{{ config.code }}/currents?shift=${data.navigation.next_hour}`;
-  }
-
-  // Load data when page loads
-  document.addEventListener("DOMContentLoaded", fetchCurrentsData);
-</script>
+<!-- Page initialization now happens automatically in main.js -->
 {% endblock %} {% block header %}
 <h1 class="title">shall we swim today?</h1>
 <div>
@@ -164,32 +125,7 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
   <img class="plot" id="legacy-chart" src="" alt="Historic area tide chart" />
 </div>
 
-<script>
-  // Update chart images when current data is loaded
-  function updateCharts(data) {
-    // Update current chart
-    document.getElementById("current-chart").src = data.current_chart_filename;
-
-    // Update tide current plot
-    document.getElementById("tide-current-plot").src =
-      `/api/${data.location.code}/current_tide_plot?shift=${data.navigation.shift}`;
-
-    // Update legacy chart
-    const legacyChart = document.getElementById("legacy-chart");
-    legacyChart.src = `/static/tidecharts/${data.legacy_chart.chart_filename}`;
-
-    // Update legacy map title
-    document.getElementById("legacy-map-title").textContent =
-      `Legacy Map - ${data.legacy_chart.map_title}`;
-  }
-
-  // Extend the updateCurrentsDisplay function
-  const originalUpdateFunction = updateCurrentsDisplay;
-  updateCurrentsDisplay = function (data) {
-    originalUpdateFunction(data);
-    updateCharts(data);
-  };
-</script>
+<!-- Chart functions moved to main.js -->
 
 <h2>Where do the current estimates come from?</h2>
 <div>

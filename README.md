@@ -89,22 +89,20 @@ poetry run black .
 poetry run mypy --config-file=pyproject.toml .
 ```
 
-### Dead Code Detection
-
-The project uses Pylint to detect unused imports, variables, and other forms of dead code. This check is included in the pre-commit hooks and will cause the commit to fail if unused code is detected.
+### Linting
 
 ```bash
-# Check for unused imports and variables in a specific file
-poetry run pylint --disable=all --enable=unused-import,unused-variable file.py
+# Check for unused imports, variables, etc.
+poetry run pylint --disable=all --enable=W0611,W0612,W0613,W0614,W0641,E0704,C0415,R0801 file.py
 
-# Check the entire codebase for unused code
-poetry run pylint --disable=all --enable=unused-import,unused-variable shallweswim/ tests/
+# Check entire codebase
+poetry run pylint --disable=all --enable=W0611,W0612,W0613,W0614,W0641,E0704,C0415,R0801 --recursive=y shallweswim/ tests/
 
 # Run the pre-commit hook
 poetry run pre-commit run pylint
 ```
 
-The pylint configuration (`.pylintrc`) is specifically focused on detecting unused code while ignoring other stylistic issues that are already handled by Black and mypy.
+The pylint configuration (`.pylintrc`) is specifically focused on detecting unused code while ignoring other stylistic issues that are already handled by Black and mypy. The pre-commit hook is configured to fail if unused imports, variables, or arguments are detected.
 
 ### Other Tools
 
@@ -120,6 +118,6 @@ GitHub Actions workflows automatically verify the following on every push:
 - **Unit Tests**: All unit tests pass
 - **Type Checking**: No type errors are found by mypy
 - **Code Formatting**: All Python code follows Black style
-- **Dead Code Detection**: No unused imports or variables are present
+- **Linting**: No unused imports, variables, or arguments are detected by pylint
 
 Additionally, a separate integration test workflow runs daily to ensure compatibility with external APIs.

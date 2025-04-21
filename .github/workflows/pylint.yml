@@ -1,0 +1,32 @@
+name: Pylint
+# Run pylint checks on every push to detect unused imports and unused code
+on: [push]
+
+jobs:
+  pylint:
+    runs-on: ubuntu-latest
+    name: Run pylint code quality checks
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Run pylint checks
+        run: poetry run pylint --disable=all --enable=W0611,W0612,W0613,W0614,W0641,E0704,C0415,R0801 --recursive=y shallweswim/ tests/
+
+      - name: Upload error report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pylint-error-report
+          path: pylint-report.txt

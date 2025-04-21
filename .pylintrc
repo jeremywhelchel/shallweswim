@@ -24,6 +24,7 @@ enable=W0611,W0612,W0613,W0614,W0641,E0704,C0415,R0801
 
 # Disable checks that conflict with other tools
 disable=
+    # Code style handled by black and other tools
     invalid-name,
     missing-docstring,
     line-too-long,
@@ -37,7 +38,14 @@ disable=
     too-many-statements,
     too-many-instance-attributes,
     function-redefined,
-    too-many-lines
+    too-many-lines,
+
+    # Type-related checks that mypy already handles
+    no-member,                # Type-related errors that mypy handles better
+    unsubscriptable-object,   # Type-related errors
+    not-callable,             # Type-related errors
+    unsupported-membership-test, # Type-related errors
+    invalid-sequence-index     # Type-related errors
 
 [REPORTS]
 # Set the output format

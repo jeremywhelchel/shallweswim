@@ -233,8 +233,6 @@ def validate_currents_response(
     assert "current_api_url" in nav, "Missing current API URL"
     assert "plot_url" in nav, "Missing plot URL"
 
-    assert "San Diego" in data["location"]["name"]
-
 
 @pytest.mark.integration
 def test_currents_api_nyc(api_client: TestClient) -> None:

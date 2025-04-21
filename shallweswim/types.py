@@ -1,8 +1,9 @@
 """Type definitions for shallweswim."""
 
-from typing import TypedDict, Optional, Literal, Any, List, Dict
+# Standard library imports
 import datetime
 from dataclasses import dataclass
+from typing import List, Literal, Optional, TypedDict
 
 
 # Dataset names for data freshness tracking

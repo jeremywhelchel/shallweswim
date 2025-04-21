@@ -11,6 +11,7 @@ import contextlib
 import datetime
 import logging
 import os
+import time
 from typing import AsyncGenerator
 
 # Third-party imports
@@ -22,9 +23,6 @@ from fastapi import HTTPException, responses, staticfiles, templating
 # Local imports
 from shallweswim import config, data as data_lib, plot
 from shallweswim.types import FreshnessInfo
-
-# Standard library imports for initialization
-import time
 
 
 data: dict[str, data_lib.Data] = {}

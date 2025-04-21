@@ -1,18 +1,21 @@
 """Integration tests for the main FastAPI application.
 
 These tests use FastAPI's TestClient to test the API endpoints with real data.
-They verify that the NYC location can be accessed without errors and that
-the API returns real data from NOAA endpoints.
+They verify that configured locations (currently NYC and San Diego) can be
+accessed without errors and that the API returns real data from NOAA endpoints.
 
 Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 """
 
-import pytest
-import datetime
-from typing import Any, Dict, Optional
-from fastapi.testclient import TestClient
-import time
+# Standard library imports
+from typing import Any
+
+# Third-party imports
 import httpx
+import pytest
+from fastapi.testclient import TestClient
+
+# Local imports
 from shallweswim import config, main
 
 # Mark all tests in this file as integration tests
@@ -29,10 +32,10 @@ TEST_LOCATIONS = [NYC_LOCATION, SAN_LOCATION]
 @pytest.fixture(scope="module")
 def api_client(check_api_availability: Any) -> TestClient:
     """
-    Create a FastAPI test client that initializes data for the NYC location only.
-    This directly mirrors what the lifespan function does in the main application.
+    Create a FastAPI test client that initializes data for all test locations.
+    This directly mirrors what the lifespan function does in the main application,
+    but waits for data to load before returning.
     """
-    from shallweswim import data as data_lib
 
     # Clear existing data to ensure a clean state
     main.data.clear()

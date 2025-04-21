@@ -53,6 +53,17 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Pylint for detecting unused imports and dead code (advisory only)
+      - id: pylint
+        name: pylint unused code check (advisory)
+        description: Detect unused imports, variables, and dead code (advisory, won't block commit)
+        language: system
+        entry: poetry run pylint
+        args:
+          [--exit-zero, --rcfile=.pylintrc, --recursive=y, shallweswim/, tests/]
+        pass_filenames: false
+        always_run: true
+
       # Optionally run integration tests before commit (disabled by default)
       - id: pytest-integration
         name: pytest integration tests

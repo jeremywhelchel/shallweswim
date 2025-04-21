@@ -3,8 +3,10 @@
 This file contains setup for integration tests that hit real NOAA API endpoints.
 """
 
+# Third-party imports
 import pytest
-import pandas as pd
+
+# Local imports
 from shallweswim.noaa import NoaaApi
 
 # Real station to use for API availability check

@@ -1,7 +1,7 @@
 """Type definitions for NOAA API client."""
 
-from typing import TypedDict, Literal, Optional
-import datetime
+# Standard library imports
+from typing import Literal, Optional, TypedDict
 
 ProductType = Literal[
     "predictions", "currents_predictions", "air_temperature", "water_temperature"

@@ -1,24 +1,24 @@
 """NOAA tides and current API client."""
 
-from typing import Any, cast, Literal
+# Standard library imports
 import datetime
 import logging
-import pandas as pd
 import time
-import urllib
-import urllib.parse
 import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Literal, cast
 
+# Third-party imports
+import pandas as pd
+
+# Local imports
 from shallweswim.noaa_types import (
-    NoaaRequestParams,
-    TideData,
     CurrentData,
-    TemperatureData,
-    ProductType,
-    TimeInterval,
     DateFormat,
-    air_temperature,
-    water_temperature,
+    NoaaRequestParams,
+    TemperatureData,
+    TimeInterval,
 )
 
 
@@ -35,11 +35,6 @@ class NoaaDataError(NoaaApiError):
 
 
 class NoaaApi:
-    """Static class to fetch data from the NOAA Tides and Currents API.
-
-    API is documented here: https://api.tidesandcurrents.noaa.gov/api/prod/
-    """
-
     """Client for the NOAA Tides and Currents API.
 
     This class provides methods to fetch tide predictions, current predictions,

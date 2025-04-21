@@ -12,7 +12,7 @@ import datetime
 import time
 from typing import Literal
 
-from shallweswim.noaa import NoaaApi, NoaaConnectionError, NoaaDataError
+from shallweswim.noaa import NoaaApi, NoaaDataError
 
 # Mark all tests in this file as integration tests that hit live services
 pytestmark = pytest.mark.integration

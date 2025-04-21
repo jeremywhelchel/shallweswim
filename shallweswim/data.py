@@ -10,7 +10,7 @@ import logging
 import threading
 import time
 from concurrent import futures
-from typing import Any, Optional, Tuple, cast
+from typing import Optional, Tuple, cast
 
 # Third-party imports
 import pandas as pd

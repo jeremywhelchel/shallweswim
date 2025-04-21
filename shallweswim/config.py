@@ -1,12 +1,52 @@
-"""Application configuration."""
+"""Application configuration.
 
-from typing import Annotated, List, Optional
+This module defines the configuration for all supported swimming locations,
+including geographic coordinates, NOAA station IDs, and descriptive information.
+
+The configuration system is built around the LocationConfig class, which stores all
+relevant information about swimming locations. The most important elements include:
+
+1. Location identification: 3-letter code, name, and description
+2. Geographic coordinates: latitude and longitude for weather services
+3. NOAA Data Sources: Station IDs for fetching tides, temperature, and currents data
+4. Timezone: For correct time-based display of conditions
+
+Configurations for all supported locations are stored in CONFIG_LIST and can be
+accessed via the Get() function using the location's 3-letter code.
+"""
+
+from typing import Annotated, Dict, List, Optional, Tuple, cast
+import pytz
+from datetime import tzinfo
 
 from pydantic import BaseModel, Field
 
 
-class LocationConfig(BaseModel):
-    """Configuration for a swimming location."""
+class LocationConfig(BaseModel, frozen=True):
+    """Configuration for a swimming location.
+
+    This model defines all the information needed to display conditions for
+    a specific open water swimming location. LocationConfig objects are immutable
+    (frozen=True) to prevent accidental modification after creation.
+
+    Each location is identified by a unique 3-letter code and includes
+    geographic coordinates, descriptive information, and references to
+    NOAA data stations that provide tide, temperature, and current information.
+
+    The NOAA station IDs are used by the NOAA client to fetch real-time and
+    historical data about water temperature, tides, and currents. Not all locations
+    have all types of data available.
+
+    Typical usage:
+        # Get a location config by its 3-letter code
+        nyc_config = config.Get("nyc")
+
+        # Access properties
+        lat, lon = nyc_config.coordinates
+        temp_station = nyc_config.temp_station  # For NOAA API calls
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
 
     code: Annotated[
         str,
@@ -14,15 +54,28 @@ class LocationConfig(BaseModel):
             min_length=3,
             max_length=3,
             pattern=r"^[a-z]{3}$",
-            description="3-letter lowercase location code",
+            description="3-letter lowercase location code that uniquely identifies this location",
         ),
     ]
-    name: str
+    name: Annotated[
+        str,
+        Field(description="City or region name (e.g., 'New York', 'San Francisco')"),
+    ]
 
-    swim_location: str
-    swim_location_link: str
+    swim_location: Annotated[
+        str,
+        Field(
+            description="Specific swimming spot name (e.g., 'Grimaldo's Chair', 'La Jolla Cove')"
+        ),
+    ]
+    swim_location_link: Annotated[
+        str, Field(description="URL with information about the swim location")
+    ]
 
-    description: str
+    description: Annotated[
+        str,
+        Field(description="Detailed description of the swimming conditions/location"),
+    ]
     latitude: Annotated[
         float,
         Field(ge=-90, le=90, description="Latitude in decimal degrees (-90 to 90)"),
@@ -33,30 +86,86 @@ class LocationConfig(BaseModel):
             ge=-180, le=180, description="Longitude in decimal degrees (-180 to 180)"
         ),
     ]
-    # TODO: may need to add more windy params (e.g. zoom, aspect ratio)
-    timezone: str
+    timezone: Annotated[
+        tzinfo,
+        Field(
+            description="Timezone object for correctly displaying time-based data such as tide charts (e.g., pytz.timezone('US/Eastern'))"
+        ),
+    ]
 
-    current_predictions: bool = False
+    current_predictions: Annotated[
+        bool,
+        Field(
+            description="Whether current predictions are available for this location"
+        ),
+    ] = False
 
-    # NOAA parameters
-    # Water/met stations are 7 digit ints. Currents station ids are strings.
+    # NOAA Data Station Parameters
+
     temp_station: Annotated[
         Optional[int],
         Field(
-            ge=1000000, le=9999999, description="NOAA temperature station ID (7 digits)"
+            ge=1000000,
+            le=9999999,
+            description="NOAA temperature station ID (7 digits) for fetching water/air temperature (e.g., 8518750 for NYC Battery)",
         ),
     ] = None
+
     tide_station: Annotated[
         Optional[int],
-        Field(ge=1000000, le=9999999, description="NOAA tide station ID (7 digits)"),
+        Field(
+            ge=1000000,
+            le=9999999,
+            description="NOAA tide station ID (7 digits) for fetching tide predictions (e.g., 8517741 for Coney Island)",
+        ),
     ] = None
-    # XXX still need to generalize currents
-    currents_stations: Optional[List[Annotated[str, Field(min_length=1)]]] = None
 
-    temp_station_name: Optional[str] = None
-    tide_station_name: Optional[str] = None
+    currents_stations: Annotated[
+        Optional[List[Annotated[str, Field(min_length=1)]]],
+        Field(
+            description="Current stations for water current speed and direction (strings like 'ACT3876', unlike temp/tide stations)"
+        ),
+    ] = None
 
-    # No custom validators needed - using Pydantic's built-in constraints
+    temp_station_name: Annotated[
+        Optional[str],
+        Field(
+            description="Human-readable name of the temperature station (e.g., 'The Battery, NY')"
+        ),
+    ] = None
+
+    tide_station_name: Annotated[
+        Optional[str],
+        Field(
+            description="Human-readable name of the tide station (e.g., 'Coney Island, NY')"
+        ),
+    ] = None
+
+    # No timezone validator needed - timezone objects are created inline
+
+    @property
+    def coordinates(self) -> Tuple[float, float]:
+        """Return the location's coordinates as a (latitude, longitude) tuple.
+
+        This is convenient for passing to mapping APIs or weather services that
+        require coordinates as a tuple.
+
+        Returns:
+            A tuple of (latitude, longitude) as floats
+        """
+        return (self.latitude, self.longitude)
+
+    @property
+    def display_name(self) -> str:
+        """Return a formatted display name for the location.
+
+        Creates a user-friendly display name that combines the city/region name
+        with the specific swimming location.
+
+        Returns:
+            A string in the format "City (Swim Location)"
+        """
+        return f"{self.name} ({self.swim_location})"
 
 
 CONFIG_LIST = [
@@ -67,7 +176,7 @@ CONFIG_LIST = [
         swim_location_link="https://cibbows.org/about/essentials/",
         latitude=40.573,
         longitude=-73.954,
-        timezone="US/Eastern",
+        timezone=pytz.timezone("US/Eastern"),
         current_predictions=True,
         temp_station=8518750,
         temp_station_name="The Battery, NY",
@@ -86,7 +195,7 @@ CONFIG_LIST = [
         swim_location_link="https://www.lajollacoveswimclub.com/page-1518748",
         latitude=32.850,
         longitude=-117.272,
-        timezone="US/Pacific",
+        timezone=pytz.timezone("US/Pacific"),
         temp_station=9410230,
         temp_station_name="La Jolla, CA",
         tide_station=9410230,
@@ -101,7 +210,7 @@ CONFIG_LIST = [
         swim_location_link="https://serc.com/swimming/swimming-in-aquatic-park/",
         latitude=37.808,
         longitude=-122.426,
-        timezone="US/Pacific",
+        timezone=pytz.timezone("US/Pacific"),
         # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
         # It is not a live reading (and not available via the same API), so we don't use it.
         temp_station=9414290,
@@ -119,7 +228,7 @@ CONFIG_LIST = [
         latitude=38.2647556,
         longitude=-85.7323204,
         # XXX windy "waves" mode inapplicable here
-        timezone="US/Eastern",
+        timezone=pytz.timezone("US/Eastern"),
         description="Louisville Kentucky open water swimming conditions",
         # TODO: add this
         # - temp data
@@ -130,14 +239,19 @@ CONFIG_LIST = [
         #    https://ohiorivercam.com/
     ),
 ]
-CONFIGS = {c.code: c for c in CONFIG_LIST}
+# Build lookup dictionaries - use lowercase keys for case-insensitive lookup
+CONFIGS: Dict[str, LocationConfig] = {c.code.lower(): c for c in CONFIG_LIST}
 
 
 def Get(code: str) -> Optional[LocationConfig]:
     """Get location config by 3-letter code.
 
+    The lookup is case-insensitive, so "NYC", "nyc", and "Nyc" all retrieve
+    the same configuration. This function is the primary way to access
+    location configurations throughout the application.
+
     Args:
-        code: 3-letter location code
+        code: 3-letter location code (e.g., "nyc", "sfo", "san")
 
     Returns:
         LocationConfig if found, None otherwise

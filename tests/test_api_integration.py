@@ -8,9 +8,11 @@ Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 """
 
 # Standard library imports
+import datetime
 from typing import Any
 
 # Third-party imports
+import dateutil.parser
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -30,7 +32,7 @@ TEST_LOCATIONS = [NYC_LOCATION, SAN_LOCATION]
 
 
 @pytest.fixture(scope="module")
-def api_client(_check_api_availability: Any) -> TestClient:
+def api_client(_: Any) -> TestClient:
     """
     Create a FastAPI test client that initializes data for all test locations.
     This directly mirrors what the lifespan function does in the main application,
@@ -106,6 +108,25 @@ def validate_conditions_response(
         "low",
         "unknown",
     ], f"Invalid tide type: {past_tide['type']}"
+
+    # Validate that past tides are actually in the past
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for tide in tides["past"]:
+        tide_time = dateutil.parser.isoparse(tide["time"])
+        assert (
+            tide_time <= now
+        ), f"Past tide time {tide_time} is not in the past compared to {now}"
+
+    # Validate that future tides are actually in the future
+    for tide in tides["next"]:
+        tide_time = dateutil.parser.isoparse(tide["time"])
+        assert (
+            tide_time >= now
+        ), f"Next tide time {tide_time} is not in the future compared to {now}"
+
+    # Validate that all tide times are distinct
+    all_tide_times = [tide["time"] for tide in tides["past"] + tides["next"]]
+    assert len(all_tide_times) == len(set(all_tide_times)), "Tide times are not unique"
 
     # Get location config for additional checks
     location_config = config.Get(location_code)

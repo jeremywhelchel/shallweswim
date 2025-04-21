@@ -12,9 +12,20 @@ MAX_SHIFT_LIMIT = 1440  # 24 hours forward
 MIN_SHIFT_LIMIT = -1440  # 24 hours backward
 
 
-# XXX Needs a parameter here...
 def Now() -> datetime.datetime:
-    return datetime.datetime.now(tz=EASTERN_TZ).replace(tzinfo=None)
+    """Returns the current time in UTC with timezone information preserved.
+
+    This ensures consistent timezone handling throughout the application.
+    """
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def NowLocal() -> datetime.datetime:
+    """Returns the current time in Eastern timezone with timezone information preserved.
+
+    Use this for display purposes when local time is needed.
+    """
+    return datetime.datetime.now(tz=EASTERN_TZ)
 
 
 def EffectiveTime(shift_minutes: int = 0) -> datetime.datetime:

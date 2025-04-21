@@ -1,21 +1,21 @@
 import numpy as np
 import pandas as pd
 import datetime
-import pytz
 import pytest
 
 from shallweswim import util
 
 
 def test_now() -> None:
-    """Test that Now() returns current time in Eastern timezone without tzinfo."""
+    """Test that Now() returns timezone-aware current time in UTC."""
     now = util.Now()
     assert isinstance(now, datetime.datetime)
-    assert now.tzinfo is None  # Should have no timezone info
+    assert now.tzinfo is not None  # Should have timezone info
+    assert now.tzinfo == datetime.timezone.utc  # Should be in UTC
 
     # Test that the time is within a reasonable range
-    eastern_now = datetime.datetime.now(tz=pytz.timezone("US/Eastern"))
-    time_diff = abs((eastern_now.replace(tzinfo=None) - now).total_seconds())
+    utc_now = datetime.datetime.now(tz=datetime.timezone.utc)
+    time_diff = abs((utc_now - now).total_seconds())
     assert time_diff < 1  # Should be less than 1 second difference
 
 

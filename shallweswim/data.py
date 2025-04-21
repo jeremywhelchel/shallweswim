@@ -40,11 +40,17 @@ def LatestTimeValue(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
         df: DataFrame with DatetimeIndex, or None
 
     Returns:
-        Datetime object of the last index value, or None if DataFrame is None
+        Timezone-aware datetime object (in UTC) of the last index value,
+        or None if DataFrame is None
     """
     if df is None:
         return None
-    return cast(datetime.datetime, df.index[-1].to_pydatetime())
+    # Get the datetime and ensure it's timezone-aware
+    dt = df.index[-1].to_pydatetime()
+    # Add UTC timezone if datetime is naive
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return cast(datetime.datetime, dt)
 
 
 class Data(object):
@@ -107,7 +113,14 @@ class Data(object):
             return True
 
         # Check if data is older than the expiration period
-        now = datetime.datetime.now(datetime.timezone.utc)
+        # Use timezone-aware datetime with the consistent Now() function
+        now = Now()  # Now returns a timezone-aware datetime in UTC
+
+        # Make sure timestamp is timezone-aware for proper comparison
+        if timestamp.tzinfo is None:
+            # Convert naive timestamp to UTC for consistent comparison
+            timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
+
         age = now - timestamp
         return age > self.expirations[dataset]
 
@@ -179,30 +192,71 @@ class Data(object):
             next_tides = [placeholder_entry, placeholder_entry]
         else:
             # Convert the DataFrame records to TideEntry objects
+            # Get the current time with proper timezone handling
+            now = Now()
+
+            # Handle the timezone compatibility for DataFrame slicing
+            # Check if the tides DataFrame has a timezone-naive index
+            if self.tides.index.tz is None:
+                # If index is naive, we need a naive datetime for slicing
+                now_for_slicing = now.replace(tzinfo=None)
+            else:
+                # If index has timezone info, ensure it's in the same timezone
+                now_for_slicing = now
+
+            # When we reset_index, the DatetimeIndex becomes a column named 'time'
             past_tide_dicts = (
-                self.tides[: Now()].tail(1).reset_index().to_dict(orient="records")
+                self.tides[:now_for_slicing]
+                .tail(1)
+                .reset_index()
+                .to_dict(orient="records")
             )
             next_tide_dicts = (
-                self.tides[Now() :].head(2).reset_index().to_dict(orient="records")
+                self.tides[now_for_slicing:]
+                .head(2)
+                .reset_index()
+                .to_dict(orient="records")
             )
 
-            past_tides = [
-                TideEntry(
-                    time=record.get("index", Now()),  # The index contains the datetime
-                    type=record.get("type", "unknown"),
-                    prediction=record.get("prediction", 0.0),
-                )
-                for record in past_tide_dicts
-            ]
+            # Get the location's timezone for converting times
+            location_tz = self.config.timezone
 
-            next_tides = [
-                TideEntry(
-                    time=record.get("index", Now()),  # The index contains the datetime
-                    type=record.get("type", "unknown"),
-                    prediction=record.get("prediction", 0.0),
+            # Convert DataFrame records directly to TideEntry objects with timezone conversion
+            past_tides = []
+            for record in past_tide_dicts:
+                # Get the time and ensure it has timezone info
+                tide_time = record.get("time", Now())
+                if tide_time.tzinfo is None:
+                    tide_time = tide_time.replace(tzinfo=datetime.timezone.utc)
+
+                # Convert to location timezone
+                local_time = tide_time.astimezone(location_tz)
+
+                past_tides.append(
+                    TideEntry(
+                        time=local_time,
+                        type=record.get("type", "unknown"),
+                        prediction=record.get("prediction", 0.0),
+                    )
                 )
-                for record in next_tide_dicts
-            ]
+
+            next_tides = []
+            for record in next_tide_dicts:
+                # Get the time and ensure it has timezone info
+                tide_time = record.get("time", Now())
+                if tide_time.tzinfo is None:
+                    tide_time = tide_time.replace(tzinfo=datetime.timezone.utc)
+
+                # Convert to location timezone
+                local_time = tide_time.astimezone(location_tz)
+
+                next_tides.append(
+                    TideEntry(
+                        time=local_time,
+                        type=record.get("type", "unknown"),
+                        prediction=record.get("prediction", 0.0),
+                    )
+                )
 
         return TideInfo(past_tides=past_tides, next_tides=next_tides)
 
@@ -225,10 +279,30 @@ class Data(object):
         if not t:
             t = Now()
         assert self.tides is not None
-        row = self.tides.loc[self.tides.index.asof(t)]
+
+        # Handle the timezone compatibility for DataFrame index lookup
+        # Check if the DataFrame has a timezone-naive index
+        if self.tides.index.tz is None:
+            # If index is naive, we need a naive datetime for slicing
+            t_for_lookup = t.replace(tzinfo=None) if t.tzinfo is not None else t
+        else:
+            # If index has timezone info, ensure it's in the same timezone
+            t_for_lookup = t
+
+        row = self.tides.loc[self.tides.index.asof(t_for_lookup)]
         # TODO: Break this into a function
         tide_type = row["type"]
-        offset = t - row.name
+
+        # Ensure row.name has the same timezone awareness as t before subtraction
+        row_time = row.name
+        if t.tzinfo is not None and row_time.tzinfo is None:
+            # If t is timezone-aware but row_time is naive, add the same timezone to row_time
+            row_time = row_time.replace(tzinfo=t.tzinfo)
+        elif t.tzinfo is None and row_time.tzinfo is not None:
+            # If t is naive but row_time is timezone-aware, make t timezone-aware
+            t = t.replace(tzinfo=row_time.tzinfo)
+
+        offset = t - row_time
         offset_hrs = offset.seconds / (60 * 60)
         if offset_hrs > 5.5:
             chart_num = 0
@@ -289,7 +363,16 @@ class Data(object):
         # tidal cycle. Try to only look at +/- til we get to 0 or something
         df["mag_pct"] = df.groupby("ef")["magnitude"].rank(pct=True)
 
-        row = df[t:].iloc[0]
+        # Handle the timezone compatibility for DataFrame slicing
+        # Check if the DataFrame has a timezone-naive index
+        if df.index.tz is None:
+            # If index is naive, we need a naive datetime for slicing
+            t_for_slicing = t.replace(tzinfo=None) if t.tzinfo is not None else t
+        else:
+            # If index has timezone info, ensure it's in the same timezone
+            t_for_slicing = t
+
+        row = df[t_for_slicing:].iloc[0]
 
         STRONG_THRESHOLD = 0.85  # 30% on either side of peak
         WEAK_THRESHOLD = 0.15  # 30% on either side of bottom
@@ -492,6 +575,9 @@ class Data(object):
             age_str = "unknown"
             if last_time is not None:
                 now = Now()
+                # Ensure last_time has timezone info before subtraction
+                if last_time.tzinfo is None:
+                    last_time = last_time.replace(tzinfo=datetime.timezone.utc)
                 age = now - last_time
                 age_str = str(datetime.timedelta(seconds=int(age.total_seconds())))
             logging.info(f"Fetched live temps. Last datapoint age: {age_str}")

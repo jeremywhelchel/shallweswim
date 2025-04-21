@@ -28,7 +28,9 @@ CurrentDirection = Literal["flooding", "ebbing"]
 class TideEntry:
     """Information about a single tide event (internal representation)."""
 
-    time: datetime.datetime  # Time of the tide
+    time: (
+        datetime.datetime
+    )  # Time of the tide (timezone-aware, in location's local timezone)
     type: TideType  # 'high' or 'low'
     prediction: float  # Height of the tide in feet
     # Additional fields from the NOAA API can be added as needed
@@ -79,7 +81,8 @@ class TemperatureInfo(BaseModel):
     """Water temperature information for API responses."""
 
     timestamp: str = Field(
-        ..., description="ISO 8601 formatted timestamp of the reading"
+        ...,
+        description="ISO 8601 formatted timestamp of the reading (in location's local timezone)",
     )
     water_temp: float = Field(..., description="Water temperature in degrees")
     units: str = Field("F", description="Temperature units (F for Fahrenheit)")
@@ -88,7 +91,10 @@ class TemperatureInfo(BaseModel):
 class ApiTideEntry(BaseModel):
     """Individual tide information for API responses."""
 
-    time: str = Field(..., description="ISO 8601 formatted timestamp of the tide event")
+    time: str = Field(
+        ...,
+        description="ISO 8601 formatted timestamp of the tide event (in location's local timezone)",
+    )
     type: str = Field(..., description="Type of tide ('high', 'low', or 'unknown')")
     prediction: float = Field(..., description="Height of tide in feet")
 
@@ -104,7 +110,8 @@ class CurrentPredictionInfo(BaseModel):
     """Current prediction information for API responses."""
 
     timestamp: str = Field(
-        ..., description="ISO 8601 formatted timestamp of the prediction"
+        ...,
+        description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
     )
     direction: str = Field(
         ..., description="Direction of current ('flooding' or 'ebbing')"
@@ -139,7 +146,8 @@ class CurrentsResponse(BaseModel):
 
     location: LocationInfo
     timestamp: str = Field(
-        ..., description="ISO 8601 formatted timestamp of the prediction"
+        ...,
+        description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
     )
     current: CurrentPredictionInfo
     legacy_chart: LegacyChartDetails

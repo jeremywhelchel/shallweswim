@@ -26,6 +26,7 @@ types-pytz = "^2025.2.0.20250326"
 matplotlib-stubs = "^0.2.0"
 httpx = "^0.28.1"
 pylint = "^3.3.6"
+types-python-dateutil = "^2.9.0.20241206"
 
 [tool.mypy]
 python_version = "3.12"

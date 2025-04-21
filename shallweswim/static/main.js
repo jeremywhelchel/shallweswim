@@ -82,6 +82,18 @@ function fetchAndUpdateConditions(location) {
     })
     .catch((error) => {
       console.error("Error fetching conditions:", error);
+
+      // Update UI even on error to avoid infinite "Loading..." state
+      const tempElement = document.getElementById("water-temp");
+      if (tempElement && tempElement.textContent === "Loading...") {
+        tempElement.textContent = "Data unavailable";
+      }
+
+      const tempStationElement = document.getElementById("temp-station-info");
+      if (tempStationElement) {
+        tempStationElement.textContent =
+          "Unable to retrieve current data. Please try again later.";
+      }
     });
 }
 

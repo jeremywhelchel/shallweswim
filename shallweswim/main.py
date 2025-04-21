@@ -17,7 +17,8 @@ from typing import AsyncGenerator
 import fastapi
 import google.cloud.logging
 import uvicorn
-from fastapi import HTTPException, responses, staticfiles, templating
+from fastapi import HTTPException, Request, Response, responses, staticfiles, templating
+from typing import Awaitable, Callable
 
 # Local imports
 from shallweswim import config, api
@@ -47,6 +48,31 @@ async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = fastapi.FastAPI(lifespan=lifespan)
+
+
+# API response headers for preventing caching
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+# Add a response header modifier for API routes
+@app.middleware("http")
+async def add_cache_control_headers(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Add cache control headers to API responses to prevent caching."""
+    response = await call_next(request)
+
+    # Add no-cache headers only to API routes
+    if request.url.path.startswith("/api/"):
+        for name, value in NO_CACHE_HEADERS.items():
+            response.headers[name] = value
+
+    return response
+
 
 app.mount(
     "/static", staticfiles.StaticFiles(directory="shallweswim/static"), name="static"

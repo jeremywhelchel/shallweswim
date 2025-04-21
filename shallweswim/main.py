@@ -11,7 +11,6 @@ import contextlib
 import datetime
 import logging
 import os
-import time
 from typing import AsyncGenerator
 
 # Third-party imports
@@ -21,78 +20,7 @@ import uvicorn
 from fastapi import HTTPException, responses, staticfiles, templating
 
 # Local imports
-from shallweswim import config, data as data_lib, api
-
-
-data: dict[str, data_lib.Data] = {}
-
-
-def initialize_location_data(
-    location_codes: list[str],
-    data_dict: dict[str, data_lib.Data] | None = None,
-    wait_for_data: bool = False,
-    max_wait_retries: int = 45,
-    retry_interval: int = 1,
-) -> dict[str, data_lib.Data]:
-    """Initialize data for the specified locations.
-
-    This function handles initialization of Data objects for the specified locations.
-    It can be used by both the main application and tests.
-
-    Args:
-        location_codes: List of location codes to initialize
-        data_dict: Optional existing data dictionary to populate (creates new if None)
-        wait_for_data: Whether to wait for data to be loaded before returning
-        max_wait_retries: Max number of retries when waiting for data
-        retry_interval: Time in seconds between retries
-
-    Returns:
-        Dictionary mapping location codes to initialized Data objects
-
-    Raises:
-        AssertionError: If a location's configuration cannot be found
-    """
-    # Use the provided data dictionary or create a new one
-    if data_dict is None:
-        data_dict = {}
-
-    # Initialize each location
-    for code in location_codes:
-        # Get location config
-        cfg = config.Get(code)
-        assert cfg is not None, f"Config for location '{code}' not found"
-
-        # Initialize data for this location
-        data_dict[code] = data_lib.Data(cfg)
-        data_dict[code].Start()
-
-    # Optionally wait for data to be fully loaded
-    if wait_for_data:
-        for code in location_codes:
-            for i in range(max_wait_retries):
-                # Check that essential data is loaded
-                if (
-                    data_dict[code].tides is not None
-                    and data_dict[code].currents is not None
-                ):
-                    print(f"{code} data loaded successfully after {i+1} attempts")
-                    break
-                print(
-                    f"Waiting for {code} data to load... attempt {i+1}/{max_wait_retries}"
-                )
-                time.sleep(retry_interval)
-
-            # Verify tide data was loaded (all locations should have tide data)
-            assert data_dict[code].tides is not None, f"{code} tide data was not loaded"
-
-            # Only check currents if the location has current predictions enabled
-            location_config = config.Get(code)
-            if location_config is not None and location_config.current_predictions:
-                assert (
-                    data_dict[code].currents is not None
-                ), f"{code} current data was not loaded"
-
-    return data_dict
+from shallweswim import config, api
 
 
 @contextlib.asynccontextmanager
@@ -109,9 +37,9 @@ async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     """
     # Initialize data for all configured locations
     # Don't wait for data to load since this will block application startup
-    initialize_location_data(
+    api.initialize_location_data(
         location_codes=list(config.CONFIGS.keys()),
-        data_dict=data,
+        data_dict=api.data,
         wait_for_data=False,  # Don't block app startup waiting for data
     )
     yield
@@ -127,7 +55,7 @@ app.mount(
 templates = templating.Jinja2Templates(directory="shallweswim/templates")
 
 # Register API routes
-api.register_routes(app, data)
+api.register_routes(app)
 
 
 @app.get("/")
@@ -169,15 +97,17 @@ async def location_water_current(
     Returns:
         HTML response with current water conditions
     """
-    # Check if location exists
-    if location not in data:
-        raise HTTPException(status_code=404, detail=f"Location {location} not found")
-
     # Get location config
     location_config = config.Get(location)
     if not location_config:
         raise HTTPException(
             status_code=404, detail=f"Configuration for {location} not found"
+        )
+
+    # Check if location data exists
+    if location not in api.data:
+        raise HTTPException(
+            status_code=404, detail=f"Data for location {location} not found"
         )
 
     return templates.TemplateResponse(

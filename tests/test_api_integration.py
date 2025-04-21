@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Local imports
-from shallweswim import config, main
+from shallweswim import config, main, api
 
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
@@ -38,13 +38,13 @@ def api_client(check_api_availability: Any) -> TestClient:
     """
 
     # Clear existing data to ensure a clean state
-    main.data.clear()
+    api.data.clear()
 
     # Initialize data for all test locations
     # We set wait_for_data=True to ensure data is loaded before tests run
-    main.initialize_location_data(
+    api.initialize_location_data(
         location_codes=TEST_LOCATIONS,
-        data_dict=main.data,
+        data_dict=api.data,
         wait_for_data=True,  # Wait for data to load before running tests
         max_wait_retries=45,
         retry_interval=1,

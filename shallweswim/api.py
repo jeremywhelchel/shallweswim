@@ -1,10 +1,12 @@
 """API handlers for ShallWeSwim application.
 
-This module contains FastAPI route handlers for the API endpoints.
+This module contains FastAPI route handlers for the API endpoints and data management.
 """
 
 # Standard library imports
 import logging
+import time
+from typing import Optional
 
 # Third-party imports
 import fastapi
@@ -25,12 +27,83 @@ from shallweswim.types import (
 )
 
 
-def register_routes(app: fastapi.FastAPI, data: dict[str, data_lib.Data]) -> None:
+# Global data store for location data
+data: dict[str, data_lib.Data] = {}
+
+
+def initialize_location_data(
+    location_codes: list[str],
+    data_dict: Optional[dict[str, data_lib.Data]] = None,
+    wait_for_data: bool = False,
+    max_wait_retries: int = 45,
+    retry_interval: int = 1,
+) -> dict[str, data_lib.Data]:
+    """Initialize data for the specified locations.
+
+    This function handles initialization of Data objects for the specified locations.
+    It can be used by both the main application and tests.
+
+    Args:
+        location_codes: List of location codes to initialize
+        data_dict: Optional existing data dictionary to populate (creates new if None)
+        wait_for_data: Whether to wait for data to be loaded before returning
+        max_wait_retries: Max number of retries when waiting for data
+        retry_interval: Time in seconds between retries
+
+    Returns:
+        Dictionary mapping location codes to initialized Data objects
+
+    Raises:
+        AssertionError: If a location's configuration cannot be found
+    """
+    # Use the provided data dictionary or create a new one
+    if data_dict is None:
+        data_dict = {}
+
+    # Initialize each location
+    for code in location_codes:
+        # Get location config
+        cfg = config_lib.Get(code)
+        assert cfg is not None, f"Config for location '{code}' not found"
+
+        # Initialize data for this location
+        data_dict[code] = data_lib.Data(cfg)
+        data_dict[code].Start()
+
+    # Optionally wait for data to be fully loaded
+    if wait_for_data:
+        for code in location_codes:
+            for i in range(max_wait_retries):
+                # Check that essential data is loaded
+                if (
+                    data_dict[code].tides is not None
+                    and data_dict[code].currents is not None
+                ):
+                    print(f"{code} data loaded successfully after {i+1} attempts")
+                    break
+                print(
+                    f"Waiting for {code} data to load... attempt {i+1}/{max_wait_retries}"
+                )
+                time.sleep(retry_interval)
+
+            # Verify tide data was loaded (all locations should have tide data)
+            assert data_dict[code].tides is not None, f"{code} tide data was not loaded"
+
+            # Only check currents if the location has current predictions enabled
+            location_config = config_lib.Get(code)
+            if location_config is not None and location_config.current_predictions:
+                assert (
+                    data_dict[code].currents is not None
+                ), f"{code} current data was not loaded"
+
+    return data_dict
+
+
+def register_routes(app: fastapi.FastAPI) -> None:
     """Register API routes with the FastAPI application.
 
     Args:
         app: The FastAPI application
-        data: Dictionary mapping location codes to Data objects
     """
 
     # Helper function to validate location

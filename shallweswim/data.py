@@ -22,8 +22,6 @@ from shallweswim import plot
 from shallweswim import util
 from shallweswim.types import (
     DatasetName,
-    FreshnessInfo,
-    TimeInfo,
     LegacyChartInfo,
     TideInfo,
     TideEntry,
@@ -96,10 +94,22 @@ class Data(object):
         Returns:
             True if the dataset is expired or missing, False otherwise
         """
-        age_seconds = self.Freshness()[dataset]["fetch"]["age_seconds"]
-        return not age_seconds or (
-            age_seconds > self.expirations[dataset].total_seconds()
-        )
+        timestamp = None
+        if dataset == "tides_and_currents":
+            timestamp = self._tides_timestamp
+        elif dataset == "live_temps":
+            timestamp = self._live_temps_timestamp
+        elif dataset == "historic_temps":
+            timestamp = self._historic_temps_timestamp
+
+        # If no timestamp, data is missing
+        if timestamp is None:
+            return True
+
+        # Check if data is older than the expiration period
+        now = datetime.datetime.now(datetime.timezone.utc)
+        age = now - timestamp
+        return age > self.expirations[dataset]
 
     def _Update(self) -> None:
         """Background thread that continuously updates data.
@@ -319,51 +329,6 @@ class Data(object):
         ((time, temp),) = self.live_temps.tail(1)["water_temp"].items()
         return time, temp
 
-    def Freshness(self) -> FreshnessInfo:
-        """Get information about the freshness of all datasets.
-
-        Returns:
-            A dictionary with freshness information for each dataset,
-            including timestamps and age of both the fetch time and latest value
-        """
-
-        # TODO: Ensure consistent dtype for timestamps
-        # TODO: Convert timestamps to EST timezone for consistency
-        def make_time_info(timestamp: Optional[datetime.datetime]) -> TimeInfo:
-            """Create a TimeInfo object for a timestamp.
-
-            Args:
-                timestamp: The datetime to create info for, or None
-
-            Returns:
-                A dictionary with time, age string, and age in seconds
-            """
-            if timestamp is None:
-                return {"time": None, "age": None, "age_seconds": None}
-            now = Now()
-            age = now - timestamp
-            return {
-                "time": timestamp,
-                "age": str(datetime.timedelta(seconds=int(age.total_seconds()))),
-                "age_seconds": age.total_seconds(),
-            }
-
-        ret: FreshnessInfo = {
-            "tides_and_currents": {
-                "fetch": make_time_info(self._tides_timestamp),
-                "latest_value": make_time_info(LatestTimeValue(self.tides)),
-            },
-            "live_temps": {
-                "fetch": make_time_info(self._live_temps_timestamp),
-                "latest_value": make_time_info(LatestTimeValue(self.live_temps)),
-            },
-            "historic_temps": {
-                "fetch": make_time_info(self._historic_temps_timestamp),
-                "latest_value": make_time_info(LatestTimeValue(self.historic_temps)),
-            },
-        }
-        return ret
-
     def _FetchTidesAndCurrents(self) -> None:
         """Fetch tide and current data from NOAA API.
 
@@ -521,7 +486,14 @@ class Data(object):
             # Remove outliers using the helper method
             self.live_temps = self._RemoveOutliers(temp_data)
             self._live_temps_timestamp = Now()
-            age = self.Freshness()["live_temps"]["latest_value"]["age"]
-            logging.info(f"Fetched live temps. Last datapoint age: {age}")
+
+            # Log info about the most recent data point
+            last_time = LatestTimeValue(self.live_temps)
+            age_str = "unknown"
+            if last_time is not None:
+                now = Now()
+                age = now - last_time
+                age_str = str(datetime.timedelta(seconds=int(age.total_seconds())))
+            logging.info(f"Fetched live temps. Last datapoint age: {age_str}")
         except noaa.NoaaApiError as e:
             logging.warning(f"Live temp fetch error: {e}")

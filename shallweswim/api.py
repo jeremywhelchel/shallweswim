@@ -18,7 +18,6 @@ from shallweswim.types import (
     ApiTideEntry,
     CurrentPredictionInfo,
     CurrentsResponse,
-    FreshnessInfo,
     LegacyChartDetails,
     LocationConditions,
     LocationInfo,
@@ -160,25 +159,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
             ),
             tides=TidesInfo(past=past_tides, next=next_tides),
         )
-
-    @app.get("/api/{location}/freshness", response_model=FreshnessInfo)
-    async def location_freshness(location: str) -> FreshnessInfo:
-        """API endpoint that returns data freshness information for a specific location.
-
-        Args:
-            location: Location code (e.g., 'nyc')
-
-        Returns:
-            FreshnessInfo object with timestamps of last data updates
-
-        Raises:
-            HTTPException: If the location is not configured
-        """
-        # Validate location exists
-        validate_location(location)
-
-        # Return freshness information
-        return data[location].Freshness()
 
     @app.get("/api/{location}/current_tide_plot")
     async def current_tide_plot(

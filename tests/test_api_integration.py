@@ -161,40 +161,6 @@ def test_invalid_location(api_client: TestClient) -> None:
     assert "Bad location" in response.text
 
 
-def validate_freshness_response(
-    response: httpx.Response, location_code: str = NYC_LOCATION
-) -> None:
-    """Validate the response from the freshness API endpoint."""
-    assert response.status_code == 200
-    assert "application/json" in response.headers["content-type"]
-
-    # Parse JSON response
-    data = response.json()
-
-    # Verify the structure of the freshness data (real data)
-    for dataset_name in ["tides_and_currents", "live_temps", "historic_temps"]:
-        assert dataset_name in data, f"Missing dataset: {dataset_name}"
-        dataset = data[dataset_name]
-
-        # Check for expected fields in each dataset
-        assert "fetch" in dataset, f"Missing fetch info in {dataset_name}"
-        assert "latest_value" in dataset, f"Missing latest_value in {dataset_name}"
-
-        # Check for time and age information in fetch data
-        fetch = dataset["fetch"]
-        assert "time" in fetch, f"Missing time in {dataset_name}.fetch"
-        assert "age" in fetch, f"Missing age in {dataset_name}.fetch"
-        assert "age_seconds" in fetch, f"Missing age_seconds in {dataset_name}.fetch"
-
-        # Check for time and age information in latest_value data
-        latest = dataset["latest_value"]
-        assert "time" in latest, f"Missing time in {dataset_name}.latest_value"
-        assert "age" in latest, f"Missing age in {dataset_name}.latest_value"
-        assert (
-            "age_seconds" in latest
-        ), f"Missing age_seconds in {dataset_name}.latest_value"
-
-
 def validate_currents_response(
     response: httpx.Response, location_code: str = NYC_LOCATION
 ) -> None:
@@ -286,20 +252,6 @@ def test_conditions_api_san_diego(api_client: TestClient) -> None:
 
 
 @pytest.mark.integration
-def test_freshness_api_nyc(api_client: TestClient) -> None:
-    """Test the freshness API endpoint for NYC location."""
-    response = api_client.get(f"/api/{NYC_LOCATION}/freshness")
-    validate_freshness_response(response, NYC_LOCATION)
-
-
-@pytest.mark.integration
-def test_freshness_api_san_diego(api_client: TestClient) -> None:
-    """Test the freshness API endpoint for San Diego location."""
-    response = api_client.get(f"/api/{SAN_LOCATION}/freshness")
-    validate_freshness_response(response, SAN_LOCATION)
-
-
-@pytest.mark.integration
 def test_currents_api_nyc(api_client: TestClient) -> None:
     """Test the currents API endpoint for NYC location."""
     response = api_client.get(f"/api/{NYC_LOCATION}/currents")
@@ -322,13 +274,6 @@ def test_invalid_api_location(api_client: TestClient) -> None:
     """Test that API requests for invalid locations return 404 errors."""
     # Test conditions endpoint
     response = api_client.get("/api/invalid_location/conditions")
-    assert response.status_code == 404
-    error_data = response.json()
-    assert "detail" in error_data
-    assert "not found" in error_data["detail"].lower()
-
-    # Test freshness endpoint
-    response = api_client.get("/api/invalid_location/freshness")
     assert response.status_code == 404
     error_data = response.json()
     assert "detail" in error_data

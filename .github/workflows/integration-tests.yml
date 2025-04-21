@@ -15,7 +15,7 @@ jobs:
     # Only run on PRs with specific label
     if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-integration-tests') }}
     runs-on: ubuntu-latest
-    name: Run NOAA API Integration Tests
+    name: Run Integration Tests
     steps:
       - name: Checkout code
         uses: actions/checkout@v3

@@ -20,16 +20,16 @@ from shallweswim import config as config_lib
 from shallweswim import noaa
 from shallweswim import plot
 from shallweswim import util
-from shallweswim.types import DatasetName, FreshnessInfo, TimeInfo
+from shallweswim.types import (
+    DatasetName,
+    FreshnessInfo,
+    TimeInfo,
+    LegacyChartInfo,
+    TideInfo,
+    TideEntry,
+    CurrentInfo,
+)
 
-
-# NOAA station identifiers used for data retrieval
-NOAA_STATIONS = {
-    "battery": 8518750,  # temperature
-    "coney": 8517741,  # tide predictions only
-    "coney_channel": "ACT3876",  # current predictions only
-    "rockaway_inlet": "NYH1905",  # current predictions only
-}
 
 # Use the utility function for consistent time handling
 Now = util.Now
@@ -145,38 +145,69 @@ class Data(object):
         )
         self._update_thread.start()
 
-    def PrevNextTide(self) -> Tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    def PrevNextTide(self) -> TideInfo:
         """Return the previous tide and next two tides.
 
         Retrieves the most recent tide before current time and the next two
         upcoming tides from the tide predictions data.
 
         Returns:
-            A tuple containing (past_tides, next_tides) where each is a list of
-            dictionaries with tide information. If no tide data is available,
-            returns placeholder values.
+            A TideInfo object containing:
+                - past_tides: List of TideEntry objects with the most recent tide information
+                - next_tides: List of TideEntry objects with the next two upcoming tides
+            If no tide data is available, returns placeholder values.
         """
         if self.tides is None:
-            unknown = {"time": datetime.time(0)}
-            return [unknown], [unknown, unknown]
-        past_tides = self.tides[: Now()].tail(1).reset_index().to_dict(orient="records")
-        next_tides = self.tides[Now() :].head(2).reset_index().to_dict(orient="records")
-        return past_tides, next_tides
+            # Create placeholder entries for missing data
+            placeholder_time = datetime.datetime.combine(
+                datetime.date.today(), datetime.time(0)
+            )
+            placeholder_entry = TideEntry(
+                time=placeholder_time, type="unknown", prediction=0.0
+            )
+            past_tides = [placeholder_entry]
+            next_tides = [placeholder_entry, placeholder_entry]
+        else:
+            # Convert the DataFrame records to TideEntry objects
+            past_tide_dicts = (
+                self.tides[: Now()].tail(1).reset_index().to_dict(orient="records")
+            )
+            next_tide_dicts = (
+                self.tides[Now() :].head(2).reset_index().to_dict(orient="records")
+            )
 
-    def LegacyChartInfo(
-        self, t: Optional[datetime.datetime] = None
-    ) -> Tuple[float, str, str, str]:
+            past_tides = [
+                TideEntry(
+                    time=record.get("index", Now()),  # The index contains the datetime
+                    type=record.get("type", "unknown"),
+                    prediction=record.get("prediction", 0.0),
+                )
+                for record in past_tide_dicts
+            ]
+
+            next_tides = [
+                TideEntry(
+                    time=record.get("index", Now()),  # The index contains the datetime
+                    type=record.get("type", "unknown"),
+                    prediction=record.get("prediction", 0.0),
+                )
+                for record in next_tide_dicts
+            ]
+
+        return TideInfo(past_tides=past_tides, next_tides=next_tides)
+
+    def LegacyChartInfo(self, t: Optional[datetime.datetime] = None) -> LegacyChartInfo:
         """Generate legacy chart information based on tide data.
 
         Args:
             t: The time to generate chart info for, defaults to current time
 
         Returns:
-            A tuple containing:
-                - Number of hours since last tide
-                - Type of last tide (high/low)
-                - Filename for the chart image
-                - Title for the legacy map
+            A LegacyChartInfo object containing:
+                - hours_since_last_tide: Number of hours since last tide
+                - last_tide_type: Type of last tide (high/low)
+                - chart_filename: Filename for the chart image
+                - map_title: Title for the legacy map
 
         Raises:
             AssertionError: If tide data is not available
@@ -206,22 +237,25 @@ class Data(object):
             )
         filename = "%s+%s.png" % (chart_type, chart_num)
 
-        return offset_hrs, tide_type, filename, legacy_map_title
+        return LegacyChartInfo(
+            hours_since_last_tide=offset_hrs,
+            last_tide_type=tide_type,
+            chart_filename=filename,
+            map_title=legacy_map_title,
+        )
 
-    def CurrentPrediction(
-        self, t: Optional[datetime.datetime] = None
-    ) -> Tuple[str, float, float, str]:
+    def CurrentPrediction(self, t: Optional[datetime.datetime] = None) -> CurrentInfo:
         """Predict current conditions for a specific time.
 
         Args:
             t: Time to predict current for, defaults to current time
 
         Returns:
-            A tuple containing:
-                - Direction of current ("flooding" or "ebbing")
-                - Magnitude of current in knots
-                - Relative magnitude percentage (0.0-1.0)
-                - Human-readable message describing the current's state
+        A CurrentInfo object containing:
+            - direction: Direction of current ("flooding" or "ebbing")
+            - magnitude: Magnitude of current in knots
+            - magnitude_pct: Relative magnitude percentage (0.0-1.0)
+            - state_description: Human-readable message describing the current's state
 
         Raises:
             AssertionError: If current data is not available
@@ -265,8 +299,13 @@ class Data(object):
 
         ef = row["ef"]
 
-        # Return mag_pct, for determining arrow size
-        return ef, magnitude, row["mag_pct"], msg
+        # Return a structured object with current information
+        return CurrentInfo(
+            direction=ef,
+            magnitude=magnitude,
+            magnitude_pct=row["mag_pct"],
+            state_description=msg,
+        )
 
     def LiveTempReading(self) -> Tuple[pd.Timestamp, float]:
         """Get the most recent water temperature reading.

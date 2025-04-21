@@ -71,7 +71,7 @@ async def embed(request: fastapi.Request) -> responses.HTMLResponse:
     Currently hardcoded to NYC location. Future enhancement: support other locations.
     """
     current_time, current_temp = data["nyc"].LiveTempReading()
-    past_tides, next_tides = data["nyc"].PrevNextTide()
+    tide_info = data["nyc"].PrevNextTide()
     return templates.TemplateResponse(
         request=request,
         name="embed.html",
@@ -79,8 +79,8 @@ async def embed(request: fastapi.Request) -> responses.HTMLResponse:
             config=config.Get("nyc"),
             current_time=current_time,
             current_temp=current_temp,
-            past_tides=past_tides,
-            next_tides=next_tides,
+            past_tides=tide_info.past_tides,
+            next_tides=tide_info.next_tides,
         ),
     )
 
@@ -139,23 +139,9 @@ async def water_current(
     """
     ts = EffectiveTime(shift)
 
-    (
-        last_tide_hrs_ago,
-        last_tide_type,
-        tide_chart_filename,
-        legacy_map_title,
-    ) = data[
-        "nyc"
-    ].LegacyChartInfo(ts)
+    chart_info = data["nyc"].LegacyChartInfo(ts)
 
-    (
-        ef,
-        magnitude,
-        magnitude_pct,
-        msg,
-    ) = data[
-        "nyc"
-    ].CurrentPrediction(ts)
+    current_info = data["nyc"].CurrentPrediction(ts)
 
     # Get fwd/back shift values
     fwd = min(shift + 60, MAX_SHIFT_LIMIT)
@@ -166,19 +152,19 @@ async def water_current(
         name="current.html",
         context=dict(
             config=config.Get("nyc"),
-            last_tide_hrs_ago=round(last_tide_hrs_ago, 1),
-            last_tide_type=last_tide_type,
-            tide_chart_filename=tide_chart_filename,
-            legacy_map_title=legacy_map_title,
+            last_tide_hrs_ago=round(chart_info.hours_since_last_tide, 1),
+            last_tide_type=chart_info.last_tide_type,
+            tide_chart_filename=chart_info.chart_filename,
+            map_title=chart_info.map_title,
             ts=ts,
-            ef=ef,
-            magnitude=round(magnitude, 1),
-            msg=msg,
+            ef=current_info.direction,
+            magnitude=round(current_info.magnitude, 1),
+            msg=current_info.state_description,
             shift=shift,
             fwd=fwd,
             back=back,
             current_chart_filename=plot.GetCurrentChartFilename(
-                ef, plot.BinMagnitude(magnitude_pct)
+                current_info.direction, plot.BinMagnitude(current_info.magnitude_pct)
             ),
         ),
     )
@@ -248,7 +234,7 @@ async def index_w_location(
         raise HTTPException(status_code=404, detail=f"Bad location: {location}")
 
     current_time, current_temp = data[location].LiveTempReading()
-    past_tides, next_tides = data[location].PrevNextTide()
+    tide_info = data[location].PrevNextTide()
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -256,8 +242,8 @@ async def index_w_location(
             config=cfg,
             current_time=current_time,
             current_temp=current_temp,
-            past_tides=past_tides,
-            next_tides=next_tides,
+            past_tides=tide_info.past_tides,
+            next_tides=tide_info.next_tides,
         ),
     )
 

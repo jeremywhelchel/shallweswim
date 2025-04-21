@@ -137,16 +137,16 @@
       </div>
       <div class="tides">
         <p>
-          Last <strong>{{ past_tides[-1]['type'] }}</strong> tide was at
-          <strong>{{ past_tides[-1]['time']|fmt_datetime }}</strong>
+          Last <strong>{{ past_tides[-1].type }}</strong> tide was at
+          <strong>{{ past_tides[-1].time|fmt_datetime }}</strong>
         </p>
         <p>
-          Next <strong>{{ next_tides[0]['type'] }}</strong> tide is at
-          <strong>{{ next_tides[0]['time']|fmt_datetime }}</strong>
+          Next <strong>{{ next_tides[0].type }}</strong> tide is at
+          <strong>{{ next_tides[0].time|fmt_datetime }}</strong>
         </p>
         <p>
-          Next <strong>{{ next_tides[1]['type'] }}</strong> tide is at
-          <strong>{{ next_tides[1]['time']|fmt_datetime }}</strong>
+          Next <strong>{{ next_tides[1].type }}</strong> tide is at
+          <strong>{{ next_tides[1].time|fmt_datetime }}</strong>
         </p>
       </div>
     </div>

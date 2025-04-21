@@ -1,6 +1,29 @@
 # shallweswim.today
 
-Website to display swimming conditions at Coney Island / Brighton Beach
+Website to display swimming conditions for open water swim locations, including Coney Island / Brighton Beach and La Jolla Cove.
+
+## Architecture
+
+Shall WeSwim is a FastAPI application with a simple architecture:
+
+### Core Components
+
+- **Data Management (`data.py`)**: Fetches and processes NOAA data
+- **API Layer (`api.py`)**: JSON endpoints for swim conditions
+- **Web UI (`main.py`)**: HTML templates and web interface
+- **NOAA Client (`noaa.py`)**: Interacts with NOAA APIs
+- **Configuration (`config.py`)**: Location settings and station IDs
+
+### Data Flow
+
+1. **Data Fetching**: NOAA data (tides, currents, temperatures) is fetched for configured locations
+2. **Data Processing**: Raw data is processed with appropriate timezone conversions
+3. **Plot Generation**: Visualizations are asynchronously generated for different time spans:
+   - 48-hour tide/current predictions
+   - 2-month historical temperature data
+   - Multi-year temperature trends
+4. **API Endpoints**: Processed data is available via JSON endpoints
+5. **Web UI**: Templates display the data with visualizations
 
 ## Run locally (directly)
 

@@ -64,9 +64,11 @@ repos:
         pass_filenames: false
         stages: [manual] # Not run by default, use "pre-commit run pytest-integration" to run
 
-  # Black code formatting (run last to ensure final formatting)
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
-    hooks:
+      # Black code formatting (run last to ensure final formatting)
       - id: black
-        language_version: python3
+        name: black formatter
+        description: Format code with Black using Poetry
+        language: system
+        entry: poetry run black
+        types: [python]
+        require_serial: true

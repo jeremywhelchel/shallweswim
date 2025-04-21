@@ -18,8 +18,12 @@ from shallweswim import config, main
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
 
-# We're focusing on just NYC for the initial integration tests
+# Test locations
 NYC_LOCATION = "nyc"
+SAN_LOCATION = "san"
+
+# List of all locations to test
+TEST_LOCATIONS = [NYC_LOCATION, SAN_LOCATION]
 
 
 @pytest.fixture(scope="module")
@@ -33,10 +37,10 @@ def api_client(check_api_availability: Any) -> TestClient:
     # Clear existing data to ensure a clean state
     main.data.clear()
 
-    # Initialize NYC data only using the function from main.py
+    # Initialize data for all test locations
     # We set wait_for_data=True to ensure data is loaded before tests run
     main.initialize_location_data(
-        location_codes=[NYC_LOCATION],
+        location_codes=TEST_LOCATIONS,
         data_dict=main.data,
         wait_for_data=True,  # Wait for data to load before running tests
         max_wait_retries=45,
@@ -58,19 +62,39 @@ def validate_location_response(
     assert "text/html" in response.headers["content-type"]
 
     # Check for key elements in the response
-    content = response.text
-    assert "<html" in content.lower()
-    assert "</html>" in content.lower()
-    assert "<title>" in content.lower()
+    response_text = response.text
+    assert "<html" in response_text.lower()
+    assert "</html>" in response_text.lower()
+    assert "<title>" in response_text.lower()
 
     # Verify that no exceptions occurred in the template
-    assert "Internal Server Error" not in content
-    assert "Exception:" not in content
+    assert "Internal Server Error" not in response_text
+    assert "Exception:" not in response_text
 
     # Look for identifiable elements in the page
-    assert "shall we swim today?" in content.lower()
-    assert "water temperatures provided by" in content.lower()
-    assert "Battery" in content  # NYC Battery station should be mentioned
+    assert "shall we swim today?" in response_text.lower()
+    assert "water temperatures provided by" in response_text.lower()
+
+    # Get location config and verify station information is present
+    location_config = config.Get(location_code)
+    assert location_config is not None, f"Config for {location_code} not found"
+
+    # Check that tide station information is in the response
+    assert location_config.tide_station_name is not None, "Tide station name is None"
+    assert location_config.tide_station is not None, "Tide station ID is None"
+    assert (
+        location_config.tide_station_name in response_text
+    ), "Tide station name missing"
+    assert str(location_config.tide_station) in response_text, "Tide station ID missing"
+
+    # Check for NOAA reference
+    assert "NOAA Tides and Currents" in response_text
+
+    # If location has current predictions enabled, verify current-related content
+    if location_config.current_predictions:
+        assert (
+            "currents" in response_text.lower() or "current" in response_text.lower()
+        ), "No current data mentioned"
 
 
 @pytest.mark.integration
@@ -85,25 +109,26 @@ def test_root_redirect(api_client: TestClient) -> None:
 def test_nyc_location(api_client: TestClient) -> None:
     """Test that the NYC location returns a valid response with real data."""
     response = api_client.get(f"/{NYC_LOCATION}")
-    validate_location_response(response)
+    validate_location_response(response, NYC_LOCATION)
 
     # Additional checks for NYC-specific content
     response_text = response.text
-    location_config = config.Get(NYC_LOCATION)
-
-    # Make sure location_config is not None before accessing its attributes
-    assert location_config is not None, f"Config for {NYC_LOCATION} not found"
-
-    # Check that tide station information is in the response, with handling for possibly None values
-    assert location_config.tide_station_name is not None, "Tide station name is None"
-    assert location_config.tide_station is not None, "Tide station ID is None"
-    assert (
-        location_config.tide_station_name in response_text
-    ), "Tide station name missing"
-    assert str(location_config.tide_station) in response_text, "Tide station ID missing"
-    # Check for expected content elements
+    # Check for expected content elements specific to NYC
     assert "Coney Island" in response_text
-    assert "NOAA Tides and Currents" in response_text
+    assert "Battery" in response_text  # NYC Battery station should be mentioned
+
+
+@pytest.mark.integration
+def test_san_diego_location(api_client: TestClient) -> None:
+    """Test that the San Diego location returns a valid response with real data."""
+    response = api_client.get(f"/{SAN_LOCATION}")
+    validate_location_response(response, SAN_LOCATION)
+
+    # Additional checks for San Diego-specific content
+    response_text = response.text
+    # Check for expected content elements specific to San Diego
+    assert "La Jolla Cove" in response_text
+    assert "9410230" in response_text  # San Diego station ID should be mentioned
 
 
 @pytest.mark.integration

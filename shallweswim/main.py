@@ -85,11 +85,15 @@ def initialize_location_data(
                 )
                 time.sleep(retry_interval)
 
-            # Verify data was actually loaded
+            # Verify tide data was loaded (all locations should have tide data)
             assert data_dict[code].tides is not None, f"{code} tide data was not loaded"
-            assert (
-                data_dict[code].currents is not None
-            ), f"{code} current data was not loaded"
+
+            # Only check currents if the location has current predictions enabled
+            location_config = config.Get(code)
+            if location_config is not None and location_config.current_predictions:
+                assert (
+                    data_dict[code].currents is not None
+                ), f"{code} current data was not loaded"
 
     return data_dict
 

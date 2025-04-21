@@ -32,6 +32,31 @@ python_version = "3.12"
 strict = true
 ignore_missing_imports = true
 
+[tool.pylint.master]
+jobs = 4
+ignore = "CVS"
+persistent = true
+
+[tool.pylint.messages_control]
+# Only check for specific errors/warnings
+# Focus on the most important issues like unused imports and dead code
+enable = [
+    "W0611", # unused-import
+    "W0612", # unused-variable
+    "W0613", # unused-argument
+    "W0614", # unused-wildcard-import
+    "W0641", # possibly-unused-variable
+    "E0704", # misplaced-bare-raise
+    "C0415", # import-outside-toplevel
+    "R0801", # duplicate-code
+]
+
+# Disable all checks except those explicitly enabled above
+disable = "all"
+
+[tool.pylint.reports]
+output-format = "colorized"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

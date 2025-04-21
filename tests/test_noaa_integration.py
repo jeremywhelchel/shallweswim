@@ -112,7 +112,7 @@ def test_live_currents_fetch(_check_api_availability: bool) -> None:
 @pytest.mark.integration
 @pytest.mark.parametrize("product", ["water_temperature", "air_temperature"])
 def test_live_temperature_fetch(
-    check_api_availability: bool,
+    _check_api_availability: bool,
     product: Literal["water_temperature", "air_temperature"],
 ) -> None:
     """Test fetching real temperature data from NOAA API."""

@@ -53,14 +53,27 @@ repos:
         pass_filenames: false
         always_run: true
 
-      # Pylint for detecting unused imports and dead code (advisory only)
+      # Pylint for detecting unused imports and dead code
       - id: pylint
-        name: pylint unused code check (advisory)
-        description: Detect unused imports, variables, and dead code (advisory, won't block commit)
+        name: pylint unused code check
+        description: Detect unused imports, variables, and dead code
         language: system
         entry: poetry run pylint
         args:
-          [--exit-zero, --rcfile=.pylintrc, --recursive=y, shallweswim/, tests/]
+          [
+            --disable=all,
+            --enable=W0611,
+            W0612,
+            W0613,
+            W0614,
+            W0641,
+            E0704,
+            C0415,
+            R0801,
+            --recursive=y,
+            shallweswim/,
+            tests/,
+          ]
         pass_filenames: false
         always_run: true
 

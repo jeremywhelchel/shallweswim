@@ -22,7 +22,7 @@ persistent=yes
 # Focus on the most important issues like unused imports and dead code
 enable=W0611,W0612,W0613,W0614,W0641,E0704,C0415,R0801
 
-# Disable checks that conflict with other tools
+# Disable all checks except those explicitly enabled above
 disable=
     # Code style handled by black and other tools
     invalid-name,

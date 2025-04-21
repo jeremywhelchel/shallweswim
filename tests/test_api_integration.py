@@ -1,8 +1,8 @@
 """Integration tests for the ShallWeSwim API endpoints.
 
-These tests use FastAPI's TestClient to test the API endpoints with real data.
+These tests use FastAPI's TestClient to test only the API endpoints with real data.
 They verify that the API endpoints return correctly structured data from the
-real NOAA endpoints for the configured locations.
+real NOAA endpoints for the configured locations, without testing any HTML or UI components.
 
 Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 """
@@ -18,7 +18,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Local imports
-from shallweswim import config, main, api
+import fastapi
+from shallweswim import config, api
 
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
@@ -31,12 +32,17 @@ SAN_LOCATION = "san"
 TEST_LOCATIONS = [NYC_LOCATION, SAN_LOCATION]
 
 
+# pylint: disable=unused-argument
 @pytest.fixture(scope="module")
-def api_client(_: Any) -> TestClient:
-    """
-    Create a FastAPI test client that initializes data for all test locations.
-    This directly mirrors what the lifespan function does in the main application,
-    but waits for data to load before returning.
+def api_client(
+    check_api_availability: Any,
+) -> TestClient:
+    """Create a test client for API testing using the check_api_availability fixture.
+
+    This creates a dedicated FastAPI app with only the API routes registered.
+
+    Args:
+        check_api_availability: Fixture that ensures API is available (used implicitly)
     """
 
     # Clear existing data to ensure a clean state
@@ -52,10 +58,15 @@ def api_client(_: Any) -> TestClient:
         retry_interval=1,
     )
 
-    # Create a test client
-    client = TestClient(main.app)
+    # Create a dedicated FastAPI app for API testing only
+    app = fastapi.FastAPI(title="ShallWeSwim API Test App")
 
-    # Let the test client use the initialized data
+    # Register only the API routes
+    api.register_routes(app)
+
+    # Create a test client for the API-only app
+    client = TestClient(app)
+
     return client
 
 
@@ -134,52 +145,27 @@ def validate_conditions_response(
 
 
 @pytest.mark.integration
-def test_root_redirect(api_client: TestClient) -> None:
-    """Test that the root path redirects to the default location."""
-    response = api_client.get("/", follow_redirects=False)
-    assert response.status_code == 307  # Temporary redirect
-    assert response.headers["location"] == "/nyc"
+def test_conditions_api_nyc(api_client: TestClient) -> None:
+    """Test the conditions API endpoint for NYC location."""
+    response = api_client.get(f"/api/{NYC_LOCATION}/conditions")
+    validate_conditions_response(response, NYC_LOCATION)
+
+    # Additional NYC-specific checks
+    data = response.json()
+    assert "Grimaldo's Chair" in data["location"]["swim_location"]
+    assert "New York" in data["location"]["name"]
 
 
 @pytest.mark.integration
-def test_nyc_location(api_client: TestClient) -> None:
-    """Test that the NYC location HTML endpoint returns a valid response."""
-    response = api_client.get(f"/{NYC_LOCATION}")
-    assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
+def test_conditions_api_san_diego(api_client: TestClient) -> None:
+    """Test the conditions API endpoint for San Diego location."""
+    response = api_client.get(f"/api/{SAN_LOCATION}/conditions")
+    validate_conditions_response(response, SAN_LOCATION)
 
-    # Verify that the response contains HTML
-    response_text = response.text
-    assert "<html" in response_text.lower()
-    assert "</html>" in response_text.lower()
-
-    # Check for expected content elements specific to NYC
-    assert "Battery" in response_text  # NYC Battery station should be mentioned
-
-
-@pytest.mark.integration
-def test_san_diego_location(api_client: TestClient) -> None:
-    """Test that the San Diego location HTML endpoint returns a valid response."""
-    response = api_client.get(f"/{SAN_LOCATION}")
-    assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
-
-    # Verify that the response contains HTML
-    response_text = response.text
-    assert "<html" in response_text.lower()
-    assert "</html>" in response_text.lower()
-
-    # Check for expected content elements specific to San Diego
-    assert "La Jolla" in response_text
-    assert "9410230" in response_text  # San Diego station ID should be mentioned
-
-
-@pytest.mark.integration
-def test_invalid_location(api_client: TestClient) -> None:
-    """Test that requesting an invalid location returns a 404."""
-    response = api_client.get("/invalid_location")
-    assert response.status_code == 404
-    assert "Bad location" in response.text
+    # Additional San Diego-specific checks
+    data = response.json()
+    assert "La Jolla" in data["location"]["swim_location"]
+    assert "San Diego" in data["location"]["name"]
 
 
 def validate_currents_response(
@@ -247,28 +233,6 @@ def validate_currents_response(
     assert "current_api_url" in nav, "Missing current API URL"
     assert "plot_url" in nav, "Missing plot URL"
 
-
-@pytest.mark.integration
-def test_conditions_api_nyc(api_client: TestClient) -> None:
-    """Test the conditions API endpoint for NYC location."""
-    response = api_client.get(f"/api/{NYC_LOCATION}/conditions")
-    validate_conditions_response(response, NYC_LOCATION)
-
-    # Additional NYC-specific checks
-    data = response.json()
-    assert "Grimaldo's Chair" in data["location"]["swim_location"]
-    assert "New York" in data["location"]["name"]
-
-
-@pytest.mark.integration
-def test_conditions_api_san_diego(api_client: TestClient) -> None:
-    """Test the conditions API endpoint for San Diego location."""
-    response = api_client.get(f"/api/{SAN_LOCATION}/conditions")
-    validate_conditions_response(response, SAN_LOCATION)
-
-    # Additional San Diego-specific checks
-    data = response.json()
-    assert "La Jolla" in data["location"]["swim_location"]
     assert "San Diego" in data["location"]["name"]
 
 

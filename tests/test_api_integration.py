@@ -195,6 +195,72 @@ def validate_freshness_response(
         ), f"Missing age_seconds in {dataset_name}.latest_value"
 
 
+def validate_currents_response(
+    response: httpx.Response, location_code: str = NYC_LOCATION
+) -> None:
+    """Validate the response from the currents API endpoint."""
+    assert response.status_code == 200
+    assert "application/json" in response.headers["content-type"]
+
+    # Parse JSON response
+    data = response.json()
+
+    # Validate top-level structure
+    assert "location" in data, "Missing location data"
+    assert "timestamp" in data, "Missing timestamp data"
+    assert "current" in data, "Missing current data"
+    assert "legacy_chart" in data, "Missing legacy chart data"
+    assert "current_chart_filename" in data, "Missing current chart filename"
+    assert "navigation" in data, "Missing navigation data"
+
+    # Validate location details
+    location = data["location"]
+    assert (
+        location["code"] == location_code
+    ), f"Expected location code {location_code}, got {location['code']}"
+    assert "name" in location, "Missing location name"
+    assert "swim_location" in location, "Missing swim location"
+
+    # Validate current data
+    current = data["current"]
+    assert "timestamp" in current, "Missing current timestamp"
+    assert "direction" in current, "Missing current direction"
+    assert "magnitude" in current, "Missing current magnitude"
+    assert "magnitude_pct" in current, "Missing current magnitude percentage"
+    assert "state_description" in current, "Missing current state description"
+    assert current["direction"] in [
+        "flooding",
+        "ebbing",
+        "slack",
+    ], f"Invalid current direction: {current['direction']}"
+    assert isinstance(
+        current["magnitude"], (int, float)
+    ), "Current magnitude is not a number"
+    assert isinstance(
+        current["magnitude_pct"], (int, float)
+    ), "Current magnitude percentage is not a number"
+
+    # Validate legacy chart data
+    chart = data["legacy_chart"]
+    assert "hours_since_last_tide" in chart, "Missing hours since last tide"
+    assert "last_tide_type" in chart, "Missing last tide type"
+    assert "chart_filename" in chart, "Missing chart filename"
+    assert "map_title" in chart, "Missing map title"
+    assert chart["last_tide_type"] in [
+        "high",
+        "low",
+        "unknown",
+    ], f"Invalid last tide type: {chart['last_tide_type']}"
+
+    # Validate navigation data
+    nav = data["navigation"]
+    assert "shift" in nav, "Missing shift value"
+    assert "next_hour" in nav, "Missing next hour value"
+    assert "prev_hour" in nav, "Missing previous hour value"
+    assert "current_api_url" in nav, "Missing current API URL"
+    assert "plot_url" in nav, "Missing plot URL"
+
+
 @pytest.mark.integration
 def test_conditions_api_nyc(api_client: TestClient) -> None:
     """Test the conditions API endpoint for NYC location."""
@@ -234,6 +300,24 @@ def test_freshness_api_san_diego(api_client: TestClient) -> None:
 
 
 @pytest.mark.integration
+def test_currents_api_nyc(api_client: TestClient) -> None:
+    """Test the currents API endpoint for NYC location."""
+    response = api_client.get(f"/api/{NYC_LOCATION}/currents")
+    validate_currents_response(response, NYC_LOCATION)
+
+    # Additional NYC-specific checks
+    data = response.json()
+    assert "Grimaldo's Chair" in data["location"]["swim_location"]
+    assert "New York" in data["location"]["name"]
+
+    # Test with a shift parameter
+    response = api_client.get(f"/api/{NYC_LOCATION}/currents?shift=60")
+    validate_currents_response(response, NYC_LOCATION)
+    data = response.json()
+    assert data["navigation"]["shift"] == 60
+
+
+@pytest.mark.integration
 def test_invalid_api_location(api_client: TestClient) -> None:
     """Test that API requests for invalid locations return 404 errors."""
     # Test conditions endpoint
@@ -245,6 +329,13 @@ def test_invalid_api_location(api_client: TestClient) -> None:
 
     # Test freshness endpoint
     response = api_client.get("/api/invalid_location/freshness")
+    assert response.status_code == 404
+    error_data = response.json()
+    assert "detail" in error_data
+    assert "not found" in error_data["detail"].lower()
+
+    # Test currents endpoint
+    response = api_client.get("/api/invalid_location/currents")
     assert response.status_code == 404
     error_data = response.json()
     assert "detail" in error_data

@@ -114,6 +114,52 @@ class TidesInfo(BaseModel):
     next: List[ApiTideEntry] = Field(..., description="Upcoming tides")
 
 
+class CurrentPredictionInfo(BaseModel):
+    """Current prediction information."""
+
+    timestamp: str = Field(
+        ..., description="ISO 8601 formatted timestamp of the prediction"
+    )
+    direction: str = Field(
+        ..., description="Direction of current ('flooding' or 'ebbing')"
+    )
+    magnitude: float = Field(..., description="Current strength in knots")
+    magnitude_pct: float = Field(
+        ..., description="Relative magnitude percentage (0.0-1.0)"
+    )
+    state_description: str = Field(
+        ..., description="Human-readable description of current state"
+    )
+
+
+class LegacyChartDetails(BaseModel):
+    """Information about legacy tide charts."""
+
+    hours_since_last_tide: float = Field(
+        ..., description="Hours since the last tide event"
+    )
+    last_tide_type: str = Field(..., description="Type of last tide ('high' or 'low')")
+    chart_filename: str = Field(..., description="Filename of the legacy chart")
+    map_title: str = Field(..., description="Title for the legacy map")
+
+
+class CurrentsResponse(BaseModel):
+    """Complete response for currents API endpoint."""
+
+    location: LocationInfo
+    timestamp: str = Field(
+        ..., description="ISO 8601 formatted timestamp of the prediction"
+    )
+    current: CurrentPredictionInfo
+    legacy_chart: LegacyChartDetails
+    current_chart_filename: str = Field(
+        ..., description="Filename of the current chart image"
+    )
+    navigation: dict[str, object] = Field(
+        ..., description="Navigation parameters for time shifting"
+    )
+
+
 class LocationConditions(BaseModel):
     """Complete response for location conditions endpoint."""
 

@@ -11,10 +11,13 @@ import fastapi
 from fastapi import HTTPException
 
 # Local imports
-from shallweswim import config as config_lib, data as data_lib
+from shallweswim import config as config_lib, data as data_lib, plot, util
 from shallweswim.types import (
     ApiTideEntry,
+    CurrentPredictionInfo,
+    CurrentsResponse,
     FreshnessInfo,
+    LegacyChartDetails,
     LocationConditions,
     LocationInfo,
     TemperatureInfo,
@@ -103,3 +106,87 @@ def register_routes(app: fastapi.FastAPI, data: dict[str, data_lib.Data]) -> Non
 
         # Return freshness information
         return data[location].Freshness()
+
+    @app.get("/api/{location}/currents", response_model=CurrentsResponse)
+    async def location_currents(location: str, shift: int = 0) -> CurrentsResponse:
+        """API endpoint that returns current predictions for a specific location.
+
+        Args:
+            location: Location code (e.g., 'nyc')
+            shift: Time shift in minutes from current time (optional)
+
+        Returns:
+            CurrentsResponse object with current prediction details
+
+        Raises:
+            HTTPException: If the location is not configured or doesn't support currents
+        """
+        # Validate location exists
+        cfg = validate_location(location)
+
+        # Check if this location supports current predictions
+        if not cfg.current_predictions:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Location '{location}' does not support current predictions",
+            )
+
+        # Only NYC is fully supported for current predictions at this time
+        if location != "nyc":
+            raise HTTPException(
+                status_code=501,
+                detail=f"Current predictions for '{location}' are not fully implemented yet",
+            )
+
+        # Calculate effective time with shift
+        ts = util.EffectiveTime(shift)
+
+        # Get current prediction information
+        current_info = data[location].CurrentPrediction(ts)
+
+        # Get legacy chart information
+        chart_info = data[location].LegacyChartInfo(ts)
+
+        # Get fwd/back shift values for navigation
+        fwd = min(shift + 60, util.MAX_SHIFT_LIMIT)
+        back = max(shift - 60, util.MIN_SHIFT_LIMIT)
+
+        # Get current chart filename
+        current_chart_filename = plot.GetCurrentChartFilename(
+            current_info.direction, plot.BinMagnitude(current_info.magnitude_pct)
+        )
+
+        # Format current_info data for the API response
+        current_prediction = CurrentPredictionInfo(
+            timestamp=ts.isoformat(),
+            direction=current_info.direction,
+            magnitude=round(current_info.magnitude, 1),
+            magnitude_pct=current_info.magnitude_pct,
+            state_description=current_info.state_description,
+        )
+
+        # Format legacy chart data for the API response
+        legacy_chart = LegacyChartDetails(
+            hours_since_last_tide=round(chart_info.hours_since_last_tide, 1),
+            last_tide_type=chart_info.last_tide_type,
+            chart_filename=chart_info.chart_filename,
+            map_title=chart_info.map_title,
+        )
+
+        # Return structured response
+        return CurrentsResponse(
+            location=LocationInfo(
+                code=location, name=cfg.name, swim_location=cfg.swim_location
+            ),
+            timestamp=ts.isoformat(),
+            current=current_prediction,
+            legacy_chart=legacy_chart,
+            current_chart_filename=current_chart_filename,
+            navigation={
+                "shift": shift,
+                "next_hour": fwd,
+                "prev_hour": back,
+                "current_api_url": f"/api/{location}/currents",
+                "plot_url": f"/current_tide_plot?shift={shift}",
+            },
+        )

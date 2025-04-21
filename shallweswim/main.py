@@ -21,7 +21,7 @@ import uvicorn
 from fastapi import HTTPException, responses, staticfiles, templating
 
 # Local imports
-from shallweswim import config, data as data_lib, plot, api
+from shallweswim import config, data as data_lib, plot, api, util
 
 
 data: dict[str, data_lib.Data] = {}
@@ -155,32 +155,9 @@ async def embed(request: fastapi.Request) -> responses.HTMLResponse:
     )
 
 
-MIN_SHIFT_LIMIT = -180  # 3 hours
-MAX_SHIFT_LIMIT = 1260  # 21 hours
-
-
-def EffectiveTime(shift: int = 0) -> datetime.datetime:
-    """Return the effective time for displaying charts based on query parameters.
-
-    Args:
-        shift: Time shift in minutes from current time (negative for past, positive for future)
-              Will be clamped between MIN_SHIFT_LIMIT and MAX_SHIFT_LIMIT
-
-    Returns:
-        A datetime object representing the effective time to display
-    """
-    t = data_lib.Now()
-
-    # Clamp the shift limit
-    shift = max(MIN_SHIFT_LIMIT, min(shift, MAX_SHIFT_LIMIT))
-    t = t + datetime.timedelta(minutes=shift)
-
-    return t
-
-
 @app.get("/current_tide_plot")
 async def current_tide_plot(shift: int = 0) -> responses.Response:
-    """Generate and serve an SVG plot of current tide and current data.
+    """Generate and serve a tide and current plot.
 
     Args:
         shift: Time shift in minutes from current time
@@ -188,7 +165,7 @@ async def current_tide_plot(shift: int = 0) -> responses.Response:
     Returns:
         SVG image response with tide and current visualization
     """
-    ts = EffectiveTime(shift)
+    ts = util.EffectiveTime(shift)
     image = plot.GenerateTideCurrentPlot(data["nyc"].tides, data["nyc"].currents, ts)
     assert image
     return responses.Response(content=image.getvalue(), media_type="image/svg+xml")
@@ -207,15 +184,15 @@ async def water_current(
     Returns:
         HTML response with current water conditions
     """
-    ts = EffectiveTime(shift)
+    ts = util.EffectiveTime(shift)
 
     chart_info = data["nyc"].LegacyChartInfo(ts)
 
     current_info = data["nyc"].CurrentPrediction(ts)
 
     # Get fwd/back shift values
-    fwd = min(shift + 60, MAX_SHIFT_LIMIT)
-    back = max(shift - 60, MIN_SHIFT_LIMIT)
+    fwd = min(shift + 60, util.MAX_SHIFT_LIMIT)
+    back = max(shift - 60, util.MIN_SHIFT_LIMIT)
 
     return templates.TemplateResponse(
         request=request,

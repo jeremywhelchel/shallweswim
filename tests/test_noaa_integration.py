@@ -64,7 +64,7 @@ def validate_temperature_data(
 
 
 @pytest.mark.integration
-def test_live_tides_fetch(check_api_availability: bool) -> None:
+def test_live_tides_fetch(_check_api_availability: bool) -> None:
     """Test fetching real tide data from NOAA API."""
     df = NoaaApi.Tides(station=TIDE_STATION)
     validate_tide_data(df)
@@ -87,7 +87,7 @@ def test_live_tides_fetch(check_api_availability: bool) -> None:
 
 
 @pytest.mark.integration
-def test_live_currents_fetch(check_api_availability: bool) -> None:
+def test_live_currents_fetch(_check_api_availability: bool) -> None:
     """Test fetching real current data from NOAA API."""
     df = NoaaApi.Currents(station=CURRENT_STATION)
     validate_current_data(df)
@@ -142,7 +142,7 @@ def test_live_temperature_fetch(
 
 
 @pytest.mark.integration
-def test_live_temperature_intervals(check_api_availability: bool) -> None:
+def test_live_temperature_intervals(_check_api_availability: bool) -> None:
     """Test temperature data with different interval settings."""
     # Get data for the last 3 days
     end_date = datetime.date.today()
@@ -184,7 +184,7 @@ def test_live_temperature_intervals(check_api_availability: bool) -> None:
 
 
 @pytest.mark.integration
-def test_api_retries(check_api_availability: bool) -> None:
+def test_api_retries(_check_api_availability: bool) -> None:
     """Test API retry mechanism with real requests."""
     # Simply test that we can make a successful request
     # This is not a proper test of the retry logic, but it at least verifies
@@ -195,7 +195,7 @@ def test_api_retries(check_api_availability: bool) -> None:
 
 
 @pytest.mark.integration
-def test_consecutive_api_calls(check_api_availability: bool) -> None:
+def test_consecutive_api_calls(_check_api_availability: bool) -> None:
     """Test making consecutive API calls to validate rate limiting handling."""
     # Make multiple API calls in succession
     for _ in range(3):

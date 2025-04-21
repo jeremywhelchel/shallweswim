@@ -3,7 +3,6 @@
 # Standard library imports
 import datetime
 import urllib.error
-from typing import Literal, cast
 from unittest.mock import patch
 
 # Third-party imports
@@ -12,7 +11,6 @@ import pytest
 
 # Local imports
 from shallweswim.noaa import NoaaApi, NoaaConnectionError, NoaaDataError
-from shallweswim.noaa_types import ProductType
 
 
 @pytest.fixture

@@ -14,10 +14,8 @@ import pandas as pd
 
 # Local imports
 from shallweswim.noaa_types import (
-    CurrentData,
     DateFormat,
     NoaaRequestParams,
-    TemperatureData,
     TimeInterval,
 )
 
@@ -83,14 +81,14 @@ class NoaaApi:
 
         for attempt in range(cls.MAX_RETRIES):
             try:
-                logging.info(f"NOAA API request (attempt {attempt + 1}): {url}")
+                logging.info("NOAA API request (attempt %d): %s", attempt + 1, url)
                 df = pd.read_csv(url)
                 if len(df) == 1:
                     raise NoaaDataError(df.iloc[0].values[0])
                 return df
             except urllib.error.URLError as e:
                 if attempt == cls.MAX_RETRIES - 1:
-                    raise NoaaConnectionError(f"Failed to connect to NOAA API: {e}")
+                    raise NoaaConnectionError("Failed to connect to NOAA API: %s" % e)
                 time.sleep(cls.RETRY_DELAY * (attempt + 1))
 
         raise NoaaConnectionError("Unexpected error in NOAA API request")

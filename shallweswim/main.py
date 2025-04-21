@@ -97,13 +97,13 @@ def initialize_location_data(
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     """Initialize data sources during application startup.
 
     This loads data for all configured locations and starts data collection.
 
     Args:
-        app: The FastAPI application instance
+        _app: The FastAPI application instance (not used)
 
     Yields:
         None when setup is complete
@@ -303,7 +303,7 @@ async def index_w_location(
     """
     cfg = config.Get(location)
     if not cfg:
-        logging.warning(f"Bad location: {location}")
+        logging.warning("Bad location: %s", location)
         raise HTTPException(status_code=404, detail=f"Bad location: {location}")
 
     current_time, current_temp = data[location].LiveTempReading()

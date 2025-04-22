@@ -13,7 +13,9 @@ from concurrent import futures
 from typing import Optional, Tuple, cast
 
 # Third-party imports
+import numpy as np
 import pandas as pd
+from scipy.signal import find_peaks
 
 # Local imports
 from shallweswim import config as config_lib
@@ -31,6 +33,77 @@ from shallweswim.types import (
 
 # Use the utility function for consistent time handling
 UTCNow = util.UTCNow
+
+
+def _process_local_magnitude_pct(
+    df: pd.DataFrame,
+    current_df: pd.DataFrame,
+    direction_type: str,
+    invert: bool = False,
+) -> pd.DataFrame:
+    """Calculate magnitude percentages relative to local peaks.
+
+    Args:
+        df: Main DataFrame containing all current data
+        current_df: DataFrame containing current data for one direction
+        direction_type: String identifier ("flooding" or "ebbing")
+        invert: Whether to invert values for finding peaks (for ebb currents)
+
+    Returns:
+        DataFrame with added local_mag_pct column for the specified direction
+    """
+    # Create a copy of the input DataFrame to avoid modifying the original
+    result_df = df.copy()
+
+    if current_df.empty:
+        return result_df
+
+    # Get magnitude values, invert for ebb
+    values = current_df["magnitude"].values
+    if invert:
+        values = -values
+
+    # Find peaks with optimized parameters
+    # For flooding, peaks are maxima; for ebbing, peaks are minima
+    # Since find_peaks finds maxima, we negate values for ebbing to find minima
+    search_values = -values if direction_type == "ebbing" else values
+    peaks, _ = find_peaks(search_values, prominence=0.1, distance=3)
+
+    # No peaks found - use global approach as fallback
+    if len(peaks) == 0:
+        # Set global percentage for all points of this direction
+        for idx in result_df.index[result_df["ef"] == direction_type]:
+            result_df.at[idx, "local_mag_pct"] = result_df.at[idx, "mag_pct"]
+        return result_df
+
+    # For each peak, find its "influence zone" (range of time where it's the closest peak)
+    peak_times = current_df.index[peaks]
+    peak_values = [current_df.at[pt, "magnitude"] for pt in peak_times]
+
+    # For each time point, find the nearest peak and calculate percentage relative to it
+    for idx in result_df.index[result_df["ef"] == direction_type]:
+        # Find closest peak in time
+        time_diffs = [
+            (idx - peak_time).total_seconds() / 3600 for peak_time in peak_times
+        ]
+        abs_diffs = [abs(diff) for diff in time_diffs]
+        nearest_peak_idx = abs_diffs.index(min(abs_diffs))
+        # We only need the peak value, not the time
+        nearest_peak_value = peak_values[nearest_peak_idx]
+
+        # Calculate percentage of current magnitude relative to nearest peak
+        current_value = result_df.at[idx, "magnitude"]
+
+        # Both current_value and nearest_peak_value are already positive magnitudes
+        # We always want the percentage to be: current magnitude / peak magnitude
+        # This works for both ebbing and flooding currents since we're dealing with
+        # absolute magnitude values, not raw velocities
+        local_pct = current_value / nearest_peak_value if nearest_peak_value > 0 else 0
+
+        # Store the local percentage
+        result_df.at[idx, "local_mag_pct"] = local_pct
+
+    return result_df
 
 
 def LatestTimeValue(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
@@ -286,7 +359,7 @@ class Data(object):
             AssertionError: If tide data is not available
         """
         if not t:
-            t = UTCNow()
+            t = self.config.LocalNow()
         assert self.tides is not None
 
         # Handle the timezone compatibility for DataFrame index lookup
@@ -348,31 +421,59 @@ class Data(object):
                 - direction: Direction of current ("flooding" or "ebbing")
                 - magnitude: Magnitude of current in knots
                 - magnitude_pct: Relative magnitude percentage (0.0-1.0)
-                - state_description: Human-readable message describing the current's state
-
-        Raises:
-            AssertionError: If current data is not available
-            ValueError: If the current state cannot be determined
+                - state_description: Text description of current state
         """
         if not t:
-            # Get current time in the location's timezone as a naive datetime
             t = self.config.LocalNow()
 
-        assert self.currents is not None
+        assert self.currents is not None, "Current data must be loaded first"
 
-        v = self.currents["velocity"]
-        df = pd.DataFrame(
-            {
-                "v": v,
-                "magnitude": v.abs(),
-                "slope": v.abs().shift(-1) - v.abs().shift(1),
-            }
-        )  # TODO: Calculate trend more accurately
-        df["ef"] = (df["v"] > 0).map({True: "flooding", False: "ebbing"})
+        # Create a working copy of the current data for analysis
+        df = self.currents.copy()
 
-        # TODO: This doesn't work when df has a stronger current in a different
-        # tidal cycle. Try to only look at +/- til we get to 0 or something
+        # Convert raw velocity to magnitude and direction
+        df["v"] = df["velocity"]
+        df["magnitude"] = df["v"].abs()
+
+        # Add a slope column to track if current is strengthening or weakening
+        # For ebb currents (negative values), we need to negate the slope
+        # so that strengthening (becoming more negative) is represented by positive slope
+        df["raw_slope"] = df["v"].diff()
+
+        # Create a directionally correct slope column
+        # For flooding: positive slope = strengthening, negative slope = weakening
+        # For ebbing: negative slope = strengthening (more negative), positive slope = weakening (less negative)
+        conditions = [
+            (df["v"] > 0),  # flooding
+            (df["v"] < 0),  # ebbing
+        ]
+        choices = [
+            df["raw_slope"],  # for flooding, use raw slope
+            -df["raw_slope"],  # for ebbing, negate the slope
+        ]
+        df["slope"] = np.select(conditions, choices, default=0)
+
+        # Mark direction as flood or ebb
+        conditions = [df["v"] > 0, df["v"] < 0]
+        choices = ["flooding", "ebbing"]
+        df["ef"] = pd.Series(
+            np.select(conditions, choices, default="unknown"), index=df.index
+        )
+
+        # Initialize column for local magnitude percentage
+        df["local_mag_pct"] = 0.0  # Default to 0% of local peak
+
+        # Process flood and ebb separately
+        flood_df = df[df["v"] > 0].copy()
+        ebb_df = df[df["v"] < 0].copy()
+
+        # Calculate mag_pct for global magnitude ranking (needed for fallback)
         df["mag_pct"] = df.groupby("ef")["magnitude"].rank(pct=True)
+
+        # Now calculate magnitude percentages relative to local peaks
+        # Process both directions sequentially, passing the result of one to the next
+        df = _process_local_magnitude_pct(df, flood_df, "flooding")
+        df = _process_local_magnitude_pct(df, ebb_df, "ebbing", invert=True)
 
         # Ensure we're using a naive datetime for DataFrame slicing
         # All datetimes must be naive in the appropriate timezone
@@ -383,21 +484,27 @@ class Data(object):
 
         row = df[t:].iloc[0]
 
-        STRONG_THRESHOLD = 0.85  # 30% on either side of peak
-        WEAK_THRESHOLD = 0.15  # 30% on either side of bottom
+        # Constants for determining current state based on local magnitude percentage
+        STRONG_THRESHOLD = 0.85  # 85% of local peak is considered "strong"
         magnitude = row["magnitude"]
+        local_pct = row["local_mag_pct"]
 
-        # TODO: Move to template for better separation of concerns
-        if row["mag_pct"] < WEAK_THRESHOLD:
+        # First check if we're near slack water (zero crossing)
+        # This takes precedence over magnitude percentage
+        if magnitude < 0.2:  # Absolute threshold for slack
             msg = "at its weakest (slack)"
-        elif row["mag_pct"] > STRONG_THRESHOLD:
-            msg = "at its strongest"
+        # Check if we're at/near a peak based on local percentage
+        elif local_pct > STRONG_THRESHOLD:
+            msg = "at its strongest"  # Near a local peak
+        # Otherwise use slope to determine if strengthening or weakening
+        # The slope has been adjusted already to account for current direction
+        # so we can use a consistent interpretation: positive = strengthening, negative = weakening
         elif row["slope"] < 0:
             msg = "getting weaker"
         elif row["slope"] > 0:
             msg = "getting stronger"
         else:
-            raise ValueError(row)
+            msg = "stable"
 
         ef = row["ef"]
 

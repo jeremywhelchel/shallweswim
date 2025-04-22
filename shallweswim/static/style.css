@@ -1,6 +1,10 @@
+/* ======================================
+ * GENERAL LAYOUT & TYPOGRAPHY
+ * ====================================== */
 body {
   background-color: #fcffff;
 }
+
 h1,
 h2,
 h3,
@@ -9,6 +13,18 @@ h5,
 h6 {
   font-family: "Helvetica", "Arial", sans-serif;
 }
+
+.title {
+  margin-bottom: 0px;
+}
+
+.infobox {
+  padding-left: 20px;
+}
+
+/* ======================================
+ * PAGE-SPECIFIC STYLES
+ * ====================================== */
 
 /* Embed page specific styles */
 .embed-page {
@@ -19,23 +35,10 @@ h6 {
 .embed-page strong {
   font-weight: 700;
 }
-.title {
-  margin-bottom: 0px;
-}
-.infobox {
-  padding-left: 20px;
-}
 
-.plot {
-  width: 100%;
-  max-width: 980px;
-  display: block;
-}
-.webcamdiv {
-  position: relative;
-  overflow: hidden;
-  /* Base styles for the webcam container - media queries handle screen-specific sizing */
-}
+/* ======================================
+ * RESPONSIVE TYPOGRAPHY
+ * ====================================== */
 
 /* Small screens (Phones) */
 @media (max-width: 600px) {
@@ -47,10 +50,6 @@ h6 {
   }
   .tides {
     font-size: 15px;
-  }
-  .webcamdiv {
-    max-width: 950px;
-    height: 220px;
   }
 }
 
@@ -65,14 +64,43 @@ h6 {
   .tides {
     font-size: 24px;
   }
+}
+
+/* ======================================
+ * EMBEDDED CONTENT COMPONENTS
+ * ====================================== */
+
+/* Plot component */
+.plot {
+  width: 100%;
+  max-width: 980px;
+  display: block;
+}
+
+/* Webcam container */
+.webcamdiv {
+  position: relative;
+  overflow: hidden;
+  /* Base styles with responsive sizing in media queries */
+}
+
+/* Responsive webcam sizing */
+@media (max-width: 600px) {
   .webcamdiv {
     max-width: 950px;
-    height: 534px;
+    height: 220px; /* Height for phones */
   }
 }
 
+@media (min-width: 601px) {
+  .webcamdiv {
+    max-width: 950px;
+    height: 534px; /* Height for desktop */
+  }
+}
+
+/* Webcam iframe */
 .webcamframe {
-  /*position: absolute;*/
   top: 0;
   left: 0;
   bottom: 0;
@@ -82,26 +110,18 @@ h6 {
   height: 100%;
   display: block;
 }
+
+/* Windy forecast iframe */
 .windyframe {
-  /*
-      top: 0;
-      left: 0;
-      bottom: 0;
-      right: 0;
-      border: 1;
-      */
-  /*
-      padding-left: 13px;
-      width: 924px;
-      height: 450px;
-       */
   width: 100%;
   max-width: 950px;
   display: block;
-  /*width="640px" height="450px"*/
   height: 350px;
 }
 
+/* ======================================
+ * STATUS INDICATORS
+ * ====================================== */
 .status-green {
   color: rgb(46, 204, 64);
 }
@@ -117,6 +137,10 @@ h6 {
 .status-white {
   color: white;
 }
+
+/* ======================================
+ * TRANSIT INFORMATION
+ * ====================================== */
 .transit-div {
   width: 100%;
   display: flex;
@@ -134,6 +158,8 @@ h6 {
   justify-content: center;
   align-items: center;
 }
+
+/* Train status indicators */
 .chip {
   margin-top: 10px;
   margin-bottom: 5px;
@@ -156,9 +182,12 @@ h6 {
   background-color: yellow;
 }
 .train-service-irregularity {
-  /* color: white; */
   background-color: orange;
 }
+
+/* ======================================
+ * SPECIAL EFFECTS
+ * ====================================== */
 #snow {
   position: fixed;
   top: 0;

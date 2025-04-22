@@ -97,9 +97,23 @@ function loadTransitStatus() {
 // Global variable for storing the location code
 let locationCode = "nyc"; // Default fallback
 
-// Initialize the location code when the DOM is fully loaded
-document.addEventListener("DOMContentLoaded", () => {
-  // Get the location code from the global SWIMCONFIG variable
+// Get the location code as early as possible, even before DOM is ready
+if (window.SWIMCONFIG && window.SWIMCONFIG.locationCode) {
+  locationCode = window.SWIMCONFIG.locationCode;
+  console.log(`Location code set to ${locationCode} from SWIMCONFIG (early)`);
+}
+
+// Try to fetch data immediately if SWIMCONFIG is available early
+if (window.SWIMCONFIG && window.SWIMCONFIG.locationCode) {
+  console.log("Starting early data fetch...");
+  // We're doing this before DOMContentLoaded for faster initial load
+  fetchAndUpdateConditions(locationCode);
+}
+
+// This function will be called on both DOMContentLoaded and window.load
+function initializeLocationAndData() {
+  console.log("Initializing location and data...");
+  // Get/confirm the location code from the global SWIMCONFIG variable
   if (window.SWIMCONFIG && window.SWIMCONFIG.locationCode) {
     locationCode = window.SWIMCONFIG.locationCode;
     console.log(`Location code set to ${locationCode} from SWIMCONFIG`);
@@ -107,9 +121,16 @@ document.addEventListener("DOMContentLoaded", () => {
     console.warn("SWIMCONFIG not available, using default location");
   }
 
-  // Start fetching data now that we have the location code
+  // Make sure we have fresh data (will be ignored if an identical request is in flight)
   fetchAndUpdateConditions(locationCode);
-});
+  return locationCode;
+}
+
+// Initialize location code and fetch data when the DOM is fully loaded
+document.addEventListener("DOMContentLoaded", initializeLocationAndData);
+
+// Also initialize when the window loads (helps with refresh issues)
+window.addEventListener("load", initializeLocationAndData);
 
 /**
  * Initialize page with API data and set up refresh

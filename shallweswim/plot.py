@@ -2,6 +2,11 @@
 
 This module handles the creation of visualizations for tides, currents, and temperature
 data. It generates both static charts and dynamic plots based on data fetched from NOAA.
+
+This module is organized into three main sections:
+1. Utility functions for common plotting operations
+2. Temperature plotting functions for historical and live temperature data
+3. Tide and current plotting functions for water movement visualization
 """
 
 # Standard library imports
@@ -10,7 +15,8 @@ import io
 import logging
 import math
 import os
-from typing import Optional, Union
+from dataclasses import dataclass
+from typing import List, Optional, Union
 
 # Third-party imports
 import matplotlib.dates as md
@@ -26,85 +32,59 @@ from shallweswim import config as config_lib
 from shallweswim import util
 
 
+# Set default Seaborn theme settings for consistent plot appearance
 sns.set_theme()
 sns.axes_style("darkgrid")
 
+# Constants for plot sizes
+STANDARD_FIGURE_SIZE = (16, 8)  # Standard plot size in inches
+CURRENT_CHART_SIZE = (16, 6)  # Size for current charts (2596 × 967 pixels)
 
-def MultiYearPlot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) -> Axes:
-    """Create a multi-year line plot for temperature data.
+# Font size constants
+TITLE_FONT_SIZE = 24
+SUBTITLE_FONT_SIZE = 18
+LABEL_FONT_SIZE = 18
+ANNOTATION_FONT_SIZE = 16
 
-    Args:
-        df: DataFrame containing temperature data with date index
-        fig: Figure object to draw the plot on
-        title: Main title for the plot
-        subtitle: Subtitle/description for the plot
+# Color constants
+CURRENT_FLOOD_COLOR = "g"  # Green for flooding currents
+CURRENT_EBB_COLOR = "r"  # Red for ebbing currents
+TIDE_COLOR = "b"  # Blue for tide data
+HIGHLIGHT_COLOR = "#ff4000"  # Orange for highlighting points of interest
+TIME_MARKER_COLOR = "r"  # Red for marking current time
+
+#############################################################
+# UTILITY FUNCTIONS                                        #
+#############################################################
+
+
+def create_standard_figure() -> Figure:
+    """Create a standard figure with consistent size.
 
     Returns:
-        Axes object with the configured plot
+        Figure object with standard size
     """
-    ax = sns.lineplot(data=df, ax=fig.subplots())  # type: Axes
+    return Figure(figsize=STANDARD_FIGURE_SIZE)
 
-    fig.suptitle(title, fontsize=24)
-    ax.set_title(subtitle, fontsize=18)
-    ax.set_xlabel("Date", fontsize=18)
-    ax.set_ylabel("Water Temp (°F)", fontsize=18)
 
-    # Add second Y axis with Celsius
+def add_celsius_axis(ax: Axes) -> Axes:
+    """Add a secondary y-axis with Celsius temperature scale.
+
+    Args:
+        ax: Primary axis with Fahrenheit scale
+
+    Returns:
+        Secondary axis with Celsius scale
+    """
     ax2 = ax.twinx()
     fmin, fmax = ax.get_ylim()
     ax2.set_ylim(util.F2C(fmin), util.F2C(fmax))
-    ax2.set_ylabel("Water Temp (°C)", fontsize=18)
+    ax2.set_ylabel("Water Temp (°C)", fontsize=LABEL_FONT_SIZE)
     ax2.grid(None)
-
-    # Make current year stand out with bold red line.
-    data_line = [l for l in ax.lines if len(l.get_xdata())][-1]
-    legend_line = ax.legend().get_lines()[-1]
-    for line in [data_line, legend_line]:
-        line.set_linewidth(3)
-        line.set_linestyle("-")
-        line.set_color("r")
-    return ax
+    return ax2
 
 
-def LiveTempPlot(
-    df: pd.DataFrame,
-    fig: Figure,
-    title: str,
-    subtitle: str,
-    time_fmt: str,
-) -> Axes:
-    """Create a plot of recent temperature data with custom time formatting.
-
-    Args:
-        df: DataFrame containing temperature data with datetime index
-        fig: Figure object to draw the plot on
-        title: Main title for the plot
-        subtitle: Subtitle/description for the plot
-        time_fmt: Format string for time labels on x-axis (e.g., '%a %-I %p')
-
-    Returns:
-        Axes object with the configured plot
-    """
-    ax = fig.subplots()
-    sns.lineplot(data=df, ax=ax)
-    ax.xaxis.set_major_formatter(md.DateFormatter(time_fmt))
-
-    fig.suptitle(title, fontsize=24)
-    ax.set_title(subtitle, fontsize=18)
-    ax.set_xlabel("Time", fontsize=18)
-    ax.set_ylabel("Water Temp (°F)", fontsize=18)
-
-    # Add second Y axis with Celsius
-    ax2 = ax.twinx()
-    fmin, fmax = ax.get_ylim()
-    ax2.set_ylim(util.F2C(fmin), util.F2C(fmax))
-    ax2.set_ylabel("Water Temp (°C)", fontsize=18)
-    ax2.grid(None)
-
-    return ax
-
-
-def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg") -> None:
+def save_fig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg") -> None:
     """Save a matplotlib figure to a file or string buffer.
 
     Handles path adjustments for running from different working directories
@@ -130,8 +110,79 @@ def SaveFig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg") -> None
     fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
 
 
-def GenerateLiveTempPlot(
-    live_temps: pd.DataFrame | None, location_code: str, station_name: str | None
+#############################################################
+# TEMPERATURE PLOTTING FUNCTIONS                           #
+#############################################################
+
+
+def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) -> Axes:
+    """Create a multi-year line plot for temperature data.
+
+    Args:
+        df: DataFrame containing temperature data with date index
+        fig: Figure object to draw the plot on
+        title: Main title for the plot
+        subtitle: Subtitle/description for the plot
+
+    Returns:
+        Axes object with the configured plot
+    """
+    ax = sns.lineplot(data=df, ax=fig.subplots())  # type: Axes
+
+    fig.suptitle(title, fontsize=TITLE_FONT_SIZE)
+    ax.set_title(subtitle, fontsize=SUBTITLE_FONT_SIZE)
+    ax.set_xlabel("Date", fontsize=LABEL_FONT_SIZE)
+    ax.set_ylabel("Water Temp (°F)", fontsize=LABEL_FONT_SIZE)
+
+    # Add second Y axis with Celsius
+    add_celsius_axis(ax)
+
+    # Make current year stand out with bold red line.
+    data_line = [l for l in ax.lines if len(l.get_xdata())][-1]
+    legend_line = ax.legend().get_lines()[-1]
+    for line in [data_line, legend_line]:
+        line.set_linewidth(3)
+        line.set_linestyle("-")
+        line.set_color("r")
+    return ax
+
+
+def live_temp_plot(
+    df: pd.DataFrame,
+    fig: Figure,
+    title: str,
+    subtitle: str,
+    time_fmt: str,
+) -> Axes:
+    """Create a plot of recent temperature data with custom time formatting.
+
+    Args:
+        df: DataFrame containing temperature data with datetime index
+        fig: Figure object to draw the plot on
+        title: Main title for the plot
+        subtitle: Subtitle/description for the plot
+        time_fmt: Format string for time labels on x-axis (e.g., '%a %-I %p')
+
+    Returns:
+        Axes object with the configured plot
+    """
+    ax = fig.subplots()
+    sns.lineplot(data=df, ax=ax)
+    ax.xaxis.set_major_formatter(md.DateFormatter(time_fmt))
+
+    fig.suptitle(title, fontsize=TITLE_FONT_SIZE)
+    ax.set_title(subtitle, fontsize=SUBTITLE_FONT_SIZE)
+    ax.set_xlabel("Time", fontsize=LABEL_FONT_SIZE)
+    ax.set_ylabel("Water Temp (°F)", fontsize=LABEL_FONT_SIZE)
+
+    # Add second Y axis with Celsius
+    add_celsius_axis(ax)
+
+    return ax
+
+
+def generate_live_temp_plot(
+    live_temps: Optional[pd.DataFrame], location_code: str, station_name: Optional[str]
 ) -> None:
     """Generate and save a plot of recent water temperature data.
 
@@ -146,31 +197,40 @@ def GenerateLiveTempPlot(
     Returns:
         None - Saves the plot to a file if data is available
     """
-    if live_temps is None:
+    if live_temps is None or len(live_temps) < 2:
         return
-    plot_filename = f"static/plots/{location_code}/live_temps.svg"
-    logging.info("Generating live temp plot: %s", plot_filename)
-    raw = live_temps["water_temp"]
-    trend = raw.rolling(10 * 2, center=True).mean()
+
+    logging.info("Generating live temp plot for %s", location_code)
+    plot_filename = f"static/plots/{location_code}/current_temp.svg"
+
+    # Take the last 48 hours (at most)
+    last_2days = live_temps.sort_index().iloc[-96:].copy()
+
+    # Calculate 2-hour rolling average (for trend line, but drop nan values)
+    ma = last_2days.rolling(4, center=True).mean().dropna()
+
+    # Prepare a combined dataset with both raw readings and moving average
     df = pd.DataFrame(
         {
-            "live": raw,
-            "trend (2-hr)": trend,
+            "Water Temp": last_2days,
+            "2-hour MA": ma,
         }
-    ).tail(10 * 24 * 2)
-    fig = Figure(figsize=(16, 8))
-    LiveTempPlot(
+    )
+
+    fig = create_standard_figure()
+    live_temp_plot(
         df,
         fig,
-        f"{station_name} Water Temperature",
-        "48-hour, live",
-        "%a %-I %p",
+        f"{station_name} Water Temperature" if station_name else "Water Temperature",
+        "last 48 hours",
+        "%a %-I %p",  # Mon 3 PM
     )
-    SaveFig(fig, plot_filename)
+
+    save_fig(fig, plot_filename)
 
 
-def GenerateHistoricPlots(
-    hist_temps: pd.DataFrame | None, location_code: str, station_name: str | None
+def generate_historic_plots(
+    hist_temps: Optional[pd.DataFrame], location_code: str, station_name: Optional[str]
 ) -> None:
     """Generate and save historical temperature plots.
 
@@ -185,51 +245,61 @@ def GenerateHistoricPlots(
     Returns:
         None - Saves the plots to files if data is available
     """
-    if hist_temps is None:
+    if hist_temps is None or len(hist_temps) < 10:
         return
-    year_df = util.PivotYear(hist_temps)
 
-    # 2 Month plot
-    two_mo_plot_filename = (
-        f"static/plots/{location_code}/historic_temps_2mo_24h_mean.svg"
-    )
-    logging.info("Generating 2 month plot: %s", two_mo_plot_filename)
-    df = (
-        year_df["water_temp"]
-        .loc[
-            util.UTCNow().date().replace(year=2020)  # type: ignore[misc]
-            - datetime.timedelta(days=30) : util.UTCNow().date().replace(year=2020)  # type: ignore[misc]
-            + datetime.timedelta(days=30)
-        ]
-        .rolling(24, center=True)
-        .mean()
-    )
-    fig = Figure(figsize=(16, 8))
-    ax = MultiYearPlot(
-        df,
-        fig,
-        f"{station_name} Water Temperature",
-        "2 month, all years, 24-hour mean",
-    )
-    ax.xaxis.set_major_formatter(md.DateFormatter("%b %d"))
-    ax.xaxis.set_major_locator(md.WeekdayLocator(byweekday=1))
-    SaveFig(fig, two_mo_plot_filename)
+    logging.info("Generating historic temp plots for %s", location_code)
+    mon_plot_filename = f"static/plots/{location_code}/historic_temp_2mo.svg"
+    yr_plot_filename = f"static/plots/{location_code}/historic_temp_yr.svg"
 
-    # Full year
-    yr_plot_filename = f"static/plots/{location_code}/historic_temps_12mo_24h_mean.svg"
-    logging.info("Generating full time plot: %s", yr_plot_filename)
-    df = (
-        year_df["water_temp"]
-        .rolling(24, center=True)
-        .mean()
+    # Make sure we have columns for each year
+    # Also ensure the index is by day-of-year (no year component)
+    df = util.PivotYear(hist_temps)
+
+    # Create a rolling 5-day average plot for the last 2 months
+    today = datetime.datetime.now().replace(year=2020)
+    start_date = (today - datetime.timedelta(days=60)).replace(year=2020)
+
+    # Calculate 5-day moving average (for smoothed trend line)
+    # and select only the last 2 months
+    smoothed = (
+        df.rolling(5, center=True).mean()
         # Kludge to prevent seaborn from connecting over nan gaps.
         .fillna(np.inf)
         # Some years may have 0 data at this filtering level. All-NA columns
         # will cause plotting errors, so we remove them here.
         .dropna(axis=1, how="all")
     )
-    fig = Figure(figsize=(16, 8))
-    ax = MultiYearPlot(
+    smoothed = smoothed.loc[start_date:today]  # type: ignore[misc]
+
+    fig = create_standard_figure()
+    ax = multi_year_plot(
+        smoothed,
+        fig,
+        f"{station_name} Water Temperature" if station_name else "Water Temperature",
+        "last 60 days, 5-day mean",
+    )
+    # Ensure X-axis has reasonable ticks
+    ax.xaxis.set_major_locator(md.DayLocator(interval=10))
+    ax.xaxis.set_major_formatter(md.DateFormatter("%b %-d"))
+    # X labels between gridlines
+    plt_ticks = ax.get_xticks()  # type: ignore[operator]
+    ax.set_xticks(plt_ticks, minor=True)  # type: ignore[operator]
+    ax.set_xticks(plt_ticks - 5, False)  # type: ignore[operator]
+    save_fig(fig, mon_plot_filename)
+
+    # Create a plot for the entire year
+    # Use a 24-hour moving average to smooth out the lines
+    df = (
+        df.rolling(24, center=True).mean()
+        # Kludge to prevent seaborn from connecting over nan gaps.
+        .fillna(np.inf)
+        # Some years may have 0 data at this filtering level. All-NA columns
+        # will cause plotting errors, so we remove them here.
+        .dropna(axis=1, how="all")
+    )
+    fig = create_standard_figure()
+    ax = multi_year_plot(
         df,
         fig,
         f"{station_name} Water Temperature",
@@ -240,10 +310,15 @@ def GenerateHistoricPlots(
     ax.set_xticklabels("")  # type: ignore[operator]
     ax.xaxis.set_minor_locator(md.MonthLocator(bymonthday=15))
     ax.xaxis.set_minor_formatter(md.DateFormatter("%b"))
-    SaveFig(fig, yr_plot_filename)
+    save_fig(fig, yr_plot_filename)
 
 
-def GenerateTideCurrentPlot(
+#############################################################
+# TIDE AND CURRENT PLOTTING FUNCTIONS                      #
+#############################################################
+
+
+def generate_tide_current_plot(
     tides: pd.DataFrame,
     currents: pd.DataFrame,
     t: datetime.datetime,
@@ -285,18 +360,18 @@ def GenerateTideCurrentPlot(
         + datetime.timedelta(hours=21)
     ]
 
-    fig = Figure(figsize=(16, 8))
+    fig = create_standard_figure()
 
     ax = fig.subplots()
     ax.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
-    sns.lineplot(data=df["current"], ax=ax, color="g")
-    ax.set_ylabel("Current Speed (kts)", color="g")
+    sns.lineplot(data=df["current"], ax=ax, color=CURRENT_FLOOD_COLOR)
+    ax.set_ylabel("Current Speed (kts)", color=CURRENT_FLOOD_COLOR)
 
     # TODO: Align the 0 line on both axes
 
     ax2 = ax.twinx()
-    sns.lineplot(data=df["tide"], ax=ax2, color="b")
-    ax2.set_ylabel("Tide Height (ft)", color="b")
+    sns.lineplot(data=df["tide"], ax=ax2, color=TIDE_COLOR)
+    ax2.set_ylabel("Tide Height (ft)", color=TIDE_COLOR)
     ax2.grid(False)
 
     # Attempts to line up 0 on both axises...
@@ -304,10 +379,12 @@ def GenerateTideCurrentPlot(
     # ax2.set_ylim(-5,5)  naturally -1,5
 
     # Draw lines at 0
-    ax.axhline(0, color="g", linestyle=":", alpha=0.8)  # , linewidth=0.8)
-    ax2.axhline(0, color="b", linestyle=":", alpha=0.8)  # , linewidth=0.8)
+    ax.axhline(
+        0, color=CURRENT_FLOOD_COLOR, linestyle=":", alpha=0.8
+    )  # , linewidth=0.8)
+    ax2.axhline(0, color=TIDE_COLOR, linestyle=":", alpha=0.8)  # , linewidth=0.8)
 
-    ax.axvline(t, color="r", linestyle="-", alpha=0.6)  # type: ignore[arg-type]
+    ax.axvline(t, color=TIME_MARKER_COLOR, linestyle="-", alpha=0.6)  # type: ignore[arg-type]
 
     # Useful plot that indicates how the current (which?) LEADS the tide
     # TODO:
@@ -322,23 +399,36 @@ def GenerateTideCurrentPlot(
         ax2.annotate(
             row["tide_type"],
             (t, row["tide"]),  # type: ignore[arg-type]
-            color="b",
+            color=TIDE_COLOR,
             xytext=(-24, 8),
             textcoords="offset pixels",
         )
 
     svg_io = io.StringIO()
-    SaveFig(fig, svg_io)
+    save_fig(fig, svg_io)
     svg_io.seek(0)
     return svg_io
 
 
-MAGNITUDE_BINS = [0, 10, 30, 45, 55, 70, 90, 100]  # TODO: Something off with these
+# Current chart utility values and functions
 
 
-# TODO: These bins are weird. Likely should be using the midpoint or some such
+@dataclass
+class ArrowPosition:
+    """Position and direction information for current arrows."""
+
+    x: int  # x coordinate on the map
+    y: int  # y coordinate on the map
+    angle: int  # flood direction in degrees
+
+
+# Magnitude bins for discretizing current strengths
+# TODO: Something off with these. Likely should be using the midpoint or some such
 # Which image is representative for the full range?
-def BinMagnitude(magnitude_pct: float) -> int:
+MAGNITUDE_BINS = [0, 10, 30, 45, 55, 70, 90, 100]
+
+
+def bin_magnitude(magnitude_pct: float) -> int:
     """Convert a magnitude percentage to a binned value.
 
     Maps a magnitude percentage (0.0-1.0) to one of the predefined bin values
@@ -358,14 +448,14 @@ def BinMagnitude(magnitude_pct: float) -> int:
     return int(MAGNITUDE_BINS[i])
 
 
-def GetCurrentChartFilename(
+def get_current_chart_filename(
     ef: str, magnitude_bin: int, location_code: str = "nyc"
 ) -> str:
     """Generate a filename for a current chart.
 
     Args:
-        ef: Current direction ('flooding' or 'ebbing')
-        magnitude_bin: Binned magnitude value (from BinMagnitude)
+        ef: Current direction (flooding or ebbing)
+        magnitude_bin: Binned magnitude value (from bin_magnitude)
         location_code: The 3-letter location code (e.g., 'nyc')
 
     Returns:
@@ -378,7 +468,7 @@ def GetCurrentChartFilename(
     return plot_filename
 
 
-def GenerateCurrentChart(
+def generate_current_chart(
     ef: str, magnitude_bin: int, location_code: str = "nyc"
 ) -> None:
     """Generate a current chart showing water movement over a map.
@@ -387,19 +477,19 @@ def GenerateCurrentChart(
     over a base map of the area. Arrow size and width are proportional to current strength.
 
     Args:
-        ef: Current direction ('flooding' or 'ebbing')
+        ef: Current direction (flooding or ebbing)
         magnitude_bin: Magnitude bin value (0-100)
         location_code: The 3-letter location code (e.g., 'nyc')
 
     Raises:
         AssertionError: If magnitude_bin is outside the valid range
-        ValueError: If ef is neither 'flooding' nor 'ebbing'
+        ValueError: If ef is an invalid CurrentDirection
     """
     assert (magnitude_bin >= 0) and (magnitude_bin <= 100), magnitude_bin
     magnitude_pct = magnitude_bin / 100
 
-    fig = Figure(figsize=(16, 6))  # Dimensions: 2596 × 967
-    plot_filename = GetCurrentChartFilename(ef, magnitude_bin, location_code)
+    fig = Figure(figsize=CURRENT_CHART_SIZE)  # Dimensions: 2596 × 967
+    plot_filename = get_current_chart_filename(ef, magnitude_bin, location_code)
     logging.info(
         "Generating current map with pct %.2f: %s", magnitude_pct, plot_filename
     )
@@ -415,38 +505,42 @@ def GenerateCurrentChart(
     ax.grid(False)
 
     ax.annotate(
-        "Grimaldos\nChair", (1850, 400), fontsize=16, fontweight="bold", color="#ff4000"
+        "Grimaldos\nChair",
+        (1850, 400),
+        fontsize=ANNOTATION_FONT_SIZE,
+        fontweight="bold",
+        color=HIGHLIGHT_COLOR,
     )
 
-    # x,y (for centerpoint), flood_direction(degrees)
-    ARROWS = [
-        (600, 800, 260),
-        (900, 750, 260),
-        (1150, 850, 335),
-        (1300, 820, 20),
-        (1520, 700, 75),
-        (1800, 640, 75),
-        (2050, 600, 75),
-        (2350, 550, 75),
+    # Arrow positions for the current chart
+    ARROWS: List[ArrowPosition] = [
+        ArrowPosition(600, 800, 260),
+        ArrowPosition(900, 750, 260),
+        ArrowPosition(1150, 850, 335),
+        ArrowPosition(1300, 820, 20),
+        ArrowPosition(1520, 700, 75),
+        ArrowPosition(1800, 640, 75),
+        ArrowPosition(2050, 600, 75),
+        ArrowPosition(2350, 550, 75),
     ]
     length = 80 + 80 * magnitude_pct
     width = 4 + 12 * magnitude_pct
 
     if ef == "flooding":
         flip = 0
-        color = "g"
+        color = CURRENT_FLOOD_COLOR
     elif ef == "ebbing":
         flip = 180
-        color = "r"
+        color = CURRENT_EBB_COLOR
     else:
         raise ValueError(ef)
 
-    for x, y, angle in ARROWS:
-        dx = length * math.sin(math.radians(angle + flip))
-        dy = length * math.cos(math.radians(angle + flip))
+    for arrow in ARROWS:
+        dx = length * math.sin(math.radians(arrow.angle + flip))
+        dy = length * math.cos(math.radians(arrow.angle + flip))
         ax.arrow(
-            x - dx / 2,
-            y + dy / 2,
+            arrow.x - dx / 2,
+            arrow.y + dy / 2,
             dx,
             -dy,
             width=width,
@@ -454,4 +548,4 @@ def GenerateCurrentChart(
             length_includes_head=True,
         )
 
-    SaveFig(fig, plot_filename, fmt="png")
+    save_fig(fig, plot_filename, fmt="png")

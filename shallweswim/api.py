@@ -183,7 +183,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         ts = util.EffectiveTime(cfg.timezone, shift_minutes=shift)
 
         # Generate the tide/current plot
-        image = plot.GenerateTideCurrentPlot(
+        image = plot.generate_tide_current_plot(
             data[location].tides, data[location].currents, ts, cfg
         )
         assert image
@@ -236,9 +236,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
         back = max(shift - 60, util.MIN_SHIFT_LIMIT)
 
         # Get current chart filename
-        current_chart_filename = plot.GetCurrentChartFilename(
+        current_chart_filename = plot.get_current_chart_filename(
             current_info.direction,
-            plot.BinMagnitude(current_info.magnitude_pct),
+            plot.bin_magnitude(current_info.magnitude_pct),
             location,
         )
 

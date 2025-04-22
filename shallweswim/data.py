@@ -141,13 +141,13 @@ class Data(object):
 
             if self._Expired("live_temps"):
                 self._FetchLiveTemps()
-                plot.GenerateLiveTempPlot(
+                plot.generate_live_temp_plot(
                     self.live_temps, self.config.code, self.config.temp_station_name
                 )
 
             if self._Expired("historic_temps"):
                 self._FetchHistoricTemps()
-                plot.GenerateHistoricPlots(
+                plot.generate_historic_plots(
                     self.historic_temps, self.config.code, self.config.temp_station_name
                 )
 

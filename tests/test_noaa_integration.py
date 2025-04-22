@@ -11,7 +11,7 @@ Run with: pytest tests/test_noaa_integration.py -v --run-integration
 import pytest
 import pandas as pd
 import datetime
-import time
+import asyncio
 from typing import Literal
 
 from shallweswim.noaa import NoaaApi, NoaaDataError
@@ -66,9 +66,10 @@ def validate_temperature_data(
 
 
 @pytest.mark.integration
-def test_live_tides_fetch(check_api_availability: bool) -> None:
+@pytest.mark.asyncio
+async def test_live_tides_fetch(check_api_availability: bool) -> None:
     """Test fetching real tide data from NOAA API."""
-    df = NoaaApi.tides(station=TIDE_STATION)
+    df = await NoaaApi.tides(station=TIDE_STATION)
     validate_tide_data(df)
 
     # Verify we got multiple tide predictions
@@ -89,9 +90,10 @@ def test_live_tides_fetch(check_api_availability: bool) -> None:
 
 
 @pytest.mark.integration
-def test_live_currents_fetch(check_api_availability: bool) -> None:
+@pytest.mark.asyncio
+async def test_live_currents_fetch(check_api_availability: bool) -> None:
     """Test fetching real current data from NOAA API."""
-    df = NoaaApi.currents(station=CURRENT_STATION)
+    df = await NoaaApi.currents(station=CURRENT_STATION)
     validate_current_data(df)
 
     # Verify we have interpolated current data
@@ -112,8 +114,9 @@ def test_live_currents_fetch(check_api_availability: bool) -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.asyncio
 @pytest.mark.parametrize("product", ["water_temperature", "air_temperature"])
-def test_live_temperature_fetch(
+async def test_live_temperature_fetch(
     check_api_availability: bool,
     product: Literal["water_temperature", "air_temperature"],
 ) -> None:
@@ -123,7 +126,7 @@ def test_live_temperature_fetch(
     begin_date = end_date - datetime.timedelta(days=3)
 
     try:
-        df = NoaaApi.temperature(
+        df = await NoaaApi.temperature(
             station=TEMP_STATION,  # Use the station known to have temperature data
             product=product,
             begin_date=begin_date,
@@ -144,7 +147,8 @@ def test_live_temperature_fetch(
 
 
 @pytest.mark.integration
-def test_live_temperature_intervals(check_api_availability: bool) -> None:
+@pytest.mark.asyncio
+async def test_live_temperature_intervals(check_api_availability: bool) -> None:
     """Test temperature data with different interval settings."""
     # Get data for the last 3 days
     end_date = datetime.date.today()
@@ -152,7 +156,7 @@ def test_live_temperature_intervals(check_api_availability: bool) -> None:
 
     try:
         # Test hourly interval
-        df_hourly = NoaaApi.temperature(
+        df_hourly = await NoaaApi.temperature(
             station=TEMP_STATION,  # Use the station known to have temperature data
             product="air_temperature",  # Air temperature is more commonly available
             begin_date=begin_date,
@@ -161,7 +165,7 @@ def test_live_temperature_intervals(check_api_availability: bool) -> None:
         )
 
         # Test default interval (6-minute)
-        df_default = NoaaApi.temperature(
+        df_default = await NoaaApi.temperature(
             station=TEMP_STATION,  # Use the station known to have temperature data
             product="air_temperature",  # Air temperature is more commonly available
             begin_date=begin_date,
@@ -186,24 +190,26 @@ def test_live_temperature_intervals(check_api_availability: bool) -> None:
 
 
 @pytest.mark.integration
-def test_api_retries(check_api_availability: bool) -> None:
+@pytest.mark.asyncio
+async def test_api_retries(check_api_availability: bool) -> None:
     """Test API retry mechanism with real requests."""
     # Simply test that we can make a successful request
     # This is not a proper test of the retry logic, but it at least verifies
     # that the API client can connect to the API
-    df = NoaaApi.tides(station=TIDE_STATION)
+    df = await NoaaApi.tides(station=TIDE_STATION)
     validate_tide_data(df)
     assert len(df) > 0, "Should have received tide data"
 
 
 @pytest.mark.integration
-def test_consecutive_api_calls(check_api_availability: bool) -> None:
+@pytest.mark.asyncio
+async def test_consecutive_api_calls(check_api_availability: bool) -> None:
     """Test making consecutive API calls to validate rate limiting handling."""
     # Make multiple API calls in succession
     for _ in range(3):
-        df = NoaaApi.tides(station=TIDE_STATION)
+        df = await NoaaApi.tides(station=TIDE_STATION)
         validate_tide_data(df)
         # Small delay to avoid hitting rate limits
-        time.sleep(0.5)
+        await asyncio.sleep(0.5)
 
     # If we got here without exceptions, the API handled consecutive calls properly

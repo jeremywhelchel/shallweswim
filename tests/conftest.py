@@ -5,6 +5,7 @@ This file contains setup for integration tests that hit real NOAA API endpoints.
 
 # Third-party imports
 import pytest
+import pytest_asyncio
 
 # Local imports
 from shallweswim.noaa import NoaaApi
@@ -43,15 +44,15 @@ def pytest_collection_modifyitems(
                 item.add_marker(skip_integration)
 
 
-@pytest.fixture(scope="session")
-def check_api_availability() -> bool:
+@pytest_asyncio.fixture(scope="session")
+async def check_api_availability() -> bool:
     """Check if the NOAA API is available before running integration tests.
 
     This prevents all tests from failing if the API is down or there's a network issue.
     """
     try:
         # Make a simple request to verify API is accessible
-        NoaaApi.tides(station=TIDE_STATION)
+        await NoaaApi.tides(station=TIDE_STATION)
         return True
     except Exception as e:
         pytest.skip(f"NOAA API unavailable, skipping integration tests: {e}")

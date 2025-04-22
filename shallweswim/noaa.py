@@ -1,15 +1,15 @@
 """NOAA tides and current API client."""
 
 # Standard library imports
+import asyncio
 import datetime
+import io
 import logging
-import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Literal, cast
 
 # Third-party imports
+import aiohttp
 import pandas as pd
 
 # Local imports
@@ -63,7 +63,7 @@ class NoaaApi:
         return date.strftime(DateFormat)
 
     @classmethod
-    def _Request(cls, params: NoaaRequestParams) -> pd.DataFrame:
+    async def _Request(cls, params: NoaaRequestParams) -> pd.DataFrame:
         """Make a request to the NOAA API with retries.
 
         Args:
@@ -79,22 +79,30 @@ class NoaaApi:
         url_params = dict(cls.BASE_PARAMS, **params)
         url = cls.BASE_URL + "?" + urllib.parse.urlencode(url_params)
 
-        for attempt in range(cls.MAX_RETRIES):
-            try:
-                logging.info("NOAA API request (attempt %d): %s", attempt + 1, url)
-                df = pd.read_csv(url)
-                if len(df) == 1:
-                    raise NoaaDataError(df.iloc[0].values[0])
-                return df
-            except urllib.error.URLError as e:
-                if attempt == cls.MAX_RETRIES - 1:
-                    raise NoaaConnectionError("Failed to connect to NOAA API: %s" % e)
-                time.sleep(cls.RETRY_DELAY * (attempt + 1))
+        async with aiohttp.ClientSession() as session:
+            for attempt in range(cls.MAX_RETRIES):
+                try:
+                    logging.info("NOAA API request (attempt %d): %s", attempt + 1, url)
+                    async with session.get(url) as response:
+                        if response.status != 200:
+                            raise NoaaConnectionError(f"HTTP error: {response.status}")
+
+                        # Read CSV data
+                        csv_data = await response.text()
+                        df = pd.read_csv(io.StringIO(csv_data))
+
+                        if len(df) == 1:
+                            raise NoaaDataError(df.iloc[0].values[0])
+                        return df
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    if attempt == cls.MAX_RETRIES - 1:
+                        raise NoaaConnectionError(f"Failed to connect to NOAA API: {e}")
+                    await asyncio.sleep(cls.RETRY_DELAY * (attempt + 1))
 
         raise NoaaConnectionError("Unexpected error in NOAA API request")
 
     @classmethod
-    def tides(
+    async def tides(
         cls,
         station: int,
     ) -> pd.DataFrame:
@@ -118,9 +126,9 @@ class NoaaApi:
             "interval": "hilo",
         }
 
+        df = await cls._Request(params)
         df = (
-            cls._Request(params)
-            .pipe(cls._FixTime)
+            df.pipe(cls._FixTime)
             .rename(columns={" Prediction": "prediction", " Type": "type"})
             .assign(type=lambda x: x["type"].map({"L": "low", "H": "high"}))[
                 ["prediction", "type"]
@@ -129,7 +137,7 @@ class NoaaApi:
         return cast("pd.DataFrame[TideData]", df)
 
     @classmethod
-    def currents(
+    async def currents(
         cls,
         station: str,
         interpolate: bool = True,
@@ -158,10 +166,9 @@ class NoaaApi:
             "interval": "MAX_SLACK",
         }
 
+        df = await cls._Request(params)
         currents = (
-            cls._Request(params)
-            .pipe(cls._FixTime, time_col="Time")
-            .rename(
+            df.pipe(cls._FixTime, time_col="Time").rename(
                 columns={
                     " Depth": "depth",
                     " Type": "type",
@@ -188,7 +195,7 @@ class NoaaApi:
         return cast("pd.DataFrame[CurrentData]", currents)
 
     @classmethod
-    def temperature(
+    async def temperature(
         cls,
         station: int,
         product: Literal["air_temperature", "water_temperature"],
@@ -227,16 +234,18 @@ class NoaaApi:
             "interval": interval,
         }
 
+        df = await cls._Request(params)
         df = (
-            cls._Request(params)
-            .pipe(cls._FixTime)
+            df.pipe(cls._FixTime)
             .rename(
                 columns={
                     " Water Temperature": "water_temp",
                     " Air Temperature": "air_temp",
                 }
             )
-            .drop(columns=[" X", " N", " R "])  # Metadata columns we don't use
+            .drop(
+                columns=[" X", " N", " R "], errors="ignore"
+            )  # Metadata columns we don't use
         )
 
         return cast("pd.DataFrame[TemperatureData]", df)

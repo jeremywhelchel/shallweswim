@@ -5,11 +5,9 @@ and provides the necessary data for plotting and presentation.
 """
 
 # Standard library imports
+import asyncio
 import datetime
 import logging
-import threading
-import time
-from concurrent import futures
 from typing import Optional, Tuple, cast
 
 # Third-party imports
@@ -138,7 +136,7 @@ class Data(object):
     and provides methods to access processed data for the web application.
     """
 
-    def __init__(self, config: config_lib.LocationConfig):
+    def __init__(self, config: config_lib.LocationConfig) -> None:
         """Initialize the Data object with configuration settings.
 
         Args:
@@ -146,16 +144,19 @@ class Data(object):
         """
         self.config = config
 
-        # Data storage
-        self.tides = None  # Tide predictions
-        self.currents = None  # Current predictions
-        self.historic_temps = None  # Historical temperature data
-        self.live_temps = None  # Recent temperature readings
+        # Data caches
+        self.tides: Optional[pd.DataFrame] = None
+        self.currents: Optional[pd.DataFrame] = None
+        self.live_temps: Optional[pd.DataFrame] = None
+        self.historic_temps: Optional[pd.DataFrame] = None
 
-        # Timestamps for tracking when data was last fetched
-        self._tides_timestamp: datetime.datetime | None = None
-        self._live_temps_timestamp: datetime.datetime | None = None
-        self._historic_temps_timestamp: datetime.datetime | None = None
+        # Timestamps for last data retrieval
+        self._tides_timestamp: Optional[datetime.datetime] = None
+        self._live_temps_timestamp: Optional[datetime.datetime] = None
+        self._historic_temps_timestamp: Optional[datetime.datetime] = None
+
+        # Background update task
+        self._update_task: Optional[asyncio.Task[None]] = None
 
         # Data expiration periods
         self.expirations = {
@@ -202,31 +203,31 @@ class Data(object):
         age = now - timestamp
         return age > self.expirations[dataset]
 
-    def _update_dataset(self, dataset: DatasetName) -> None:
+    async def _update_dataset(self, dataset: DatasetName) -> None:
         """Update a specific dataset if it has expired.
 
         Args:
             dataset: The dataset to update
         """
         if dataset == "tides_and_currents":
-            self._fetch_tides_and_currents()
+            await self._fetch_tides_and_currents()
         elif dataset == "live_temps":
-            self._fetch_live_temps()
+            await self._fetch_live_temps()
         elif dataset == "historic_temps":
-            self._fetch_historic_temps()
+            await self._fetch_historic_temps()
 
-    def __update_thread(self) -> None:
-        """Background thread that continuously updates data.
+    async def __update_loop(self) -> None:
+        """Background asyncio task that continuously updates data.
 
-        This runs as a daemon thread and periodically checks if datasets
+        This runs as an asyncio task and periodically checks if datasets
         have expired. If so, it fetches new data and generates updated plots.
         """
         while True:
             if self._expired("tides_and_currents"):
-                self._update_dataset("tides_and_currents")
+                await self._update_dataset("tides_and_currents")
 
             if self._expired("live_temps"):
-                self._update_dataset("live_temps")
+                await self._update_dataset("live_temps")
                 # Only generate plot if we have valid data
                 if self.live_temps is not None and len(self.live_temps) >= 2:
                     plot.generate_and_save_live_temp_plot(
@@ -234,7 +235,7 @@ class Data(object):
                     )
 
             if self._expired("historic_temps"):
-                self._update_dataset("historic_temps")
+                await self._update_dataset("historic_temps")
                 # Only generate plots if we have valid historical data
                 if self.historic_temps is not None and len(self.historic_temps) >= 10:
                     plot.generate_and_save_historic_plots(
@@ -244,26 +245,26 @@ class Data(object):
                     )
 
             # TODO: Can probably be increased to 1s even... but would need to add API spam buffer
-            time.sleep(60)
+            await asyncio.sleep(60)
 
     def start(self) -> None:
         """Start the background data fetching process.
 
-        This creates and starts a daemon thread that periodically fetches
-        and processes new data. The thread name is unique per location.
+        This creates and starts an asyncio task that periodically fetches
+        and processes new data.
 
         Raises:
-            AssertionError: If a thread for this location is already running
+            AssertionError: If a task for this location is already running
         """
-        thread_name = f"DataUpdateThread_{self.config.code}"
-        for thread in threading.enumerate():
-            assert thread.name != thread_name, "Data update thread already running"
+        task_name = f"DataUpdateTask_{self.config.code}"
+        # Check if task already exists
+        for task in asyncio.all_tasks():
+            if task.get_name() == task_name and not task.done():
+                raise AssertionError("Data update task already running")
 
-        logging.info("Starting data fetch thread")
-        self._update_thread = threading.Thread(
-            target=self.__update_thread, name=thread_name, daemon=True
-        )
-        self._update_thread.start()
+        logging.info("Starting data fetch task")
+        self._update_task = asyncio.create_task(self.__update_loop())
+        self._update_task.set_name(task_name)
 
     def prev_next_tide(self) -> TideInfo:
         """Return the previous tide and next two tides.
@@ -290,7 +291,7 @@ class Data(object):
         else:
             # Convert the DataFrame records to TideEntry objects
             # Get current time in the location's timezone as a naive datetime
-            now = self.config.LocalNow()
+            now = self.config.local_now()
 
             # Ensure DataFrame has no timezone info for consistent comparison
             assert (
@@ -298,11 +299,13 @@ class Data(object):
             ), "Tide DataFrame should use naive datetimes"
 
             # When we reset_index, the DatetimeIndex becomes a column named 'time'
+            # Convert to pandas Timestamp for proper slicing (to satisfy type checking)
+            now_ts = pd.Timestamp(now)
             past_tide_dicts = (
-                self.tides[:now].tail(1).reset_index().to_dict(orient="records")
+                self.tides[:now_ts].tail(1).reset_index().to_dict(orient="records")
             )
             next_tide_dicts = (
-                self.tides[now:].head(2).reset_index().to_dict(orient="records")
+                self.tides[now_ts:].head(2).reset_index().to_dict(orient="records")
             )
 
             # Get the location's timezone for converting times
@@ -497,7 +500,9 @@ class Data(object):
         # Ensure DataFrame has no timezone info for consistent comparison
         assert df.index.tz is None, "DataFrame should use naive datetimes"
 
-        row = df[t:].iloc[0]
+        # Convert to pandas Timestamp for proper slicing (to satisfy type checking)
+        t_ts = pd.Timestamp(t)
+        row = df[t_ts:].iloc[0]
 
         # Constants for determining current state based on local magnitude percentage
         STRONG_THRESHOLD = 0.85  # 85% of local peak is considered "strong"
@@ -546,7 +551,7 @@ class Data(object):
         ((time, temp),) = self.live_temps.tail(1)["water_temp"].items()
         return time, temp
 
-    def _fetch_tides_and_currents(self) -> None:
+    async def _fetch_tides_and_currents(self) -> None:
         """Fetch tide and current data from NOAA API.
 
         Updates the tides and currents instance variables with fresh data from NOAA.
@@ -558,12 +563,14 @@ class Data(object):
         logging.info("Fetching tides and currents")
         try:
             if self.config.tide_station:
-                self.tides = noaa.NoaaApi.tides(station=self.config.tide_station)
+                self.tides = await noaa.NoaaApi.tides(station=self.config.tide_station)
 
             if self.config.currents_stations:
-                currents = [
+                # Use asyncio.gather to fetch all current stations concurrently
+                current_tasks = [
                     noaa.NoaaApi.currents(stn) for stn in self.config.currents_stations
                 ]
+                currents = await asyncio.gather(*current_tasks)
                 self.currents = (
                     pd.concat(currents)[["velocity"]].groupby(level=0).mean()
                 )
@@ -575,7 +582,7 @@ class Data(object):
         except noaa.NoaaApiError as e:
             logging.warning(f"Tide fetch error: {e}")
 
-    def _fetch_historic_temp_year(self, year: int) -> pd.DataFrame:
+    async def _fetch_historic_temp_year(self, year: int) -> pd.DataFrame:
         """Fetch temperature data for a specific year.
 
         Args:
@@ -587,33 +594,40 @@ class Data(object):
         Raises:
             AssertionError: If temperature station is not configured
         """
-        begin_date = datetime.date(year, 1, 1)
-        end_date = datetime.date(year, 12, 31)
-        assert self.config.temp_station is not None
-        return pd.concat(
-            [
-                noaa.NoaaApi.temperature(
-                    self.config.temp_station,
-                    "air_temperature",
-                    begin_date,
-                    end_date,
-                    interval="h",
-                ),
-                noaa.NoaaApi.temperature(
-                    self.config.temp_station,
-                    "water_temperature",
-                    begin_date,
-                    end_date,
-                    interval="h",
-                ),
-            ],
-            axis=1,
-        )
+        assert self.config.temp_station, "Temperature station not configured"
+        logging.info(f"Fetching historic temps for year {year}")
 
-    def _fetch_historic_temps(self) -> None:
+        begin_date = datetime.datetime(year, 1, 1)
+        end_date = datetime.datetime(year, 12, 31)
+        try:
+            # Get both air and water temperatures concurrently
+            air_temp_task = noaa.NoaaApi.temperature(
+                self.config.temp_station,
+                "air_temperature",
+                begin_date,
+                end_date,
+                interval="h",
+            )
+            water_temp_task = noaa.NoaaApi.temperature(
+                self.config.temp_station,
+                "water_temperature",
+                begin_date,
+                end_date,
+                interval="h",
+            )
+            # Wait for both requests to complete
+            air_temp, water_temp = await asyncio.gather(air_temp_task, water_temp_task)
+            # Merge the results
+            df = pd.concat([air_temp, water_temp], axis=1)
+            return df
+        except noaa.NoaaApiError as e:
+            logging.warning(f"Historic temp fetch error for {year}: {e}")
+            return pd.DataFrame()
+
+    async def _fetch_historic_temps(self) -> None:
         """Fetch hourly temperature data since 2011.
 
-        Uses multiple threads to fetch data by year in parallel, then concatenates
+        Uses asyncio.gather to fetch data by year in parallel, then concatenates
         the results. Removes known erroneous data points and resamples to hourly intervals.
         Sets the _historic_temps_timestamp to track when data was last retrieved.
 
@@ -625,8 +639,9 @@ class Data(object):
         logging.info("Fetching historic temps")
         try:
             years = range(2011, utc_now().year + 1)
-            threadpool = futures.ThreadPoolExecutor(len(years))
-            year_frames = threadpool.map(self._fetch_historic_temp_year, years)
+            # Create tasks for each year and gather them
+            tasks = [self._fetch_historic_temp_year(year) for year in years]
+            year_frames = await asyncio.gather(*tasks)
             # Concat all the yearly data frames
             historic_temps = pd.concat(year_frames)
 
@@ -670,7 +685,7 @@ class Data(object):
 
         return result_df
 
-    def _fetch_live_temps(self) -> None:
+    async def _fetch_live_temps(self) -> None:
         """Fetch recent air and water temperatures (last 8 days).
 
         Updates the live_temps instance variable with the most recent temperature
@@ -687,24 +702,23 @@ class Data(object):
         end_date = datetime.datetime.today()
         # TODO: Resample to 6min for more consistent data intervals
         try:
-            # Concatenate air and water temperature data
-            temp_data = pd.concat(
-                [
-                    noaa.NoaaApi.temperature(
-                        self.config.temp_station,
-                        "air_temperature",
-                        begin_date,
-                        end_date,
-                    ),
-                    noaa.NoaaApi.temperature(
-                        self.config.temp_station,
-                        "water_temperature",
-                        begin_date,
-                        end_date,
-                    ),
-                ],
-                axis=1,
+            # Fetch air and water temperature data concurrently
+            air_temp_task = noaa.NoaaApi.temperature(
+                self.config.temp_station,
+                "air_temperature",
+                begin_date,
+                end_date,
             )
+            water_temp_task = noaa.NoaaApi.temperature(
+                self.config.temp_station,
+                "water_temperature",
+                begin_date,
+                end_date,
+            )
+            # Wait for both requests to complete
+            air_temp, water_temp = await asyncio.gather(air_temp_task, water_temp_task)
+            # Concatenate the results
+            temp_data = pd.concat([air_temp, water_temp], axis=1)
 
             # Remove outliers using the helper method
             self.live_temps = self._remove_outliers(temp_data)

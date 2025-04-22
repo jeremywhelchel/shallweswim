@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 # Third-party imports
 import pandas as pd
 import pytest
+import pytest_asyncio
 from typing import Any
 
 # Local imports
@@ -69,15 +70,18 @@ def mock_current_data() -> pd.DataFrame:
     return df
 
 
-@pytest.fixture
-def mock_data_with_currents(mock_config: Any, mock_current_data: pd.DataFrame) -> Data:
+@pytest_asyncio.fixture
+async def mock_data_with_currents(
+    mock_config: Any, mock_current_data: pd.DataFrame
+) -> Data:
     """Create a Data instance with mock current data."""
     data = Data(mock_config)
     data.currents = mock_current_data
     return data
 
 
-def test_current_prediction_at_flood_peak(mock_data_with_currents: Data) -> None:
+@pytest.mark.asyncio
+async def test_current_prediction_at_flood_peak(mock_data_with_currents: Data) -> None:
     """Test current prediction at a flood peak."""
     # Test at 3:00 PM (15:00) which is a flood peak at 1.5 knots
     t = datetime.datetime(2025, 4, 22, 15, 0, 0)
@@ -89,7 +93,8 @@ def test_current_prediction_at_flood_peak(mock_data_with_currents: Data) -> None
     assert "at its strongest" in result.state_description
 
 
-def test_current_prediction_at_ebb_peak() -> None:
+@pytest.mark.asyncio
+async def test_current_prediction_at_ebb_peak() -> None:
     """Test current prediction at an ebb peak."""
     # Create a custom test instance
     config = MagicMock(spec=config_lib.LocationConfig)
@@ -161,7 +166,8 @@ def test_current_prediction_at_ebb_peak() -> None:
     assert "weakest" in result.state_description
 
 
-def test_current_prediction_at_slack(mock_data_with_currents: Data) -> None:
+@pytest.mark.asyncio
+async def test_current_prediction_at_slack(mock_data_with_currents: Data) -> None:
     """Test current prediction at slack water."""
     # Test at 4:00 AM (4:00) which is near zero (0.1 knots)
     t = datetime.datetime(2025, 4, 22, 4, 0, 0)
@@ -172,7 +178,8 @@ def test_current_prediction_at_slack(mock_data_with_currents: Data) -> None:
     assert "at its weakest (slack)" in result.state_description
 
 
-def test_current_prediction_strengthening() -> None:
+@pytest.mark.asyncio
+async def test_current_prediction_strengthening() -> None:
     """Test current prediction when current is strengthening."""
     # Create a custom test instance with clear strengthening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
@@ -202,7 +209,8 @@ def test_current_prediction_strengthening() -> None:
     )
 
 
-def test_current_prediction_weakening() -> None:
+@pytest.mark.asyncio
+async def test_current_prediction_weakening() -> None:
     """Test current prediction when current is weakening."""
     # Create a custom test instance with clear weakening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
@@ -228,7 +236,8 @@ def test_current_prediction_weakening() -> None:
     assert "getting weaker" in result.state_description
 
 
-def test_process_peaks_function() -> None:
+@pytest.mark.asyncio
+async def test_process_peaks_function() -> None:
     """Test that peaks are identified properly in the CurrentPrediction method."""
     # Create a custom data instance with a clear flood peak pattern
     config = MagicMock(spec=config_lib.LocationConfig)
@@ -266,7 +275,8 @@ def test_process_peaks_function() -> None:
     )
 
 
-def test_current_info_representation() -> None:
+@pytest.mark.asyncio
+async def test_current_info_representation() -> None:
     """Test the string representation of CurrentInfo."""
     info = CurrentInfo(
         direction="flooding",

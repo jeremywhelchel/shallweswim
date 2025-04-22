@@ -95,7 +95,7 @@ function loadTransitStatus() {
 //=============================================================================
 
 // Global variable for storing the location code
-let locationCode = "nyc"; // Default fallback
+let locationCode;
 
 // Get the location code as early as possible, even before DOM is ready
 if (window.SWIMCONFIG && window.SWIMCONFIG.locationCode) {
@@ -118,7 +118,8 @@ function initializeLocationAndData() {
     locationCode = window.SWIMCONFIG.locationCode;
     console.log(`Location code set to ${locationCode} from SWIMCONFIG`);
   } else {
-    console.warn("SWIMCONFIG not available, using default location");
+    console.warn("SWIMCONFIG not available, cannot fetch data");
+    return;
   }
 
   // Make sure we have fresh data (will be ignored if an identical request is in flight)
@@ -144,6 +145,12 @@ function initializeWithApi() {
 
 // Fetch conditions data from API and update page
 async function fetchAndUpdateConditions(location) {
+  // Don't attempt to fetch if no location is provided
+  if (!location) {
+    console.error("Cannot fetch conditions: No location specified");
+    return;
+  }
+
   try {
     console.log(`Fetching conditions data for ${location}...`);
     // Using the same pattern as the currents page which works on Safari

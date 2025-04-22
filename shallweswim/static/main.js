@@ -367,9 +367,20 @@ function initEmbedPage() {
  * @param {string|null} shift - Optional time shift parameter
  */
 async function fetchCurrentsData(locationCode, shift = null) {
+  // Don't attempt to fetch if no location is provided
+  if (!locationCode) {
+    console.error("Cannot fetch currents: No location specified");
+    return;
+  }
+
   try {
+    console.log(
+      `Fetching currents data for ${locationCode}${shift ? ` with shift ${shift}` : ""}...`,
+    );
+
     // Build the API URL with optional shift parameter
     let url = `/api/${locationCode}/currents`;
+
     if (shift) {
       url += `?shift=${shift}`;
     }
@@ -462,18 +473,48 @@ function updateCharts(data) {
   }
 }
 
+// Global variable for current page shift parameter
+let currentShiftParam = null;
+
+/**
+ * Get the shift parameter from the URL query string
+ */
+function getShiftParam() {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get("shift");
+}
+
+// Try to fetch currents data immediately if we're on the currents page and SWIMCONFIG is available
+if (
+  window.location.pathname.includes("/currents") &&
+  window.SWIMCONFIG &&
+  window.SWIMCONFIG.locationCode
+) {
+  console.log("Starting early currents data fetch...");
+  currentShiftParam = getShiftParam();
+  // Do this before DOMContentLoaded for faster initial load
+  fetchCurrentsData(window.SWIMCONFIG.locationCode, currentShiftParam);
+}
+
 /**
  * Initialize the currents page
  */
 function initCurrentsPage() {
-  // Use the global locationCode variable
+  console.log("Initializing currents page...");
+
+  // Verify we have the location code
+  if (!locationCode) {
+    console.error(
+      "Cannot initialize currents page: No location code available",
+    );
+    return;
+  }
 
   // Get shift parameter from URL if present
-  const urlParams = new URLSearchParams(window.location.search);
-  const shift = urlParams.get("shift");
+  currentShiftParam = getShiftParam();
 
-  // Immediately fetch data (don't wait for DOMContentLoaded)
-  fetchCurrentsData(locationCode, shift);
+  // Fetch fresh data
+  fetchCurrentsData(locationCode, currentShiftParam);
 }
 
 //=============================================================================
@@ -485,18 +526,27 @@ function initCurrentsPage() {
 document.addEventListener("DOMContentLoaded", function () {
   // Check if we're on the currents page
   if (window.location.pathname.includes("/currents")) {
-    console.log("Initializing currents page");
+    console.log("DOMContentLoaded: Initializing currents page");
     initCurrentsPage();
   }
   // Check if we're on the embed page
   else if (window.location.pathname.includes("/embed")) {
-    console.log("Initializing embed page");
+    console.log("DOMContentLoaded: Initializing embed page");
     initEmbedPage();
   }
   // Also handle the index page here
   else {
-    console.log("Initializing main page");
+    console.log("DOMContentLoaded: Initializing main page");
     initPage();
+  }
+});
+
+// Also add window.load handler for each page type
+window.addEventListener("load", function () {
+  // Check if we're on the currents page
+  if (window.location.pathname.includes("/currents")) {
+    console.log("Window loaded: Re-initializing currents page");
+    initCurrentsPage();
   }
 });
 

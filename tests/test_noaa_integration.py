@@ -14,7 +14,7 @@ import datetime
 import asyncio
 from typing import Literal
 
-from shallweswim.noaa import NoaaApi, NoaaDataError
+from shallweswim.noaa import NoaaApi
 
 # Mark all tests in this file as integration tests that hit live services
 pytestmark = pytest.mark.integration
@@ -67,7 +67,7 @@ def validate_temperature_data(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_live_tides_fetch(check_api_availability: bool) -> None:
+async def test_live_tides_fetch() -> None:
     """Test fetching real tide data from NOAA API."""
     df = await NoaaApi.tides(station=TIDE_STATION)
     validate_tide_data(df)
@@ -91,7 +91,7 @@ async def test_live_tides_fetch(check_api_availability: bool) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_live_currents_fetch(check_api_availability: bool) -> None:
+async def test_live_currents_fetch() -> None:
     """Test fetching real current data from NOAA API."""
     df = await NoaaApi.currents(station=CURRENT_STATION)
     validate_current_data(df)
@@ -117,7 +117,6 @@ async def test_live_currents_fetch(check_api_availability: bool) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("product", ["water_temperature", "air_temperature"])
 async def test_live_temperature_fetch(
-    check_api_availability: bool,
     product: Literal["water_temperature", "air_temperature"],
 ) -> None:
     """Test fetching real temperature data from NOAA API."""
@@ -125,73 +124,66 @@ async def test_live_temperature_fetch(
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=3)
 
-    try:
-        df = await NoaaApi.temperature(
-            station=TEMP_STATION,  # Use the station known to have temperature data
-            product=product,
-            begin_date=begin_date,
-            end_date=end_date,
-        )
-        validate_temperature_data(df, product)
+    # No try/except - let the test fail if there's an issue
+    df = await NoaaApi.temperature(
+        station=TEMP_STATION,  # Use the station known to have temperature data
+        product=product,
+        begin_date=begin_date,
+        end_date=end_date,
+    )
+    validate_temperature_data(df, product)
 
-        # Verify we got reasonable amount of data for a 3-day period
-        # Usually at least hourly readings
-        assert len(df) >= 5, f"Expected several {product} readings over 3 days"
+    # Verify we got reasonable amount of data for a 3-day period
+    # Usually at least hourly readings
+    assert len(df) >= 5, f"Expected several {product} readings over 3 days"
 
-        # Check that timestamps are ordered correctly
-        assert df.index.is_monotonic_increasing
-    except NoaaDataError as e:
-        # Skip test if data is not available - this can happen if the station doesn't provide
-        # the specific temperature type we're requesting or if there's a temporary data outage
-        pytest.skip(f"Temperature data not available: {e}")
+    # Check that timestamps are ordered correctly
+    assert df.index.is_monotonic_increasing
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_live_temperature_intervals(check_api_availability: bool) -> None:
+async def test_live_temperature_intervals() -> None:
     """Test temperature data with different interval settings."""
     # Get data for the last 3 days
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=1)
 
-    try:
-        # Test hourly interval
-        df_hourly = await NoaaApi.temperature(
-            station=TEMP_STATION,  # Use the station known to have temperature data
-            product="air_temperature",  # Air temperature is more commonly available
-            begin_date=begin_date,
-            end_date=end_date,
-            interval="h",  # hourly
-        )
+    # No try/except - let the test fail if there's an issue
+    # Get hourly data
+    df_hourly = await NoaaApi.temperature(
+        station=TEMP_STATION,
+        product="air_temperature",
+        begin_date=begin_date,
+        end_date=end_date,
+        interval="h",  # hourly
+    )
 
-        # Test default interval (6-minute)
-        df_default = await NoaaApi.temperature(
-            station=TEMP_STATION,  # Use the station known to have temperature data
-            product="air_temperature",  # Air temperature is more commonly available
-            begin_date=begin_date,
-            end_date=end_date,
-            interval=None,  # default 6-minute
-        )
+    # Get default 6-minute data
+    df_default = await NoaaApi.temperature(
+        station=TEMP_STATION,
+        product="air_temperature",
+        begin_date=begin_date,
+        end_date=end_date,
+        interval=None,  # default 6-minute
+    )
 
-        # Validate both datasets
-        validate_temperature_data(df_hourly, "air_temperature")
-        validate_temperature_data(df_default, "air_temperature")
+    # Validate both datasets
+    validate_temperature_data(df_hourly, "air_temperature")
+    validate_temperature_data(df_default, "air_temperature")
 
-        # Hourly should have fewer points than default 6-minute interval
-        # Note: This assumes that the data is actually available at both intervals
-        # If this test fails, it may be because the station only provides hourly data
-        if len(df_default) > 0 and len(df_hourly) > 0:
-            assert len(df_default) >= len(
-                df_hourly
-            ), "Default interval should have more points than hourly"
-    except NoaaDataError as e:
-        # Skip test if data is not available
-        pytest.skip(f"Temperature interval data not available: {e}")
+    # Hourly should have fewer points than default 6-minute interval
+    # Note: This assumes that the data is actually available at both intervals
+    # If this test fails, it may be because the station only provides hourly data
+    if len(df_default) > 0 and len(df_hourly) > 0:
+        assert len(df_default) >= len(
+            df_hourly
+        ), "Default interval should have more points than hourly"
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_api_retries(check_api_availability: bool) -> None:
+async def test_api_retries() -> None:
     """Test API retry mechanism with real requests."""
     # Simply test that we can make a successful request
     # This is not a proper test of the retry logic, but it at least verifies
@@ -203,7 +195,7 @@ async def test_api_retries(check_api_availability: bool) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_consecutive_api_calls(check_api_availability: bool) -> None:
+async def test_consecutive_api_calls() -> None:
     """Test making consecutive API calls to validate rate limiting handling."""
     # Make multiple API calls in succession
     for _ in range(3):

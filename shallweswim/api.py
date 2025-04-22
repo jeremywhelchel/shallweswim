@@ -4,6 +4,7 @@ This module contains FastAPI route handlers for the API endpoints and data manag
 """
 
 # Standard library imports
+import io
 import logging
 import time
 from typing import Optional
@@ -183,12 +184,21 @@ def register_routes(app: fastapi.FastAPI) -> None:
         ts = util.EffectiveTime(cfg.timezone, shift_minutes=shift)
 
         # Generate the tide/current plot
-        image = plot.generate_tide_current_plot(
-            data[location].tides, data[location].currents, ts, cfg
-        )
-        assert image
+        try:
+            fig = plot.create_tide_current_plot(
+                data[location].tides, data[location].currents, ts, cfg
+            )
+        except AssertionError as e:
+            # The function now raises assertions instead of returning None
+            raise HTTPException(status_code=404, detail=str(e))
+
+        # Convert figure to SVG in a StringIO buffer
+        svg_io = io.StringIO()
+        fig.savefig(svg_io, format="svg", bbox_inches="tight", transparent=False)
+        svg_io.seek(0)
+
         return fastapi.responses.Response(
-            content=image.getvalue(), media_type="image/svg+xml"
+            content=svg_io.getvalue(), media_type="image/svg+xml"
         )
 
     @app.get("/api/{location}/currents", response_model=CurrentsResponse)

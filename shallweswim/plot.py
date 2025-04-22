@@ -84,6 +84,22 @@ def add_celsius_axis(ax: Axes) -> Axes:
     return ax2
 
 
+def get_plot_filepath(
+    location_code: str, plot_type: str, extension: str = "svg"
+) -> str:
+    """Generate standard file path for plots.
+
+    Args:
+        location_code: Location identifier
+        plot_type: Type of plot (e.g., 'current_temp', 'historic_temp_yr')
+        extension: File extension without dot (defaults to 'svg')
+
+    Returns:
+        Full path to the plot file
+    """
+    return f"static/plots/{location_code}/{plot_type}.{extension}"
+
+
 def save_fig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg") -> None:
     """Save a matplotlib figure to a file or string buffer.
 
@@ -181,28 +197,21 @@ def live_temp_plot(
     return ax
 
 
-def generate_live_temp_plot(
-    live_temps: Optional[pd.DataFrame], location_code: str, station_name: Optional[str]
-) -> None:
-    """Generate and save a plot of recent water temperature data.
+def create_live_temp_plot(
+    live_temps: pd.DataFrame, station_name: Optional[str]
+) -> Figure:
+    """Create a plot of recent water temperature data.
 
     Creates a plot showing both raw temperature readings and a 2-hour
     rolling average trend line for the past 48 hours.
 
     Args:
-        live_temps: DataFrame containing temperature data or None
-        location_code: Location identifier for file naming
+        live_temps: DataFrame containing temperature data
         station_name: Station name for plot title or None
 
     Returns:
-        None - Saves the plot to a file if data is available
+        Figure object with the plot
     """
-    if live_temps is None or len(live_temps) < 2:
-        return
-
-    logging.info("Generating live temp plot for %s", location_code)
-    plot_filename = f"static/plots/{location_code}/current_temp.svg"
-
     # Take the last 48 hours (at most)
     last_2days = live_temps.sort_index().iloc[-96:].copy()
 
@@ -226,11 +235,108 @@ def generate_live_temp_plot(
         "%a %-I %p",  # Mon 3 PM
     )
 
+    return fig
+
+
+def generate_and_save_live_temp_plot(
+    live_temps: pd.DataFrame, location_code: str, station_name: Optional[str]
+) -> None:
+    """Generate and save a plot of recent water temperature data.
+
+    Args:
+        live_temps: DataFrame containing temperature data
+        location_code: Location identifier for file naming
+        station_name: Station name for plot title or None
+
+    Returns:
+        None - Saves the plot to a file
+    """
+    # Assert we have sufficient data
+    assert (
+        live_temps is not None and len(live_temps) >= 2
+    ), "Insufficient temperature data for plotting"
+
+    logging.info("Generating live temp plot for %s", location_code)
+    fig = create_live_temp_plot(live_temps, station_name)
+    plot_filename = get_plot_filepath(location_code, "current_temp")
     save_fig(fig, plot_filename)
 
 
-def generate_historic_plots(
-    hist_temps: Optional[pd.DataFrame], location_code: str, station_name: Optional[str]
+def create_historic_monthly_plot(
+    hist_temps: pd.DataFrame, station_name: Optional[str]
+) -> Figure:
+    """Create a plot showing historical temperature data for the next two months.
+
+    Args:
+        hist_temps: DataFrame containing historical temperature data
+        station_name: Station name for plot title or None
+
+    Returns:
+        Figure object with the plot
+    """
+    # Make sure we have columns for each year
+    # Also ensure the index is by day-of-year (no year component)
+    df = util.PivotYear(hist_temps)
+
+    # Take data for the next two months, relative to today
+    today = datetime.datetime.now().timetuple().tm_yday
+    start_date = today + 1
+    end_date = min(today + 60, 365)
+    df_mon = df.loc[start_date:end_date]
+
+    # Create the 2-month plot
+    fig = create_standard_figure()
+    multi_year_plot(
+        df_mon,
+        fig,
+        f"{station_name} Water Temperature" if station_name else "Water Temperature",
+        "next 60 days",
+    )
+    return fig
+
+
+def create_historic_yearly_plot(
+    hist_temps: pd.DataFrame, station_name: Optional[str]
+) -> Figure:
+    """Create a plot showing historical temperature data for the full year.
+
+    Args:
+        hist_temps: DataFrame containing historical temperature data
+        station_name: Station name for plot title or None
+
+    Returns:
+        Figure object with the plot
+    """
+    # Make sure we have columns for each year
+    # Also ensure the index is by day-of-year (no year component)
+    df = util.PivotYear(hist_temps)
+
+    # Calculate 28-day rolling averages for each column in the dataframe
+    smoothed = df.copy()
+    # This is filling with 'inf' to create breaks in lines (instead of connecting
+    # across missing data, which could be very misleading)
+    smoothed = (
+        smoothed.fillna(np.inf)
+        .rolling(28, center=True)
+        .mean()
+        # After taking the mean, any columns that are all NA
+        # will cause plotting errors, so we remove them here.
+        .dropna(axis=1, how="all")
+    )
+
+    # Create the yearly plot
+    fig = create_standard_figure()
+    multi_year_plot(
+        smoothed,
+        fig,
+        f"{station_name} Water Temperature" if station_name else "Water Temperature",
+        "28-day rolling average",
+    )
+    return fig
+
+
+def generate_and_save_historic_plots(
+    hist_temps: pd.DataFrame, location_code: str, station_name: Optional[str]
 ) -> None:
     """Generate and save historical temperature plots.
 
@@ -238,79 +344,31 @@ def generate_historic_plots(
     including 2-month and full-year comparisons.
 
     Args:
-        hist_temps: DataFrame containing historical temperature data or None
+        hist_temps: DataFrame containing historical temperature data
         location_code: Location identifier for file naming
         station_name: Station name for plot titles or None
 
     Returns:
-        None - Saves the plots to files if data is available
+        None - Saves the plots to files
     """
-    if hist_temps is None or len(hist_temps) < 10:
-        return
+    # Assert we have sufficient data
+    assert (
+        hist_temps is not None and len(hist_temps) >= 10
+    ), "Insufficient historical temperature data for plotting"
 
     logging.info("Generating historic temp plots for %s", location_code)
-    mon_plot_filename = f"static/plots/{location_code}/historic_temp_2mo.svg"
-    yr_plot_filename = f"static/plots/{location_code}/historic_temp_yr.svg"
 
-    # Make sure we have columns for each year
-    # Also ensure the index is by day-of-year (no year component)
-    df = util.PivotYear(hist_temps)
+    # Create and save monthly plot
+    monthly_fig = create_historic_monthly_plot(hist_temps, station_name)
+    assert monthly_fig is not None, "Failed to create historic monthly plot"
+    mon_plot_filename = get_plot_filepath(location_code, "historic_temp_2mo")
+    save_fig(monthly_fig, mon_plot_filename)
 
-    # Create a rolling 5-day average plot for the last 2 months
-    today = datetime.datetime.now().replace(year=2020)
-    start_date = (today - datetime.timedelta(days=60)).replace(year=2020)
-
-    # Calculate 5-day moving average (for smoothed trend line)
-    # and select only the last 2 months
-    smoothed = (
-        df.rolling(5, center=True).mean()
-        # Kludge to prevent seaborn from connecting over nan gaps.
-        .fillna(np.inf)
-        # Some years may have 0 data at this filtering level. All-NA columns
-        # will cause plotting errors, so we remove them here.
-        .dropna(axis=1, how="all")
-    )
-    smoothed = smoothed.loc[start_date:today]  # type: ignore[misc]
-
-    fig = create_standard_figure()
-    ax = multi_year_plot(
-        smoothed,
-        fig,
-        f"{station_name} Water Temperature" if station_name else "Water Temperature",
-        "last 60 days, 5-day mean",
-    )
-    # Ensure X-axis has reasonable ticks
-    ax.xaxis.set_major_locator(md.DayLocator(interval=10))
-    ax.xaxis.set_major_formatter(md.DateFormatter("%b %-d"))
-    # X labels between gridlines
-    plt_ticks = ax.get_xticks()  # type: ignore[operator]
-    ax.set_xticks(plt_ticks, minor=True)  # type: ignore[operator]
-    ax.set_xticks(plt_ticks - 5, False)  # type: ignore[operator]
-    save_fig(fig, mon_plot_filename)
-
-    # Create a plot for the entire year
-    # Use a 24-hour moving average to smooth out the lines
-    df = (
-        df.rolling(24, center=True).mean()
-        # Kludge to prevent seaborn from connecting over nan gaps.
-        .fillna(np.inf)
-        # Some years may have 0 data at this filtering level. All-NA columns
-        # will cause plotting errors, so we remove them here.
-        .dropna(axis=1, how="all")
-    )
-    fig = create_standard_figure()
-    ax = multi_year_plot(
-        df,
-        fig,
-        f"{station_name} Water Temperature",
-        "all years, 24-hour mean",
-    )
-    ax.xaxis.set_major_locator(md.MonthLocator(bymonthday=1))
-    # X labels between gridlines
-    ax.set_xticklabels("")  # type: ignore[operator]
-    ax.xaxis.set_minor_locator(md.MonthLocator(bymonthday=15))
-    ax.xaxis.set_minor_formatter(md.DateFormatter("%b"))
-    save_fig(fig, yr_plot_filename)
+    # Create and save yearly plot
+    yearly_fig = create_historic_yearly_plot(hist_temps, station_name)
+    assert yearly_fig is not None, "Failed to create historic yearly plot"
+    yr_plot_filename = get_plot_filepath(location_code, "historic_temp_yr")
+    save_fig(yearly_fig, yr_plot_filename)
 
 
 #############################################################
@@ -318,96 +376,172 @@ def generate_historic_plots(
 #############################################################
 
 
-def generate_tide_current_plot(
+def create_tide_current_plot(
     tides: pd.DataFrame,
     currents: pd.DataFrame,
     t: datetime.datetime,
     location_config: config_lib.LocationConfig,
-) -> Optional[io.StringIO]:
-    """Generate a plot showing tide and current data.
+) -> Figure:
+    """Create a plot showing tide and current data.
 
     Creates a dual-axis plot with tide height and current velocity, showing a 24-hour window
     from 3 hours in the past to 21 hours in the future. Marks the specified time with a
-    vertical line and labels high/low tide points.
+    vertical line.
 
     Args:
-        tides: DataFrame containing tide predictions
-        currents: DataFrame containing current predictions
-        t: Time point to mark on the plot (required)
-        location_config: Location configuration containing timezone information
+        tides: DataFrame with tide predictions
+        currents: DataFrame with current predictions
+        t: Datetime to mark on the plot
+        location_config: Location configuration for timezone settings
 
     Returns:
-        StringIO object containing SVG image data, or None if data is not available
+        Figure object with the plot, or None if data is not available
     """
-    if tides is None or currents is None:
-        return None
+    # Assert that we have sufficient data
+    assert tides is not None and len(tides) >= 2, "Insufficient tide data for plotting"
+    assert (
+        currents is not None and len(currents) >= 2
+    ), "Insufficient current data for plotting"
 
-    logging.info("Generating tide and current plot for: %s", t)
+    # Select a window of data around the current time
+    start_time = location_config.LocalNow() - datetime.timedelta(hours=3)
+    end_time = location_config.LocalNow() + datetime.timedelta(hours=21)
 
-    # XXX Do this directly in tide dataset?
-    tides = tides.resample("60s").interpolate("polynomial", order=2)
-
-    df = pd.DataFrame(
-        {
-            "tide": tides["prediction"],
-            "tide_type": tides["type"],
-            "current": currents["velocity"],
-        }
-    )
-    df = df[
-        location_config.LocalNow()  # type: ignore[misc]
-        - datetime.timedelta(hours=3) : location_config.LocalNow()  # type: ignore[misc]
-        + datetime.timedelta(hours=21)
-    ]
+    # Filter the DataFrames to only include data within our time window
+    # Use pandas' query method which is type-safe
+    tides = tides[tides.index >= start_time]
+    tides = tides[tides.index <= end_time]
+    currents = currents[currents.index >= start_time]
+    currents = currents[currents.index <= end_time]
 
     fig = create_standard_figure()
 
     ax = fig.subplots()
     ax.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
-    sns.lineplot(data=df["current"], ax=ax, color=CURRENT_FLOOD_COLOR)
-    ax.set_ylabel("Current Speed (kts)", color=CURRENT_FLOOD_COLOR)
+    ax.set_ylabel("Tide height (ft)", fontsize=LABEL_FONT_SIZE)
+    ax.grid(True, alpha=0.5, linestyle="--")
+    ax.tick_params(labelsize=LABEL_FONT_SIZE - 4)
 
-    # TODO: Align the 0 line on both axes
+    # First plot the tide
+    ax.plot(
+        tides.index,
+        tides.prediction,
+        color=TIDE_COLOR,
+        label="Tide height",
+        linewidth=2,
+    )
 
-    ax2 = ax.twinx()
-    sns.lineplot(data=df["tide"], ax=ax2, color=TIDE_COLOR)
-    ax2.set_ylabel("Tide Height (ft)", color=TIDE_COLOR)
-    ax2.grid(False)
+    # Add markers for extreme tides
+    extreme_tides = tides[tides.type.isin(["high", "low"])].copy()
+    # Using 'o' string for marker is valid in matplotlib but mypy doesn't recognize it
+    # so we need to suppress the type error
+    ax.scatter(
+        extreme_tides.index,
+        extreme_tides.prediction,
+        marker="o",  # type: ignore[arg-type]
+        color=TIDE_COLOR,
+        s=80,
+    )
 
-    # Attempts to line up 0 on both axises...
-    # ax.set_ylim(-2,2)  naturally -1.5 to 1
-    # ax2.set_ylim(-5,5)  naturally -1,5
-
-    # Draw lines at 0
-    ax.axhline(
-        0, color=CURRENT_FLOOD_COLOR, linestyle=":", alpha=0.8
-    )  # , linewidth=0.8)
-    ax2.axhline(0, color=TIDE_COLOR, linestyle=":", alpha=0.8)  # , linewidth=0.8)
-
-    ax.axvline(t, color=TIME_MARKER_COLOR, linestyle="-", alpha=0.6)  # type: ignore[arg-type]
-
-    # Useful plot that indicates how the current (which?) LEADS the tide
-    # TODO:
-    # Peak flood ~2hrs before high tide
-    # Peak ebb XX mins before low tide
-
-    # Label high and low tide points
-    tt = df[df["tide_type"].notnull()][["tide", "tide_type"]]
-    tt["tide_type"] = tt["tide_type"] + " tide"
-    sns.scatterplot(data=tt, ax=ax2, legend=False)
-    for t, row in tt.iterrows():
-        ax2.annotate(
-            row["tide_type"],
-            (t, row["tide"]),  # type: ignore[arg-type]
+    for _, row in extreme_tides.iterrows():
+        ax.annotate(
+            f"{row.prediction:.1f}ft {row.type}",
+            xy=(row.name, row.prediction),
+            xytext=(0, 10 if row.type == "high" else -20),
+            textcoords="offset points",
+            ha="center",
+            va="center" if row.type == "high" else "top",
+            fontsize=LABEL_FONT_SIZE,
+            fontweight="bold",
             color=TIDE_COLOR,
-            xytext=(-24, 8),
-            textcoords="offset pixels",
         )
 
-    svg_io = io.StringIO()
-    save_fig(fig, svg_io)
-    svg_io.seek(0)
-    return svg_io
+    # Add a second Y axis for the current
+    ax2 = ax.twinx()
+    ax2.set_ylabel("Current (knots)", fontsize=LABEL_FONT_SIZE)
+    ax2.axhline(y=0, linestyle="-", alpha=0.2, color="lightgrey")
+    ax2.tick_params(labelsize=LABEL_FONT_SIZE - 4)
+    ax2.grid(False)
+
+    # Plot the current, which uses the second (right) Y axis
+    ebb = currents[currents.velocity < 0].copy()
+    flood = currents[currents.velocity >= 0].copy()
+
+    # Plot flood currents in green
+    ax2.plot(
+        flood.index,
+        flood.velocity,
+        color=CURRENT_FLOOD_COLOR,
+        label="Flood",
+        linewidth=2,
+    )
+
+    # Plot ebb currents in red
+    ax2.plot(
+        ebb.index,
+        ebb.velocity,
+        color=CURRENT_EBB_COLOR,
+        label="Ebb",
+        linewidth=2,
+    )
+
+    # Optimize Y-limits so the plots don't get squished by outliers
+    # Keep the tide range sensible
+    ax.set_ylim(
+        max(tides.prediction.min() - 1, -8),
+        min(tides.prediction.max() + 1, 8),
+    )
+    # Keep the current range sensible
+    ax2.set_ylim(-2.5, 2.5)
+
+    # Mark where we are in time
+    # Convert datetime to a float for axvline
+    t_float = md.date2num(t)
+    ax.axvline(
+        x=t_float, color=TIME_MARKER_COLOR, linestyle="--", alpha=0.5, linewidth=2
+    )
+
+    # Add title (using the time of the marker)
+    # Use a safer approach to get the station name
+    location_name = getattr(location_config, "StationName", location_config.code)
+    title = f"{location_name} Tide & Current"
+    subtitle = f"{t:%A, %B %-d, %Y}"  # Tuesday, April 3, 2023
+    fig.suptitle(title, fontsize=TITLE_FONT_SIZE)
+    ax.set_title(subtitle, fontsize=SUBTITLE_FONT_SIZE)
+
+    # Add a legend for the current
+    ax2.legend(fontsize=LABEL_FONT_SIZE, loc="lower right")
+
+    ax.tick_params(which="major", length=8, width=2)
+    ax.tick_params(which="minor", length=4, width=1)
+
+    return fig
+
+
+def generate_and_save_tide_current_plot(
+    tides: pd.DataFrame,
+    currents: pd.DataFrame,
+    t: datetime.datetime,
+    location_config: config_lib.LocationConfig,
+    filename: str,
+) -> None:
+    """Generate and save a plot showing tide and current data.
+
+    Args:
+        tides: DataFrame with tide predictions
+        currents: DataFrame with current predictions
+        t: Datetime to mark on the plot
+        location_config: Location configuration for timezone settings
+        filename: Filename to save the plot
+
+    Returns:
+        None
+    """
+    fig = create_tide_current_plot(tides, currents, t, location_config)
+    assert fig is not None, "Failed to create tide and current plot"
+
+    # Save the figure to the provided filename
+    save_fig(fig, filename)
 
 
 # Current chart utility values and functions
@@ -468,10 +602,8 @@ def get_current_chart_filename(
     return plot_filename
 
 
-def generate_current_chart(
-    ef: str, magnitude_bin: int, location_code: str = "nyc"
-) -> None:
-    """Generate a current chart showing water movement over a map.
+def create_current_chart(ef: str, magnitude_bin: int, _: str = "") -> Figure:
+    """Create a current chart showing water movement over a map.
 
     Creates a chart with arrows indicating water movement direction and strength
     over a base map of the area. Arrow size and width are proportional to current strength.
@@ -481,6 +613,9 @@ def generate_current_chart(
         magnitude_bin: Magnitude bin value (0-100)
         location_code: The 3-letter location code (e.g., 'nyc')
 
+    Returns:
+        Figure object with the current chart
+
     Raises:
         AssertionError: If magnitude_bin is outside the valid range
         ValueError: If ef is an invalid CurrentDirection
@@ -489,13 +624,6 @@ def generate_current_chart(
     magnitude_pct = magnitude_bin / 100
 
     fig = Figure(figsize=CURRENT_CHART_SIZE)  # Dimensions: 2596 × 967
-    plot_filename = get_current_chart_filename(ef, magnitude_bin, location_code)
-    logging.info(
-        "Generating current map with pct %.2f: %s", magnitude_pct, plot_filename
-    )
-
-    # Ensure the directory exists
-    os.makedirs(f"static/plots/{location_code}", exist_ok=True)
 
     ax = fig.subplots()
     map_img = mpimg.imread("static/base_coney_map.png")
@@ -548,4 +676,32 @@ def generate_current_chart(
             length_includes_head=True,
         )
 
+    return fig
+
+
+def generate_and_save_current_chart(
+    ef: str, magnitude_bin: int, location_code: str = "nyc"
+) -> None:
+    """Generate and save a current chart showing water movement over a map.
+
+    Args:
+        ef: Current direction (flooding or ebbing)
+        magnitude_bin: Magnitude bin value (0-100)
+        location_code: The 3-letter location code (e.g., 'nyc')
+
+    Returns:
+        None - Saves the chart to a file
+    """
+    # Generate filename and create directory
+    plot_filename = get_current_chart_filename(ef, magnitude_bin, location_code)
+    logging.info(
+        "Generating current map with pct %.2f: %s", magnitude_bin / 100, plot_filename
+    )
+
+    # Ensure the directory exists
+    os.makedirs(f"static/plots/{location_code}", exist_ok=True)
+
+    # Create and save the figure
+    fig = create_current_chart(ef, magnitude_bin)
+    assert fig is not None, "Failed to create current chart"
     save_fig(fig, plot_filename, fmt="png")

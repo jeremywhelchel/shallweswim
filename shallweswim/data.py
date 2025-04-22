@@ -141,15 +141,21 @@ class Data(object):
 
             if self._Expired("live_temps"):
                 self._FetchLiveTemps()
-                plot.generate_live_temp_plot(
-                    self.live_temps, self.config.code, self.config.temp_station_name
-                )
+                # Only generate plot if we have valid data
+                if self.live_temps is not None and len(self.live_temps) >= 2:
+                    plot.generate_and_save_live_temp_plot(
+                        self.live_temps, self.config.code, self.config.temp_station_name
+                    )
 
             if self._Expired("historic_temps"):
                 self._FetchHistoricTemps()
-                plot.generate_historic_plots(
-                    self.historic_temps, self.config.code, self.config.temp_station_name
-                )
+                # Only generate plots if we have valid historical data
+                if self.historic_temps is not None and len(self.historic_temps) >= 10:
+                    plot.generate_and_save_historic_plots(
+                        self.historic_temps,
+                        self.config.code,
+                        self.config.temp_station_name,
+                    )
 
             # TODO: Can probably be increased to 1s even... but would need to add API spam buffer
             time.sleep(60)

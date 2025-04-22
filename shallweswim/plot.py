@@ -26,6 +26,7 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from scipy.signal import find_peaks
 
 # Local imports
 from shallweswim import config as config_lib
@@ -407,23 +408,138 @@ def create_tide_current_plot(
     start_time = location_config.LocalNow() - datetime.timedelta(hours=3)
     end_time = location_config.LocalNow() + datetime.timedelta(hours=21)
 
+    # Interpolate the tide data for smoother plots
+    tides = tides.resample("60s").interpolate("polynomial", order=2)
+
     # Filter the DataFrames to only include data within our time window
-    # Use pandas' query method which is type-safe
-    tides = tides[tides.index >= start_time]
-    tides = tides[tides.index <= end_time]
-    currents = currents[currents.index >= start_time]
-    currents = currents[currents.index <= end_time]
+    tides = tides[(tides.index >= start_time) & (tides.index <= end_time)]
+    currents = currents[(currents.index >= start_time) & (currents.index <= end_time)]
 
     fig = create_standard_figure()
 
     ax = fig.subplots()
     ax.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
-    ax.set_ylabel("Tide height (ft)", fontsize=LABEL_FONT_SIZE)
+    ax.set_ylabel(
+        "Current Speed (kts)", fontsize=LABEL_FONT_SIZE, color=CURRENT_FLOOD_COLOR
+    )
     ax.grid(True, alpha=0.5, linestyle="--")
     ax.tick_params(labelsize=LABEL_FONT_SIZE - 4)
 
-    # First plot the tide
+    # Plot the current on the first Y axis (left)
+    # Find transitions between flood and ebb by checking consecutive values
+    is_ebb = currents.velocity < 0
+    transitions = is_ebb != is_ebb.shift()  # True at each transition point
+
+    # Prepare separate dataframes for flood and ebb
+    # Add NaN values at transition points to prevent connecting lines
+    ebb_df = currents.copy()
+    ebb_df.loc[~is_ebb | transitions, "velocity"] = np.nan
+
+    flood_df = currents.copy()
+    flood_df.loc[is_ebb | transitions, "velocity"] = np.nan
+
+    # Plot flood currents in green
     ax.plot(
+        flood_df.index,
+        flood_df.velocity,
+        color=CURRENT_FLOOD_COLOR,
+        label="Flood",
+        linewidth=2,
+    )
+
+    # Plot ebb currents in red
+    ax.plot(
+        ebb_df.index,
+        ebb_df.velocity,
+        color=CURRENT_EBB_COLOR,
+        label="Ebb",
+        linewidth=2,
+    )
+
+    # Find and mark local maxima and minima for currents
+
+    # Process flood currents (find local maxima)
+    if not flood_df.velocity.isna().all():
+        # Need to handle NaN values properly for peak detection
+        flood_vel = flood_df.velocity.dropna()
+
+        # Find peaks with a minimum prominence to avoid minor fluctuations
+        peaks, _ = find_peaks(flood_vel.values, prominence=0.3)
+
+        # Add markers and labels for each peak
+        for peak_idx in peaks:
+            peak_time = flood_vel.index[peak_idx]
+            peak_val = flood_vel.iloc[peak_idx]
+
+            ax.scatter(
+                [peak_time],
+                [peak_val],
+                marker="o",  # type: ignore[arg-type]
+                color=CURRENT_FLOOD_COLOR,
+                s=40,
+                zorder=10,
+            )
+            ax.annotate(
+                f"{peak_val:.1f}kt",
+                xy=(peak_time, peak_val),
+                xytext=(5, 5),
+                textcoords="offset points",
+                ha="left",
+                va="bottom",
+                fontsize=ANNOTATION_FONT_SIZE - 2,
+                fontweight="bold",
+                color=CURRENT_FLOOD_COLOR,
+            )
+
+    # Process ebb currents (find local minima by finding peaks in the negative)
+    if not ebb_df.velocity.isna().all():
+        # Need to handle NaN values properly for peak detection
+        ebb_vel = ebb_df.velocity.dropna()
+
+        # For ebb currents, we're looking for minima, so negate the values to find peaks
+        # and use the same peak finding algorithm
+        neg_ebb_vel = -ebb_vel.values  # Make negative values positive to find peaks
+        peaks, _ = find_peaks(neg_ebb_vel, prominence=0.3)
+
+        # Add markers and labels for each peak (which are actually valleys in original data)
+        for peak_idx in peaks:
+            peak_time = ebb_vel.index[peak_idx]
+            peak_val = ebb_vel.iloc[peak_idx]  # This is already negative
+
+            ax.scatter(
+                [peak_time],
+                [peak_val],
+                marker="o",  # type: ignore[arg-type]
+                color=CURRENT_EBB_COLOR,
+                s=40,
+                zorder=10,
+            )
+            ax.annotate(
+                f"{peak_val:.1f}kt",
+                xy=(peak_time, peak_val),
+                xytext=(5, -5),
+                textcoords="offset points",
+                ha="left",
+                va="top",
+                fontsize=ANNOTATION_FONT_SIZE - 2,
+                fontweight="bold",
+                color=CURRENT_EBB_COLOR,
+            )
+
+    # Draw a line at current 0
+    ax.axhline(0, color=CURRENT_FLOOD_COLOR, linestyle=":", alpha=0.8)
+
+    # Keep the current range sensible
+    ax.set_ylim(-2.5, 2.5)
+
+    # Add a second Y axis for the tide (right)
+    ax2 = ax.twinx()
+    ax2.set_ylabel("Tide Height (ft)", fontsize=LABEL_FONT_SIZE, color=TIDE_COLOR)
+    ax2.grid(False)
+    ax2.tick_params(labelsize=LABEL_FONT_SIZE - 4)
+
+    # Plot the tide
+    ax2.plot(
         tides.index,
         tides.prediction,
         color=TIDE_COLOR,
@@ -431,68 +547,38 @@ def create_tide_current_plot(
         linewidth=2,
     )
 
-    # Add markers for extreme tides
+    # Draw a line at tide 0
+    ax2.axhline(0, color=TIDE_COLOR, linestyle=":", alpha=0.8)
+
+    # Add markers for extreme tides (smaller size)
     extreme_tides = tides[tides.type.isin(["high", "low"])].copy()
-    # Using 'o' string for marker is valid in matplotlib but mypy doesn't recognize it
-    # so we need to suppress the type error
-    ax.scatter(
+    ax2.scatter(
         extreme_tides.index,
         extreme_tides.prediction,
         marker="o",  # type: ignore[arg-type]
         color=TIDE_COLOR,
-        s=80,
+        s=40,  # Smaller marker size
     )
 
     for _, row in extreme_tides.iterrows():
-        ax.annotate(
+        ax2.annotate(
             f"{row.prediction:.1f}ft {row.type}",
             xy=(row.name, row.prediction),
-            xytext=(0, 10 if row.type == "high" else -20),
+            xytext=(0, 8 if row.type == "high" else -15),  # Reduced offset
             textcoords="offset points",
             ha="center",
             va="center" if row.type == "high" else "top",
-            fontsize=LABEL_FONT_SIZE,
+            fontsize=ANNOTATION_FONT_SIZE - 2,  # Smaller font size
             fontweight="bold",
             color=TIDE_COLOR,
         )
 
-    # Add a second Y axis for the current
-    ax2 = ax.twinx()
-    ax2.set_ylabel("Current (knots)", fontsize=LABEL_FONT_SIZE)
-    ax2.axhline(y=0, linestyle="-", alpha=0.2, color="lightgrey")
-    ax2.tick_params(labelsize=LABEL_FONT_SIZE - 4)
-    ax2.grid(False)
-
-    # Plot the current, which uses the second (right) Y axis
-    ebb = currents[currents.velocity < 0].copy()
-    flood = currents[currents.velocity >= 0].copy()
-
-    # Plot flood currents in green
-    ax2.plot(
-        flood.index,
-        flood.velocity,
-        color=CURRENT_FLOOD_COLOR,
-        label="Flood",
-        linewidth=2,
-    )
-
-    # Plot ebb currents in red
-    ax2.plot(
-        ebb.index,
-        ebb.velocity,
-        color=CURRENT_EBB_COLOR,
-        label="Ebb",
-        linewidth=2,
-    )
-
     # Optimize Y-limits so the plots don't get squished by outliers
     # Keep the tide range sensible
-    ax.set_ylim(
+    ax2.set_ylim(
         max(tides.prediction.min() - 1, -8),
         min(tides.prediction.max() + 1, 8),
     )
-    # Keep the current range sensible
-    ax2.set_ylim(-2.5, 2.5)
 
     # Mark where we are in time
     # Convert datetime to a float for axvline
@@ -501,16 +587,10 @@ def create_tide_current_plot(
         x=t_float, color=TIME_MARKER_COLOR, linestyle="--", alpha=0.5, linewidth=2
     )
 
-    # Add title (using the time of the marker)
-    # Use a safer approach to get the station name
-    location_name = getattr(location_config, "StationName", location_config.code)
-    title = f"{location_name} Tide & Current"
-    subtitle = f"{t:%A, %B %-d, %Y}"  # Tuesday, April 3, 2023
-    fig.suptitle(title, fontsize=TITLE_FONT_SIZE)
-    ax.set_title(subtitle, fontsize=SUBTITLE_FONT_SIZE)
+    # No titles for the tide/current plot as per original implementation
 
     # Add a legend for the current
-    ax2.legend(fontsize=LABEL_FONT_SIZE, loc="lower right")
+    ax.legend(fontsize=LABEL_FONT_SIZE, loc="lower right")
 
     ax.tick_params(which="major", length=8, width=2)
     ax.tick_params(which="minor", length=4, width=1)

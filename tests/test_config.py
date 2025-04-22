@@ -68,13 +68,13 @@ def test_get_function() -> None:
     """Test that Get() function retrieves configs correctly."""
     # Test retrieving all existing configs
     for cfg in config.CONFIG_LIST:
-        retrieved = config.Get(cfg.code)
-        assert retrieved is not None, f"Get() should return a config for '{cfg.code}'"
+        retrieved = config.get(cfg.code)
+        assert retrieved is not None, f"get() should return a config for '{cfg.code}'"
         assert retrieved.code == cfg.code
         assert retrieved.name == cfg.name
 
     # Test with a non-existent code
-    assert config.Get("zzz") is None, "Get() should return None for non-existent codes"
+    assert config.get("zzz") is None, "get() should return None for non-existent codes"
 
     # Test case insensitivity by creating a test dictionary with the same approach
     test_configs = {c.code.lower(): c for c in config.CONFIG_LIST}

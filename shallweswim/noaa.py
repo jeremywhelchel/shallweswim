@@ -94,7 +94,7 @@ class NoaaApi:
         raise NoaaConnectionError("Unexpected error in NOAA API request")
 
     @classmethod
-    def Tides(
+    def tides(
         cls,
         station: int,
     ) -> pd.DataFrame:
@@ -129,7 +129,7 @@ class NoaaApi:
         return cast("pd.DataFrame[TideData]", df)
 
     @classmethod
-    def Currents(
+    def currents(
         cls,
         station: str,
         interpolate: bool = True,
@@ -188,7 +188,7 @@ class NoaaApi:
         return cast("pd.DataFrame[CurrentData]", currents)
 
     @classmethod
-    def Temperature(
+    def temperature(
         cls,
         station: int,
         product: Literal["air_temperature", "water_temperature"],

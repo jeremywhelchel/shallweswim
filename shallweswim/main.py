@@ -104,7 +104,7 @@ async def embed(request: fastapi.Request) -> responses.HTMLResponse:
         request=request,
         name="embed.html",
         context=dict(
-            config=config.Get("nyc"),
+            config=config.get("nyc"),
         ),
     )
 
@@ -124,7 +124,7 @@ async def location_water_current(
         HTML response with current water conditions
     """
     # Get location config
-    location_config = config.Get(location)
+    location_config = config.get(location)
     if not location_config:
         raise HTTPException(
             status_code=404, detail=f"Configuration for {location} not found"
@@ -213,7 +213,7 @@ async def index_w_location(
     Raises:
         HTTPException: If the location is not configured
     """
-    cfg = config.Get(location)
+    cfg = config.get(location)
     if not cfg:
         logging.warning("Bad location: %s", location)
         raise HTTPException(status_code=404, detail=f"Bad location: {location}")

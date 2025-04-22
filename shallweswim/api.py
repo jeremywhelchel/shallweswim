@@ -63,12 +63,12 @@ def initialize_location_data(
     # Initialize each location
     for code in location_codes:
         # Get location config
-        cfg = config_lib.Get(code)
+        cfg = config_lib.get(code)
         assert cfg is not None, f"Config for location '{code}' not found"
 
         # Initialize data for this location
         data_dict[code] = data_lib.Data(cfg)
-        data_dict[code].Start()
+        data_dict[code].start()
 
     # Optionally wait for data to be fully loaded
     if wait_for_data:
@@ -90,7 +90,7 @@ def initialize_location_data(
             assert data_dict[code].tides is not None, f"{code} tide data was not loaded"
 
             # Only check currents if the location has current predictions enabled
-            location_config = config_lib.Get(code)
+            location_config = config_lib.get(code)
             if location_config is not None and location_config.current_predictions:
                 assert (
                     data_dict[code].currents is not None
@@ -108,7 +108,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
     # Helper function to validate location
     def validate_location(loc: str) -> config_lib.LocationConfig:
-        cfg = config_lib.Get(loc)
+        cfg = config_lib.get(loc)
         if not cfg:
             logging.warning("Bad location: %s", loc)
             raise HTTPException(status_code=404, detail=f"Location '{loc}' not found")
@@ -130,10 +130,10 @@ def register_routes(app: fastapi.FastAPI) -> None:
         cfg = validate_location(location)
 
         # Get current water temperature
-        current_time, current_temp = data[location].LiveTempReading()
+        current_time, current_temp = data[location].live_temp_reading()
 
         # Get tide information
-        tide_info = data[location].PrevNextTide()
+        tide_info = data[location].prev_next_tide()
 
         # Create Pydantic model instances
         past_tides = [
@@ -181,7 +181,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         cfg = validate_location(location)
 
         # Calculate effective time with shift relative to the location's timezone
-        ts = util.EffectiveTime(cfg.timezone, shift_minutes=shift)
+        ts = util.effective_time(cfg.timezone, shift_minutes=shift)
 
         # Generate the tide/current plot
         try:
@@ -233,13 +233,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
             )
 
         # Calculate effective time with shift relative to the location's timezone
-        ts = util.EffectiveTime(cfg.timezone, shift_minutes=shift)
+        ts = util.effective_time(cfg.timezone, shift_minutes=shift)
 
         # Get current prediction information
-        current_info = data[location].CurrentPrediction(ts)
+        current_info = data[location].current_prediction(ts)
 
         # Get legacy chart information
-        chart_info = data[location].LegacyChartInfo(ts)
+        chart_info = data[location].legacy_chart_info(ts)
 
         # Get fwd/back shift values for navigation
         fwd = min(shift + 60, util.MAX_SHIFT_LIMIT)

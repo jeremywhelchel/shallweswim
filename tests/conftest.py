@@ -51,7 +51,7 @@ def check_api_availability() -> bool:
     """
     try:
         # Make a simple request to verify API is accessible
-        NoaaApi.Tides(station=TIDE_STATION)
+        NoaaApi.tides(station=TIDE_STATION)
         return True
     except Exception as e:
         pytest.skip(f"NOAA API unavailable, skipping integration tests: {e}")

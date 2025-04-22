@@ -58,7 +58,7 @@ def mock_temperature_data() -> pd.DataFrame:
 def test_tides_success(mock_tide_data: pd.DataFrame) -> None:
     """Test successful tide prediction fetch."""
     with patch("pandas.read_csv", return_value=mock_tide_data):
-        df = NoaaApi.Tides(station=9414290)
+        df = NoaaApi.tides(station=9414290)
 
     assert len(df) == 2
     assert list(df.columns) == ["prediction", "type"]
@@ -69,7 +69,7 @@ def test_tides_success(mock_tide_data: pd.DataFrame) -> None:
 def test_currents_success(mock_current_data: pd.DataFrame) -> None:
     """Test successful current prediction fetch."""
     with patch("pandas.read_csv", return_value=mock_current_data):
-        df = NoaaApi.Currents(station="SFB1201", interpolate=False)
+        df = NoaaApi.currents(station="SFB1201", interpolate=False)
 
     assert len(df) == 2
     assert list(df.columns) == ["velocity"]
@@ -79,7 +79,7 @@ def test_currents_success(mock_current_data: pd.DataFrame) -> None:
 def test_temperature_success(mock_temperature_data: pd.DataFrame) -> None:
     """Test successful temperature fetch."""
     with patch("pandas.read_csv", return_value=mock_temperature_data):
-        df = NoaaApi.Temperature(
+        df = NoaaApi.temperature(
             station=9414290,
             product="water_temperature",
             begin_date=datetime.date(2025, 4, 19),
@@ -95,7 +95,7 @@ def test_connection_error() -> None:
     """Test handling of connection errors."""
     with patch("pandas.read_csv", side_effect=urllib.error.URLError("Network error")):
         with pytest.raises(NoaaConnectionError, match="Failed to connect to NOAA API"):
-            NoaaApi.Tides(station=9414290)
+            NoaaApi.tides(station=9414290)
 
 
 def test_data_error() -> None:
@@ -103,13 +103,13 @@ def test_data_error() -> None:
     error_df = pd.DataFrame({"Error": ["Invalid station ID"]})
     with patch("pandas.read_csv", return_value=error_df):
         with pytest.raises(NoaaDataError, match="Invalid station ID"):
-            NoaaApi.Tides(station=9414290)
+            NoaaApi.tides(station=9414290)
 
 
 def test_invalid_temperature_dates() -> None:
     """Test validation of temperature date ranges."""
     with pytest.raises(ValueError, match="begin_date must be <= end_date"):
-        NoaaApi.Temperature(
+        NoaaApi.temperature(
             station=9414290,
             product="water_temperature",
             begin_date=datetime.date(2025, 4, 20),
@@ -120,7 +120,7 @@ def test_invalid_temperature_dates() -> None:
 def test_invalid_temperature_product() -> None:
     """Test validation of temperature product type."""
     with pytest.raises(ValueError, match="Invalid product"):
-        NoaaApi.Temperature(
+        NoaaApi.temperature(
             station=9414290,
             product="invalid_product",  # type: ignore[arg-type] # intentionally invalid for testing error case
             begin_date=datetime.date(2025, 4, 19),
@@ -131,7 +131,7 @@ def test_invalid_temperature_product() -> None:
 def test_current_interpolation(mock_current_data: pd.DataFrame) -> None:
     """Test current interpolation."""
     with patch("pandas.read_csv", return_value=mock_current_data):
-        df = NoaaApi.Currents(station="SFB1201", interpolate=True)
+        df = NoaaApi.currents(station="SFB1201", interpolate=True)
 
     # Should have many more points due to 60s interpolation
     assert len(df) > len(mock_current_data)

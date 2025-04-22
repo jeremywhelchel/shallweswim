@@ -79,7 +79,7 @@ def add_celsius_axis(ax: Axes) -> Axes:
     """
     ax2 = ax.twinx()
     fmin, fmax = ax.get_ylim()
-    ax2.set_ylim(util.F2C(fmin), util.F2C(fmax))
+    ax2.set_ylim(util.f_to_c(fmin), util.f_to_c(fmax))
     ax2.set_ylabel("Water Temp (°C)", fontsize=LABEL_FONT_SIZE)
     ax2.grid(None)
     return ax2
@@ -277,7 +277,7 @@ def create_historic_monthly_plot(
     """
     # Make sure we have columns for each year
     # Also ensure the index is by day-of-year (no year component)
-    df = util.PivotYear(hist_temps)
+    df = util.pivot_year(hist_temps)
 
     # Take data for the next two months, relative to today
     today = datetime.datetime.now().timetuple().tm_yday
@@ -310,7 +310,7 @@ def create_historic_yearly_plot(
     """
     # Make sure we have columns for each year
     # Also ensure the index is by day-of-year (no year component)
-    df = util.PivotYear(hist_temps)
+    df = util.pivot_year(hist_temps)
 
     # Calculate 28-day rolling averages for each column in the dataframe
     smoothed = df.copy()
@@ -405,8 +405,8 @@ def create_tide_current_plot(
     ), "Insufficient current data for plotting"
 
     # Select a window of data around the current time
-    start_time = location_config.LocalNow() - datetime.timedelta(hours=3)
-    end_time = location_config.LocalNow() + datetime.timedelta(hours=21)
+    start_time = location_config.local_now() - datetime.timedelta(hours=3)
+    end_time = location_config.local_now() + datetime.timedelta(hours=21)
 
     # Interpolate the tide data for smoother plots
     tides = tides.resample("60s").interpolate("polynomial", order=2)

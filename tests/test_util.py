@@ -7,8 +7,8 @@ from shallweswim import util
 
 
 def test_now() -> None:
-    """Test that UTCNow() returns naive datetime without timezone information."""
-    now = util.UTCNow()
+    """Test that utc_now() returns naive datetime without timezone information."""
+    now = util.utc_now()
     assert isinstance(now, datetime.datetime)
     assert now.tzinfo is None  # Should be naive (no timezone info)
 
@@ -31,7 +31,7 @@ def test_now() -> None:
 )
 def test_f2c(fahrenheit: float, expected_celsius: float) -> None:
     """Test Fahrenheit to Celsius conversion."""
-    result = util.F2C(fahrenheit)
+    result = util.f_to_c(fahrenheit)
     assert abs(result - expected_celsius) < 0.1  # within 0.1 degree
 
 
@@ -40,7 +40,7 @@ def test_pivot_year() -> None:
         {"air_temp": 60, "water_temp": 50},
         index=pd.date_range("2011-01-01", "2023-12-31", freq="D"),
     )
-    got = util.PivotYear(df)
+    got = util.pivot_year(df)
 
     pd.testing.assert_index_equal(pd.date_range("2020-01-01", "2020-12-31"), got.index)
 

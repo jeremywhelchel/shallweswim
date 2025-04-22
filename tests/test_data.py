@@ -19,7 +19,7 @@ from shallweswim import config as config_lib
 def mock_config() -> Any:
     """Mock location config fixture."""
     config = MagicMock(spec=config_lib.LocationConfig)
-    config.LocalNow.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
     config.code = "nyc"
     config.StationName = "New York City"
     return config
@@ -81,7 +81,7 @@ def test_current_prediction_at_flood_peak(mock_data_with_currents: Data) -> None
     """Test current prediction at a flood peak."""
     # Test at 3:00 PM (15:00) which is a flood peak at 1.5 knots
     t = datetime.datetime(2025, 4, 22, 15, 0, 0)
-    result = mock_data_with_currents.CurrentPrediction(t)
+    result = mock_data_with_currents.current_prediction(t)
 
     # Check the result
     assert result.direction == "flooding"
@@ -93,7 +93,7 @@ def test_current_prediction_at_ebb_peak() -> None:
     """Test current prediction at an ebb peak."""
     # Create a custom test instance
     config = MagicMock(spec=config_lib.LocationConfig)
-    config.LocalNow.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
     data = Data(config)
 
     # Create a more comprehensive dataset for testing ebb currents
@@ -136,7 +136,7 @@ def test_current_prediction_at_ebb_peak() -> None:
 
     # Test at peak ebb (9:00)
     peak_time = test_day.replace(hour=9)
-    result = data.CurrentPrediction(peak_time)
+    result = data.current_prediction(peak_time)
 
     # Verify the prediction at peak
     assert result.direction == "ebbing"
@@ -145,19 +145,19 @@ def test_current_prediction_at_ebb_peak() -> None:
 
     # Test during strengthening ebb (8:00)
     strengthening_time = test_day.replace(hour=8)
-    result = data.CurrentPrediction(strengthening_time)
+    result = data.current_prediction(strengthening_time)
     assert result.direction == "ebbing"
     assert "getting stronger" in result.state_description
 
     # Test during weakening ebb (11:00)
     weakening_time = test_day.replace(hour=11)
-    result = data.CurrentPrediction(weakening_time)
+    result = data.current_prediction(weakening_time)
     assert result.direction == "ebbing"
     assert "getting weaker" in result.state_description
 
     # Test near slack after ebb (13:00)
     slack_time = test_day.replace(hour=13)
-    result = data.CurrentPrediction(slack_time)
+    result = data.current_prediction(slack_time)
     assert "weakest" in result.state_description
 
 
@@ -165,7 +165,7 @@ def test_current_prediction_at_slack(mock_data_with_currents: Data) -> None:
     """Test current prediction at slack water."""
     # Test at 4:00 AM (4:00) which is near zero (0.1 knots)
     t = datetime.datetime(2025, 4, 22, 4, 0, 0)
-    result = mock_data_with_currents.CurrentPrediction(t)
+    result = mock_data_with_currents.current_prediction(t)
 
     # Check the result
     assert result.magnitude < 0.2
@@ -176,7 +176,7 @@ def test_current_prediction_strengthening() -> None:
     """Test current prediction when current is strengthening."""
     # Create a custom test instance with clear strengthening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
-    config.LocalNow.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
     data = Data(config)
 
     # Create data with a clear strengthening pattern
@@ -191,7 +191,7 @@ def test_current_prediction_strengthening() -> None:
 
     # Test at the middle point where slope is positive
     t = datetime.datetime(2025, 4, 22, 13, 0, 0)
-    result = data.CurrentPrediction(t)
+    result = data.current_prediction(t)
 
     # Check the result
     assert result.direction == "flooding"
@@ -206,7 +206,7 @@ def test_current_prediction_weakening() -> None:
     """Test current prediction when current is weakening."""
     # Create a custom test instance with clear weakening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
-    config.LocalNow.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
     data = Data(config)
 
     # Create data with a clear weakening pattern
@@ -221,7 +221,7 @@ def test_current_prediction_weakening() -> None:
 
     # Test at the middle point where slope is negative
     t = datetime.datetime(2025, 4, 22, 16, 0, 0)
-    result = data.CurrentPrediction(t)
+    result = data.current_prediction(t)
 
     # Check the result
     assert result.direction == "flooding"
@@ -232,7 +232,7 @@ def test_process_peaks_function() -> None:
     """Test that peaks are identified properly in the CurrentPrediction method."""
     # Create a custom data instance with a clear flood peak pattern
     config = MagicMock(spec=config_lib.LocationConfig)
-    config.LocalNow.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
 
     data = Data(config)
 
@@ -251,7 +251,7 @@ def test_process_peaks_function() -> None:
 
     # Use a time point that's exactly at the peak
     peak_time = index[1]
-    result = data.CurrentPrediction(peak_time)
+    result = data.current_prediction(peak_time)
 
     # The peak should be detected and described correctly
     assert result.direction == "flooding"

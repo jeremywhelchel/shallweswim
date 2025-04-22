@@ -68,7 +68,7 @@ def validate_temperature_data(
 @pytest.mark.integration
 def test_live_tides_fetch(check_api_availability: bool) -> None:
     """Test fetching real tide data from NOAA API."""
-    df = NoaaApi.Tides(station=TIDE_STATION)
+    df = NoaaApi.tides(station=TIDE_STATION)
     validate_tide_data(df)
 
     # Verify we got multiple tide predictions
@@ -91,7 +91,7 @@ def test_live_tides_fetch(check_api_availability: bool) -> None:
 @pytest.mark.integration
 def test_live_currents_fetch(check_api_availability: bool) -> None:
     """Test fetching real current data from NOAA API."""
-    df = NoaaApi.Currents(station=CURRENT_STATION)
+    df = NoaaApi.currents(station=CURRENT_STATION)
     validate_current_data(df)
 
     # Verify we have interpolated current data
@@ -123,7 +123,7 @@ def test_live_temperature_fetch(
     begin_date = end_date - datetime.timedelta(days=3)
 
     try:
-        df = NoaaApi.Temperature(
+        df = NoaaApi.temperature(
             station=TEMP_STATION,  # Use the station known to have temperature data
             product=product,
             begin_date=begin_date,
@@ -152,7 +152,7 @@ def test_live_temperature_intervals(check_api_availability: bool) -> None:
 
     try:
         # Test hourly interval
-        df_hourly = NoaaApi.Temperature(
+        df_hourly = NoaaApi.temperature(
             station=TEMP_STATION,  # Use the station known to have temperature data
             product="air_temperature",  # Air temperature is more commonly available
             begin_date=begin_date,
@@ -161,7 +161,7 @@ def test_live_temperature_intervals(check_api_availability: bool) -> None:
         )
 
         # Test default interval (6-minute)
-        df_default = NoaaApi.Temperature(
+        df_default = NoaaApi.temperature(
             station=TEMP_STATION,  # Use the station known to have temperature data
             product="air_temperature",  # Air temperature is more commonly available
             begin_date=begin_date,
@@ -191,7 +191,7 @@ def test_api_retries(check_api_availability: bool) -> None:
     # Simply test that we can make a successful request
     # This is not a proper test of the retry logic, but it at least verifies
     # that the API client can connect to the API
-    df = NoaaApi.Tides(station=TIDE_STATION)
+    df = NoaaApi.tides(station=TIDE_STATION)
     validate_tide_data(df)
     assert len(df) > 0, "Should have received tide data"
 
@@ -201,7 +201,7 @@ def test_consecutive_api_calls(check_api_availability: bool) -> None:
     """Test making consecutive API calls to validate rate limiting handling."""
     # Make multiple API calls in succession
     for _ in range(3):
-        df = NoaaApi.Tides(station=TIDE_STATION)
+        df = NoaaApi.tides(station=TIDE_STATION)
         validate_tide_data(df)
         # Small delay to avoid hitting rate limits
         time.sleep(0.5)

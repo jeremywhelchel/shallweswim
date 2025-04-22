@@ -178,7 +178,7 @@ class LocationConfig(BaseModel, frozen=True):
         """
         return f"{self.name} ({self.swim_location})"
 
-    def LocalNow(self) -> datetime.datetime:
+    def local_now(self) -> datetime.datetime:
         """Return the current time in the location's timezone as a naive datetime.
 
         This method converts the current UTC time to the location's timezone and
@@ -189,7 +189,7 @@ class LocationConfig(BaseModel, frozen=True):
             A naive datetime object representing the current local time
         """
         # Get current UTC time without timezone info
-        now_utc = util.UTCNow()
+        now_utc = util.utc_now()
 
         # Add UTC timezone info, convert to location timezone, then strip tzinfo
         now_utc_with_tz = now_utc.replace(tzinfo=datetime.timezone.utc)
@@ -280,7 +280,7 @@ CONFIG_LIST = [
 CONFIGS: Dict[str, LocationConfig] = {c.code.lower(): c for c in CONFIG_LIST}
 
 
-def Get(code: str) -> Optional[LocationConfig]:
+def get(code: str) -> Optional[LocationConfig]:
     """Get location config by 3-letter code.
 
     The lookup is case-insensitive, so "NYC", "nyc", and "Nyc" all retrieve

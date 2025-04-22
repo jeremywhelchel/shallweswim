@@ -120,12 +120,12 @@ def validate_conditions_response(
     ], f"Invalid tide type: {past_tide['type']}"
 
     # Get location config for timezone-aware comparisons
-    location_config = config.Get(location_code)
+    location_config = config.get(location_code)
     assert location_config is not None, f"Config for {location_code} not found"
 
     # Get the current time in the location's timezone as a naive datetime
     # This matches how the NOAA API data is structured (local time, naive datetime)
-    local_now = location_config.LocalNow()
+    local_now = location_config.local_now()
 
     # Validate that past tides are actually in the past
     for tide in tides["past"]:
@@ -152,7 +152,7 @@ def validate_conditions_response(
     assert len(all_tide_times) == len(set(all_tide_times)), "Tide times are not unique"
 
     # Get location config for additional checks
-    location_config = config.Get(location_code)
+    location_config = config.get(location_code)
     assert location_config is not None, f"Config for {location_code} not found"
 
 

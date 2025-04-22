@@ -9,7 +9,7 @@ MAX_SHIFT_LIMIT = 1440  # 24 hours forward
 MIN_SHIFT_LIMIT = -1440  # 24 hours backward
 
 
-def UTCNow() -> datetime.datetime:
+def utc_now() -> datetime.datetime:
     """Returns the current time in UTC as a naive datetime (without timezone information).
 
     All timestamps in the application are naive datetimes in their respective timezones.
@@ -19,7 +19,7 @@ def UTCNow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
-def EffectiveTime(
+def effective_time(
     timezone: datetime.tzinfo, shift_minutes: int = 0
 ) -> datetime.datetime:
     """Calculate the effective time with an optional shift, in the specified timezone.
@@ -49,12 +49,12 @@ def EffectiveTime(
     return now.replace(tzinfo=None)
 
 
-def F2C(temp: float) -> float:
+def f_to_c(temp: float) -> float:
     """Convert Fahrenheit temp to Celsius."""
     return (5.0 / 9.0) * (temp - 32)
 
 
-def PivotYear(df: pd.DataFrame) -> pd.DataFrame:
+def pivot_year(df: pd.DataFrame) -> pd.DataFrame:
     """Move year dimension to columns."""
     df = df.assign(year=df.index.year)
     df.index = pd.to_datetime(

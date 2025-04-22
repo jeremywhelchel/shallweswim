@@ -32,7 +32,7 @@ from shallweswim.types import (
 
 
 # Use the utility function for consistent time handling
-UTCNow = util.UTCNow
+utc_now = util.utc_now
 
 
 def _process_local_magnitude_pct(
@@ -106,7 +106,7 @@ def _process_local_magnitude_pct(
     return result_df
 
 
-def LatestTimeValue(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
+def latest_time_value(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
     """Extract the timestamp of the most recent data point from a DataFrame.
 
     Args:
@@ -168,11 +168,11 @@ class Data(object):
             "historic_temps": datetime.timedelta(hours=3),
         }
 
-    def _Expired(self, dataset: DatasetName) -> bool:
+    def _expired(self, dataset: DatasetName) -> bool:
         """Check if a dataset has expired and needs to be refreshed.
 
         Args:
-            dataset: The name of the dataset to check
+            dataset: The dataset to check
 
         Returns:
             True if the dataset is expired or missing, False otherwise
@@ -190,9 +190,9 @@ class Data(object):
             return True
 
         # Check if data is older than the expiration period
-        # Use naive datetime from UTCNow() for consistent handling
-        now = UTCNow()  # UTCNow returns a naive datetime in UTC
-        assert now.tzinfo is None, "UTCNow() should return naive datetime"
+        # Use naive datetime from utc_now() for consistent handling
+        now = utc_now()  # utc_now returns a naive datetime in UTC
+        assert now.tzinfo is None, "utc_now() should return naive datetime"
 
         # No timezone information allowed - strict assertion
         assert (
@@ -202,26 +202,39 @@ class Data(object):
         age = now - timestamp
         return age > self.expirations[dataset]
 
-    def _Update(self) -> None:
+    def _update_dataset(self, dataset: DatasetName) -> None:
+        """Update a specific dataset if it has expired.
+
+        Args:
+            dataset: The dataset to update
+        """
+        if dataset == "tides_and_currents":
+            self._fetch_tides_and_currents()
+        elif dataset == "live_temps":
+            self._fetch_live_temps()
+        elif dataset == "historic_temps":
+            self._fetch_historic_temps()
+
+    def __update_thread(self) -> None:
         """Background thread that continuously updates data.
 
         This runs as a daemon thread and periodically checks if datasets
         have expired. If so, it fetches new data and generates updated plots.
         """
         while True:
-            if self._Expired("tides_and_currents"):
-                self._FetchTidesAndCurrents()
+            if self._expired("tides_and_currents"):
+                self._update_dataset("tides_and_currents")
 
-            if self._Expired("live_temps"):
-                self._FetchLiveTemps()
+            if self._expired("live_temps"):
+                self._update_dataset("live_temps")
                 # Only generate plot if we have valid data
                 if self.live_temps is not None and len(self.live_temps) >= 2:
                     plot.generate_and_save_live_temp_plot(
                         self.live_temps, self.config.code, self.config.temp_station_name
                     )
 
-            if self._Expired("historic_temps"):
-                self._FetchHistoricTemps()
+            if self._expired("historic_temps"):
+                self._update_dataset("historic_temps")
                 # Only generate plots if we have valid historical data
                 if self.historic_temps is not None and len(self.historic_temps) >= 10:
                     plot.generate_and_save_historic_plots(
@@ -233,7 +246,7 @@ class Data(object):
             # TODO: Can probably be increased to 1s even... but would need to add API spam buffer
             time.sleep(60)
 
-    def Start(self) -> None:
+    def start(self) -> None:
         """Start the background data fetching process.
 
         This creates and starts a daemon thread that periodically fetches
@@ -248,11 +261,11 @@ class Data(object):
 
         logging.info("Starting data fetch thread")
         self._update_thread = threading.Thread(
-            target=self._Update, name=thread_name, daemon=True
+            target=self.__update_thread, name=thread_name, daemon=True
         )
         self._update_thread.start()
 
-    def PrevNextTide(self) -> TideInfo:
+    def prev_next_tide(self) -> TideInfo:
         """Return the previous tide and next two tides.
 
         Retrieves the most recent tide before current time and the next two
@@ -299,7 +312,7 @@ class Data(object):
             past_tides = []
             for record in past_tide_dicts:
                 # Get the time from the record
-                tide_time = record.get("time", UTCNow())
+                tide_time = record.get("time", utc_now())
 
                 # If it has timezone info, we need to convert to local time and remove timezone
                 # All times must be naive datetimes in their appropriate timezone
@@ -321,7 +334,7 @@ class Data(object):
             next_tides = []
             for record in next_tide_dicts:
                 # Get the time from the record
-                tide_time = record.get("time", UTCNow())
+                tide_time = record.get("time", utc_now())
 
                 # If it has timezone info, we need to convert to local time and remove timezone
                 # All times must be naive datetimes in their appropriate timezone
@@ -342,7 +355,9 @@ class Data(object):
 
         return TideInfo(past_tides=past_tides, next_tides=next_tides)
 
-    def LegacyChartInfo(self, t: Optional[datetime.datetime] = None) -> LegacyChartInfo:
+    def legacy_chart_info(
+        self, t: Optional[datetime.datetime] = None
+    ) -> LegacyChartInfo:
         """Generate legacy chart information based on tide data.
 
         Args:
@@ -359,7 +374,7 @@ class Data(object):
             AssertionError: If tide data is not available
         """
         if not t:
-            t = self.config.LocalNow()
+            t = self.config.local_now()
         assert self.tides is not None
 
         # Handle the timezone compatibility for DataFrame index lookup
@@ -410,7 +425,7 @@ class Data(object):
             map_title=legacy_map_title,
         )
 
-    def CurrentPrediction(self, t: Optional[datetime.datetime] = None) -> CurrentInfo:
+    def current_prediction(self, t: Optional[datetime.datetime] = None) -> CurrentInfo:
         """Predict current conditions for a specific time.
 
         Args:
@@ -424,7 +439,7 @@ class Data(object):
                 - state_description: Text description of current state
         """
         if not t:
-            t = self.config.LocalNow()
+            t = self.config.local_now()
 
         assert self.currents is not None, "Current data must be loaded first"
 
@@ -486,12 +501,15 @@ class Data(object):
 
         # Constants for determining current state based on local magnitude percentage
         STRONG_THRESHOLD = 0.85  # 85% of local peak is considered "strong"
+        SLACK_THRESHOLD = (
+            0.2  # Absolute threshold for considering current as slack water
+        )
         magnitude = row["magnitude"]
         local_pct = row["local_mag_pct"]
 
         # First check if we're near slack water (zero crossing)
         # This takes precedence over magnitude percentage
-        if magnitude < 0.2:  # Absolute threshold for slack
+        if magnitude < SLACK_THRESHOLD:
             msg = "at its weakest (slack)"
         # Check if we're at/near a peak based on local percentage
         elif local_pct > STRONG_THRESHOLD:
@@ -516,7 +534,7 @@ class Data(object):
             state_description=msg,
         )
 
-    def LiveTempReading(self) -> Tuple[pd.Timestamp, float]:
+    def live_temp_reading(self) -> Tuple[pd.Timestamp, float]:
         """Get the most recent water temperature reading.
 
         Returns:
@@ -528,7 +546,7 @@ class Data(object):
         ((time, temp),) = self.live_temps.tail(1)["water_temp"].items()
         return time, temp
 
-    def _FetchTidesAndCurrents(self) -> None:
+    def _fetch_tides_and_currents(self) -> None:
         """Fetch tide and current data from NOAA API.
 
         Updates the tides and currents instance variables with fresh data from NOAA.
@@ -540,24 +558,24 @@ class Data(object):
         logging.info("Fetching tides and currents")
         try:
             if self.config.tide_station:
-                self.tides = noaa.NoaaApi.Tides(station=self.config.tide_station)
+                self.tides = noaa.NoaaApi.tides(station=self.config.tide_station)
 
             if self.config.currents_stations:
                 currents = [
-                    noaa.NoaaApi.Currents(stn) for stn in self.config.currents_stations
+                    noaa.NoaaApi.currents(stn) for stn in self.config.currents_stations
                 ]
                 self.currents = (
                     pd.concat(currents)[["velocity"]].groupby(level=0).mean()
                 )
 
             # Ensure we always store naive timestamps
-            now = UTCNow()
-            assert now.tzinfo is None, "UTCNow() must return naive datetime"
+            now = utc_now()
+            assert now.tzinfo is None, "utc_now() must return naive datetime"
             self._tides_timestamp = now
         except noaa.NoaaApiError as e:
             logging.warning(f"Tide fetch error: {e}")
 
-    def _FetchHistoricTempYear(self, year: int) -> pd.DataFrame:
+    def _fetch_historic_temp_year(self, year: int) -> pd.DataFrame:
         """Fetch temperature data for a specific year.
 
         Args:
@@ -574,14 +592,14 @@ class Data(object):
         assert self.config.temp_station is not None
         return pd.concat(
             [
-                noaa.NoaaApi.Temperature(
+                noaa.NoaaApi.temperature(
                     self.config.temp_station,
                     "air_temperature",
                     begin_date,
                     end_date,
                     interval="h",
                 ),
-                noaa.NoaaApi.Temperature(
+                noaa.NoaaApi.temperature(
                     self.config.temp_station,
                     "water_temperature",
                     begin_date,
@@ -592,7 +610,7 @@ class Data(object):
             axis=1,
         )
 
-    def _FetchHistoricTemps(self) -> None:
+    def _fetch_historic_temps(self) -> None:
         """Fetch hourly temperature data since 2011.
 
         Uses multiple threads to fetch data by year in parallel, then concatenates
@@ -606,27 +624,27 @@ class Data(object):
             return
         logging.info("Fetching historic temps")
         try:
-            years = range(2011, UTCNow().year + 1)
+            years = range(2011, utc_now().year + 1)
             threadpool = futures.ThreadPoolExecutor(len(years))
-            year_frames = threadpool.map(self._FetchHistoricTempYear, years)
+            year_frames = threadpool.map(self._fetch_historic_temp_year, years)
             # Concat all the yearly data frames
             historic_temps = pd.concat(year_frames)
 
             # Remove outliers using the helper method
-            historic_temps = self._RemoveOutliers(historic_temps)
+            historic_temps = self._remove_outliers(historic_temps)
 
             # Resample to hourly intervals and assign to instance variable
             self.historic_temps = historic_temps.resample("h").first()
             # Ensure we always store naive timestamps
-            now = UTCNow()
-            assert now.tzinfo is None, "UTCNow() must return naive datetime"
+            now = utc_now()
+            assert now.tzinfo is None, "utc_now() must return naive datetime"
             self._historic_temps_timestamp = now
         except noaa.NoaaApiError as e:
             logging.warning(f"Historic temp fetch error: {e}")
 
         # TODO: Test by disabling local wifi briefly to ensure error handling works
 
-    def _RemoveOutliers(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _remove_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove known erroneous data points from a DataFrame.
 
         Uses the temp_outliers list from the location configuration to identify and
@@ -652,7 +670,7 @@ class Data(object):
 
         return result_df
 
-    def _FetchLiveTemps(self) -> None:
+    def _fetch_live_temps(self) -> None:
         """Fetch recent air and water temperatures (last 8 days).
 
         Updates the live_temps instance variable with the most recent temperature
@@ -672,13 +690,13 @@ class Data(object):
             # Concatenate air and water temperature data
             temp_data = pd.concat(
                 [
-                    noaa.NoaaApi.Temperature(
+                    noaa.NoaaApi.temperature(
                         self.config.temp_station,
                         "air_temperature",
                         begin_date,
                         end_date,
                     ),
-                    noaa.NoaaApi.Temperature(
+                    noaa.NoaaApi.temperature(
                         self.config.temp_station,
                         "water_temperature",
                         begin_date,
@@ -689,17 +707,17 @@ class Data(object):
             )
 
             # Remove outliers using the helper method
-            self.live_temps = self._RemoveOutliers(temp_data)
+            self.live_temps = self._remove_outliers(temp_data)
             # Ensure we always store naive timestamps
-            now = UTCNow()
-            assert now.tzinfo is None, "UTCNow() must return naive datetime"
+            now = utc_now()
+            assert now.tzinfo is None, "utc_now() must return naive datetime"
             self._live_temps_timestamp = now
 
             # Log info about the most recent data point
-            last_time = LatestTimeValue(self.live_temps)
+            last_time = latest_time_value(self.live_temps)
             age_str = "unknown"
             if last_time is not None:
-                now = UTCNow()  # UTCNow returns naive datetime in UTC
+                now = utc_now()  # utc_now returns naive datetime in UTC
                 # Ensure both datetimes are naive for subtraction
                 if hasattr(last_time, "tzinfo") and last_time.tzinfo is not None:
                     last_time = last_time.replace(tzinfo=None)

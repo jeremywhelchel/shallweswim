@@ -22,6 +22,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 # Local imports
+from shallweswim import config as config_lib
 from shallweswim import util
 
 
@@ -242,9 +243,11 @@ def GenerateHistoricPlots(
     SaveFig(fig, yr_plot_filename)
 
 
-# TODO: Return a tide image. Don't write it to filesystem
 def GenerateTideCurrentPlot(
-    tides: pd.DataFrame, currents: pd.DataFrame, t: Optional[datetime.datetime] = None
+    tides: pd.DataFrame,
+    currents: pd.DataFrame,
+    t: datetime.datetime,
+    location_config: config_lib.LocationConfig,
 ) -> Optional[io.StringIO]:
     """Generate a plot showing tide and current data.
 
@@ -255,15 +258,15 @@ def GenerateTideCurrentPlot(
     Args:
         tides: DataFrame containing tide predictions
         currents: DataFrame containing current predictions
-        t: Time point to mark on the plot, defaults to current time
+        t: Time point to mark on the plot (required)
+        location_config: Location configuration containing timezone information
 
     Returns:
         StringIO object containing SVG image data, or None if data is not available
     """
     if tides is None or currents is None:
         return None
-    if not t:
-        t = util.UTCNow()
+
     logging.info("Generating tide and current plot for: %s", t)
 
     # XXX Do this directly in tide dataset?
@@ -277,8 +280,8 @@ def GenerateTideCurrentPlot(
         }
     )
     df = df[
-        util.UTCNow()  # type: ignore[misc]
-        - datetime.timedelta(hours=3) : util.UTCNow()  # type: ignore[misc]
+        location_config.LocalNow()  # type: ignore[misc]
+        - datetime.timedelta(hours=3) : location_config.LocalNow()  # type: ignore[misc]
         + datetime.timedelta(hours=21)
     ]
 

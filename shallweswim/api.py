@@ -184,7 +184,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Generate the tide/current plot
         image = plot.GenerateTideCurrentPlot(
-            data[location].tides, data[location].currents, ts
+            data[location].tides, data[location].currents, ts, cfg
         )
         assert image
         return fastapi.responses.Response(

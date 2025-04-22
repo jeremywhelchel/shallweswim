@@ -42,7 +42,13 @@
       rel="stylesheet"
     />
     {% endblock %} {% block scripts %}
-    <script src="/static/main.js"></script>
+    <script>
+      // Global configuration from server
+      window.SWIMCONFIG = {
+        locationCode: "{{ config.code }}",
+      };
+    </script>
+    <script async src="/static/main.js"></script>
     {% endblock %} {% block head_extra %}{% endblock %}
   </head>
   <body {% block body_attributes %}{% endblock %}>

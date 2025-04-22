@@ -1,7 +1,5 @@
 {% extends "base.html" %} {% block description %}{{ config.description }}{%
-endblock %} {% block scripts %}
-<script async src="/static/main.js"></script>
-{% if config.code == 'nyc' %}
+endblock %} {% block scripts %} {{ super() }} {% if config.code == 'nyc' %}
 <script async src="https://www.youtube.com/iframe_api"></script>
 {% endif %} {% endblock %} {% block body_attributes %}onload="initPage();"{%
 endblock %} {% block header %}

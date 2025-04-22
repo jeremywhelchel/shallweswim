@@ -94,13 +94,22 @@ function loadTransitStatus() {
 // API DATA HANDLING
 //=============================================================================
 
-// Get the location code from the page URL immediately
-const pathParts = window.location.pathname.split("/");
-const locationCode = pathParts[pathParts.length > 1 ? 1 : 0] || "nyc";
+// Global variable for storing the location code
+let locationCode = "nyc"; // Default fallback
 
-// Start fetching data immediately without waiting for page load
-// This makes the API call right away when the script loads
-fetchAndUpdateConditions(locationCode);
+// Initialize the location code when the DOM is fully loaded
+document.addEventListener("DOMContentLoaded", () => {
+  // Get the location code from the global SWIMCONFIG variable
+  if (window.SWIMCONFIG && window.SWIMCONFIG.locationCode) {
+    locationCode = window.SWIMCONFIG.locationCode;
+    console.log(`Location code set to ${locationCode} from SWIMCONFIG`);
+  } else {
+    console.warn("SWIMCONFIG not available, using default location");
+  }
+
+  // Start fetching data now that we have the location code
+  fetchAndUpdateConditions(locationCode);
+});
 
 /**
  * Initialize page with API data and set up refresh
@@ -429,9 +438,7 @@ function updateCharts(data) {
  * Initialize the currents page
  */
 function initCurrentsPage() {
-  // Get the location code from the page URL (similar to initializeWithApi)
-  const pathParts = window.location.pathname.split("/");
-  const locationCode = pathParts[pathParts.length > 1 ? 1 : 0] || "nyc";
+  // Use the global locationCode variable
 
   // Get shift parameter from URL if present
   const urlParams = new URLSearchParams(window.location.search);

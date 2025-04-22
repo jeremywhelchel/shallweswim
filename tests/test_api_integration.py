@@ -8,12 +8,12 @@ Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 """
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import dateutil.parser
 import httpx
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 # Local imports
@@ -31,17 +31,11 @@ SAN_LOCATION = "san"
 TEST_LOCATIONS = [NYC_LOCATION, SAN_LOCATION]
 
 
-# pylint: disable=unused-argument
-@pytest.fixture(scope="module")
-def api_client(
-    check_api_availability: Any,
-) -> TestClient:
-    """Create a test client for API testing using the check_api_availability fixture.
+@pytest_asyncio.fixture(scope="module")
+async def api_client() -> TestClient:
+    """Create a test client for API testing.
 
     This creates a dedicated FastAPI app with only the API routes registered.
-
-    Args:
-        check_api_availability: Fixture that ensures API is available (used implicitly)
     """
 
     # Clear existing data to ensure a clean state
@@ -49,7 +43,7 @@ def api_client(
 
     # Initialize data for all test locations
     # We set wait_for_data=True to ensure data is loaded before tests run
-    api.initialize_location_data(
+    await api.initialize_location_data(
         location_codes=TEST_LOCATIONS,
         data_dict=api.data,
         wait_for_data=True,  # Wait for data to load before running tests

@@ -38,7 +38,7 @@ async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     """
     # Initialize data for all configured locations
     # Don't wait for data to load since this will block application startup
-    api.initialize_location_data(
+    await api.initialize_location_data(
         location_codes=list(config.CONFIGS.keys()),
         data_dict=api.data,
         wait_for_data=False,  # Don't block app startup waiting for data

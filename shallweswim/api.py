@@ -4,9 +4,9 @@ This module contains FastAPI route handlers for the API endpoints and data manag
 """
 
 # Standard library imports
+import asyncio
 import io
 import logging
-import time
 from typing import Optional
 
 # Third-party imports
@@ -31,7 +31,7 @@ from shallweswim.types import (
 data: dict[str, data_lib.Data] = {}
 
 
-def initialize_location_data(
+async def initialize_location_data(
     location_codes: list[str],
     data_dict: Optional[dict[str, data_lib.Data]] = None,
     wait_for_data: bool = False,
@@ -84,7 +84,7 @@ def initialize_location_data(
                 print(
                     f"Waiting for {code} data to load... attempt {i+1}/{max_wait_retries}"
                 )
-                time.sleep(retry_interval)
+                await asyncio.sleep(retry_interval)
 
             # Verify tide data was loaded (all locations should have tide data)
             assert data_dict[code].tides is not None, f"{code} tide data was not loaded"

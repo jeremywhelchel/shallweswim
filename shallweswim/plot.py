@@ -355,22 +355,29 @@ def BinMagnitude(magnitude_pct: float) -> int:
     return int(MAGNITUDE_BINS[i])
 
 
-def GetCurrentChartFilename(ef: str, magnitude_bin: int) -> str:
+def GetCurrentChartFilename(
+    ef: str, magnitude_bin: int, location_code: str = "nyc"
+) -> str:
     """Generate a filename for a current chart.
 
     Args:
         ef: Current direction ('flooding' or 'ebbing')
         magnitude_bin: Binned magnitude value (from BinMagnitude)
+        location_code: The 3-letter location code (e.g., 'nyc')
 
     Returns:
         Path to the PNG file for the specified current conditions
     """
-    # magnitude_bin = BinMagnitude(magnitude_pct)
-    plot_filename = f"static/plots/current_chart_{ef}_{magnitude_bin}.png"
+    # Make sure the path starts with /static/ to be properly accessible from any route
+    plot_filename = (
+        f"/static/plots/{location_code}/current_chart_{ef}_{magnitude_bin}.png"
+    )
     return plot_filename
 
 
-def GenerateCurrentChart(ef: str, magnitude_bin: int) -> None:
+def GenerateCurrentChart(
+    ef: str, magnitude_bin: int, location_code: str = "nyc"
+) -> None:
     """Generate a current chart showing water movement over a map.
 
     Creates a chart with arrows indicating water movement direction and strength
@@ -379,6 +386,7 @@ def GenerateCurrentChart(ef: str, magnitude_bin: int) -> None:
     Args:
         ef: Current direction ('flooding' or 'ebbing')
         magnitude_bin: Magnitude bin value (0-100)
+        location_code: The 3-letter location code (e.g., 'nyc')
 
     Raises:
         AssertionError: If magnitude_bin is outside the valid range
@@ -388,10 +396,13 @@ def GenerateCurrentChart(ef: str, magnitude_bin: int) -> None:
     magnitude_pct = magnitude_bin / 100
 
     fig = Figure(figsize=(16, 6))  # Dimensions: 2596 × 967
-    plot_filename = GetCurrentChartFilename(ef, magnitude_bin)
+    plot_filename = GetCurrentChartFilename(ef, magnitude_bin, location_code)
     logging.info(
         "Generating current map with pct %.2f: %s", magnitude_pct, plot_filename
     )
+
+    # Ensure the directory exists
+    os.makedirs(f"static/plots/{location_code}", exist_ok=True)
 
     ax = fig.subplots()
     map_img = mpimg.imread("static/base_coney_map.png")

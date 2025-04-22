@@ -234,7 +234,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Get current chart filename
         current_chart_filename = plot.GetCurrentChartFilename(
-            current_info.direction, plot.BinMagnitude(current_info.magnitude_pct)
+            current_info.direction,
+            plot.BinMagnitude(current_info.magnitude_pct),
+            location,
         )
 
         # Format current_info data for the API response

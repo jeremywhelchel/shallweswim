@@ -9,7 +9,7 @@ two main categories:
 # Standard library imports
 import datetime
 from dataclasses import dataclass
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 # Third-party imports
 from pydantic import BaseModel, Field
@@ -86,6 +86,9 @@ class TemperatureInfo(BaseModel):
     )
     water_temp: float = Field(..., description="Water temperature in degrees")
     units: str = Field("F", description="Temperature units (F for Fahrenheit)")
+    station_name: Optional[str] = Field(
+        None, description="Human-readable name of the temperature station"
+    )
 
 
 class ApiTideEntry(BaseModel):

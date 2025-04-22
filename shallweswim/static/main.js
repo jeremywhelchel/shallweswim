@@ -163,7 +163,9 @@ function updatePageWithConditions(data) {
       hour12: true,
     };
     const formattedTime = timestamp.toLocaleDateString("en-US", options);
-    tempStationElement.textContent = `at ${data.location.name} as of ${formattedTime}.`;
+    // Use the temperature station name from the API if available, otherwise fallback to location name
+    const stationName = data.temperature.station_name || data.location.name;
+    tempStationElement.textContent = `at ${stationName} as of ${formattedTime}.`;
   }
 
   // Update past tide information

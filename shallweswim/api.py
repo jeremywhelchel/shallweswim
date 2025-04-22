@@ -155,7 +155,10 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 code=location, name=cfg.name, swim_location=cfg.swim_location
             ),
             temperature=TemperatureInfo(
-                timestamp=current_time.isoformat(), water_temp=current_temp, units="F"
+                timestamp=current_time.isoformat(),
+                water_temp=current_temp,
+                units="F",
+                station_name=cfg.temp_station_name,
             ),
             tides=TidesInfo(past=past_tides, next=next_tides),
         )

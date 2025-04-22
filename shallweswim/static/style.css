@@ -1,5 +1,7 @@
 body {
   background-color: #fcffff;
+  font-family: "Lato", sans-serif;
+  font-weight: 300;
 }
 h1,
 h2,
@@ -8,6 +10,10 @@ h4,
 h5,
 h6 {
   font-family: "Helvetica", "Arial", sans-serif;
+}
+
+strong {
+  font-weight: 700;
 }
 .title {
   margin-bottom: 0px;
@@ -22,10 +28,9 @@ h6 {
   display: block;
 }
 .webcamdiv {
-  /* 720 x 410 is starter */
-  /*padding-bottom: 36.21%;*/
-  /* 210 good for phone */
-  /* 534 good for desktop */
+  position: relative;
+  overflow: hidden;
+  /* Base styles for the webcam container - media queries handle screen-specific sizing */
 }
 
 /* Small screens (Phones) */

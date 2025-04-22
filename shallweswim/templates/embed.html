@@ -2,14 +2,8 @@
 description %}Coney Island Brighton Beach open water swimming conditions{%
 endblock %} {% block stylesheets %} {{ super() }} {% endblock %} {% block
 body_attributes %}class="embed-page" onload="initEmbedPage();"{% endblock %} {%
-block forecast %}
-<!-- This embed uses an HTML Canvas, which has issues on iOS devices. The
-  browser context will crash with an error of "A problem repeatedly
-  occurred" when the page is zoomed.
-  See: https://developer.apple.com/forums/thread/662251
--->
-{{ windy_iframe(lat=config.latitude, lon=config.longitude) }} {% endblock %} {%
-block footer %}
+block forecast %} {{ windy_iframe(lat=config.latitude, lon=config.longitude) }}
+{% endblock %} {% block footer %}
 <br />
 <br />
 <div class="tides">

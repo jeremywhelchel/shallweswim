@@ -1,19 +1,15 @@
-{% extends "base.html" %} {% block description %}Coney Island Brighton Beach
-open water swimming conditions{% endblock %} {% block stylesheets %} {{ super()
-}} {% endblock %} {% block body_attributes %}onload="initEmbedPage();"{%
-endblock %} {% block forecast %}
-<!-- This embed uses an HTML Canvas, which has an issues on iOS devices. The
+{% extends "base.html" %} {% from "macros.html" import windy_iframe %} {% block
+description %}Coney Island Brighton Beach open water swimming conditions{%
+endblock %} {% block stylesheets %} {{ super() }} {% endblock %} {% block
+body_attributes %}class="embed-page" onload="initEmbedPage();"{% endblock %} {%
+block forecast %}
+<!-- This embed uses an HTML Canvas, which has issues on iOS devices. The
   browser context will crash with an error of "A problem repeatedly
   occurred" when the page is zoomed.
   See: https://developer.apple.com/forums/thread/662251
 -->
-<iframe
-  class="windyframe"
-  title="Windy forecast"
-  src="https://embed.windy.com/embed2.html?lat=40.573&lon=-73.954&detailLat=40.573&detailLon=-73.959&width=640&height=350&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1"
-  frameborder="0"
-></iframe>
-{% endblock %} {% block footer %}
+{{ windy_iframe(lat=config.latitude, lon=config.longitude) }} {% endblock %} {%
+block footer %}
 <br />
 <br />
 <div class="tides">

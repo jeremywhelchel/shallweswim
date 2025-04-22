@@ -1,5 +1,6 @@
-{% extends "base.html" %} {% block description %}{{ config.description }}{%
-endblock %} {% block scripts %} {{ super() }} {% if config.code == 'nyc' %}
+{% extends "base.html" %} {% from "macros.html" import windy_iframe %} {% block
+description %}{{ config.description }}{% endblock %} {% block scripts %} {{
+super() }} {% if config.code == 'nyc' %}
 <script async src="https://www.youtube.com/iframe_api"></script>
 {% endif %} {% endblock %} {% block body_attributes %}onload="initPage();"{%
 endblock %} {% block header %}
@@ -19,13 +20,8 @@ endblock %} {% block header %}
 </p>
 {% endblock %} {% block forecast %}
 <h2>Forecast</h2>
-<iframe
-  class="windyframe"
-  title="Windy forecast"
-  src="https://embed.windy.com/embed2.html?lat={{ config.latitude }}&lon={{ config.longitude }}&detailLat={{ config.latitude }}&detailLon={{ config.longitude }}&width=640&height=350&zoom=11&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1"
-  frameborder="0"
-></iframe>
-{% endblock %} {% block content %} {% if config.code == 'nyc' %}
+{{ windy_iframe(lat=config.latitude, lon=config.longitude) }} {% endblock %} {%
+block content %} {% if config.code == 'nyc' %}
 <h2>Live Webcam</h2>
 <div class="webcamdiv">
   <iframe

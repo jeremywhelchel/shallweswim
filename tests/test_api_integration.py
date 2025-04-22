@@ -8,7 +8,6 @@ Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 """
 
 # Standard library imports
-import datetime
 from typing import Any
 
 # Third-party imports
@@ -120,20 +119,33 @@ def validate_conditions_response(
         "unknown",
     ], f"Invalid tide type: {past_tide['type']}"
 
+    # Get location config for timezone-aware comparisons
+    location_config = config.Get(location_code)
+    assert location_config is not None, f"Config for {location_code} not found"
+
+    # Get the current time in the location's timezone as a naive datetime
+    # This matches how the NOAA API data is structured (local time, naive datetime)
+    local_now = location_config.LocalNow()
+
     # Validate that past tides are actually in the past
-    now = datetime.datetime.now(datetime.timezone.utc)
     for tide in tides["past"]:
         tide_time = dateutil.parser.isoparse(tide["time"])
+        # Ensure the tide_time is naive for comparison
+        if tide_time.tzinfo is not None:
+            tide_time = tide_time.replace(tzinfo=None)
         assert (
-            tide_time <= now
-        ), f"Past tide time {tide_time} is not in the past compared to {now}"
+            tide_time <= local_now
+        ), f"Past tide time {tide_time} is not in the past compared to local time {local_now}"
 
     # Validate that future tides are actually in the future
     for tide in tides["next"]:
         tide_time = dateutil.parser.isoparse(tide["time"])
+        # Ensure the tide_time is naive for comparison
+        if tide_time.tzinfo is not None:
+            tide_time = tide_time.replace(tzinfo=None)
         assert (
-            tide_time >= now
-        ), f"Next tide time {tide_time} is not in the future compared to {now}"
+            tide_time >= local_now
+        ), f"Next tide time {tide_time} is not in the future compared to local time {local_now}"
 
     # Validate that all tide times are distinct
     all_tide_times = [tide["time"] for tide in tides["past"] + tides["next"]]

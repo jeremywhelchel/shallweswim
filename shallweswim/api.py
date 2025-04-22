@@ -173,11 +173,11 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Returns:
             SVG image response with tide and current visualization
         """
-        # Check if location exists
-        _ = validate_location(location)  # Validates location exists, result not needed
+        # Get location config to access the timezone
+        cfg = validate_location(location)
 
-        # Calculate effective time with shift
-        ts = util.EffectiveTime(shift)
+        # Calculate effective time with shift relative to the location's timezone
+        ts = util.EffectiveTime(cfg.timezone, shift_minutes=shift)
 
         # Generate the tide/current plot
         image = plot.GenerateTideCurrentPlot(
@@ -219,8 +219,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 detail=f"Current predictions for '{location}' are not fully implemented yet",
             )
 
-        # Calculate effective time with shift
-        ts = util.EffectiveTime(shift)
+        # Calculate effective time with shift relative to the location's timezone
+        ts = util.EffectiveTime(cfg.timezone, shift_minutes=shift)
 
         # Get current prediction information
         current_info = data[location].CurrentPrediction(ts)

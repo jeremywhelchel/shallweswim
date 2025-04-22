@@ -30,7 +30,7 @@ from shallweswim.types import (
 
 
 # Use the utility function for consistent time handling
-Now = util.Now
+UTCNow = util.UTCNow
 
 
 def LatestTimeValue(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
@@ -40,16 +40,20 @@ def LatestTimeValue(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
         df: DataFrame with DatetimeIndex, or None
 
     Returns:
-        Timezone-aware datetime object (in UTC) of the last index value,
+        Timezone-naive datetime object of the last index value,
         or None if DataFrame is None
     """
     if df is None:
         return None
-    # Get the datetime and ensure it's timezone-aware
+    # Get the datetime from the DataFrame index
     dt = df.index[-1].to_pydatetime()
-    # Add UTC timezone if datetime is naive
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    # Assert that the datetime is already naive or make it naive
+    if dt.tzinfo is not None:
+        # Convert to naive datetime
+        dt = dt.replace(tzinfo=None)
+        logging.warning(
+            "DataFrame index contains timezone info; converted to naive datetime"
+        )
     return cast(datetime.datetime, dt)
 
 
@@ -113,13 +117,14 @@ class Data(object):
             return True
 
         # Check if data is older than the expiration period
-        # Use timezone-aware datetime with the consistent Now() function
-        now = Now()  # Now returns a timezone-aware datetime in UTC
+        # Use naive datetime from UTCNow() for consistent handling
+        now = UTCNow()  # UTCNow returns a naive datetime in UTC
+        assert now.tzinfo is None, "UTCNow() should return naive datetime"
 
-        # Make sure timestamp is timezone-aware for proper comparison
-        if timestamp.tzinfo is None:
-            # Convert naive timestamp to UTC for consistent comparison
-            timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
+        # No timezone information allowed - strict assertion
+        assert (
+            timestamp.tzinfo is None
+        ), f"Timestamp for {dataset} has timezone info - all timestamps must be naive"
 
         age = now - timestamp
         return age > self.expirations[dataset]
@@ -192,30 +197,20 @@ class Data(object):
             next_tides = [placeholder_entry, placeholder_entry]
         else:
             # Convert the DataFrame records to TideEntry objects
-            # Get the current time with proper timezone handling
-            now = Now()
+            # Get current time in the location's timezone as a naive datetime
+            now = self.config.LocalNow()
 
-            # Handle the timezone compatibility for DataFrame slicing
-            # Check if the tides DataFrame has a timezone-naive index
-            if self.tides.index.tz is None:
-                # If index is naive, we need a naive datetime for slicing
-                now_for_slicing = now.replace(tzinfo=None)
-            else:
-                # If index has timezone info, ensure it's in the same timezone
-                now_for_slicing = now
+            # Ensure DataFrame has no timezone info for consistent comparison
+            assert (
+                self.tides.index.tz is None
+            ), "Tide DataFrame should use naive datetimes"
 
             # When we reset_index, the DatetimeIndex becomes a column named 'time'
             past_tide_dicts = (
-                self.tides[:now_for_slicing]
-                .tail(1)
-                .reset_index()
-                .to_dict(orient="records")
+                self.tides[:now].tail(1).reset_index().to_dict(orient="records")
             )
             next_tide_dicts = (
-                self.tides[now_for_slicing:]
-                .head(2)
-                .reset_index()
-                .to_dict(orient="records")
+                self.tides[now:].head(2).reset_index().to_dict(orient="records")
             )
 
             # Get the location's timezone for converting times
@@ -224,13 +219,17 @@ class Data(object):
             # Convert DataFrame records directly to TideEntry objects with timezone conversion
             past_tides = []
             for record in past_tide_dicts:
-                # Get the time and ensure it has timezone info
-                tide_time = record.get("time", Now())
-                if tide_time.tzinfo is None:
-                    tide_time = tide_time.replace(tzinfo=datetime.timezone.utc)
+                # Get the time from the record
+                tide_time = record.get("time", UTCNow())
 
-                # Convert to location timezone
-                local_time = tide_time.astimezone(location_tz)
+                # If it has timezone info, we need to convert to local time and remove timezone
+                # All times must be naive datetimes in their appropriate timezone
+                if tide_time.tzinfo is not None:
+                    # Convert to location timezone
+                    local_time = tide_time.astimezone(location_tz).replace(tzinfo=None)
+                else:
+                    # Already naive, assume it's in the correct timezone
+                    local_time = tide_time
 
                 past_tides.append(
                     TideEntry(
@@ -242,13 +241,17 @@ class Data(object):
 
             next_tides = []
             for record in next_tide_dicts:
-                # Get the time and ensure it has timezone info
-                tide_time = record.get("time", Now())
-                if tide_time.tzinfo is None:
-                    tide_time = tide_time.replace(tzinfo=datetime.timezone.utc)
+                # Get the time from the record
+                tide_time = record.get("time", UTCNow())
 
-                # Convert to location timezone
-                local_time = tide_time.astimezone(location_tz)
+                # If it has timezone info, we need to convert to local time and remove timezone
+                # All times must be naive datetimes in their appropriate timezone
+                if tide_time.tzinfo is not None:
+                    # Convert to location timezone
+                    local_time = tide_time.astimezone(location_tz).replace(tzinfo=None)
+                else:
+                    # Already naive, assume it's in the correct timezone
+                    local_time = tide_time
 
                 next_tides.append(
                     TideEntry(
@@ -277,7 +280,7 @@ class Data(object):
             AssertionError: If tide data is not available
         """
         if not t:
-            t = Now()
+            t = UTCNow()
         assert self.tides is not None
 
         # Handle the timezone compatibility for DataFrame index lookup
@@ -335,20 +338,22 @@ class Data(object):
             t: Time to predict current for, defaults to current time
 
         Returns:
-        A CurrentInfo object containing:
-            - direction: Direction of current ("flooding" or "ebbing")
-            - magnitude: Magnitude of current in knots
-            - magnitude_pct: Relative magnitude percentage (0.0-1.0)
-            - state_description: Human-readable message describing the current's state
+            A CurrentInfo object containing:
+                - direction: Direction of current ("flooding" or "ebbing")
+                - magnitude: Magnitude of current in knots
+                - magnitude_pct: Relative magnitude percentage (0.0-1.0)
+                - state_description: Human-readable message describing the current's state
 
         Raises:
             AssertionError: If current data is not available
             ValueError: If the current state cannot be determined
         """
         if not t:
-            t = Now()
+            # Get current time in the location's timezone as a naive datetime
+            t = self.config.LocalNow()
 
         assert self.currents is not None
+
         v = self.currents["velocity"]
         df = pd.DataFrame(
             {
@@ -363,16 +368,14 @@ class Data(object):
         # tidal cycle. Try to only look at +/- til we get to 0 or something
         df["mag_pct"] = df.groupby("ef")["magnitude"].rank(pct=True)
 
-        # Handle the timezone compatibility for DataFrame slicing
-        # Check if the DataFrame has a timezone-naive index
-        if df.index.tz is None:
-            # If index is naive, we need a naive datetime for slicing
-            t_for_slicing = t.replace(tzinfo=None) if t.tzinfo is not None else t
-        else:
-            # If index has timezone info, ensure it's in the same timezone
-            t_for_slicing = t
+        # Ensure we're using a naive datetime for DataFrame slicing
+        # All datetimes must be naive in the appropriate timezone
+        assert t.tzinfo is None, "Input datetime must be naive"
 
-        row = df[t_for_slicing:].iloc[0]
+        # Ensure DataFrame has no timezone info for consistent comparison
+        assert df.index.tz is None, "DataFrame should use naive datetimes"
+
+        row = df[t:].iloc[0]
 
         STRONG_THRESHOLD = 0.85  # 30% on either side of peak
         WEAK_THRESHOLD = 0.15  # 30% on either side of bottom
@@ -434,7 +437,10 @@ class Data(object):
                     pd.concat(currents)[["velocity"]].groupby(level=0).mean()
                 )
 
-            self._tides_timestamp = Now()
+            # Ensure we always store naive timestamps
+            now = UTCNow()
+            assert now.tzinfo is None, "UTCNow() must return naive datetime"
+            self._tides_timestamp = now
         except noaa.NoaaApiError as e:
             logging.warning(f"Tide fetch error: {e}")
 
@@ -487,7 +493,7 @@ class Data(object):
             return
         logging.info("Fetching historic temps")
         try:
-            years = range(2011, Now().year + 1)
+            years = range(2011, UTCNow().year + 1)
             threadpool = futures.ThreadPoolExecutor(len(years))
             year_frames = threadpool.map(self._FetchHistoricTempYear, years)
             # Concat all the yearly data frames
@@ -498,7 +504,10 @@ class Data(object):
 
             # Resample to hourly intervals and assign to instance variable
             self.historic_temps = historic_temps.resample("h").first()
-            self._historic_temps_timestamp = Now()
+            # Ensure we always store naive timestamps
+            now = UTCNow()
+            assert now.tzinfo is None, "UTCNow() must return naive datetime"
+            self._historic_temps_timestamp = now
         except noaa.NoaaApiError as e:
             logging.warning(f"Historic temp fetch error: {e}")
 
@@ -568,16 +577,19 @@ class Data(object):
 
             # Remove outliers using the helper method
             self.live_temps = self._RemoveOutliers(temp_data)
-            self._live_temps_timestamp = Now()
+            # Ensure we always store naive timestamps
+            now = UTCNow()
+            assert now.tzinfo is None, "UTCNow() must return naive datetime"
+            self._live_temps_timestamp = now
 
             # Log info about the most recent data point
             last_time = LatestTimeValue(self.live_temps)
             age_str = "unknown"
             if last_time is not None:
-                now = Now()
-                # Ensure last_time has timezone info before subtraction
-                if last_time.tzinfo is None:
-                    last_time = last_time.replace(tzinfo=datetime.timezone.utc)
+                now = UTCNow()  # UTCNow returns naive datetime in UTC
+                # Ensure both datetimes are naive for subtraction
+                if hasattr(last_time, "tzinfo") and last_time.tzinfo is not None:
+                    last_time = last_time.replace(tzinfo=None)
                 age = now - last_time
                 age_str = str(datetime.timedelta(seconds=int(age.total_seconds())))
             logging.info(f"Fetched live temps. Last datapoint age: {age_str}")

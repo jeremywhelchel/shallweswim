@@ -196,8 +196,8 @@ def GenerateHistoricPlots(
     df = (
         year_df["water_temp"]
         .loc[
-            util.Now().date().replace(year=2020)  # type: ignore[misc]
-            - datetime.timedelta(days=30) : util.Now().date().replace(year=2020)  # type: ignore[misc]
+            util.UTCNow().date().replace(year=2020)  # type: ignore[misc]
+            - datetime.timedelta(days=30) : util.UTCNow().date().replace(year=2020)  # type: ignore[misc]
             + datetime.timedelta(days=30)
         ]
         .rolling(24, center=True)
@@ -263,7 +263,7 @@ def GenerateTideCurrentPlot(
     if tides is None or currents is None:
         return None
     if not t:
-        t = util.Now()
+        t = util.UTCNow()
     logging.info("Generating tide and current plot for: %s", t)
 
     # XXX Do this directly in tide dataset?
@@ -276,10 +276,9 @@ def GenerateTideCurrentPlot(
             "current": currents["velocity"],
         }
     )
-    # XXX
     df = df[
-        util.Now()  # type: ignore[misc]
-        - datetime.timedelta(hours=3) : util.Now()  # type: ignore[misc]
+        util.UTCNow()  # type: ignore[misc]
+        - datetime.timedelta(hours=3) : util.UTCNow()  # type: ignore[misc]
         + datetime.timedelta(hours=21)
     ]
 

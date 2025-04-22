@@ -1,52 +1,52 @@
 """Shared utilities."""
 
 import datetime
-import pytz
 import pandas as pd
 
-
-EASTERN_TZ = pytz.timezone("US/Eastern")
 
 # Time shift limits for current predictions (in minutes)
 MAX_SHIFT_LIMIT = 1440  # 24 hours forward
 MIN_SHIFT_LIMIT = -1440  # 24 hours backward
 
 
-def Now() -> datetime.datetime:
-    """Returns the current time in UTC with timezone information preserved.
+def UTCNow() -> datetime.datetime:
+    """Returns the current time in UTC as a naive datetime (without timezone information).
 
-    This ensures consistent timezone handling throughout the application.
+    All timestamps in the application are naive datetimes in their respective timezones.
+    For NOAA data, timestamps are in local time based on the station's location.
     """
-    return datetime.datetime.now(datetime.timezone.utc)
+    # Get timezone-aware UTC time, then strip the timezone to make it naive
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
-def NowLocal() -> datetime.datetime:
-    """Returns the current time in Eastern timezone with timezone information preserved.
-
-    Use this for display purposes when local time is needed.
-    """
-    return datetime.datetime.now(tz=EASTERN_TZ)
-
-
-def EffectiveTime(shift_minutes: int = 0) -> datetime.datetime:
-    """Calculate the effective time with an optional shift.
+def EffectiveTime(
+    timezone: datetime.tzinfo, shift_minutes: int = 0
+) -> datetime.datetime:
+    """Calculate the effective time with an optional shift, in the specified timezone.
 
     Args:
+        timezone: Timezone to convert the time to (required)
         shift_minutes: Number of minutes to shift from current time
 
     Returns:
-        Effective datetime with the shift applied
+        Naive datetime with the shift applied, in the specified timezone with tzinfo removed
     """
-    # Use the app's Now() function to ensure timezone consistency
-    now = Now()
+    # Get current time (as a timezone-aware datetime)
+    now = datetime.datetime.now(datetime.timezone.utc)
 
-    # Clamp the shift limit
-    shift_minutes = max(MIN_SHIFT_LIMIT, min(shift_minutes, MAX_SHIFT_LIMIT))
+    # Convert to the location's timezone
+    now = now.astimezone(timezone)
 
+    # Apply the time shift to the location's local time
     if shift_minutes:
+        # Clamp the shift limit
+        shift_minutes = max(MIN_SHIFT_LIMIT, min(shift_minutes, MAX_SHIFT_LIMIT))
+
         delta = datetime.timedelta(minutes=shift_minutes)
-        return now + delta
-    return now
+        now = now + delta
+
+    # Remove timezone info to return naive datetime
+    return now.replace(tzinfo=None)
 
 
 def F2C(temp: float) -> float:

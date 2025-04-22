@@ -16,12 +16,16 @@ accessed via the Get() function using the location's 3-letter code.
 """
 
 # Standard library imports
+import datetime
 from datetime import tzinfo
 from typing import Annotated, Dict, List, Optional, Tuple
 
 # Third-party imports
 import pytz
 from pydantic import BaseModel, Field
+
+# Local imports
+from shallweswim import util
 
 
 class LocationConfig(BaseModel, frozen=True):
@@ -150,8 +154,6 @@ class LocationConfig(BaseModel, frozen=True):
         ),
     ] = None
 
-    # No timezone validator needed - timezone objects are created inline
-
     @property
     def coordinates(self) -> Tuple[float, float]:
         """Return the location's coordinates as a (latitude, longitude) tuple.
@@ -175,6 +177,26 @@ class LocationConfig(BaseModel, frozen=True):
             A string in the format "City (Swim Location)"
         """
         return f"{self.name} ({self.swim_location})"
+
+    def LocalNow(self) -> datetime.datetime:
+        """Return the current time in the location's timezone as a naive datetime.
+
+        This method converts the current UTC time to the location's timezone and
+        strips the timezone information to provide a naive datetime that represents
+        the current local time at this location.
+
+        Returns:
+            A naive datetime object representing the current local time
+        """
+        # Get current UTC time without timezone info
+        now_utc = util.UTCNow()
+
+        # Add UTC timezone info, convert to location timezone, then strip tzinfo
+        now_utc_with_tz = now_utc.replace(tzinfo=datetime.timezone.utc)
+        local_now = now_utc_with_tz.astimezone(self.timezone)
+
+        # Return naive datetime in local time
+        return local_now.replace(tzinfo=None)
 
 
 CONFIG_LIST = [

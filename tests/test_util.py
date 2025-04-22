@@ -7,14 +7,14 @@ from shallweswim import util
 
 
 def test_now() -> None:
-    """Test that Now() returns timezone-aware current time in UTC."""
-    now = util.Now()
+    """Test that UTCNow() returns naive datetime without timezone information."""
+    now = util.UTCNow()
     assert isinstance(now, datetime.datetime)
-    assert now.tzinfo is not None  # Should have timezone info
-    assert now.tzinfo == datetime.timezone.utc  # Should be in UTC
+    assert now.tzinfo is None  # Should be naive (no timezone info)
 
-    # Test that the time is within a reasonable range
-    utc_now = datetime.datetime.now(tz=datetime.timezone.utc)
+    # Test that the time is within a reasonable range of UTC time
+    # Get naive UTC time for comparison
+    utc_now = datetime.datetime.now(tz=datetime.timezone.utc).replace(tzinfo=None)
     time_diff = abs((utc_now - now).total_seconds())
     assert time_diff < 1  # Should be less than 1 second difference
 

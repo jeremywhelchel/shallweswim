@@ -94,26 +94,28 @@ function loadTransitStatus() {
 // API DATA HANDLING
 //=============================================================================
 
+// Get the location code from the page URL immediately
+const pathParts = window.location.pathname.split("/");
+const locationCode = pathParts[pathParts.length > 1 ? 1 : 0] || "nyc";
+
+// Start fetching data immediately without waiting for page load
+// This makes the API call right away when the script loads
+fetchAndUpdateConditions(locationCode);
+
 /**
  * Initialize page with API data and set up refresh
  */
 function initializeWithApi() {
-  // Get the location code from the page URL
-  const pathParts = window.location.pathname.split("/");
-  const location = pathParts[pathParts.length > 1 ? 1 : 0] || "nyc";
-
-  // Load initial data
-  fetchAndUpdateConditions(location);
-
-  // Set up automatic refresh
+  // Set up automatic refresh only (initial fetch already started)
   setInterval(() => {
-    fetchAndUpdateConditions(location);
+    fetchAndUpdateConditions(locationCode);
   }, REFRESH_INTERVAL);
 }
 
 // Fetch conditions data from API and update page
 async function fetchAndUpdateConditions(location) {
   try {
+    console.log(`Fetching conditions data for ${location}...`);
     // Using the same pattern as the currents page which works on Safari
     const response = await fetch(`/api/${location}/conditions`);
 
@@ -122,6 +124,7 @@ async function fetchAndUpdateConditions(location) {
     }
 
     const data = await response.json();
+    console.log(`Successfully loaded conditions data for ${location}`);
     updatePageWithConditions(data);
   } catch (error) {
     console.error("Error fetching conditions:", error);
@@ -291,30 +294,28 @@ function getTrainStatus(train) {
  * Initialize the main page when it loads
  */
 function initPage() {
-  // Load train information if needed
-  loadTransitStatus();
-
-  // Set up API-based updates
+  // Set up automatic refresh (initial fetch already started)
   initializeWithApi();
 
-  // Optionally enable snow effect (currently commented out in HTML)
-  /*makeSnow();*/
+  // Load transit status for NYC location
+  if (window.location.pathname.includes("nyc")) {
+    loadTransitStatus();
+  }
+
+  // Add snow effect during winter months (Dec-Feb)
+  const now = new Date();
+  const month = now.getMonth();
+  if (month === 11 || month === 0 || month === 1) {
+    makeSnow();
+  }
 }
 
 /**
  * Initialize the embed page - no trains, just API data
  */
 function initEmbedPage() {
-  // Default to NYC location for embed
-  const location = "nyc";
-
-  // Load initial data
-  fetchAndUpdateConditions(location);
-
-  // Set up automatic refresh
-  setInterval(() => {
-    fetchAndUpdateConditions(location);
-  }, REFRESH_INTERVAL);
+  // Only set up refresh interval (data fetch already started)
+  initializeWithApi();
 }
 
 //=============================================================================
@@ -454,6 +455,11 @@ document.addEventListener("DOMContentLoaded", function () {
   else if (window.location.pathname.includes("/embed")) {
     console.log("Initializing embed page");
     initEmbedPage();
+  }
+  // Also handle the index page here
+  else {
+    console.log("Initializing main page");
+    initPage();
   }
 });
 

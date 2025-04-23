@@ -29,6 +29,10 @@ from shallweswim.types import (
     CurrentInfo,
 )
 
+# 60-second buffer before reporting data as expired
+# This gives the system time to refresh data without showing as expired
+EXPIRATION_BUFFER = datetime.timedelta(seconds=60)
+
 
 # Use the utility function for consistent time handling
 utc_now = util.utc_now
@@ -216,8 +220,9 @@ class Data(object):
             timestamp.tzinfo is None
         ), f"Timestamp for {dataset} has timezone info - all timestamps must be naive"
 
+        # Use the EXPIRATION_BUFFER to give the system time to refresh before reporting as expired
         age = now - timestamp
-        return age > self.expirations[dataset]
+        return age > (self.expirations[dataset] + EXPIRATION_BUFFER)
 
     async def _update_dataset(self, dataset: DatasetName) -> None:
         """Update a specific dataset if it has expired.
@@ -277,8 +282,8 @@ class Data(object):
                     # Re-raise to ensure error is not silently ignored
                     raise
 
-                # TODO: Can probably be increased to 1s even... but would need to add API spam buffer
-                await asyncio.sleep(60)
+                # Sleep for 1 second before the next update check
+                await asyncio.sleep(1)
         except asyncio.CancelledError:
             # This is expected when the task is cancelled, so we let it propagate
             raise

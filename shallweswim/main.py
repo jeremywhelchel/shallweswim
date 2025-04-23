@@ -90,7 +90,7 @@ async def index() -> responses.RedirectResponse:
 
     TODO: Use cookies to redirect to last used or saved location.
     """
-    return responses.RedirectResponse("/nyc")
+    return responses.RedirectResponse("/nyc", status_code=301)
 
 
 @app.get("/embed")

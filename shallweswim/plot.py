@@ -288,7 +288,7 @@ def generate_and_save_live_temp_plot(
     try:
         live_fig = create_live_temp_plot(live_temps, station_name)
         # Save to file
-        plot_filename = get_plot_filepath(location_code, "current_temp")
+        plot_filename = get_plot_filepath(location_code, "live_temps")
         save_fig(live_fig, plot_filename, location_code=location_code)
         logging.info(f"[{location_code}] Live temperature plot generated successfully")
     except Exception as e:

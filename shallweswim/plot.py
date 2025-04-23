@@ -292,7 +292,10 @@ def generate_and_save_live_temp_plot(
 def create_historic_monthly_plot(
     hist_temps: pd.DataFrame, station_name: Optional[str]
 ) -> Figure:
-    """Create a plot showing historical temperature data for the next two months.
+    """Create a plot showing historical temperature data centered around the current date.
+
+    Creates a plot showing water temperature data for a 2-month period centered
+    on the current date (±30 days) with a 24-hour rolling mean.
 
     Args:
         hist_temps: DataFrame containing historical temperature data
@@ -303,22 +306,30 @@ def create_historic_monthly_plot(
     """
     # Make sure we have columns for each year
     # Also ensure the index is by day-of-year (no year component)
-    df = util.pivot_year(hist_temps)
+    year_df = util.pivot_year(hist_temps)
 
-    # Take data for the next two months, relative to today
-    today = datetime.datetime.now().timetuple().tm_yday
-    start_date = today + 1
-    end_date = min(today + 60, 365)
-    df_mon = df.loc[start_date:end_date]
+    # Get the current date and create a 2-month window centered on today
+    # Using a reference year (2020) to avoid leap year issues
+    ref_date = util.utc_now().date().replace(year=2020)
+    start_date = pd.to_datetime(ref_date - datetime.timedelta(days=30))
+    end_date = pd.to_datetime(ref_date + datetime.timedelta(days=30))
+
+    # Get the water_temp column and apply 24-hour rolling mean
+    df = year_df["water_temp"].loc[start_date:end_date].rolling(24, center=True).mean()
 
     # Create the 2-month plot
     fig = create_standard_figure()
-    multi_year_plot(
-        df_mon,
+    ax = multi_year_plot(
+        df,
         fig,
         f"{station_name} Water Temperature" if station_name else "Water Temperature",
-        "next 60 days",
+        "2 month, all years, 24-hour mean",
     )
+
+    # Set x-axis formatting with weekly ticks
+    ax.xaxis.set_major_formatter(md.DateFormatter("%b %d"))
+    ax.xaxis.set_major_locator(md.WeekdayLocator(byweekday=1))
+
     return fig
 
 
@@ -327,6 +338,9 @@ def create_historic_yearly_plot(
 ) -> Figure:
     """Create a plot showing historical temperature data for the full year.
 
+    Creates a plot showing water temperature data across the entire year
+    with a 24-hour rolling mean.
+
     Args:
         hist_temps: DataFrame containing historical temperature data
         station_name: Station name for plot title or None
@@ -336,29 +350,37 @@ def create_historic_yearly_plot(
     """
     # Make sure we have columns for each year
     # Also ensure the index is by day-of-year (no year component)
-    df = util.pivot_year(hist_temps)
+    year_df = util.pivot_year(hist_temps)
 
-    # Calculate 28-day rolling averages for each column in the dataframe
-    smoothed = df.copy()
-    # This is filling with 'inf' to create breaks in lines (instead of connecting
-    # across missing data, which could be very misleading)
-    smoothed = (
-        smoothed.fillna(np.inf)
-        .rolling(28, center=True)
+    # Get the water_temp column, apply 24-hour rolling mean
+    # and handle NaN values as in the original implementation
+    df = (
+        year_df["water_temp"]
+        .rolling(24, center=True)
         .mean()
-        # After taking the mean, any columns that are all NA
+        # Kludge to prevent seaborn from connecting over nan gaps
+        .fillna(np.inf)
+        # Some years may have 0 data at this filtering level. All-NA columns
         # will cause plotting errors, so we remove them here.
         .dropna(axis=1, how="all")
     )
 
     # Create the yearly plot
     fig = create_standard_figure()
-    multi_year_plot(
-        smoothed,
+    ax = multi_year_plot(
+        df,
         fig,
         f"{station_name} Water Temperature" if station_name else "Water Temperature",
-        "28-day rolling average",
+        "all years, 24-hour mean",
     )
+
+    # Set x-axis formatting with month locators
+    ax.xaxis.set_major_locator(md.MonthLocator(bymonthday=1))
+    # X labels between gridlines
+    ax.set_xticklabels("")  # type: ignore[operator]
+    ax.xaxis.set_minor_locator(md.MonthLocator(bymonthday=15))
+    ax.xaxis.set_minor_formatter(md.DateFormatter("%b"))
+
     return fig
 
 

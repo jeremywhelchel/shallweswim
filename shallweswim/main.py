@@ -184,17 +184,26 @@ templates.env.filters["fmt_datetime"] = fmt_datetime
 @app.get("/favicon.ico")
 async def favicon() -> responses.RedirectResponse:
     """Redirect favicon requests to the static file."""
-    return responses.RedirectResponse(
-        "/static/favicon.ico",
-    )
+    return responses.RedirectResponse("/static/favicon.ico", status_code=301)
+
+
+@app.get("/apple-touch-icon.png")
+@app.get("/apple-touch-icon-precomposed.png")
+async def apple_touch_icon() -> responses.RedirectResponse:
+    """Redirect Apple touch icon requests to the static file."""
+    return responses.RedirectResponse("/static/apple-touch-icon.png", status_code=301)
+
+
+@app.get("/manifest.json")
+async def manifest() -> responses.RedirectResponse:
+    """Redirect manifest.json requests to the static file."""
+    return responses.RedirectResponse("/static/manifest.json", status_code=301)
 
 
 @app.get("/robots.txt")
 async def robots() -> responses.RedirectResponse:
     """Redirect robots.txt requests to the static file."""
-    return responses.RedirectResponse(
-        "/static/robots.txt",
-    )
+    return responses.RedirectResponse("/static/robots.txt", status_code=301)
 
 
 @app.get("/{location}")

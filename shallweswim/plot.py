@@ -366,13 +366,13 @@ def generate_and_save_historic_plots(
     # Create and save monthly plot
     monthly_fig = create_historic_monthly_plot(hist_temps, station_name)
     assert monthly_fig is not None, "Failed to create historic monthly plot"
-    mon_plot_filename = get_plot_filepath(location_code, "historic_temp_2mo")
+    mon_plot_filename = get_plot_filepath(location_code, "historic_temps_2mo_24h_mean")
     save_fig(monthly_fig, mon_plot_filename)
 
     # Create and save yearly plot
     yearly_fig = create_historic_yearly_plot(hist_temps, station_name)
     assert yearly_fig is not None, "Failed to create historic yearly plot"
-    yr_plot_filename = get_plot_filepath(location_code, "historic_temp_yr")
+    yr_plot_filename = get_plot_filepath(location_code, "historic_temps_12mo_24h_mean")
     save_fig(yearly_fig, yr_plot_filename)
 
 

@@ -170,6 +170,21 @@ class Data(object):
             "historic_temps": datetime.timedelta(hours=3),
         }
 
+    @property
+    def ready(self) -> bool:
+        """Check if all datasets have been fetched and are not expired.
+
+        Returns:
+            True if all datasets have been fetched and are not expired, False otherwise
+        """
+        # Check each dataset for expiration
+        datasets: list[DatasetName] = [
+            "tides_and_currents",
+            "live_temps",
+            "historic_temps",
+        ]
+        return all(not self._expired(dataset) for dataset in datasets)
+
     def _expired(self, dataset: DatasetName) -> bool:
         """Check if a dataset has expired and needs to be refreshed.
 

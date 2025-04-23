@@ -277,16 +277,113 @@ async def test_process_peaks_function() -> None:
 
 @pytest.mark.asyncio
 async def test_current_info_representation() -> None:
-    """Test the string representation of CurrentInfo."""
-    info = CurrentInfo(
+    """Test the representation of CurrentInfo objects."""
+    # Test with flooding current
+    flood_info = CurrentInfo(
         direction="flooding",
         magnitude=1.5,
         magnitude_pct=0.8,
-        state_description="at its strongest",
+        state_description="getting stronger",
     )
+    assert flood_info.direction == "flooding"
+    assert flood_info.magnitude == 1.5
+    assert flood_info.magnitude_pct == 0.8
+    assert flood_info.state_description == "getting stronger"
+    # Check that the string representation contains the important information
+    flood_str = str(flood_info)
+    assert "flooding" in flood_str.lower()
+    assert "1.5" in flood_str
+    assert "getting stronger" in flood_str
 
-    # Test the string representation
-    representation = str(info)
-    assert "flooding" in representation
-    assert "1.5" in representation
-    assert "at its strongest" in representation
+    # Test with ebbing current
+    ebb_info = CurrentInfo(
+        direction="ebbing",
+        magnitude=1.2,
+        magnitude_pct=0.6,
+        state_description="getting weaker",
+    )
+    assert ebb_info.direction == "ebbing"
+    assert ebb_info.magnitude == 1.2
+    assert ebb_info.magnitude_pct == 0.6
+    assert ebb_info.state_description == "getting weaker"
+    # Check that the string representation contains the important information
+    ebb_str = str(ebb_info)
+    assert "ebbing" in ebb_str.lower()
+    assert "1.2" in ebb_str
+    assert "getting weaker" in ebb_str
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tides_timestamp,live_temps_timestamp,historic_temps_timestamp,expected_ready",
+    [
+        # No data is loaded (all None) - not ready
+        (None, None, None, False),
+        # All datasets have timestamps but all expired - not ready
+        (
+            datetime.datetime(2020, 1, 1),
+            datetime.datetime(2020, 1, 1),
+            datetime.datetime(2020, 1, 1),
+            False,
+        ),
+        # Only some datasets have timestamps - not ready
+        (
+            datetime.datetime.now(),
+            None,
+            datetime.datetime.now(),
+            False,
+        ),
+        # All datasets have recent timestamps - ready
+        (
+            datetime.datetime.now(),
+            datetime.datetime.now(),
+            datetime.datetime.now(),
+            True,
+        ),
+    ],
+)
+async def test_data_ready_property(
+    mock_config: Any,
+    tides_timestamp: datetime.datetime,
+    live_temps_timestamp: datetime.datetime,
+    historic_temps_timestamp: datetime.datetime,
+    expected_ready: bool,
+) -> None:
+    """Test the ready property of the Data class.
+
+    Tests different combinations of dataset states to verify the ready property
+    accurately represents if all data has been loaded and is not expired.
+    """
+    data = Data(mock_config)
+
+    # Mock the _expired method to control its behavior based on timestamps
+
+    def mock_expired(dataset: str) -> bool:
+        # Get the timestamp based on dataset
+        timestamp = None
+        if dataset == "tides_and_currents":
+            timestamp = tides_timestamp
+        elif dataset == "live_temps":
+            timestamp = live_temps_timestamp
+        elif dataset == "historic_temps":
+            timestamp = historic_temps_timestamp
+
+        # Consider None timestamps as expired
+        if timestamp is None:
+            return True
+
+        # Consider timestamps older than 1 hour as expired
+        cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
+        return timestamp < cutoff
+
+    # Apply our mock by directly setting the method
+    # Use setattr to avoid mypy method-assign error
+    setattr(data, "_expired", mock_expired)
+
+    # Set timestamps
+    data._tides_timestamp = tides_timestamp
+    data._live_temps_timestamp = live_temps_timestamp
+    data._historic_temps_timestamp = historic_temps_timestamp
+
+    # Test the ready property
+    assert data.ready == expected_ready

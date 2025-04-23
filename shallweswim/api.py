@@ -74,11 +74,8 @@ async def initialize_location_data(
     if wait_for_data:
         for code in location_codes:
             for i in range(max_wait_retries):
-                # Check that essential data is loaded
-                if (
-                    data_dict[code].tides is not None
-                    and data_dict[code].currents is not None
-                ):
+                # Check if data is ready using the new .ready property
+                if data_dict[code].ready:
                     print(f"{code} data loaded successfully after {i+1} attempts")
                     break
                 print(
@@ -86,15 +83,20 @@ async def initialize_location_data(
                 )
                 await asyncio.sleep(retry_interval)
 
-            # Verify tide data was loaded (all locations should have tide data)
-            assert data_dict[code].tides is not None, f"{code} tide data was not loaded"
-
-            # Only check currents if the location has current predictions enabled
-            location_config = config_lib.get(code)
-            if location_config is not None and location_config.current_predictions:
+            # If we've exhausted all retries, verify basic data availability
+            # This ensures we fail with helpful error messages if data isn't ready
+            if not data_dict[code].ready:
+                # Verify tide data was loaded (all locations should have tide data)
                 assert (
-                    data_dict[code].currents is not None
-                ), f"{code} current data was not loaded"
+                    data_dict[code].tides is not None
+                ), f"{code} tide data was not loaded"
+
+                # Only check currents if the location has current predictions enabled
+                location_config = config_lib.get(code)
+                if location_config is not None and location_config.current_predictions:
+                    assert (
+                        data_dict[code].currents is not None
+                    ), f"{code} current data was not loaded"
 
     return data_dict
 

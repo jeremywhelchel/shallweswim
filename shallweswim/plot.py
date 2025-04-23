@@ -213,20 +213,24 @@ def create_live_temp_plot(
     Returns:
         Figure object with the plot
     """
+    # Extract water temperature and calculate the rolling average
+    raw = live_temps["water_temp"]
+
     # Take the last 48 hours (at most)
-    last_2days = live_temps.sort_index().iloc[-96:].copy()
+    raw = raw.sort_index().iloc[-96:].copy()
 
-    # Calculate 2-hour rolling average (for trend line, but drop nan values)
-    ma = last_2days.rolling(4, center=True).mean().dropna()
+    # Calculate 2-hour rolling average
+    trend = raw.rolling(4, center=True).mean().dropna()
 
-    # Prepare a combined dataset with both raw readings and moving average
+    # Create the DataFrame with both raw data and trend line
     df = pd.DataFrame(
         {
-            "Water Temp": last_2days,
-            "2-hour MA": ma,
+            "Water Temp": raw,
+            "2-hour MA": trend,
         }
     )
 
+    # Create the figure and plot
     fig = create_standard_figure()
     live_temp_plot(
         df,
@@ -774,9 +778,6 @@ def generate_and_save_current_chart(
     """
     # Generate filename and create directory
     plot_filename = get_current_chart_filename(ef, magnitude_bin, location_code)
-    logging.info(
-        "Generating current map with pct %.2f: %s", magnitude_bin / 100, plot_filename
-    )
 
     # Ensure the directory exists
     os.makedirs(f"static/plots/{location_code}", exist_ok=True)

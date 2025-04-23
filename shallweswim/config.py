@@ -239,42 +239,42 @@ CONFIG_LIST = [
         tide_station_name="La Jolla, CA",
         description="La Jolla Cove open water swimming conditions",
     ),
-    LocationConfig(
-        # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
-        code="sfo",
-        name="San Francisco",
-        swim_location="San Francisco Aquatic Park",
-        swim_location_link="https://serc.com/swimming/swimming-in-aquatic-park/",
-        latitude=37.808,
-        longitude=-122.426,
-        timezone=pytz.timezone("US/Pacific"),
-        # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
-        # It is not a live reading (and not available via the same API), so we don't use it.
-        temp_station=9414290,
-        temp_station_name="San Francisco, CA",
-        tide_station=9414305,
-        tide_station_name="North Point Pier",
-        description="San Francisco Aquatic Park open water swimming conditions",
-        # webcam https://dolphinclub.org/weather/ (code in page JS source...)
-    ),
-    LocationConfig(
-        code="sdf",
-        name="Louisville",
-        swim_location="Louisville Community Boathouse",
-        swim_location_link="https://www.kylmsc.org/rats",
-        latitude=38.2647556,
-        longitude=-85.7323204,
-        # XXX windy "waves" mode inapplicable here
-        timezone=pytz.timezone("US/Eastern"),
-        description="Louisville Kentucky open water swimming conditions",
-        # TODO: add this
-        # - temp data
-        #    water velocity (mph)
-        #    https://colab.research.google.com/drive/17-oyc95BBUUI3g1GBR5QpACAm-4G5vBk#scrollTo=vMXIJh8CCQCF
-        # - webcam:
-        #    https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
-        #    https://ohiorivercam.com/
-    ),
+    # LocationConfig(
+    #    # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
+    #    code="sfo",
+    #    name="San Francisco",
+    #    swim_location="San Francisco Aquatic Park",
+    #    swim_location_link="https://serc.com/swimming/swimming-in-aquatic-park/",
+    #    latitude=37.808,
+    #    longitude=-122.426,
+    #    timezone=pytz.timezone("US/Pacific"),
+    #    # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
+    #    # It is not a live reading (and not available via the same API), so we don't use it.
+    #    temp_station=9414290,
+    #    temp_station_name="San Francisco, CA",
+    #    tide_station=9414305,
+    #    tide_station_name="North Point Pier",
+    #    description="San Francisco Aquatic Park open water swimming conditions",
+    #    # webcam https://dolphinclub.org/weather/ (code in page JS source...)
+    # ),
+    # LocationConfig(
+    #    code="sdf",
+    #    name="Louisville",
+    #    swim_location="Louisville Community Boathouse",
+    #    swim_location_link="https://www.kylmsc.org/rats",
+    #    latitude=38.2647556,
+    #    longitude=-85.7323204,
+    #    # XXX windy "waves" mode inapplicable here
+    #    timezone=pytz.timezone("US/Eastern"),
+    #    description="Louisville Kentucky open water swimming conditions",
+    #    # TODO: add this
+    #    # - temp data
+    #    #    water velocity (mph)
+    #    #    https://colab.research.google.com/drive/17-oyc95BBUUI3g1GBR5QpACAm-4G5vBk#scrollTo=vMXIJh8CCQCF
+    #    # - webcam:
+    #    #    https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
+    #    #    https://ohiorivercam.com/
+    # ),
 ]
 # Build lookup dictionaries - use lowercase keys for case-insensitive lookup
 CONFIGS: Dict[str, LocationConfig] = {c.code.lower(): c for c in CONFIG_LIST}

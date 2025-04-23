@@ -112,7 +112,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
     def validate_location(loc: str) -> config_lib.LocationConfig:
         cfg = config_lib.get(loc)
         if not cfg:
-            logging.warning("Bad location: %s", loc)
+            logging.warning(f"[{loc}] Bad location request")
             raise HTTPException(status_code=404, detail=f"Location '{loc}' not found")
         return cfg
 
@@ -129,6 +129,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Raises:
             HTTPException: If the location is not configured
         """
+        logging.info(f"[{location}] Processing conditions request")
         cfg = validate_location(location)
 
         # Get current water temperature
@@ -179,6 +180,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Returns:
             SVG image response with tide and current visualization
         """
+        logging.info(
+            f"[{location}] Processing current tide plot request with shift={shift}"
+        )
         # Get location config to access the timezone
         cfg = validate_location(location)
 
@@ -210,6 +214,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Returns:
             Boolean indicating whether all locations' data is ready
         """
+        logging.info("[api] Checking readiness status for all locations")
         # Get all configured locations
         all_locations = list(config_lib.CONFIGS.keys())
 
@@ -217,13 +222,16 @@ def register_routes(app: fastapi.FastAPI) -> None:
         for loc_code in all_locations:
             # Skip if location not in the data dictionary
             if loc_code not in data or data[loc_code] is None:
+                logging.warning(f"[{loc_code}] Location not in data dictionary")
                 return False
 
             # Check if location data is ready
             if not data[loc_code].ready:
+                logging.info(f"[{loc_code}] Location data not ready yet")
                 return False
 
         # All locations are ready
+        logging.info("[api] All locations report ready status")
         return True
 
     @app.get("/api/{location}/currents", response_model=CurrentsResponse)
@@ -240,6 +248,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Raises:
             HTTPException: If the location is not configured or doesn't support currents
         """
+        logging.info(f"[{location}] Processing currents request with shift={shift}")
         # Validate location exists
         cfg = validate_location(location)
 

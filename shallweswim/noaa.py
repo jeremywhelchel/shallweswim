@@ -63,11 +63,14 @@ class NoaaApi:
         return date.strftime(DateFormat)
 
     @classmethod
-    async def _Request(cls, params: NoaaRequestParams) -> pd.DataFrame:
+    async def _Request(
+        cls, params: NoaaRequestParams, location_code: str = "unknown"
+    ) -> pd.DataFrame:
         """Make a request to the NOAA API with retries.
 
         Args:
             params: API request parameters
+            location_code: Optional location code for logging
 
         Returns:
             DataFrame containing the API response
@@ -82,29 +85,42 @@ class NoaaApi:
         async with aiohttp.ClientSession() as session:
             for attempt in range(cls.MAX_RETRIES):
                 try:
-                    logging.info("NOAA API request (attempt %d): %s", attempt + 1, url)
+                    logging.info(
+                        f"[{location_code}] NOAA API request (attempt {attempt + 1}): {url}"
+                    )
                     async with session.get(url) as response:
                         if response.status != 200:
-                            raise NoaaConnectionError(f"HTTP error: {response.status}")
+                            error_msg = f"HTTP error: {response.status}"
+                            logging.error(f"[{location_code}] {error_msg}")
+                            raise NoaaConnectionError(error_msg)
 
                         # Read CSV data
                         csv_data = await response.text()
                         df = pd.read_csv(io.StringIO(csv_data))
 
                         if len(df) == 1:
-                            raise NoaaDataError(df.iloc[0].values[0])
+                            error_msg = df.iloc[0].values[0]
+                            logging.error(
+                                f"[{location_code}] NOAA API data error: {error_msg}"
+                            )
+                            raise NoaaDataError(error_msg)
                         return df
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     if attempt == cls.MAX_RETRIES - 1:
-                        raise NoaaConnectionError(f"Failed to connect to NOAA API: {e}")
+                        error_msg = f"Failed to connect to NOAA API: {e}"
+                        logging.error(f"[{location_code}] {error_msg}")
+                        raise NoaaConnectionError(error_msg)
                     await asyncio.sleep(cls.RETRY_DELAY * (attempt + 1))
 
-        raise NoaaConnectionError("Unexpected error in NOAA API request")
+        error_msg = "Unexpected error in NOAA API request"
+        logging.error(f"[{location_code}] {error_msg}")
+        raise NoaaConnectionError(error_msg)
 
     @classmethod
     async def tides(
         cls,
         station: int,
+        location_code: str = "unknown",
     ) -> pd.DataFrame:
         """Return tide predictions from yesterday to two days from now.
 
@@ -126,7 +142,10 @@ class NoaaApi:
             "interval": "hilo",
         }
 
-        df = await cls._Request(params)
+        logging.info(
+            f"[{location_code}] Fetching tide predictions for station {station}"
+        )
+        df = await cls._Request(params, location_code)
         df = (
             df.pipe(cls._FixTime)
             .rename(columns={" Prediction": "prediction", " Type": "type"})
@@ -141,6 +160,7 @@ class NoaaApi:
         cls,
         station: str,
         interpolate: bool = True,
+        location_code: str = "unknown",
     ) -> pd.DataFrame:
         """Return current predictions from yesterday to two days from now.
 
@@ -166,7 +186,10 @@ class NoaaApi:
             "interval": "MAX_SLACK",
         }
 
-        df = await cls._Request(params)
+        logging.info(
+            f"[{location_code}] Fetching current predictions for station {station}"
+        )
+        df = await cls._Request(params, location_code)
         currents = (
             df.pipe(cls._FixTime, time_col="Time").rename(
                 columns={
@@ -202,6 +225,7 @@ class NoaaApi:
         begin_date: datetime.date,
         end_date: datetime.date,
         interval: TimeInterval = None,
+        location_code: str = "unknown",
     ) -> pd.DataFrame:
         """Fetch buoy temperature dataset.
 
@@ -234,7 +258,10 @@ class NoaaApi:
             "interval": interval,
         }
 
-        df = await cls._Request(params)
+        logging.info(
+            f"[{location_code}] Fetching tide predictions for station {station}"
+        )
+        df = await cls._Request(params, location_code)
         df = (
             df.pipe(cls._FixTime)
             .rename(

@@ -304,7 +304,7 @@ class Data(object):
             if task.get_name() == task_name and not task.done():
                 raise AssertionError("Data update task already running")
 
-        logging.info("Starting data fetch task")
+        logging.info(f"[{self.config.code}] Starting data fetch task")
         self._update_task = asyncio.create_task(self.__update_loop())
         self._update_task.set_name(task_name)
 
@@ -605,15 +605,18 @@ class Data(object):
         If multiple current stations are configured, their data is averaged.
         Logs warnings if the NOAA API returns an error.
         """
-        logging.info("Fetching tides and currents")
+        logging.info(f"[{self.config.code}] Fetching tides and currents")
         try:
             if self.config.tide_station:
-                self.tides = await noaa.NoaaApi.tides(station=self.config.tide_station)
+                self.tides = await noaa.NoaaApi.tides(
+                    station=self.config.tide_station, location_code=self.config.code
+                )
 
             if self.config.currents_stations:
                 # Use asyncio.gather to fetch all current stations concurrently
                 current_tasks = [
-                    noaa.NoaaApi.currents(stn) for stn in self.config.currents_stations
+                    noaa.NoaaApi.currents(stn, location_code=self.config.code)
+                    for stn in self.config.currents_stations
                 ]
                 currents = await asyncio.gather(*current_tasks)
                 self.currents = (
@@ -625,7 +628,7 @@ class Data(object):
             assert now.tzinfo is None, "utc_now() must return naive datetime"
             self._tides_timestamp = now
         except noaa.NoaaApiError as e:
-            logging.warning(f"Tide fetch error: {e}")
+            logging.warning(f"[{self.config.code}] Tide fetch error: {e}")
 
     async def _fetch_historic_temp_year(self, year: int) -> pd.DataFrame:
         """Fetch temperature data for a specific year.
@@ -640,7 +643,7 @@ class Data(object):
             AssertionError: If temperature station is not configured
         """
         assert self.config.temp_station, "Temperature station not configured"
-        logging.info(f"Fetching historic temps for year {year}")
+        logging.info(f"[{self.config.code}] Fetching historic temps for year {year}")
 
         begin_date = datetime.datetime(year, 1, 1)
         end_date = datetime.datetime(year, 12, 31)
@@ -652,6 +655,7 @@ class Data(object):
                 begin_date,
                 end_date,
                 interval="h",
+                location_code=self.config.code,
             )
             water_temp_task = noaa.NoaaApi.temperature(
                 self.config.temp_station,
@@ -659,6 +663,7 @@ class Data(object):
                 begin_date,
                 end_date,
                 interval="h",
+                location_code=self.config.code,
             )
             # Wait for both requests to complete
             air_temp, water_temp = await asyncio.gather(air_temp_task, water_temp_task)
@@ -666,7 +671,9 @@ class Data(object):
             df = pd.concat([air_temp, water_temp], axis=1)
             return df
         except noaa.NoaaApiError as e:
-            logging.warning(f"Historic temp fetch error for {year}: {e}")
+            logging.warning(
+                f"[{self.config.code}] Historic temp fetch error for {year}: {e}"
+            )
             return pd.DataFrame()
 
     async def _fetch_historic_temps(self) -> None:
@@ -681,7 +688,7 @@ class Data(object):
         """
         if not self.config.temp_station:
             return
-        logging.info("Fetching historic temps")
+        logging.info(f"[{self.config.code}] Fetching historic temps")
         try:
             years = range(2011, utc_now().year + 1)
             # Create tasks for each year and gather them
@@ -700,7 +707,7 @@ class Data(object):
             assert now.tzinfo is None, "utc_now() must return naive datetime"
             self._historic_temps_timestamp = now
         except noaa.NoaaApiError as e:
-            logging.warning(f"Historic temp fetch error: {e}")
+            logging.warning(f"[{self.config.code}] Historic temp fetch error: {e}")
 
         # TODO: Test by disabling local wifi briefly to ensure error handling works
 
@@ -718,10 +725,12 @@ class Data(object):
             task.result()
         except asyncio.CancelledError:
             # Task was cancelled, which is normal during shutdown
-            logging.debug(f"Task {task.get_name()} was cancelled")
+            logging.debug(f"[{self.config.code}] Task {task.get_name()} was cancelled")
         except Exception as e:
             # Log the exception that was raised by the task
-            logging.exception(f"Unhandled exception in task {task.get_name()}: {e}")
+            logging.exception(
+                f"[{self.config.code}] Unhandled exception in task {task.get_name()}: {e}"
+            )
             # You could potentially restart the task here or notify an admin
             # For now, we'll just make sure it's logged properly
 
@@ -747,7 +756,9 @@ class Data(object):
                 result_df = result_df.drop(pd.to_datetime(timestamp))
             except KeyError:
                 # Skip if the timestamp doesn't exist in the data
-                logging.debug(f"Outlier timestamp {timestamp} not found in data")
+                logging.debug(
+                    f"[{self.config.code}] Outlier timestamp {timestamp} not found in data"
+                )
 
         return result_df
 
@@ -763,7 +774,7 @@ class Data(object):
         """
         if not self.config.temp_station:
             return
-        logging.info("Fetching live temps")
+        logging.info(f"[{self.config.code}] Fetching live temps")
         begin_date = datetime.datetime.today() - datetime.timedelta(days=8)
         end_date = datetime.datetime.today()
         # TODO: Resample to 6min for more consistent data intervals
@@ -774,12 +785,14 @@ class Data(object):
                 "air_temperature",
                 begin_date,
                 end_date,
+                location_code=self.config.code,
             )
             water_temp_task = noaa.NoaaApi.temperature(
                 self.config.temp_station,
                 "water_temperature",
                 begin_date,
                 end_date,
+                location_code=self.config.code,
             )
             # Wait for both requests to complete
             air_temp, water_temp = await asyncio.gather(air_temp_task, water_temp_task)
@@ -803,6 +816,8 @@ class Data(object):
                     last_time = last_time.replace(tzinfo=None)
                 age = now - last_time
                 age_str = str(datetime.timedelta(seconds=int(age.total_seconds())))
-            logging.info(f"Fetched live temps. Last datapoint age: {age_str}")
+            logging.info(
+                f"[{self.config.code}] Fetched live temps. Last datapoint age: {age_str}"
+            )
         except noaa.NoaaApiError as e:
-            logging.warning(f"Live temp fetch error: {e}")
+            logging.warning(f"[{self.config.code}] Live temp fetch error: {e}")

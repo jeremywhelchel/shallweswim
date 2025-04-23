@@ -207,12 +207,17 @@ def register_routes(app: fastapi.FastAPI) -> None:
             content=svg_io.getvalue(), media_type="image/svg+xml"
         )
 
-    @app.get("/api/ready")
+    @app.get(
+        "/api/ready",
+        status_code=200,
+        responses={503: {"description": "Service not ready"}},
+    )
     async def ready_status() -> bool:
         """API endpoint that returns whether all locations' data is ready.
 
         Returns:
             Boolean indicating whether all locations' data is ready
+            Status code 200 if ready, 503 if not ready
         """
         logging.info("[api] Checking readiness status for all locations")
         # Get all configured locations
@@ -223,12 +228,16 @@ def register_routes(app: fastapi.FastAPI) -> None:
             # Skip if location not in the data dictionary
             if loc_code not in data or data[loc_code] is None:
                 logging.warning(f"[{loc_code}] Location not in data dictionary")
-                return False
+                raise HTTPException(
+                    status_code=503, detail="Service not ready - location data missing"
+                )
 
             # Check if location data is ready
             if not data[loc_code].ready:
                 logging.info(f"[{loc_code}] Location data not ready yet")
-                return False
+                raise HTTPException(
+                    status_code=503, detail="Service not ready - data being loaded"
+                )
 
         # All locations are ready
         logging.info("[api] All locations report ready status")

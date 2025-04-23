@@ -102,7 +102,12 @@ def get_plot_filepath(
     return f"static/plots/{location_code}/{plot_type}.{extension}"
 
 
-def save_fig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg") -> None:
+def save_fig(
+    fig: Figure,
+    dst: Union[str, io.StringIO],
+    fmt: str = "svg",
+    location_code: str = "unknown",
+) -> None:
     """Save a matplotlib figure to a file or string buffer.
 
     Handles path adjustments for running from different working directories
@@ -119,31 +124,29 @@ def save_fig(fig: Figure, dst: Union[str, io.StringIO], fmt: str = "svg") -> Non
     # If running outside the 'shallweswim' directory, prepend it to all paths
     if isinstance(dst, str):
         assert dst.startswith("static/"), dst
-        # Extract location code from path if possible
-        loc_code = _extract_location_code(dst)
-        logging.info(f"[{loc_code}] Saving plot to {dst} in {fmt} format")
+        logging.info(f"[{location_code}] Saving plot to {dst} in {fmt} format")
         if not os.path.exists("static/") and os.path.exists("shallweswim/static/"):
             dst = f"shallweswim/{dst}"
-            loc_code = _extract_location_code(dst)
-            logging.debug(f"[{loc_code}] Path adjusted to {dst}")
+            logging.debug(f"[{location_code}] Path adjusted to {dst}")
         # Create directory if it doesn't exist
         dirname = os.path.dirname(dst)
         if not os.path.isdir(dirname):
-            loc_code = _extract_location_code(dirname)
-            logging.debug(f"[{loc_code}] Creating directory: {dirname}")
+            logging.debug(f"[{location_code}] Creating directory: {dirname}")
             os.mkdir(dirname)
     else:
-        loc_code = _extract_location_code(dst if isinstance(dst, str) else "")
-        logging.debug(f"[{loc_code}] Saving plot to memory buffer in {fmt} format")
+        logging.debug(f"[{location_code}] Saving plot to memory buffer in {fmt} format")
 
     # Save the figure and log success
     try:
         fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
-        loc_code = _extract_location_code(dst if isinstance(dst, str) else "")
-        logging.debug(f"[{loc_code}] Plot saved successfully")
+        # Log the absolute path for file output location
+        if isinstance(dst, str):
+            abs_path = os.path.abspath(dst)
+            logging.info(f"[{location_code}] Plot saved to absolute path: {abs_path}")
+
+        logging.debug(f"[{location_code}] Plot saved successfully")
     except Exception as e:
-        loc_code = _extract_location_code(dst if isinstance(dst, str) else "")
-        logging.error(f"[{loc_code}] Error saving plot: {e}")
+        logging.error(f"[{location_code}] Error saving plot: {e}")
         raise
 
 
@@ -286,7 +289,7 @@ def generate_and_save_live_temp_plot(
         live_fig = create_live_temp_plot(live_temps, station_name)
         # Save to file
         plot_filename = get_plot_filepath(location_code, "current_temp")
-        save_fig(live_fig, plot_filename)
+        save_fig(live_fig, plot_filename, location_code=location_code)
         logging.info(f"[{location_code}] Live temperature plot generated successfully")
     except Exception as e:
         logging.error(f"[{location_code}] Error generating live temperature plot: {e}")
@@ -422,7 +425,7 @@ def generate_and_save_historic_plots(
         mon_plot_filename = get_plot_filepath(
             location_code, "historic_temps_2mo_24h_mean"
         )
-        save_fig(monthly_fig, mon_plot_filename)
+        save_fig(monthly_fig, mon_plot_filename, location_code=location_code)
         logging.info(f"[{location_code}] 2-month historic plot generated successfully")
 
         # Create and save yearly plot
@@ -432,7 +435,7 @@ def generate_and_save_historic_plots(
         yr_plot_filename = get_plot_filepath(
             location_code, "historic_temps_12mo_24h_mean"
         )
-        save_fig(yearly_fig, yr_plot_filename)
+        save_fig(yearly_fig, yr_plot_filename, location_code=location_code)
         logging.info(f"[{location_code}] Yearly historic plot generated successfully")
     except Exception as e:
         logging.error(
@@ -690,7 +693,7 @@ def generate_and_save_tide_current_plot(
     assert fig is not None, "Failed to create tide and current plot"
 
     # Save the figure to the provided filename
-    save_fig(fig, filename)
+    save_fig(fig, filename, location_code=location_config.code)
 
 
 # Current chart utility values and functions
@@ -858,7 +861,7 @@ def generate_and_save_current_chart(
         # Create and save the figure
         fig = create_current_chart(ef, magnitude_bin)
         assert fig is not None, "Failed to create current chart"
-        save_fig(fig, plot_filename, fmt="png")
+        save_fig(fig, plot_filename, fmt="png", location_code=location_code)
         logging.info(
             f"[{location_code}] Current chart ({ef}, {magnitude_bin}) generated successfully"
         )

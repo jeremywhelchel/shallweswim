@@ -35,7 +35,7 @@ async def initialize_location_data(
     location_codes: list[str],
     data_dict: Optional[dict[str, data_lib.Data]] = None,
     wait_for_data: bool = False,
-    max_wait_retries: int = 45,
+    max_wait_retries: int = 15,
     retry_interval: int = 1,
 ) -> dict[str, data_lib.Data]:
     """Initialize data for the specified locations.

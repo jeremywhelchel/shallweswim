@@ -274,3 +274,23 @@ def test_invalid_api_location(api_client: TestClient) -> None:
     error_data = response.json()
     assert "detail" in error_data
     assert "not found" in error_data["detail"].lower()
+
+
+@pytest.mark.integration
+def test_ready_endpoint(api_client: TestClient) -> None:
+    """Test the ready API endpoint returns a boolean response.
+
+    Since the data is loaded in the api_client fixture with wait_for_data=True,
+    we expect the ready endpoint to return True.
+    """
+    response = api_client.get("/api/ready")
+
+    # Verify response status code
+    assert response.status_code == 200
+
+    # Verify response is a boolean
+    ready_status = response.json()
+    assert isinstance(ready_status, bool)
+
+    # Since the fixture waits for data to be ready, we expect True
+    assert ready_status is True

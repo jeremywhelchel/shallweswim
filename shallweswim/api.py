@@ -203,6 +203,29 @@ def register_routes(app: fastapi.FastAPI) -> None:
             content=svg_io.getvalue(), media_type="image/svg+xml"
         )
 
+    @app.get("/api/ready")
+    async def ready_status() -> bool:
+        """API endpoint that returns whether all locations' data is ready.
+
+        Returns:
+            Boolean indicating whether all locations' data is ready
+        """
+        # Get all configured locations
+        all_locations = list(config_lib.CONFIGS.keys())
+
+        # Check if all locations are ready
+        for loc_code in all_locations:
+            # Skip if location not in the data dictionary
+            if loc_code not in data or data[loc_code] is None:
+                return False
+
+            # Check if location data is ready
+            if not data[loc_code].ready:
+                return False
+
+        # All locations are ready
+        return True
+
     @app.get("/api/{location}/currents", response_model=CurrentsResponse)
     async def location_currents(location: str, shift: int = 0) -> CurrentsResponse:
         """API endpoint that returns current predictions for a specific location.

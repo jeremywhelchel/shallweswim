@@ -14,6 +14,7 @@ from typing import Optional, Tuple, cast
 import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
+from typing import Any
 
 # Local imports
 from shallweswim import config as config_lib
@@ -221,31 +222,57 @@ class Data(object):
 
         This runs as an asyncio task and periodically checks if datasets
         have expired. If so, it fetches new data and generates updated plots.
+
+        This method catches and logs exceptions to prevent silent failures in the event loop,
+        but will re-raise them to ensure they're not silently ignored.
         """
-        while True:
-            if self._expired("tides_and_currents"):
-                await self._update_dataset("tides_and_currents")
+        try:
+            while True:
+                try:
+                    if self._expired("tides_and_currents"):
+                        await self._update_dataset("tides_and_currents")
 
-            if self._expired("live_temps"):
-                await self._update_dataset("live_temps")
-                # Only generate plot if we have valid data
-                if self.live_temps is not None and len(self.live_temps) >= 2:
-                    plot.generate_and_save_live_temp_plot(
-                        self.live_temps, self.config.code, self.config.temp_station_name
+                    if self._expired("live_temps"):
+                        await self._update_dataset("live_temps")
+                        # Only generate plot if we have valid data
+                        if self.live_temps is not None and len(self.live_temps) >= 2:
+                            plot.generate_and_save_live_temp_plot(
+                                self.live_temps,
+                                self.config.code,
+                                self.config.temp_station_name,
+                            )
+
+                    if self._expired("historic_temps"):
+                        await self._update_dataset("historic_temps")
+                        # Only generate plots if we have valid historical data
+                        if (
+                            self.historic_temps is not None
+                            and len(self.historic_temps) >= 10
+                        ):
+                            plot.generate_and_save_historic_plots(
+                                self.historic_temps,
+                                self.config.code,
+                                self.config.temp_station_name,
+                            )
+                except Exception as e:
+                    # Log the exception but don't swallow it - let it propagate
+                    logging.exception(
+                        f"Error in data update loop for {self.config.code}: {e}"
                     )
+                    # Re-raise to ensure error is not silently ignored
+                    raise
 
-            if self._expired("historic_temps"):
-                await self._update_dataset("historic_temps")
-                # Only generate plots if we have valid historical data
-                if self.historic_temps is not None and len(self.historic_temps) >= 10:
-                    plot.generate_and_save_historic_plots(
-                        self.historic_temps,
-                        self.config.code,
-                        self.config.temp_station_name,
-                    )
-
-            # TODO: Can probably be increased to 1s even... but would need to add API spam buffer
-            await asyncio.sleep(60)
+                # TODO: Can probably be increased to 1s even... but would need to add API spam buffer
+                await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            # This is expected when the task is cancelled, so we let it propagate
+            raise
+        except Exception as e:
+            # Log any unexpected exceptions at the outer level as well
+            logging.exception(
+                f"Fatal error in data update loop for {self.config.code}: {e}"
+            )
+            raise  # Re-raise to ensure error is not silently ignored
 
     def start(self) -> None:
         """Start the background data fetching process.
@@ -265,6 +292,9 @@ class Data(object):
         logging.info("Starting data fetch task")
         self._update_task = asyncio.create_task(self.__update_loop())
         self._update_task.set_name(task_name)
+
+        # Add exception handling to the task
+        self._update_task.add_done_callback(self._handle_task_exception)
 
     def prev_next_tide(self) -> TideInfo:
         """Return the previous tide and next two tides.
@@ -658,6 +688,27 @@ class Data(object):
             logging.warning(f"Historic temp fetch error: {e}")
 
         # TODO: Test by disabling local wifi briefly to ensure error handling works
+
+    def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
+        """Handle exceptions from asyncio tasks to prevent them from being silently ignored.
+
+        This callback is attached to asyncio tasks and will log any exceptions that occur,
+        ensuring they're not silently swallowed by the event loop.
+
+        Args:
+            task: The asyncio task that completed (successfully or with an exception)
+        """
+        try:
+            # If the task raised an exception, this will re-raise it
+            task.result()
+        except asyncio.CancelledError:
+            # Task was cancelled, which is normal during shutdown
+            logging.debug(f"Task {task.get_name()} was cancelled")
+        except Exception as e:
+            # Log the exception that was raised by the task
+            logging.exception(f"Unhandled exception in task {task.get_name()}: {e}")
+            # You could potentially restart the task here or notify an admin
+            # For now, we'll just make sure it's logged properly
 
     def _remove_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove known erroneous data points from a DataFrame.

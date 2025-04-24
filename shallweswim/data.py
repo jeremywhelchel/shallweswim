@@ -29,9 +29,9 @@ from shallweswim.types import (
     CurrentInfo,
 )
 
-# 60-second buffer before reporting data as expired
+# Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
-EXPIRATION_BUFFER = datetime.timedelta(seconds=60)
+EXPIRATION_BUFFER = datetime.timedelta(seconds=300)
 
 
 # Use the utility function for consistent time handling

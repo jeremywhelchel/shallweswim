@@ -1,9 +1,9 @@
 {% extends "base.html" %} {% from "macros.html" import windy_iframe %} {% block
 description %}Coney Island Brighton Beach open water swimming conditions{%
 endblock %} {% block stylesheets %} {{ super() }} {% endblock %} {% block
-body_attributes %}class="embed-page" onload="initEmbedPage();"{% endblock %} {%
-block forecast %} {{ windy_iframe(lat=config.latitude, lon=config.longitude) }}
-{% endblock %} {% block footer %}
+body_attributes %}class="embed-page"{% endblock %} {% block forecast %} {{
+windy_iframe(lat=config.latitude, lon=config.longitude) }} {% endblock %} {%
+block footer %}
 <br />
 <br />
 <div class="tides">

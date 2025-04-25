@@ -548,6 +548,16 @@ window.addEventListener("load", function () {
     console.log("Window loaded: Re-initializing currents page");
     initCurrentsPage();
   }
+  // Check if we're on the embed page
+  else if (window.location.pathname.includes("/embed")) {
+    console.log("Window loaded: Re-initializing embed page");
+    initEmbedPage();
+  }
+  // Also handle the index page here
+  else {
+    console.log("Window loaded: Re-initializing main page");
+    initPage();
+  }
 });
 
 /**

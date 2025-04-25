@@ -48,7 +48,7 @@
         locationCode: "{{ config.code }}",
       };
     </script>
-    <script async src="/static/main.js"></script>
+    <script src="/static/main.js" defer></script>
     {% endblock %} {% block head_extra %}{% endblock %}
   </head>
   <body {% block body_attributes %}{% endblock %}>

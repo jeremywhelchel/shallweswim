@@ -2,8 +2,8 @@
 description %}{{ config.description }}{% endblock %} {% block scripts %} {{
 super() }} {% if config.code == 'nyc' %}
 <script async src="https://www.youtube.com/iframe_api"></script>
-{% endif %} {% endblock %} {% block body_attributes %}onload="initPage();"{%
-endblock %} {% block header %}
+{% endif %} {% endblock %} {% block body_attributes %}{% endblock %} {% block
+header %}
 <div id="snow"></div>
 <h1 class="title">shall we swim today?</h1>
 <p>

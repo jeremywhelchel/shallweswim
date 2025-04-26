@@ -240,6 +240,20 @@ CONFIG_LIST = [
         description="La Jolla Cove open water swimming conditions",
     ),
     # LocationConfig(
+    #     code="chi",
+    #     name="Chicago",
+    #     swim_location="TBD",
+    #     swim_location_link="TBD",
+    #     latitude=41.894,
+    #     longitude=-87.613,
+    #     timezone=pytz.timezone("US/Central"),
+    #     #temp_station=45198,
+    #     #temp_station_name="TBD",
+    #     #tide_station=,
+    #     #tide_station_name="",
+    #     description="Chicago TBD open water swimming conditions",
+    # ),
+    # LocationConfig(
     #    # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
     #    code="sfo",
     #    name="San Francisco",

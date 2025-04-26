@@ -11,7 +11,8 @@ import contextlib
 import datetime
 import logging
 import os
-from typing import AsyncGenerator
+import signal
+from typing import Any, AsyncGenerator
 
 # Third-party imports
 import fastapi
@@ -44,7 +45,10 @@ async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
         wait_for_data=False,  # Don't block app startup waiting for data
     )
     yield
-    # No cleanup needed, but would be handled here if necessary
+    # Shutdown handling
+    logging.info("-----------------------------------------------")
+    logging.info("Shutting down app")
+    # Any cleanup needed would be handled here
 
 
 app = fastapi.FastAPI(lifespan=lifespan)
@@ -237,6 +241,27 @@ async def index_w_location(
     )
 
 
+def setup_signal_handlers() -> None:
+    """Set up signal handlers to log when specific signals are received.
+
+    Note: Only registers a handler for SIGTERM, as handling SIGINT would
+    interfere with the default Ctrl+C behavior that uvicorn relies on.
+    """
+    original_sigterm_handler = signal.getsignal(signal.SIGTERM)
+
+    def sigterm_handler(sig: int, frame: Any) -> None:
+        # Log the signal
+        logging.warning("Received SIGTERM signal, beginning shutdown")
+
+        # Call original handler if it was a callable
+        if callable(original_sigterm_handler):
+            original_sigterm_handler(sig, frame)
+
+    # Only register handler for SIGTERM (which Google Cloud Run sends)
+    # We don't handle SIGINT here to avoid interfering with uvicorn's Ctrl+C handling
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
+
 def start_app() -> fastapi.FastAPI:
     """Initialize and return the FastAPI application.
 
@@ -257,7 +282,12 @@ def start_app() -> fastapi.FastAPI:
         logging.getLogger().setLevel(logging.INFO)
         logging.info("Using standard logging")
 
+    logging.info("***********************************************")
     logging.info("Starting app")
+
+    # Set up signal handlers to log signals
+    setup_signal_handlers()
+
     return app
 
 

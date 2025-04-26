@@ -11,6 +11,9 @@ relevant information about swimming locations. The most important elements inclu
 3. NOAA Data Sources: Station IDs for fetching tides, temperature, and currents data
 4. Timezone: For correct time-based display of conditions
 
+The configuration uses specialized Pydantic models (TempConfig, TideConfig, CurrentsConfig)
+to define data sources for each type of measurement, providing more flexibility and abstraction.
+
 Configurations for all supported locations are stored in CONFIG_LIST and can be
 accessed via the Get() function using the location's 3-letter code.
 """
@@ -26,6 +29,80 @@ from pydantic import BaseModel, Field
 
 # Local imports
 from shallweswim import util
+
+
+class TempConfig(BaseModel, frozen=True):
+    """Configuration for temperature data source.
+
+    Defines the NOAA station for fetching water/air temperature data.
+    """
+
+    station: Annotated[
+        Optional[int],
+        Field(
+            ge=1000000,
+            le=9999999,
+            description="NOAA temperature station ID (7 digits) for fetching water/air temperature (e.g., 8518750 for NYC Battery)",
+        ),
+    ] = None
+
+    station_name: Annotated[
+        Optional[str],
+        Field(
+            description="Human-readable name of the temperature station (e.g., 'The Battery, NY')"
+        ),
+    ] = None
+
+    outliers: Annotated[
+        List[str],
+        Field(
+            description="List of timestamps (YYYY-MM-DD HH:MM:SS format) with erroneous temperature data to remove"
+        ),
+    ] = []
+
+
+class TideConfig(BaseModel, frozen=True):
+    """Configuration for tide data source.
+
+    Defines the NOAA station for fetching tide predictions.
+    """
+
+    station: Annotated[
+        Optional[int],
+        Field(
+            ge=1000000,
+            le=9999999,
+            description="NOAA tide station ID (7 digits) for fetching tide predictions (e.g., 8517741 for Coney Island)",
+        ),
+    ] = None
+
+    station_name: Annotated[
+        Optional[str],
+        Field(
+            description="Human-readable name of the tide station (e.g., 'Coney Island, NY')"
+        ),
+    ] = None
+
+
+class CurrentsConfig(BaseModel, frozen=True):
+    """Configuration for currents data source.
+
+    Defines the NOAA station(s) for fetching water current predictions.
+    """
+
+    stations: Annotated[
+        Optional[List[Annotated[str, Field(min_length=1)]]],
+        Field(
+            description="Current stations for water current speed and direction (strings like 'ACT3876', unlike temp/tide stations)"
+        ),
+    ] = None
+
+    predictions_available: Annotated[
+        bool,
+        Field(
+            description="Whether current predictions are available for this location"
+        ),
+    ] = False
 
 
 class LocationConfig(BaseModel, frozen=True):
@@ -99,59 +176,20 @@ class LocationConfig(BaseModel, frozen=True):
         ),
     ]
 
-    current_predictions: Annotated[
-        bool,
-        Field(
-            description="Whether current predictions are available for this location"
-        ),
-    ] = False
-
-    temp_outliers: Annotated[
-        List[str],
-        Field(
-            description="List of timestamps (YYYY-MM-DD HH:MM:SS format) with erroneous temperature data to remove"
-        ),
-    ] = []
-
-    # NOAA Data Station Parameters
-
-    temp_station: Annotated[
-        Optional[int],
-        Field(
-            ge=1000000,
-            le=9999999,
-            description="NOAA temperature station ID (7 digits) for fetching water/air temperature (e.g., 8518750 for NYC Battery)",
-        ),
+    # Data source configurations
+    temp_source: Annotated[
+        Optional[TempConfig],
+        Field(description="Configuration for temperature data source"),
     ] = None
 
-    tide_station: Annotated[
-        Optional[int],
-        Field(
-            ge=1000000,
-            le=9999999,
-            description="NOAA tide station ID (7 digits) for fetching tide predictions (e.g., 8517741 for Coney Island)",
-        ),
+    tide_source: Annotated[
+        Optional[TideConfig],
+        Field(description="Configuration for tide data source"),
     ] = None
 
-    currents_stations: Annotated[
-        Optional[List[Annotated[str, Field(min_length=1)]]],
-        Field(
-            description="Current stations for water current speed and direction (strings like 'ACT3876', unlike temp/tide stations)"
-        ),
-    ] = None
-
-    temp_station_name: Annotated[
-        Optional[str],
-        Field(
-            description="Human-readable name of the temperature station (e.g., 'The Battery, NY')"
-        ),
-    ] = None
-
-    tide_station_name: Annotated[
-        Optional[str],
-        Field(
-            description="Human-readable name of the tide station (e.g., 'Coney Island, NY')"
-        ),
+    currents_source: Annotated[
+        Optional[CurrentsConfig],
+        Field(description="Configuration for currents data source"),
     ] = None
 
     @property
@@ -208,21 +246,26 @@ CONFIG_LIST = [
         latitude=40.573,
         longitude=-73.954,
         timezone=pytz.timezone("US/Eastern"),
-        current_predictions=True,
-        temp_station=8518750,
-        temp_station_name="The Battery, NY",
-        tide_station=8517741,
-        tide_station_name="Coney Island, NY",
-        currents_stations=[
-            "ACT3876",  # Coney Island Channel
-            "NYH1905",  # Rockaway Inslet
-        ],
-        # Known erroneous temperature readings specific to NYC
-        temp_outliers=[
-            "2017-05-23 11:00:00",
-            "2017-05-23 12:00:00",
-            "2020-05-22 13:00:00",
-        ],
+        temp_source=TempConfig(
+            station=8518750,
+            station_name="The Battery, NY",
+            outliers=[
+                "2017-05-23 11:00:00",
+                "2017-05-23 12:00:00",
+                "2020-05-22 13:00:00",
+            ],
+        ),
+        tide_source=TideConfig(
+            station=8517741,
+            station_name="Coney Island, NY",
+        ),
+        currents_source=CurrentsConfig(
+            stations=[
+                "ACT3876",  # Coney Island Channel
+                "NYH1905",  # Rockaway Inslet
+            ],
+            predictions_available=True,
+        ),
         description="Coney Island Brighton Beach open water swimming conditions",
     ),
     LocationConfig(
@@ -233,10 +276,14 @@ CONFIG_LIST = [
         latitude=32.850,
         longitude=-117.272,
         timezone=pytz.timezone("US/Pacific"),
-        temp_station=9410230,
-        temp_station_name="La Jolla, CA",
-        tide_station=9410230,
-        tide_station_name="La Jolla, CA",
+        temp_source=TempConfig(
+            station=9410230,
+            station_name="La Jolla, CA",
+        ),
+        tide_source=TideConfig(
+            station=9410230,
+            station_name="La Jolla, CA",
+        ),
         description="La Jolla Cove open water swimming conditions",
     ),
     # LocationConfig(
@@ -247,10 +294,14 @@ CONFIG_LIST = [
     #     latitude=41.894,
     #     longitude=-87.613,
     #     timezone=pytz.timezone("US/Central"),
-    #     #temp_station=45198,
-    #     #temp_station_name="TBD",
-    #     #tide_station=,
-    #     #tide_station_name="",
+    #     # temp_source=TempConfig(
+    #     #     station=45198,
+    #     #     station_name="TBD",
+    #     # ),
+    #     # tide_source=TideConfig(
+    #     #     station=None,
+    #     #     station_name="",
+    #     # ),
     #     description="Chicago TBD open water swimming conditions",
     # ),
     # LocationConfig(
@@ -264,10 +315,14 @@ CONFIG_LIST = [
     #    timezone=pytz.timezone("US/Pacific"),
     #    # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
     #    # It is not a live reading (and not available via the same API), so we don't use it.
-    #    temp_station=9414290,
-    #    temp_station_name="San Francisco, CA",
-    #    tide_station=9414305,
-    #    tide_station_name="North Point Pier",
+    #    temp_source=TempConfig(
+    #        station=9414290,
+    #        station_name="San Francisco, CA",
+    #    ),
+    #    tide_source=TideConfig(
+    #        station=9414305,
+    #        station_name="North Point Pier",
+    #    ),
     #    description="San Francisco Aquatic Park open water swimming conditions",
     #    # webcam https://dolphinclub.org/weather/ (code in page JS source...)
     # ),

@@ -259,7 +259,11 @@ class Data(object):
                             plot.generate_and_save_live_temp_plot(
                                 self.live_temps,
                                 self.config.code,
-                                self.config.temp_station_name,
+                                (
+                                    self.config.temp_source.station_name
+                                    if self.config.temp_source
+                                    else None
+                                ),
                             )
 
                     if self._expired("historic_temps"):
@@ -272,7 +276,11 @@ class Data(object):
                             plot.generate_and_save_historic_plots(
                                 self.historic_temps,
                                 self.config.code,
-                                self.config.temp_station_name,
+                                (
+                                    self.config.temp_source.station_name
+                                    if self.config.temp_source
+                                    else None
+                                ),
                             )
                 except Exception as e:
                     # Log the exception but don't swallow it - let it propagate
@@ -612,16 +620,17 @@ class Data(object):
         """
         logging.info(f"[{self.config.code}] Fetching tides and currents")
         try:
-            if self.config.tide_station:
+            if self.config.tide_source and self.config.tide_source.station:
                 self.tides = await noaa.NoaaApi.tides(
-                    station=self.config.tide_station, location_code=self.config.code
+                    station=self.config.tide_source.station,
+                    location_code=self.config.code,
                 )
 
-            if self.config.currents_stations:
+            if self.config.currents_source and self.config.currents_source.stations:
                 # Use asyncio.gather to fetch all current stations concurrently
                 current_tasks = [
                     noaa.NoaaApi.currents(stn, location_code=self.config.code)
-                    for stn in self.config.currents_stations
+                    for stn in self.config.currents_source.stations
                 ]
                 currents = await asyncio.gather(*current_tasks)
                 self.currents = (
@@ -647,7 +656,9 @@ class Data(object):
         Raises:
             AssertionError: If temperature station is not configured
         """
-        assert self.config.temp_station, "Temperature station not configured"
+        assert (
+            self.config.temp_source and self.config.temp_source.station
+        ), "Temperature station not configured"
         logging.info(f"[{self.config.code}] Fetching historic temps for year {year}")
 
         begin_date = datetime.datetime(year, 1, 1)
@@ -655,7 +666,7 @@ class Data(object):
         try:
             # Get both air and water temperatures concurrently
             air_temp_task = noaa.NoaaApi.temperature(
-                self.config.temp_station,
+                (self.config.temp_source.station if self.config.temp_source else 0),  # type: ignore
                 "air_temperature",
                 begin_date,
                 end_date,
@@ -663,7 +674,7 @@ class Data(object):
                 location_code=self.config.code,
             )
             water_temp_task = noaa.NoaaApi.temperature(
-                self.config.temp_station,
+                (self.config.temp_source.station if self.config.temp_source else 0),  # type: ignore
                 "water_temperature",
                 begin_date,
                 end_date,
@@ -691,7 +702,7 @@ class Data(object):
         Skips fetching if no temperature station is configured.
         Logs warnings if the NOAA API returns an error.
         """
-        if not self.config.temp_station:
+        if not (self.config.temp_source and self.config.temp_source.station):
             return
         logging.info(f"[{self.config.code}] Fetching historic temps")
         try:
@@ -752,11 +763,11 @@ class Data(object):
         Returns:
             DataFrame with outliers removed
         """
-        if not self.config.temp_outliers:
+        if not self.config.temp_source or not self.config.temp_source.outliers:
             return df
 
         result_df = df.copy()
-        for timestamp in self.config.temp_outliers:
+        for timestamp in self.config.temp_source.outliers:
             try:
                 result_df = result_df.drop(pd.to_datetime(timestamp))
             except KeyError:
@@ -777,7 +788,7 @@ class Data(object):
         Logs the age of the most recent data point.
         Logs warnings if the NOAA API returns an error.
         """
-        if not self.config.temp_station:
+        if not (self.config.temp_source and self.config.temp_source.station):
             return
         logging.info(f"[{self.config.code}] Fetching live temps")
         begin_date = datetime.datetime.today() - datetime.timedelta(days=8)
@@ -786,14 +797,14 @@ class Data(object):
         try:
             # Fetch air and water temperature data concurrently
             air_temp_task = noaa.NoaaApi.temperature(
-                self.config.temp_station,
+                (self.config.temp_source.station if self.config.temp_source else 0),  # type: ignore
                 "air_temperature",
                 begin_date,
                 end_date,
                 location_code=self.config.code,
             )
             water_temp_task = noaa.NoaaApi.temperature(
-                self.config.temp_station,
+                (self.config.temp_source.station if self.config.temp_source else 0),  # type: ignore
                 "water_temperature",
                 begin_date,
                 end_date,

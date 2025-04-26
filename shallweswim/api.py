@@ -93,7 +93,11 @@ async def initialize_location_data(
 
                 # Only check currents if the location has current predictions enabled
                 location_config = config_lib.get(code)
-                if location_config is not None and location_config.current_predictions:
+                if (
+                    location_config is not None
+                    and location_config.currents_source
+                    and location_config.currents_source.predictions_available
+                ):
                     assert (
                         data_dict[code].currents is not None
                     ), f"{code} current data was not loaded"
@@ -162,7 +166,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 timestamp=current_time.isoformat(),
                 water_temp=current_temp,
                 units="F",
-                station_name=cfg.temp_station_name,
+                station_name=cfg.temp_source.station_name if cfg.temp_source else None,
             ),
             tides=TidesInfo(past=past_tides, next=next_tides),
         )
@@ -262,7 +266,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         cfg = validate_location(location)
 
         # Check if this location supports current predictions
-        if not cfg.current_predictions:
+        if not cfg.currents_source or not cfg.currents_source.predictions_available:
             raise HTTPException(
                 status_code=404,
                 detail=f"Location '{location}' does not support current predictions",

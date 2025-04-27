@@ -158,4 +158,10 @@ block content %} {% if config.code == 'nyc' %}
     >
   </li>
 </ul>
+<div class="location-nav">
+  {% for loc_code, loc_config in all_locations.items() %}
+  <!-- prettier-ignore -->
+  <a href="/{{ loc_code }}" {% if config.code == loc_code %}class="active"{% endif %}>{{ loc_code }}</a>
+  {% endfor %}
+</div>
 {% endblock %}

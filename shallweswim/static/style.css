@@ -185,6 +185,11 @@ h6 {
   background-color: orange;
 }
 
+/* Style for the active location link */
+.active {
+  font-weight: bold;
+}
+
 /* ======================================
  * SPECIAL EFFECTS
  * ====================================== */

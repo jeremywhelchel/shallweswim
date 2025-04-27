@@ -237,6 +237,7 @@ async def index_w_location(
         name="index.html",
         context=dict(
             config=cfg,
+            all_locations=config.CONFIGS,
         ),
     )
 

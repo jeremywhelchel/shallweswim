@@ -83,14 +83,27 @@ class Feed(BaseModel, abc.ABC):
             raise ValueError("Data not yet fetched")
         return self._data
 
+    def log(self, message: str, level: int = logging.INFO) -> None:
+        """Log a message with standardized formatting including location code.
+
+        Args:
+            message: The message to log
+            level: The logging level (default: INFO)
+        """
+        log_message = f"[{self.location_config.code}] {message}"
+        logging.log(level, log_message)
+
     async def update(self) -> None:
         """Update the data from this feed if it is expired."""
         if not self.is_expired:
-            logging.debug(f"Skipping update for non-expired feed")
+            self.log(
+                f"Skipping update for non-expired {self.__class__.__name__}",
+                logging.DEBUG,
+            )
             return
 
         try:
-            logging.info(f"Fetching data for {self.__class__.__name__}")
+            self.log(f"Fetching data for {self.__class__.__name__}")
             df = await self._fetch()
 
             # Validate the dataframe before storing it
@@ -100,12 +113,12 @@ class Feed(BaseModel, abc.ABC):
 
             self._data = df
             self._timestamp = utc_now()
-            logging.info(f"Successfully updated {self.__class__.__name__}")
+            self.log(f"Successfully updated {self.__class__.__name__}")
 
         except Exception as e:
             # Log the error but don't suppress it - following the project principle
             # of failing fast for internal errors
-            logging.error(f"Error updating {self.__class__.__name__}: {e}")
+            self.log(f"Error updating {self.__class__.__name__}: {e}", logging.ERROR)
             raise
 
     @abc.abstractmethod
@@ -153,7 +166,7 @@ class Feed(BaseModel, abc.ABC):
             )
 
         # Log the latest datapoint timestamp
-        logging.info(f"{self.__class__.__name__} latest datapoint: {latest_dt}")
+        self.log(f"{self.__class__.__name__} latest datapoint: {latest_dt}")
 
     def _remove_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
         # XXX Implement
@@ -227,7 +240,7 @@ class NoaaTempFeed(TempFeed):
             return df
 
         except noaa.NoaaApiError as e:
-            logging.warning(f"[{self.location_config.code}] Live temp fetch error: {e}")
+            self.log(f"Live temp fetch error: {e}", logging.WARNING)
             # Following the project principle of failing fast for internal errors
             raise
 

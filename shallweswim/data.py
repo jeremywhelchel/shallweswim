@@ -133,12 +133,13 @@ def latest_time_value(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]
     return cast(datetime.datetime, dt)
 
 
-class Data(object):
-    """Data management for ShallWeSwim application.
+class DataManager(object):
+    """DataManager for ShallWeSwim application.
 
-    This class handles fetching, processing, and storing data from various NOAA sources,
-    including tides, currents, and temperature readings. It maintains data freshness
-    and provides methods to access processed data for the web application.
+    This class manages all the data feeds for one location. It handles fetching, processing,
+    and storing data from various NOAA sources, including tides, currents, and temperature
+    readings. It maintains data freshness and provides methods to access processed data
+    for the web application.
     """
 
     def __init__(self, config: config_lib.LocationConfig) -> None:

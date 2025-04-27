@@ -28,19 +28,19 @@ from shallweswim.types import (
 
 
 # Global data store for location data
-data: dict[str, data_lib.Data] = {}
+data: dict[str, data_lib.DataManager] = {}
 
 
 async def initialize_location_data(
     location_codes: list[str],
-    data_dict: Optional[dict[str, data_lib.Data]] = None,
+    data_dict: Optional[dict[str, data_lib.DataManager]] = None,
     wait_for_data: bool = False,
     max_wait_retries: int = 15,
     retry_interval: int = 1,
-) -> dict[str, data_lib.Data]:
+) -> dict[str, data_lib.DataManager]:
     """Initialize data for the specified locations.
 
-    This function handles initialization of Data objects for the specified locations.
+    This function handles initialization of DataManager objects for the specified locations.
     It can be used by both the main application and tests.
 
     Args:
@@ -51,7 +51,7 @@ async def initialize_location_data(
         retry_interval: Time in seconds between retries
 
     Returns:
-        Dictionary mapping location codes to initialized Data objects
+        Dictionary mapping location codes to initialized DataManager objects
 
     Raises:
         AssertionError: If a location's configuration cannot be found
@@ -67,7 +67,7 @@ async def initialize_location_data(
         assert cfg is not None, f"Config for location '{code}' not found"
 
         # Initialize data for this location
-        data_dict[code] = data_lib.Data(cfg)
+        data_dict[code] = data_lib.DataManager(cfg)
         data_dict[code].start()
 
     # Optionally wait for data to be fully loaded

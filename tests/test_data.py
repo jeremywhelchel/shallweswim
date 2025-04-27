@@ -11,7 +11,7 @@ import pytest_asyncio
 from typing import Any
 
 # Local imports
-from shallweswim.data import Data
+from shallweswim.data import DataManager
 from shallweswim.types import CurrentInfo  # Import from types module where it's defined
 from shallweswim import config as config_lib
 
@@ -73,15 +73,17 @@ def mock_current_data() -> pd.DataFrame:
 @pytest_asyncio.fixture
 async def mock_data_with_currents(
     mock_config: Any, mock_current_data: pd.DataFrame
-) -> Data:
-    """Create a Data instance with mock current data."""
-    data = Data(mock_config)
+) -> DataManager:
+    """Create a DataManager instance with mock current data."""
+    data = DataManager(mock_config)
     data.currents = mock_current_data
     return data
 
 
 @pytest.mark.asyncio
-async def test_current_prediction_at_flood_peak(mock_data_with_currents: Data) -> None:
+async def test_current_prediction_at_flood_peak(
+    mock_data_with_currents: DataManager,
+) -> None:
     """Test current prediction at a flood peak."""
     # Test at 3:00 PM (15:00) which is a flood peak at 1.5 knots
     t = datetime.datetime(2025, 4, 22, 15, 0, 0)
@@ -99,7 +101,7 @@ async def test_current_prediction_at_ebb_peak() -> None:
     # Create a custom test instance
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    data = Data(config)
+    data = DataManager(config)
 
     # Create a more comprehensive dataset for testing ebb currents
     # Create a single day with a complete cycle
@@ -167,7 +169,9 @@ async def test_current_prediction_at_ebb_peak() -> None:
 
 
 @pytest.mark.asyncio
-async def test_current_prediction_at_slack(mock_data_with_currents: Data) -> None:
+async def test_current_prediction_at_slack(
+    mock_data_with_currents: DataManager,
+) -> None:
     """Test current prediction at slack water."""
     # Test at 4:00 AM (4:00) which is near zero (0.1 knots)
     t = datetime.datetime(2025, 4, 22, 4, 0, 0)
@@ -184,7 +188,7 @@ async def test_current_prediction_strengthening() -> None:
     # Create a custom test instance with clear strengthening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    data = Data(config)
+    data = DataManager(config)
 
     # Create data with a clear strengthening pattern
     hours = [12, 13, 14]
@@ -215,7 +219,7 @@ async def test_current_prediction_weakening() -> None:
     # Create a custom test instance with clear weakening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    data = Data(config)
+    data = DataManager(config)
 
     # Create data with a clear weakening pattern
     hours = [15, 16, 17]
@@ -243,7 +247,7 @@ async def test_process_peaks_function() -> None:
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
 
-    data = Data(config)
+    data = DataManager(config)
 
     # Create a very distinct peak pattern
     index = pd.date_range(start="2025-04-22", periods=5, freq="h")
@@ -354,7 +358,7 @@ async def test_data_ready_property(
     Tests different combinations of dataset states to verify the ready property
     accurately represents if all data has been loaded and is not expired.
     """
-    data = Data(mock_config)
+    data = DataManager(mock_config)
 
     # Mock the _expired method to control its behavior based on timestamps
 

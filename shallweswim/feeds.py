@@ -335,13 +335,13 @@ class TempFeed(Feed, abc.ABC):
         return self.config.name or "Unknown Temperature Source"
 
 
-class NoaaTempFeed(TempFeed):
+class CoopsTempFeed(TempFeed):
     """NOAA CO-OPS specific implementation of temperature data feed.
 
     Fetches temperature data from NOAA CO-OPS stations using the CO-OPS API.
     """
 
-    config: config_lib.NoaaTempSource
+    config: config_lib.CoopsTempSource
 
     async def _fetch(self) -> pd.DataFrame:
         """Fetch temperature data from NOAA CO-OPS API.
@@ -384,14 +384,14 @@ class NoaaTempFeed(TempFeed):
 #    config: config_lib.UsgsTempSource
 
 
-class NoaaTidesFeed(Feed):
+class CoopsTidesFeed(Feed):
     """Feed for NOAA CO-OPS tide predictions.
 
     Fetches tide predictions from NOAA CO-OPS stations using the CO-OPS API.
     Tide predictions include high and low tide times and heights.
     """
 
-    config: config_lib.NoaaTideSource
+    config: config_lib.CoopsTideSource
 
     async def _fetch(self) -> pd.DataFrame:
         """Fetch tide predictions from NOAA CO-OPS API.
@@ -417,14 +417,14 @@ class NoaaTidesFeed(Feed):
             raise
 
 
-class NoaaCurrentsFeed(Feed):
+class CoopsCurrentsFeed(Feed):
     """Feed for NOAA CO-OPS current predictions.
 
     Fetches current predictions from NOAA CO-OPS stations using the CO-OPS API.
     Current predictions include velocity, direction, and type (flood/ebb/slack).
     """
 
-    config: config_lib.NoaaCurrentsSource
+    config: config_lib.CoopsCurrentsSource
 
     # The station to use for fetching currents data (optional, will use first station from config if not provided)
     station: Optional[str] = None
@@ -523,20 +523,20 @@ class MultiStationCurrentsFeed(CompositeFeed):
     complementary data about water conditions in the area.
     """
 
-    config: config_lib.NoaaCurrentsSource
+    config: config_lib.CoopsCurrentsSource
 
     # Whether to interpolate between flood/slack/ebb points for each station
     interpolate: bool = True
 
     def _get_feeds(self) -> List[Feed]:
-        """Create a NoaaCurrentsFeed for each station in the config.
+        """Create a CoopsCurrentsFeed for each station in the config.
 
         Returns:
-            List of NoaaCurrentsFeed instances, one for each station
+            List of CoopsCurrentsFeed instances, one for each station
         """
         feeds: List[Feed] = []
         for station in self.config.stations:
-            feed = NoaaCurrentsFeed(
+            feed = CoopsCurrentsFeed(
                 location_config=self.location_config,
                 config=self.config,
                 station=station,
@@ -591,18 +591,18 @@ class HistoricalTempsFeed(CompositeFeed):
     typical temperatures for a given date based on historical records.
     """
 
-    config: config_lib.NoaaTempSource
+    config: config_lib.CoopsTempSource
     start_year: int
     end_year: int
 
     def _get_feeds(self) -> List[Feed]:
-        """Create a NoaaTempFeed for each year in the range.
+        """Create a CoopsTempFeed for each year in the range.
 
         For the current year, caps the end date to today to avoid requesting future dates
-        from the NOAA API, which would result in an error.
+        from the CO-OPS API, which would result in an error.
 
         Returns:
-            List of NoaaTempFeed instances, one for each year in the range
+            List of CoopsTempFeed instances, one for each year in the range
         """
         feeds: List[Feed] = []
         current_date = utc_now()
@@ -623,7 +623,7 @@ class HistoricalTempsFeed(CompositeFeed):
             # Past years' data won't change, so they don't need to expire
             expiration = self.expiration_interval if year == current_date.year else None
 
-            feed = NoaaTempFeed(
+            feed = CoopsTempFeed(
                 location_config=self.location_config,
                 config=self.config,
                 start=start_date,

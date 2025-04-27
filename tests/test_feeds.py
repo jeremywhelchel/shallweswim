@@ -18,9 +18,9 @@ from pydantic import BaseModel
 from shallweswim import config as config_lib, util
 from shallweswim.feeds import (
     Feed,
-    NoaaTempFeed,
-    NoaaTidesFeed,
-    NoaaCurrentsFeed,
+    CoopsTempFeed,
+    CoopsTidesFeed,
+    CoopsCurrentsFeed,
     CompositeFeed,
     MultiStationCurrentsFeed,
     HistoricalTempsFeed,
@@ -43,26 +43,26 @@ def location_config() -> config_lib.LocationConfig:
 
 
 @pytest.fixture
-def temp_config() -> config_lib.NoaaTempSource:
+def temp_config() -> config_lib.CoopsTempSource:
     """Create a temperature source config fixture."""
-    return config_lib.NoaaTempSource(
+    return config_lib.CoopsTempSource(
         station=8518750, name="Test Station"  # Using a valid 7-digit station ID
     )
 
 
 @pytest.fixture
-def tide_config() -> config_lib.NoaaTideSource:
+def tide_config() -> config_lib.CoopsTideSource:
     """Create a tide source config fixture."""
-    return config_lib.NoaaTideSource(
+    return config_lib.CoopsTideSource(
         station=8517741,  # Using a valid 7-digit station ID
         station_name="Coney Island, NY",
     )
 
 
 @pytest.fixture
-def currents_config() -> config_lib.NoaaCurrentsSource:
+def currents_config() -> config_lib.CoopsCurrentsSource:
     """Create a currents source config fixture."""
-    return config_lib.NoaaCurrentsSource(
+    return config_lib.CoopsCurrentsSource(
         stations=["ACT3876", "NYH1905"],  # Using valid station IDs
     )
 
@@ -507,17 +507,17 @@ class TestFeedBase:
         assert_json_serializable(status)
 
 
-class TestNoaaTidesFeed:
-    """Tests for the NoaaTidesFeed class."""
+class TestCoopsTidesFeed:
+    """Tests for the CoopsTidesFeed class."""
 
     @pytest.mark.asyncio
     async def test_fetch_calls_noaa_client(
         self,
         location_config: config_lib.LocationConfig,
-        tide_config: config_lib.NoaaTideSource,
+        tide_config: config_lib.CoopsTideSource,
     ) -> None:
-        """Test that _fetch calls the NOAA client with correct parameters."""
-        # Create a mock NOAA API with autospec
+        """Test that _fetch calls the COOPS client with correct parameters."""
+        # Create a mock COOPS API with autospec
         with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.tides.return_value = pd.DataFrame(
@@ -533,7 +533,7 @@ class TestNoaaTidesFeed:
             )
 
             # Create the feed
-            feed = NoaaTidesFeed(
+            feed = CoopsTidesFeed(
                 location_config=location_config,
                 config=tide_config,
                 expiration_interval=datetime.timedelta(hours=24),
@@ -542,7 +542,7 @@ class TestNoaaTidesFeed:
             # Call _fetch
             result = await feed._fetch()
 
-            # Check that the NOAA API was called with correct parameters
+            # Check that the COOPS API was called with correct parameters
             MockCoopsApi.tides.assert_called_once()
             args, kwargs = MockCoopsApi.tides.call_args
 
@@ -560,16 +560,16 @@ class TestNoaaTidesFeed:
     async def test_fetch_handles_api_error(
         self,
         location_config: config_lib.LocationConfig,
-        tide_config: config_lib.NoaaTideSource,
+        tide_config: config_lib.CoopsTideSource,
     ) -> None:
         """Test that _fetch handles API errors correctly."""
-        # Create a mock NOAA API with autospec that raises an exception
+        # Create a mock COOPS API with autospec that raises an exception
         with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to raise an exception
             MockCoopsApi.tides.side_effect = Exception("API error")
 
             # Create the feed
-            feed = NoaaTidesFeed(
+            feed = CoopsTidesFeed(
                 location_config=location_config,
                 config=tide_config,
                 expiration_interval=datetime.timedelta(hours=24),
@@ -580,17 +580,17 @@ class TestNoaaTidesFeed:
                 await feed._fetch()
 
 
-class TestNoaaCurrentsFeed:
-    """Tests for the NoaaCurrentsFeed class."""
+class TestCoopsCurrentsFeed:
+    """Tests for the CoopsCurrentsFeed class."""
 
     @pytest.mark.asyncio
     async def test_fetch_calls_noaa_client(
         self,
         location_config: config_lib.LocationConfig,
-        currents_config: config_lib.NoaaCurrentsSource,
+        currents_config: config_lib.CoopsCurrentsSource,
     ) -> None:
-        """Test that _fetch calls the NOAA client with correct parameters."""
-        # Create a mock NOAA API with autospec
+        """Test that _fetch calls the COOPS client with correct parameters."""
+        # Create a mock COOPS API with autospec
         with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.currents.return_value = pd.DataFrame(
@@ -603,7 +603,7 @@ class TestNoaaCurrentsFeed:
             )
 
             # Create the feed
-            feed = NoaaCurrentsFeed(
+            feed = CoopsCurrentsFeed(
                 location_config=location_config,
                 config=currents_config,
                 station=currents_config.stations[0],  # Use the first station
@@ -613,7 +613,7 @@ class TestNoaaCurrentsFeed:
             # Call _fetch
             result = await feed._fetch()
 
-            # Check that the NOAA API was called with correct parameters
+            # Check that the COOPS API was called with correct parameters
             MockCoopsApi.currents.assert_called_once()
             args, kwargs = MockCoopsApi.currents.call_args
 
@@ -641,11 +641,11 @@ class TestNoaaCurrentsFeed:
     ) -> None:
         """Test that _fetch works with a valid station specified directly."""
         # Create a config with a valid station
-        config = config_lib.NoaaCurrentsSource(
+        config = config_lib.CoopsCurrentsSource(
             stations=["ACT3876", "NYH1905"],
         )
 
-        # Create a mock NOAA API with autospec
+        # Create a mock COOPS API with autospec
         with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.currents.return_value = pd.DataFrame(
@@ -658,7 +658,7 @@ class TestNoaaCurrentsFeed:
             )
 
             # Create the feed with a specific station
-            feed = NoaaCurrentsFeed(
+            feed = CoopsCurrentsFeed(
                 location_config=location_config,
                 config=config,
                 station="NYH1905",  # Specify the second station
@@ -668,7 +668,7 @@ class TestNoaaCurrentsFeed:
             # Call _fetch
             await feed._fetch()
 
-            # Check that the NOAA API was called with the specified station
+            # Check that the COOPS API was called with the specified station
             MockCoopsApi.currents.assert_called_once()
             args, _ = MockCoopsApi.currents.call_args
             assert args[0] == "NYH1905"
@@ -677,16 +677,16 @@ class TestNoaaCurrentsFeed:
     async def test_fetch_handles_api_error(
         self,
         location_config: config_lib.LocationConfig,
-        currents_config: config_lib.NoaaCurrentsSource,
+        currents_config: config_lib.CoopsCurrentsSource,
     ) -> None:
         """Test that _fetch handles API errors correctly."""
-        # Create a mock NOAA API with autospec that raises an exception
+        # Create a mock COOPS API with autospec that raises an exception
         with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to raise an exception
             MockCoopsApi.currents.side_effect = Exception("API error")
 
             # Create the feed
-            feed = NoaaCurrentsFeed(
+            feed = CoopsCurrentsFeed(
                 location_config=location_config,
                 config=currents_config,
                 station=currents_config.stations[0],
@@ -698,17 +698,17 @@ class TestNoaaCurrentsFeed:
                 await feed._fetch()
 
 
-class TestNoaaTempFeed:
-    """Tests for the NoaaTempFeed class."""
+class TestCoopsTempFeed:
+    """Tests for the CoopsTempFeed class."""
 
     @pytest.mark.asyncio
     async def test_fetch_calls_noaa_client(
         self,
         location_config: config_lib.LocationConfig,
-        temp_config: config_lib.NoaaTempSource,
+        temp_config: config_lib.CoopsTempSource,
     ) -> None:
-        """Test that _fetch calls the NOAA client with correct parameters."""
-        # Create a mock NOAA API with autospec
+        """Test that _fetch calls the COOPS client with correct parameters."""
+        # Create a mock COOPS API with autospec
         with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.temperature.return_value = pd.DataFrame(
@@ -723,7 +723,7 @@ class TestNoaaTempFeed:
             )
 
             # Create the feed
-            feed = NoaaTempFeed(
+            feed = CoopsTempFeed(
                 location_config=location_config,
                 config=temp_config,
                 interval="6-min",  # Use 6-minute intervals for live data
@@ -733,7 +733,7 @@ class TestNoaaTempFeed:
             # Call _fetch
             result = await feed._fetch()
 
-            # Check that the NOAA API was called with correct parameters
+            # Check that the COOPS API was called with correct parameters
             MockCoopsApi.temperature.assert_called_once()
             args, kwargs = MockCoopsApi.temperature.call_args
 
@@ -752,10 +752,10 @@ class TestNoaaTempFeed:
     async def test_fetch_with_date_range(
         self,
         location_config: config_lib.LocationConfig,
-        temp_config: config_lib.NoaaTempSource,
+        temp_config: config_lib.CoopsTempSource,
     ) -> None:
-        """Test that _fetch passes date range to NOAA API when provided."""
-        # Create a mock NOAA API with autospec
+        """Test that _fetch passes date range to COOPS API when provided."""
+        # Create a mock COOPS API with autospec
         with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.temperature.return_value = pd.DataFrame(
@@ -773,7 +773,7 @@ class TestNoaaTempFeed:
             start_date = datetime.datetime(2025, 4, 22, 0, 0, 0)
             end_date = datetime.datetime(2025, 4, 22, 23, 0, 0)
 
-            feed = NoaaTempFeed(
+            feed = CoopsTempFeed(
                 location_config=location_config,
                 config=temp_config,
                 interval="6-min",
@@ -786,7 +786,7 @@ class TestNoaaTempFeed:
             # Call _fetch
             await feed._fetch()
 
-            # Check that the NOAA API was called with the date range
+            # Check that the COOPS API was called with the date range
             MockCoopsApi.temperature.assert_called_once()
 
             # Instead of checking exact values, verify that start_date and end_date
@@ -801,10 +801,10 @@ class TestNoaaTempFeed:
     async def test_fetch_with_default_date_range(
         self,
         location_config: config_lib.LocationConfig,
-        temp_config: config_lib.NoaaTempSource,
+        temp_config: config_lib.CoopsTempSource,
     ) -> None:
         """Test that _fetch uses default date range when not provided."""
-        # Create a mock NOAA API with autospec
+        # Create a mock COOPS API with autospec
         with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.temperature.return_value = pd.DataFrame(
@@ -819,7 +819,7 @@ class TestNoaaTempFeed:
             )
 
             # Create the feed without start and end dates
-            feed = NoaaTempFeed(
+            feed = CoopsTempFeed(
                 location_config=location_config,
                 config=temp_config,
                 interval="6-min",
@@ -829,7 +829,7 @@ class TestNoaaTempFeed:
             # Call _fetch
             await feed._fetch()
 
-            # Check that the NOAA API was called with default date range
+            # Check that the COOPS API was called with default date range
             args, _ = MockCoopsApi.temperature.call_args
 
             # The default date range should be from today-8 days to today
@@ -962,7 +962,7 @@ class TestMultiStationCurrentsFeed:
     def multi_station_currents_feed(
         self,
         location_config: config_lib.LocationConfig,
-        currents_config: config_lib.NoaaCurrentsSource,
+        currents_config: config_lib.CoopsCurrentsSource,
     ) -> MultiStationCurrentsFeed:
         """Create a MultiStationCurrentsFeed fixture."""
         return MultiStationCurrentsFeed(
@@ -974,22 +974,22 @@ class TestMultiStationCurrentsFeed:
     def test_get_feeds_creates_correct_feeds(
         self,
         multi_station_currents_feed: MultiStationCurrentsFeed,
-        currents_config: config_lib.NoaaCurrentsSource,
+        currents_config: config_lib.CoopsCurrentsSource,
     ) -> None:
-        """Test that _get_feeds creates the correct number of NoaaCurrentsFeed instances."""
+        """Test that _get_feeds creates the correct number of CoopsCurrentsFeed instances."""
         # Get the feeds
         feeds = multi_station_currents_feed._get_feeds()
 
         # Check that we have the correct number of feeds
         assert len(feeds) == len(currents_config.stations)
 
-        # Check that each feed is a NoaaCurrentsFeed
+        # Check that each feed is a CoopsCurrentsFeed
         for feed in feeds:
-            assert isinstance(feed, NoaaCurrentsFeed)
+            assert isinstance(feed, CoopsCurrentsFeed)
 
         # Check that each feed is configured with the correct station
-        # We know these are NoaaCurrentsFeed instances which have station attribute
-        stations = [cast(NoaaCurrentsFeed, feed).station for feed in feeds]
+        # We know these are CoopsCurrentsFeed instances which have station attribute
+        stations = [cast(CoopsCurrentsFeed, feed).station for feed in feeds]
         assert set(stations) == set(currents_config.stations)
 
     def test_combine_feeds_with_single_dataframe(
@@ -1111,7 +1111,7 @@ class TestHistoricalTempsFeed:
     def historical_temps_feed(
         self,
         location_config: config_lib.LocationConfig,
-        temp_config: config_lib.NoaaTempSource,
+        temp_config: config_lib.CoopsTempSource,
     ) -> HistoricalTempsFeed:
         """Create a HistoricalTempsFeed fixture."""
         return HistoricalTempsFeed(
@@ -1125,16 +1125,16 @@ class TestHistoricalTempsFeed:
     def test_get_feeds_creates_correct_feeds(
         self, historical_temps_feed: HistoricalTempsFeed
     ) -> None:
-        """Test that _get_feeds creates the correct number of NoaaTempFeed instances."""
+        """Test that _get_feeds creates the correct number of CoopsTempFeed instances."""
         # Get the feeds
         feeds = historical_temps_feed._get_feeds()
 
         # Check that we have the correct number of feeds (2023-2024 = 2 years)
         assert len(feeds) == 2
 
-        # Check that each feed is a NoaaTempFeed
+        # Check that each feed is a CoopsTempFeed
         for feed in feeds:
-            assert isinstance(feed, NoaaTempFeed)
+            assert isinstance(feed, CoopsTempFeed)
 
         # Check that the feeds have the correct date ranges
         # Since we can't directly access the start/end dates of the feeds (they're used internally),

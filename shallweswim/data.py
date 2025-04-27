@@ -161,10 +161,10 @@ class DataManager(object):
             return None
 
         # Type check to ensure we're passing the right config type
-        if not isinstance(temp_config, config_lib.NoaaTempSource):
+        if not isinstance(temp_config, config_lib.CoopsTempSource):
             return None
 
-        return feeds.NoaaTempFeed(
+        return feeds.CoopsTempFeed(
             location_config=self.config,
             config=temp_config,
             # Start 24 hours ago to get a full day of data
@@ -191,7 +191,7 @@ class DataManager(object):
             return None
 
         # Type check to ensure we're passing the right config type
-        if not isinstance(temp_config, config_lib.NoaaTempSource):
+        if not isinstance(temp_config, config_lib.CoopsTempSource):
             return None
 
         # Get the start year from config or use default 2011
@@ -223,7 +223,7 @@ class DataManager(object):
         if not hasattr(tide_config, "station") or not tide_config.station:
             return None
 
-        return feeds.NoaaTidesFeed(
+        return feeds.CoopsTidesFeed(
             location_config=self.config,
             config=tide_config,
             # Set expiration interval to match our existing settings

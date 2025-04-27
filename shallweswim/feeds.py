@@ -92,9 +92,12 @@ class Feed(BaseModel, abc.ABC):
         try:
             logging.info(f"Fetching data for {self.__class__.__name__}")
             df = await self._fetch()
-            # XXX Perform some basic validation here
-            # XXX assert no tzinfo. log latest datapoint, etc...
-            # XXX remove outliers
+
+            # Validate the dataframe before storing it
+            self._validate_frame(df)
+
+            df = self._remove_outliers(df)
+
             self._data = df
             self._timestamp = utc_now()
             logging.info(f"Successfully updated {self.__class__.__name__}")
@@ -119,6 +122,38 @@ class Feed(BaseModel, abc.ABC):
             Exception: If fetching fails
         """
         ...
+
+    def _validate_frame(self, df: pd.DataFrame) -> None:
+        """Validate a dataframe to ensure it meets requirements.
+
+        Args:
+            df: DataFrame to validate
+
+        Raises:
+            ValueError: If the dataframe is empty or contains timezone info
+        """
+        # Check if dataframe is None or empty
+        if df is None:
+            raise ValueError(f"Received None dataframe from {self.__class__.__name__}")
+
+        if df.empty:
+            raise ValueError(f"Received empty dataframe from {self.__class__.__name__}")
+
+        # Check for timezone information in the index
+        if not isinstance(df.index, pd.DatetimeIndex):
+            raise ValueError(
+                f"DataFrame index is not a DatetimeIndex in {self.__class__.__name__}"
+            )
+
+        # Get the latest timestamp and check for timezone info
+        latest_dt = df.index[-1].to_pydatetime()
+        if latest_dt.tzinfo is not None:
+            raise ValueError(
+                f"DataFrame index contains timezone info in {self.__class__.__name__}; expected naive datetime"
+            )
+
+        # Log the latest datapoint timestamp
+        logging.info(f"{self.__class__.__name__} latest datapoint: {latest_dt}")
 
     def _remove_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
         # XXX Implement

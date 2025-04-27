@@ -15,7 +15,7 @@ import pytz
 from pydantic import BaseModel
 
 # Local imports
-from shallweswim import config as config_lib
+from shallweswim import config as config_lib, util
 from shallweswim.feeds import (
     Feed,
     NoaaTempFeed,
@@ -442,7 +442,7 @@ class TestFeedBase:
     def test_age_with_timestamp(self, concrete_feed: Feed) -> None:
         """Test that age returns the correct age as a timedelta."""
         # Set a timestamp 10 seconds in the past (using naive datetime)
-        now = datetime.datetime.utcnow()
+        now = util.utc_now()
         concrete_feed._timestamp = now - datetime.timedelta(seconds=10)
 
         # Check that age returns approximately 10 seconds as a timedelta
@@ -474,7 +474,7 @@ class TestFeedBase:
         """Test that status property returns correct information when data is available."""
         # Set data and timestamp (using naive datetime)
         concrete_feed._data = valid_temp_dataframe
-        concrete_feed._timestamp = datetime.datetime.utcnow()
+        concrete_feed._timestamp = util.utc_now()
         concrete_feed._ready_event.set()
 
         # Get the status dictionary
@@ -497,7 +497,7 @@ class TestFeedBase:
         """Test that status property returns a JSON serializable dictionary."""
         # Set data and timestamp
         concrete_feed._data = valid_temp_dataframe
-        concrete_feed._timestamp = datetime.datetime.utcnow()
+        concrete_feed._timestamp = util.utc_now()
         concrete_feed._ready_event.set()
 
         # Get the status dictionary

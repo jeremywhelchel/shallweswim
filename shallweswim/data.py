@@ -8,19 +8,19 @@ and provides the necessary data for plotting and presentation.
 import asyncio
 import datetime
 import logging
-from typing import Optional, Tuple, cast
+from typing import Any, Optional, Tuple, cast
 
 # Third-party imports
 import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
-from typing import Any
 
 # Local imports
 from shallweswim import config as config_lib
 from shallweswim import noaa
 from shallweswim import plot
 from shallweswim import util
+from shallweswim.config import NoaaTempSource
 from shallweswim.types import (
     DatasetName,
     LegacyChartInfo,
@@ -260,7 +260,7 @@ class Data(object):
                                 self.live_temps,
                                 self.config.code,
                                 (
-                                    self.config.temp_source.station_name
+                                    self.config.temp_source.name
                                     if self.config.temp_source
                                     else None
                                 ),
@@ -277,7 +277,7 @@ class Data(object):
                                 self.historic_temps,
                                 self.config.code,
                                 (
-                                    self.config.temp_source.station_name
+                                    self.config.temp_source.name
                                     if self.config.temp_source
                                     else None
                                 ),
@@ -645,7 +645,11 @@ class Data(object):
             logging.warning(f"[{self.config.code}] Tide fetch error: {e}")
 
     async def _fetch_historic_temp_year(self, year: int) -> pd.DataFrame:
-        """Fetch temperature data for a specific year.
+        """Fetch historical temperature data for a specified year.
+
+        This method retrieves both air and water temperature from the
+        NOAA API for the specified year, creating a complete dataset
+        with hourly readings.
 
         Args:
             year: The year to fetch data for
@@ -655,10 +659,19 @@ class Data(object):
 
         Raises:
             AssertionError: If temperature station is not configured
+            TypeError: If temperature source is not a supported type
         """
-        assert (
-            self.config.temp_source and self.config.temp_source.station
-        ), "Temperature station not configured"
+        assert self.config.temp_source, "Temperature source not configured"
+
+        temp_config = self.config.temp_source
+        station_id = None
+
+        if isinstance(temp_config, NoaaTempSource):
+            station_id = temp_config.station
+            assert station_id, "NOAA temperature station not configured"
+        else:
+            raise TypeError(f"Unsupported temperature source type: {type(temp_config)}")
+
         logging.info(f"[{self.config.code}] Fetching historic temps for year {year}")
 
         begin_date = datetime.datetime(year, 1, 1)
@@ -666,7 +679,7 @@ class Data(object):
         try:
             # Get both air and water temperatures concurrently
             air_temp_task = noaa.NoaaApi.temperature(
-                (self.config.temp_source.station if self.config.temp_source else 0),  # type: ignore
+                station_id,
                 "air_temperature",
                 begin_date,
                 end_date,
@@ -674,14 +687,14 @@ class Data(object):
                 location_code=self.config.code,
             )
             water_temp_task = noaa.NoaaApi.temperature(
-                (self.config.temp_source.station if self.config.temp_source else 0),  # type: ignore
+                station_id,
                 "water_temperature",
                 begin_date,
                 end_date,
                 interval="h",
                 location_code=self.config.code,
             )
-            # Wait for both requests to complete
+
             air_temp, water_temp = await asyncio.gather(air_temp_task, water_temp_task)
             # Merge the results
             df = pd.concat([air_temp, water_temp], axis=1)
@@ -702,8 +715,16 @@ class Data(object):
         Skips fetching if no temperature station is configured.
         Logs warnings if the NOAA API returns an error.
         """
-        if not (self.config.temp_source and self.config.temp_source.station):
+        if not self.config.temp_source:
             return
+
+        temp_config = self.config.temp_source
+
+        if isinstance(temp_config, NoaaTempSource):
+            if not temp_config.station:
+                return
+        else:
+            raise TypeError(f"Unsupported temperature source type: {type(temp_config)}")
         logging.info(f"[{self.config.code}] Fetching historic temps")
         try:
             years = range(2011, utc_now().year + 1)
@@ -724,8 +745,6 @@ class Data(object):
             self._historic_temps_timestamp = now
         except noaa.NoaaApiError as e:
             logging.warning(f"[{self.config.code}] Historic temp fetch error: {e}")
-
-        # TODO: Test by disabling local wifi briefly to ensure error handling works
 
     def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
         """Handle exceptions from asyncio tasks to prevent them from being silently ignored.
@@ -788,23 +807,39 @@ class Data(object):
         Logs the age of the most recent data point.
         Logs warnings if the NOAA API returns an error.
         """
-        if not (self.config.temp_source and self.config.temp_source.station):
+        if not self.config.temp_source:
+            logging.info(f"[{self.config.code}] No temperature source configured")
             return
+
+        temp_config = self.config.temp_source
+
+        if isinstance(temp_config, NoaaTempSource):
+            if not temp_config.station:
+                logging.info(
+                    f"[{self.config.code}] No NOAA station configured for temperature"
+                )
+                return
+        else:
+            raise TypeError(f"Unsupported temperature source type: {type(temp_config)}")
+
         logging.info(f"[{self.config.code}] Fetching live temps")
         begin_date = datetime.datetime.today() - datetime.timedelta(days=8)
         end_date = datetime.datetime.today()
         # TODO: Resample to 6min for more consistent data intervals
         try:
+            # We already know it's a NoaaTempSource with a valid station at this point
+            station_id = self.config.temp_source.station  # type: ignore
+
             # Fetch air and water temperature data concurrently
             air_temp_task = noaa.NoaaApi.temperature(
-                (self.config.temp_source.station if self.config.temp_source else 0),  # type: ignore
+                station_id,
                 "air_temperature",
                 begin_date,
                 end_date,
                 location_code=self.config.code,
             )
             water_temp_task = noaa.NoaaApi.temperature(
-                (self.config.temp_source.station if self.config.temp_source else 0),  # type: ignore
+                station_id,
                 "water_temperature",
                 begin_date,
                 end_date,

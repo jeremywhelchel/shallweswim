@@ -11,7 +11,7 @@ relevant information about swimming locations. The most important elements inclu
 3. NOAA Data Sources: Station IDs for fetching tides, temperature, and currents data
 4. Timezone: For correct time-based display of conditions
 
-The configuration uses specialized Pydantic models (TempConfig, TideConfig, CurrentsConfig)
+The configuration uses specialized Pydantic models (TempSource/NoaaTempSource, TideConfig, CurrentsConfig)
 to define data sources for each type of measurement, providing more flexibility and abstraction.
 
 Configurations for all supported locations are stored in CONFIG_LIST and can be
@@ -31,8 +31,29 @@ from pydantic import BaseModel, Field
 from shallweswim import util
 
 
-class TempConfig(BaseModel, frozen=True):
-    """Configuration for temperature data source.
+class TempSource(BaseModel, frozen=True):
+    """Base configuration for temperature data source.
+
+    Abstract base class for all temperature data sources.
+    """
+
+    name: Annotated[
+        Optional[str],
+        Field(
+            description="Human-readable name of the temperature source (e.g., 'The Battery, NY')"
+        ),
+    ] = None
+
+    outliers: Annotated[
+        List[str],
+        Field(
+            description="List of timestamps (YYYY-MM-DD HH:MM:SS format) with erroneous temperature data to remove"
+        ),
+    ] = []
+
+
+class NoaaTempSource(TempSource, frozen=True):
+    """NOAA-specific temperature data source configuration.
 
     Defines the NOAA station for fetching water/air temperature data.
     """
@@ -45,20 +66,6 @@ class TempConfig(BaseModel, frozen=True):
             description="NOAA temperature station ID (7 digits) for fetching water/air temperature (e.g., 8518750 for NYC Battery)",
         ),
     ] = None
-
-    station_name: Annotated[
-        Optional[str],
-        Field(
-            description="Human-readable name of the temperature station (e.g., 'The Battery, NY')"
-        ),
-    ] = None
-
-    outliers: Annotated[
-        List[str],
-        Field(
-            description="List of timestamps (YYYY-MM-DD HH:MM:SS format) with erroneous temperature data to remove"
-        ),
-    ] = []
 
 
 class TideConfig(BaseModel, frozen=True):
@@ -178,7 +185,7 @@ class LocationConfig(BaseModel, frozen=True):
 
     # Data source configurations
     temp_source: Annotated[
-        Optional[TempConfig],
+        Optional[TempSource],
         Field(description="Configuration for temperature data source"),
     ] = None
 
@@ -246,11 +253,10 @@ CONFIG_LIST = [
         latitude=40.573,
         longitude=-73.954,
         timezone=pytz.timezone("US/Eastern"),
-        temp_source=TempConfig(
+        temp_source=NoaaTempSource(
             station=8518750,
-            station_name="The Battery, NY",
+            name="The Battery, NY",
             outliers=[
-                "2017-05-23 11:00:00",
                 "2017-05-23 12:00:00",
                 "2020-05-22 13:00:00",
             ],
@@ -276,9 +282,9 @@ CONFIG_LIST = [
         latitude=32.850,
         longitude=-117.272,
         timezone=pytz.timezone("US/Pacific"),
-        temp_source=TempConfig(
+        temp_source=NoaaTempSource(
             station=9410230,
-            station_name="La Jolla, CA",
+            name="La Jolla, CA",
         ),
         tide_source=TideConfig(
             station=9410230,
@@ -294,9 +300,9 @@ CONFIG_LIST = [
     #     latitude=41.894,
     #     longitude=-87.613,
     #     timezone=pytz.timezone("US/Central"),
-    #     # temp_source=TempConfig(
+    #     # temp_source=NoaaTempSource(
     #     #     station=45198,
-    #     #     station_name="TBD",
+    #     #     name="TBD",
     #     # ),
     #     # tide_source=TideConfig(
     #     #     station=None,
@@ -315,9 +321,9 @@ CONFIG_LIST = [
     #    timezone=pytz.timezone("US/Pacific"),
     #    # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
     #    # It is not a live reading (and not available via the same API), so we don't use it.
-    #    temp_source=TempConfig(
+    #    temp_source=NoaaTempSource(
     #        station=9414290,
-    #        station_name="San Francisco, CA",
+    #        name="San Francisco, CA",
     #    ),
     #    tide_source=TideConfig(
     #        station=9414305,

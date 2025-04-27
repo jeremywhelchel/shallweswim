@@ -166,7 +166,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 timestamp=current_time.isoformat(),
                 water_temp=current_temp,
                 units="F",
-                station_name=cfg.temp_source.station_name if cfg.temp_source else None,
+                station_name=cfg.temp_source.name if cfg.temp_source else None,
             ),
             tides=TidesInfo(past=past_tides, next=next_tides),
         )

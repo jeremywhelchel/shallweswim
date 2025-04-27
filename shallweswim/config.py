@@ -11,7 +11,7 @@ relevant information about swimming locations. The most important elements inclu
 3. NOAA Data Sources: Station IDs for fetching tides, temperature, and currents data
 4. Timezone: For correct time-based display of conditions
 
-The configuration uses specialized Pydantic models (TempSource/NoaaTempSource, TideConfig, CurrentsConfig)
+The configuration uses specialized Pydantic models (TempSource/NoaaTempSource, NoaaTideSource, NoaaCurrentsSource)
 to define data sources for each type of measurement, providing more flexibility and abstraction.
 
 Configurations for all supported locations are stored in CONFIG_LIST and can be
@@ -68,7 +68,7 @@ class NoaaTempSource(TempSource, frozen=True):
     ]
 
 
-class TideConfig(BaseModel, frozen=True):
+class NoaaTideSource(BaseModel, frozen=True):
     """Configuration for tide data source.
 
     Defines the NOAA station for fetching tide predictions.
@@ -91,7 +91,7 @@ class TideConfig(BaseModel, frozen=True):
     ] = None
 
 
-class CurrentsConfig(BaseModel, frozen=True):
+class NoaaCurrentsSource(BaseModel, frozen=True):
     """Configuration for currents data source.
 
     Defines the NOAA station(s) for fetching water current predictions.
@@ -190,12 +190,12 @@ class LocationConfig(BaseModel, frozen=True):
     ] = None
 
     tide_source: Annotated[
-        Optional[TideConfig],
+        Optional[NoaaTideSource],
         Field(description="Configuration for tide data source"),
     ] = None
 
     currents_source: Annotated[
-        Optional[CurrentsConfig],
+        Optional[NoaaCurrentsSource],
         Field(description="Configuration for currents data source"),
     ] = None
 
@@ -261,11 +261,11 @@ CONFIG_LIST = [
                 "2020-05-22 13:00:00",
             ],
         ),
-        tide_source=TideConfig(
+        tide_source=NoaaTideSource(
             station=8517741,
             station_name="Coney Island, NY",
         ),
-        currents_source=CurrentsConfig(
+        currents_source=NoaaCurrentsSource(
             stations=[
                 "ACT3876",  # Coney Island Channel
                 "NYH1905",  # Rockaway Inslet
@@ -286,7 +286,7 @@ CONFIG_LIST = [
             station=9410230,
             name="La Jolla, CA",
         ),
-        tide_source=TideConfig(
+        tide_source=NoaaTideSource(
             station=9410230,
             station_name="La Jolla, CA",
         ),
@@ -304,7 +304,7 @@ CONFIG_LIST = [
     #     #     station=45198,
     #     #     name="TBD",
     #     # ),
-    #     # tide_source=TideConfig(
+    #     # tide_source=NoaaTideSource(
     #     #     station=None,
     #     #     station_name="",
     #     # ),
@@ -327,7 +327,7 @@ CONFIG_LIST = [
     #        station=9414769,
     #        name="San Francisco, CA",
     #    ),
-    #    tide_source=TideConfig(
+    #    tide_source=NoaaTideSource(
     #        station=9414305,
     #        station_name="North Point Pier",
     #    ),

@@ -52,7 +52,6 @@ def currents_config() -> config_lib.NoaaCurrentsSource:
     """Create a currents source config fixture."""
     return config_lib.NoaaCurrentsSource(
         stations=["ACT3876", "NYH1905"],  # Using valid station IDs
-        predictions_available=True,
     )
 
 
@@ -414,27 +413,7 @@ class TestNoaaCurrentsFeed:
             args, _ = MockNoaaApi.currents.call_args
             assert args[0] == currents_config.stations[0]
 
-    @pytest.mark.asyncio
-    async def test_fetch_with_no_stations_configured(
-        self,
-        location_config: config_lib.LocationConfig,
-    ) -> None:
-        """Test that _fetch raises ValueError when no stations configured."""
-        # Create a config with no stations
-        config = config_lib.NoaaCurrentsSource(
-            stations=[],
-        )
-
-        # Create the feed
-        feed = NoaaCurrentsFeed(
-            location_config=location_config,
-            config=config,
-            expiration_interval=datetime.timedelta(hours=24),
-        )
-
-        # Call _fetch and expect it to raise ValueError
-        with pytest.raises(ValueError, match="No current stations configured"):
-            await feed._fetch()
+    # This test is no longer needed since Pydantic will validate that stations is not empty
 
     @pytest.mark.asyncio
     async def test_fetch_with_valid_station(

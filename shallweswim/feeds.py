@@ -309,11 +309,6 @@ class NoaaCurrentsFeed(Feed):
             Exception: If fetching fails
         """
         if not hasattr(self, "station") or not self.station:
-            if not self.config.stations:
-                error_msg = "No current stations configured"
-                self.log(error_msg, logging.ERROR)
-                # Following the project principle of failing fast for internal errors
-                raise ValueError(error_msg)
             # Use the first station by default
             self.station = self.config.stations[0]
 

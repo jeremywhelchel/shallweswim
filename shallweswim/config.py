@@ -104,13 +104,6 @@ class NoaaCurrentsSource(BaseModel, frozen=True):
         ),
     ]
 
-    predictions_available: Annotated[
-        bool,
-        Field(
-            description="Whether current predictions are available for this location"
-        ),
-    ] = False
-
 
 class LocationConfig(BaseModel, frozen=True):
     """Configuration for a swimming location.
@@ -270,7 +263,6 @@ CONFIG_LIST = [
                 "ACT3876",  # Coney Island Channel
                 "NYH1905",  # Rockaway Inslet
             ],
-            predictions_available=True,
         ),
         description="Coney Island Brighton Beach open water swimming conditions",
     ),

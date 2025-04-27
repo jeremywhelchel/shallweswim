@@ -35,8 +35,7 @@ async def initialize_location_data(
     location_codes: list[str],
     data_dict: Optional[dict[str, data_lib.DataManager]] = None,
     wait_for_data: bool = False,
-    max_wait_retries: int = 15,
-    retry_interval: int = 1,
+    timeout: Optional[float] = 30.0,
 ) -> dict[str, data_lib.DataManager]:
     """Initialize data for the specified locations.
 
@@ -47,14 +46,13 @@ async def initialize_location_data(
         location_codes: List of location codes to initialize
         data_dict: Optional existing data dictionary to populate (creates new if None)
         wait_for_data: Whether to wait for data to be loaded before returning
-        max_wait_retries: Max number of retries when waiting for data
-        retry_interval: Time in seconds between retries
+        timeout: Maximum time in seconds to wait for data to be ready (None for no timeout)
 
     Returns:
         Dictionary mapping location codes to initialized DataManager objects
 
     Raises:
-        AssertionError: If a location's configuration cannot be found
+        AssertionError: If a location's configuration cannot be found or if required data isn't loaded
     """
     # Use the provided data dictionary or create a new one
     if data_dict is None:
@@ -72,33 +70,26 @@ async def initialize_location_data(
 
     # Optionally wait for data to be fully loaded
     if wait_for_data:
+        # Create tasks for waiting on each location's data
+        wait_tasks = []
         for code in location_codes:
-            for i in range(max_wait_retries):
-                # Check if data is ready using the new .ready property
-                if data_dict[code].ready:
-                    print(f"{code} data loaded successfully after {i+1} attempts")
-                    break
-                print(
-                    f"Waiting for {code} data to load... attempt {i+1}/{max_wait_retries}"
-                )
-                await asyncio.sleep(retry_interval)
+            print(f"Waiting for {code} data to load...")
+            wait_tasks.append(data_dict[code].wait_until_ready(timeout=timeout))
 
-            # If we've exhausted all retries, verify basic data availability
-            # This ensures we fail with helpful error messages if data isn't ready
-            if not data_dict[code].ready:
-                # Verify tide data was loaded (all locations should have tide data)
-                tides_feed = data_dict[code]._feeds.get("tides")
-                assert (
-                    tides_feed is not None and tides_feed.values is not None
-                ), f"{code} tide data was not loaded"
+        # Wait for all locations to be ready concurrently
+        results = await asyncio.gather(*wait_tasks)
 
-                # Only check currents if the location has current predictions enabled
-                location_config = config_lib.get(code)
-                if location_config is not None and location_config.currents_source:
-                    currents_feed = data_dict[code]._feeds.get("currents")
-                    assert (
-                        currents_feed is not None and currents_feed.values is not None
-                    ), f"{code} current data was not loaded"
+        # Check if any locations failed to load data
+        failed_locations = [
+            code for code, success in zip(location_codes, results) if not success
+        ]
+
+        # If any locations failed, raise an error with all failed locations
+        if failed_locations:
+            failed_list = ", ".join(failed_locations)
+            raise RuntimeError(
+                f"Failed to load data for the following locations within the timeout period: {failed_list}"
+            )
 
     return data_dict
 

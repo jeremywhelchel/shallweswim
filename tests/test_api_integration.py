@@ -47,8 +47,7 @@ async def api_client() -> TestClient:
         location_codes=TEST_LOCATIONS,
         data_dict=api.data,
         wait_for_data=True,  # Wait for data to load before running tests
-        max_wait_retries=15,
-        retry_interval=1,
+        timeout=30.0,  # Maximum time to wait for data to be ready
     )
 
     # Create a dedicated FastAPI app for API testing only

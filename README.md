@@ -13,7 +13,7 @@
 
 ## Features
 
-- **Real-time conditions** from NOAA APIs
+- **Real-time conditions** from NOAA CO-OPS API
 - **Tide predictions** with high/low tide times and heights
 - **Current velocity** data with flood/ebb direction
 - **Water temperature trends** (48-hour, 2-month, and multi-year)
@@ -28,9 +28,9 @@ Shall We Swim is a FastAPI application with a modular architecture:
 
 - **Feed Framework (`feeds.py`)**: Modular data feed system for different data types
   - Base `Feed` class with expiration tracking and status reporting
-  - Specialized feed types (NoaaTempFeed, NoaaTidesFeed, etc.)
+  - Specialized feed types (NoaaTempFeed, NoaaTidesFeed, etc.) for different data sources
   - Composite feeds for combining multiple data sources
-- **Data Management (`data.py`)**: Coordinates feeds and processes NOAA data
+- **Data Management (`data.py`)**: Coordinates feeds and processes data from various sources
   - Manages feed lifecycle and data freshness
   - Provides status monitoring and ready-state tracking
   - Handles data processing and transformation
@@ -39,13 +39,13 @@ Shall We Swim is a FastAPI application with a modular architecture:
   - Status endpoints for monitoring system health
   - Current prediction and tide visualization endpoints
 - **Web UI (`main.py`)**: HTML templates and web interface
-- **NOAA Client (`noaa.py`)**: Interacts with NOAA APIs
+- **NOAA CO-OPS Client (`coops.py`)**: Interacts with NOAA's Center for Operational Oceanographic Products and Services API
 - **Configuration (`config.py`)**: Location settings and station IDs
 - **Utilities (`util.py`)**: Common utilities for time handling and data processing
 
 ### Data Flow
 
-1. **Data Fetching**: Specialized Feed classes fetch NOAA data (tides, currents, temperatures) for configured locations
+1. **Data Fetching**: Specialized Feed classes fetch data (tides, currents, temperatures) from NOAA CO-OPS and other sources for configured locations
 2. **Data Processing**: Raw data is processed with appropriate timezone conversions
 3. **Status Monitoring**: Feed and DataManager status is tracked and exposed via API endpoints
 4. **Plot Generation**: Visualizations are asynchronously generated for different time spans:
@@ -145,7 +145,7 @@ poetry run pytest --cov=shallweswim
 poetry run pytest --cov=shallweswim --cov-report=html
 ```
 
-Note: Integration tests connect to live NOAA APIs and may occasionally fail if external services are experiencing issues or if the expected data is temporarily unavailable.
+Note: Integration tests connect to live NOAA CO-OPS API and may occasionally fail if external services are experiencing issues or if the expected data is temporarily unavailable.
 
 ## API Documentation
 
@@ -160,7 +160,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgements
 
-- [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) for tide, current, and temperature data
+- [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (Center for Operational Oceanographic Products and Services) for tide, current, and temperature data
 - [FastAPI](https://fastapi.tiangolo.com/) for the web framework
 - [Matplotlib](https://matplotlib.org/) for data visualization
 

@@ -1,4 +1,4 @@
-"""NOAA tides and current API client."""
+"""NOAA CO-OPS (Center for Operational Oceanographic Products and Services) API client."""
 
 # Standard library imports
 import asyncio
@@ -13,27 +13,27 @@ import aiohttp
 import pandas as pd
 
 # Local imports
-from shallweswim.noaa_types import (
+from shallweswim.coops_types import (
     DateFormat,
-    NoaaRequestParams,
+    CoopsRequestParams,
     TimeInterval,
 )
 
 
-class NoaaApiError(Exception):
-    """Base error for NOAA API calls."""
+class CoopsApiError(Exception):
+    """Base error for NOAA CO-OPS API calls."""
 
 
-class NoaaConnectionError(NoaaApiError):
-    """Error connecting to NOAA API."""
+class CoopsConnectionError(CoopsApiError):
+    """Error connecting to NOAA CO-OPS API."""
 
 
-class NoaaDataError(NoaaApiError):
-    """Error in data returned by NOAA API."""
+class CoopsDataError(CoopsApiError):
+    """Error in data returned by NOAA CO-OPS API."""
 
 
-class NoaaApi:
-    """Client for the NOAA Tides and Currents API.
+class CoopsApi:
+    """Client for the NOAA CO-OPS Tides and Currents API.
 
     This class provides methods to fetch tide predictions, current predictions,
     and temperature data from NOAA's CO-OPS API.
@@ -45,7 +45,7 @@ class NoaaApi:
     """
 
     BASE_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-    BASE_PARAMS: NoaaRequestParams = {
+    BASE_PARAMS: CoopsRequestParams = {
         "application": "shallweswim",
         "time_zone": "lst_ldt",
         "units": "english",
@@ -57,16 +57,16 @@ class NoaaApi:
 
     @classmethod
     def _format_date(cls, date: datetime.date | datetime.datetime) -> str:
-        """Format a date for NOAA API requests."""
+        """Format a date for NOAA CO-OPS API requests."""
         if isinstance(date, datetime.datetime):
             date = date.date()
         return date.strftime(DateFormat)
 
     @classmethod
     async def _Request(
-        cls, params: NoaaRequestParams, location_code: str = "unknown"
+        cls, params: CoopsRequestParams, location_code: str = "unknown"
     ) -> pd.DataFrame:
-        """Make a request to the NOAA API with retries.
+        """Make a request to the NOAA CO-OPS API with retries.
 
         Args:
             params: API request parameters
@@ -76,8 +76,8 @@ class NoaaApi:
             DataFrame containing the API response
 
         Raises:
-            NoaaConnectionError: If connection to API fails
-            NoaaDataError: If API returns error response
+            CoopsConnectionError: If connection to API fails
+            CoopsDataError: If API returns error response
         """
         url_params = dict(cls.BASE_PARAMS, **params)
         url = cls.BASE_URL + "?" + urllib.parse.urlencode(url_params)
@@ -86,13 +86,13 @@ class NoaaApi:
             for attempt in range(cls.MAX_RETRIES):
                 try:
                     logging.info(
-                        f"[{location_code}] NOAA API request (attempt {attempt + 1}): {url}"
+                        f"[{location_code}] NOAA CO-OPS API request (attempt {attempt + 1}): {url}"
                     )
                     async with session.get(url) as response:
                         if response.status != 200:
                             error_msg = f"HTTP error: {response.status}"
                             logging.error(f"[{location_code}] {error_msg}")
-                            raise NoaaConnectionError(error_msg)
+                            raise CoopsConnectionError(error_msg)
 
                         # Read CSV data
                         csv_data = await response.text()
@@ -101,20 +101,20 @@ class NoaaApi:
                         if len(df) == 1:
                             error_msg = df.iloc[0].values[0]
                             logging.error(
-                                f"[{location_code}] NOAA API data error: {error_msg}"
+                                f"[{location_code}] NOAA CO-OPS API data error: {error_msg}"
                             )
-                            raise NoaaDataError(error_msg)
+                            raise CoopsDataError(error_msg)
                         return df
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     if attempt == cls.MAX_RETRIES - 1:
-                        error_msg = f"Failed to connect to NOAA API: {e}"
+                        error_msg = f"Failed to connect to NOAA CO-OPS API: {e}"
                         logging.error(f"[{location_code}] {error_msg}")
-                        raise NoaaConnectionError(error_msg)
+                        raise CoopsConnectionError(error_msg)
                     await asyncio.sleep(cls.RETRY_DELAY * (attempt + 1))
 
-        error_msg = "Unexpected error in NOAA API request"
+        error_msg = "Unexpected error in NOAA CO-OPS API request"
         logging.error(f"[{location_code}] {error_msg}")
-        raise NoaaConnectionError(error_msg)
+        raise CoopsConnectionError(error_msg)
 
     @classmethod
     async def tides(
@@ -133,7 +133,7 @@ class NoaaApi:
                 type: str - Either 'low' or 'high'
         """
         today = datetime.date.today()
-        params: NoaaRequestParams = {
+        params: CoopsRequestParams = {
             "product": "predictions",
             "datum": "MLLW",
             "begin_date": cls._format_date(today - datetime.timedelta(days=1)),
@@ -177,7 +177,7 @@ class NoaaApi:
                 bin: Optional[int] - Bin number
         """
         today = datetime.date.today()
-        params: NoaaRequestParams = {
+        params: CoopsRequestParams = {
             "product": "currents_predictions",
             "datum": "MLLW",
             "begin_date": cls._format_date(today - datetime.timedelta(days=1)),
@@ -250,7 +250,7 @@ class NoaaApi:
         if product not in ["air_temperature", "water_temperature"]:
             raise ValueError(f"Invalid product: {product}")
 
-        params: NoaaRequestParams = {
+        params: CoopsRequestParams = {
             "product": product,
             "begin_date": cls._format_date(begin_date),
             "end_date": cls._format_date(end_date),
@@ -279,10 +279,10 @@ class NoaaApi:
 
     @classmethod
     def _FixTime(cls, df: pd.DataFrame, time_col: str = "Date Time") -> pd.DataFrame:
-        """Fix timestamp column in NOAA API response.
+        """Fix timestamp column in NOAA CO-OPS API response.
 
         Args:
-            df: DataFrame from NOAA API
+            df: DataFrame from NOAA CO-OPS API
             time_col: Name of the timestamp column
 
         Returns:

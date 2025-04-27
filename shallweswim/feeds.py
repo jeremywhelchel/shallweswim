@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim import noaa
+from shallweswim import coops
 from shallweswim.util import utc_now
 
 # Additional buffer before reporting data as expired
@@ -336,15 +336,15 @@ class TempFeed(Feed, abc.ABC):
 
 
 class NoaaTempFeed(TempFeed):
-    """NOAA-specific implementation of temperature data feed.
+    """NOAA CO-OPS specific implementation of temperature data feed.
 
-    Fetches temperature data from NOAA stations using the NOAA API.
+    Fetches temperature data from NOAA CO-OPS stations using the CO-OPS API.
     """
 
     config: config_lib.NoaaTempSource
 
     async def _fetch(self) -> pd.DataFrame:
-        """Fetch temperature data from NOAA API.
+        """Fetch temperature data from NOAA CO-OPS API.
 
         Returns:
             DataFrame with temperature data
@@ -363,7 +363,8 @@ class NoaaTempFeed(TempFeed):
             # The NOAA API only accepts "h" or None (which defaults to 6-minute intervals)
             noaa_interval: Literal["h", None] = "h" if self.interval == "h" else None
 
-            df = await noaa.NoaaApi.temperature(
+            # Fetch data from NOAA CO-OPS API
+            df = await coops.CoopsApi.temperature(
                 station_id,
                 "water_temperature",
                 begin_date,
@@ -373,7 +374,7 @@ class NoaaTempFeed(TempFeed):
             )
             return df
 
-        except noaa.NoaaApiError as e:
+        except coops.CoopsApiError as e:
             self.log(f"Live temp fetch error: {e}", logging.WARNING)
             # Following the project principle of failing fast for internal errors
             raise
@@ -384,19 +385,19 @@ class NoaaTempFeed(TempFeed):
 
 
 class NoaaTidesFeed(Feed):
-    """Feed for tide data from NOAA.
+    """Feed for NOAA CO-OPS tide predictions.
 
-    Fetches tide predictions from NOAA stations using the NOAA API.
+    Fetches tide predictions from NOAA CO-OPS stations using the CO-OPS API.
     Tide predictions include high and low tide times and heights.
     """
 
     config: config_lib.NoaaTideSource
 
     async def _fetch(self) -> pd.DataFrame:
-        """Fetch tide predictions from NOAA API.
+        """Fetch tide predictions from NOAA CO-OPS API.
 
         Returns:
-            DataFrame with tide prediction data
+            DataFrame with tide predictions
 
         Raises:
             Exception: If fetching fails
@@ -404,22 +405,22 @@ class NoaaTidesFeed(Feed):
         station_id = self.config.station
 
         try:
-            df = await noaa.NoaaApi.tides(
+            # Fetch data from NOAA CO-OPS API
+            df = await coops.CoopsApi.tides(
                 station_id,
                 location_code=self.location_config.code,
             )
             return df
-
-        except noaa.NoaaApiError as e:
+        except coops.CoopsApiError as e:
             self.log(f"Tide fetch error: {e}", logging.WARNING)
             # Following the project principle of failing fast for internal errors
             raise
 
 
 class NoaaCurrentsFeed(Feed):
-    """Feed for current data from NOAA.
+    """Feed for NOAA CO-OPS current predictions.
 
-    Fetches current predictions from NOAA stations using the NOAA API.
+    Fetches current predictions from NOAA CO-OPS stations using the CO-OPS API.
     Current predictions include velocity, direction, and type (flood/ebb/slack).
     """
 
@@ -438,10 +439,10 @@ class NoaaCurrentsFeed(Feed):
             self.station = self.config.stations[0]
 
     async def _fetch(self) -> pd.DataFrame:
-        """Fetch current predictions from NOAA API.
+        """Fetch current predictions from NOAA CO-OPS API.
 
         Returns:
-            DataFrame with current prediction data
+            DataFrame with current predictions
 
         Raises:
             Exception: If fetching fails
@@ -449,14 +450,15 @@ class NoaaCurrentsFeed(Feed):
         try:
             # We know self.station is set in __init__ if it wasn't provided
             assert self.station is not None, "Station must be set"
-            df = await noaa.NoaaApi.currents(
+            # Fetch data from NOAA CO-OPS API
+            df = await coops.CoopsApi.currents(
                 self.station,
                 interpolate=self.interpolate,
                 location_code=self.location_config.code,
             )
             return df
 
-        except noaa.NoaaApiError as e:
+        except coops.CoopsApiError as e:
             self.log(f"Current fetch error: {e}", logging.WARNING)
             # Following the project principle of failing fast for internal errors
             raise

@@ -1,4 +1,4 @@
-"""Type definitions for NOAA API client."""
+"""Type definitions for NOAA CO-OPS API client."""
 
 # Standard library imports
 from typing import Literal, Optional, TypedDict
@@ -14,8 +14,8 @@ air_temperature = "air_temperature"
 water_temperature = "water_temperature"
 
 
-class NoaaRequestParams(TypedDict, total=False):
-    """Parameters for NOAA API requests."""
+class CoopsRequestParams(TypedDict, total=False):
+    """Parameters for NOAA CO-OPS API requests."""
 
     product: ProductType
     datum: str

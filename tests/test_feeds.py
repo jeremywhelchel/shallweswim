@@ -518,9 +518,9 @@ class TestNoaaTidesFeed:
     ) -> None:
         """Test that _fetch calls the NOAA client with correct parameters."""
         # Create a mock NOAA API with autospec
-        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
-            MockNoaaApi.tides.return_value = pd.DataFrame(
+            MockCoopsApi.tides.return_value = pd.DataFrame(
                 {
                     "prediction": [3.0, 0.5, 3.2],
                     "type": ["high", "low", "high"],
@@ -543,8 +543,8 @@ class TestNoaaTidesFeed:
             result = await feed._fetch()
 
             # Check that the NOAA API was called with correct parameters
-            MockNoaaApi.tides.assert_called_once()
-            args, kwargs = MockNoaaApi.tides.call_args
+            MockCoopsApi.tides.assert_called_once()
+            args, kwargs = MockCoopsApi.tides.call_args
 
             # Check positional arguments (first is station_id)
             assert args[0] == tide_config.station
@@ -564,9 +564,9 @@ class TestNoaaTidesFeed:
     ) -> None:
         """Test that _fetch handles API errors correctly."""
         # Create a mock NOAA API with autospec that raises an exception
-        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to raise an exception
-            MockNoaaApi.tides.side_effect = Exception("API error")
+            MockCoopsApi.tides.side_effect = Exception("API error")
 
             # Create the feed
             feed = NoaaTidesFeed(
@@ -591,9 +591,9 @@ class TestNoaaCurrentsFeed:
     ) -> None:
         """Test that _fetch calls the NOAA client with correct parameters."""
         # Create a mock NOAA API with autospec
-        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
-            MockNoaaApi.currents.return_value = pd.DataFrame(
+            MockCoopsApi.currents.return_value = pd.DataFrame(
                 {"velocity": [1.2, 0.8, 0.3, -0.2, -0.7]},
                 index=pd.date_range(
                     start=datetime.datetime(2025, 4, 22, 0, 0, 0),
@@ -614,8 +614,8 @@ class TestNoaaCurrentsFeed:
             result = await feed._fetch()
 
             # Check that the NOAA API was called with correct parameters
-            MockNoaaApi.currents.assert_called_once()
-            args, kwargs = MockNoaaApi.currents.call_args
+            MockCoopsApi.currents.assert_called_once()
+            args, kwargs = MockCoopsApi.currents.call_args
 
             # Check positional arguments (first is station_id)
             assert args[0] == currents_config.stations[0]
@@ -646,9 +646,9 @@ class TestNoaaCurrentsFeed:
         )
 
         # Create a mock NOAA API with autospec
-        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
-            MockNoaaApi.currents.return_value = pd.DataFrame(
+            MockCoopsApi.currents.return_value = pd.DataFrame(
                 {"velocity": [1.2, 0.8, 0.3]},
                 index=pd.date_range(
                     start=datetime.datetime(2025, 4, 22, 0, 0, 0),
@@ -669,8 +669,8 @@ class TestNoaaCurrentsFeed:
             await feed._fetch()
 
             # Check that the NOAA API was called with the specified station
-            MockNoaaApi.currents.assert_called_once()
-            args, _ = MockNoaaApi.currents.call_args
+            MockCoopsApi.currents.assert_called_once()
+            args, _ = MockCoopsApi.currents.call_args
             assert args[0] == "NYH1905"
 
     @pytest.mark.asyncio
@@ -681,9 +681,9 @@ class TestNoaaCurrentsFeed:
     ) -> None:
         """Test that _fetch handles API errors correctly."""
         # Create a mock NOAA API with autospec that raises an exception
-        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to raise an exception
-            MockNoaaApi.currents.side_effect = Exception("API error")
+            MockCoopsApi.currents.side_effect = Exception("API error")
 
             # Create the feed
             feed = NoaaCurrentsFeed(
@@ -709,9 +709,9 @@ class TestNoaaTempFeed:
     ) -> None:
         """Test that _fetch calls the NOAA client with correct parameters."""
         # Create a mock NOAA API with autospec
-        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
-            MockNoaaApi.temperature.return_value = pd.DataFrame(
+            MockCoopsApi.temperature.return_value = pd.DataFrame(
                 {
                     "water_temp": [20.0, 20.5, 21.0],
                 },
@@ -734,8 +734,8 @@ class TestNoaaTempFeed:
             result = await feed._fetch()
 
             # Check that the NOAA API was called with correct parameters
-            MockNoaaApi.temperature.assert_called_once()
-            args, kwargs = MockNoaaApi.temperature.call_args
+            MockCoopsApi.temperature.assert_called_once()
+            args, kwargs = MockCoopsApi.temperature.call_args
 
             # Check positional arguments (first is station_id)
             assert args[0] == temp_config.station
@@ -756,9 +756,9 @@ class TestNoaaTempFeed:
     ) -> None:
         """Test that _fetch passes date range to NOAA API when provided."""
         # Create a mock NOAA API with autospec
-        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
-            MockNoaaApi.temperature.return_value = pd.DataFrame(
+            MockCoopsApi.temperature.return_value = pd.DataFrame(
                 {
                     "water_temp": [20.0, 20.5, 21.0],
                 },
@@ -787,12 +787,12 @@ class TestNoaaTempFeed:
             await feed._fetch()
 
             # Check that the NOAA API was called with the date range
-            MockNoaaApi.temperature.assert_called_once()
+            MockCoopsApi.temperature.assert_called_once()
 
             # Instead of checking exact values, verify that start_date and end_date
             # were passed to the API call. The actual implementation might modify
             # these dates slightly, so we'll just check that they were passed.
-            args, _ = MockNoaaApi.temperature.call_args
+            args, _ = MockCoopsApi.temperature.call_args
             assert len(args) >= 4  # At least 4 positional args
             assert isinstance(args[2], datetime.datetime)  # begin_date is a datetime
             assert isinstance(args[3], datetime.datetime)  # end_date is a datetime
@@ -805,9 +805,9 @@ class TestNoaaTempFeed:
     ) -> None:
         """Test that _fetch uses default date range when not provided."""
         # Create a mock NOAA API with autospec
-        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
-            MockNoaaApi.temperature.return_value = pd.DataFrame(
+            MockCoopsApi.temperature.return_value = pd.DataFrame(
                 {
                     "water_temp": [20.0, 20.5, 21.0],
                 },
@@ -830,7 +830,7 @@ class TestNoaaTempFeed:
             await feed._fetch()
 
             # Check that the NOAA API was called with default date range
-            args, _ = MockNoaaApi.temperature.call_args
+            args, _ = MockCoopsApi.temperature.call_args
 
             # The default date range should be from today-8 days to today
             # Check the date arguments (positions 2 and 3)

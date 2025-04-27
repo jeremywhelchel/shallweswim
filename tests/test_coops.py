@@ -1,4 +1,4 @@
-"""Tests for NOAA API client."""
+"""Tests for NOAA CO-OPS API client."""
 
 # Standard library imports
 import datetime
@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import patch, AsyncMock
 
 # Local imports
-from shallweswim.noaa import NoaaApi, NoaaConnectionError, NoaaDataError
+from shallweswim.coops import CoopsApi, CoopsConnectionError, CoopsDataError
 
 
 @pytest.fixture
@@ -59,12 +59,12 @@ def mock_temperature_data() -> pd.DataFrame:
 async def test_tides_success(mock_tide_data: pd.DataFrame) -> None:
     """Test successful tide prediction fetch."""
     # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(NoaaApi, "_Request", new_callable=AsyncMock) as mock_request:
+    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
         # Set up the mock to return the proper DataFrame directly
         mock_df = pd.read_csv(io.StringIO(mock_tide_data.to_csv(index=False)))
         mock_request.return_value = mock_df
 
-        df = await NoaaApi.tides(station=9414290)
+        df = await CoopsApi.tides(station=9414290)
 
     assert len(df) == 2
     assert list(df.columns) == ["prediction", "type"]
@@ -76,12 +76,12 @@ async def test_tides_success(mock_tide_data: pd.DataFrame) -> None:
 async def test_currents_success(mock_current_data: pd.DataFrame) -> None:
     """Test successful current prediction fetch."""
     # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(NoaaApi, "_Request", new_callable=AsyncMock) as mock_request:
+    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
         # Set up the mock to return the proper DataFrame directly
         mock_df = pd.read_csv(io.StringIO(mock_current_data.to_csv(index=False)))
         mock_request.return_value = mock_df
 
-        df = await NoaaApi.currents(station="SFB1201", interpolate=False)
+        df = await CoopsApi.currents(station="SFB1201", interpolate=False)
 
     assert len(df) == 2
     assert list(df.columns) == ["velocity"]
@@ -92,12 +92,12 @@ async def test_currents_success(mock_current_data: pd.DataFrame) -> None:
 async def test_temperature_success(mock_temperature_data: pd.DataFrame) -> None:
     """Test successful temperature fetch."""
     # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(NoaaApi, "_Request", new_callable=AsyncMock) as mock_request:
+    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
         # Set up the mock to return the proper DataFrame directly
         mock_df = pd.read_csv(io.StringIO(mock_temperature_data.to_csv(index=False)))
         mock_request.return_value = mock_df
 
-        df = await NoaaApi.temperature(
+        df = await CoopsApi.temperature(
             station=9414290,
             product="water_temperature",
             begin_date=datetime.date(2025, 4, 19),
@@ -112,32 +112,34 @@ async def test_temperature_success(mock_temperature_data: pd.DataFrame) -> None:
 @pytest.mark.asyncio
 async def test_connection_error() -> None:
     """Test handling of connection errors."""
-    with patch.object(NoaaApi, "_Request", new_callable=AsyncMock) as mock_request:
+    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
         # Simulate a connection error
-        mock_request.side_effect = NoaaConnectionError(
-            "Failed to connect to NOAA API: Network error"
+        mock_request.side_effect = CoopsConnectionError(
+            "Failed to connect to NOAA CO-OPS API: Network error"
         )
 
-        with pytest.raises(NoaaConnectionError, match="Failed to connect to NOAA API"):
-            await NoaaApi.tides(station=9414290)
+        with pytest.raises(
+            CoopsConnectionError, match="Failed to connect to NOAA CO-OPS API"
+        ):
+            await CoopsApi.tides(station=9414290)
 
 
 @pytest.mark.asyncio
 async def test_data_error() -> None:
     """Test handling of API data errors."""
-    with patch.object(NoaaApi, "_Request", new_callable=AsyncMock) as mock_request:
+    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
         # Mock error response
-        mock_request.side_effect = NoaaDataError("Invalid station ID")
+        mock_request.side_effect = CoopsDataError("Invalid station ID")
 
-        with pytest.raises(NoaaDataError, match="Invalid station ID"):
-            await NoaaApi.tides(station=9414290)
+        with pytest.raises(CoopsDataError, match="Invalid station ID"):
+            await CoopsApi.tides(station=9414290)
 
 
 @pytest.mark.asyncio
 async def test_invalid_temperature_dates() -> None:
     """Test validation of temperature date ranges."""
     with pytest.raises(ValueError, match="begin_date must be <= end_date"):
-        await NoaaApi.temperature(
+        await CoopsApi.temperature(
             station=9414290,
             product="water_temperature",
             begin_date=datetime.date(2025, 4, 20),
@@ -149,7 +151,7 @@ async def test_invalid_temperature_dates() -> None:
 async def test_invalid_temperature_product() -> None:
     """Test validation of temperature product type."""
     with pytest.raises(ValueError, match="Invalid product"):
-        await NoaaApi.temperature(
+        await CoopsApi.temperature(
             station=9414290,
             product="invalid_product",  # type: ignore[arg-type] # intentionally invalid for testing error case
             begin_date=datetime.date(2025, 4, 19),
@@ -161,12 +163,12 @@ async def test_invalid_temperature_product() -> None:
 async def test_current_interpolation(mock_current_data: pd.DataFrame) -> None:
     """Test current interpolation."""
     # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(NoaaApi, "_Request", new_callable=AsyncMock) as mock_request:
+    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
         # Set up the mock to return the proper DataFrame directly
         mock_df = pd.read_csv(io.StringIO(mock_current_data.to_csv(index=False)))
         mock_request.return_value = mock_df
 
-        df = await NoaaApi.currents(station="SFB1201", interpolate=True)
+        df = await CoopsApi.currents(station="SFB1201", interpolate=True)
 
     # Should have many more points due to 60s interpolation
     assert len(df) > len(mock_current_data)

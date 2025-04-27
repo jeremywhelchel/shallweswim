@@ -1,9 +1,9 @@
-"""Integration tests for NOAA API client.
+"""Integration tests for NOAA CO-OPS API client.
 
-These tests connect to the actual NOAA API endpoints and verify compatibility
+These tests connect to the actual NOAA CO-OPS API endpoints and verify compatibility
 with the current API implementation.
 
-Run with: pytest tests/test_noaa_integration.py -v --run-integration
+Run with: pytest tests/test_coops_integration.py -v --run-integration
 """
 
 # pylint: disable=unused-argument
@@ -14,7 +14,7 @@ import datetime
 import asyncio
 from typing import Literal
 
-from shallweswim.noaa import NoaaApi
+from shallweswim.coops import CoopsApi
 
 # Mark all tests in this file as integration tests that hit live services
 pytestmark = pytest.mark.integration
@@ -68,8 +68,8 @@ def validate_temperature_data(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_live_tides_fetch() -> None:
-    """Test fetching real tide data from NOAA API."""
-    df = await NoaaApi.tides(station=TIDE_STATION)
+    """Test fetching real tide data from NOAA CO-OPS API."""
+    df = await CoopsApi.tides(station=TIDE_STATION)
     validate_tide_data(df)
 
     # Verify we got multiple tide predictions
@@ -92,8 +92,8 @@ async def test_live_tides_fetch() -> None:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_live_currents_fetch() -> None:
-    """Test fetching real current data from NOAA API."""
-    df = await NoaaApi.currents(station=CURRENT_STATION)
+    """Test fetching real current data from NOAA CO-OPS API."""
+    df = await CoopsApi.currents(station=CURRENT_STATION)
     validate_current_data(df)
 
     # Verify we have interpolated current data
@@ -119,13 +119,13 @@ async def test_live_currents_fetch() -> None:
 async def test_live_temperature_fetch(
     product: Literal["water_temperature", "air_temperature"],
 ) -> None:
-    """Test fetching real temperature data from NOAA API."""
+    """Test fetching real temperature data from NOAA CO-OPS API."""
     # Get data for the last 3 days
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=3)
 
     # No try/except - let the test fail if there's an issue
-    df = await NoaaApi.temperature(
+    df = await CoopsApi.temperature(
         station=TEMP_STATION,  # Use the station known to have temperature data
         product=product,
         begin_date=begin_date,
@@ -151,7 +151,7 @@ async def test_live_temperature_intervals() -> None:
 
     # No try/except - let the test fail if there's an issue
     # Get hourly data
-    df_hourly = await NoaaApi.temperature(
+    df_hourly = await CoopsApi.temperature(
         station=TEMP_STATION,
         product="air_temperature",
         begin_date=begin_date,
@@ -160,7 +160,7 @@ async def test_live_temperature_intervals() -> None:
     )
 
     # Get default 6-minute data
-    df_default = await NoaaApi.temperature(
+    df_default = await CoopsApi.temperature(
         station=TEMP_STATION,
         product="air_temperature",
         begin_date=begin_date,
@@ -188,7 +188,7 @@ async def test_api_retries() -> None:
     # Simply test that we can make a successful request
     # This is not a proper test of the retry logic, but it at least verifies
     # that the API client can connect to the API
-    df = await NoaaApi.tides(station=TIDE_STATION)
+    df = await CoopsApi.tides(station=TIDE_STATION)
     validate_tide_data(df)
     assert len(df) > 0, "Should have received tide data"
 
@@ -199,7 +199,7 @@ async def test_consecutive_api_calls() -> None:
     """Test making consecutive API calls to validate rate limiting handling."""
     # Make multiple API calls in succession
     for _ in range(3):
-        df = await NoaaApi.tides(station=TIDE_STATION)
+        df = await CoopsApi.tides(station=TIDE_STATION)
         validate_tide_data(df)
         # Small delay to avoid hitting rate limits
         await asyncio.sleep(0.5)

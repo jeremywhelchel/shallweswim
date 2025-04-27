@@ -1,6 +1,6 @@
 """Configuration for pytest.
 
-This file contains setup for integration tests that hit real NOAA API endpoints.
+This file contains setup for integration tests that hit real NOAA CO-OPS API endpoints.
 """
 
 # Third-party imports
@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 
 # Local imports
-from shallweswim.noaa import NoaaApi
+from shallweswim.coops import CoopsApi
 
 # Real station to use for API availability check
 TIDE_STATION = 8518750  # NYC Battery - comprehensive station with good data coverage
@@ -20,14 +20,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--run-integration",
         action="store_true",
         default=False,
-        help="Run integration tests that hit live NOAA APIs",
+        help="Run integration tests that hit live NOAA CO-OPS APIs",
     )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     """Configure custom pytest markers."""
     config.addinivalue_line(
-        "markers", "integration: mark test as hitting live NOAA API service"
+        "markers", "integration: mark test as hitting live NOAA CO-OPS API service"
     )
 
 
@@ -46,13 +46,13 @@ def pytest_collection_modifyitems(
 
 @pytest_asyncio.fixture(scope="session")
 async def check_api_availability() -> bool:
-    """Check if the NOAA API is available before running integration tests.
+    """Check if the NOAA CO-OPS API is available before running integration tests.
 
     This prevents all tests from failing if the API is down or there's a network issue.
     """
     try:
         # Make a simple request to verify API is accessible
-        await NoaaApi.tides(station=TIDE_STATION)
+        await CoopsApi.tides(station=TIDE_STATION)
         return True
     except Exception as e:
-        pytest.skip(f"NOAA API unavailable, skipping integration tests: {e}")
+        pytest.skip(f"NOAA CO-OPS API unavailable, skipping integration tests: {e}")

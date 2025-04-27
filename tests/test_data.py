@@ -1,6 +1,7 @@
 """Tests for data.py functionality."""
 
 # Standard library imports
+import asyncio
 import datetime
 from unittest.mock import MagicMock
 
@@ -468,3 +469,86 @@ async def test_data_ready_property(
 
     # Test the ready property
     assert data.ready == expected_ready
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready() -> None:
+    """Test the wait_until_ready method of the DataManager class.
+
+    Tests different scenarios:
+    1. All feeds ready immediately
+    2. Feeds becoming ready during the wait
+    3. Timeout occurring before feeds are ready
+    """
+    # Create a DataManager instance
+    config = MagicMock(spec=config_lib.LocationConfig)
+    config.code = "nyc"
+    data = DataManager(config)
+
+    # Scenario 1: All feeds ready immediately
+    # Create mock feeds that are already ready
+    mock_feeds = []
+    for _ in range(3):
+        mock_feed = MagicMock()
+
+        # Create an async function that returns True immediately
+        async def wait_until_ready_immediate() -> bool:
+            return True
+
+        mock_feed.wait_until_ready = wait_until_ready_immediate
+        mock_feeds.append(mock_feed)
+
+    # Set the mock feeds in the _feeds dictionary
+    data._feeds = {
+        "tides": mock_feeds[0],
+        "currents": mock_feeds[1],
+        "live_temps": mock_feeds[2],
+    }
+
+    # Test wait_until_ready with feeds that are already ready
+    result = await data.wait_until_ready(timeout=1.0)
+    assert result is True
+
+    # Scenario 2: Feeds becoming ready during the wait
+    # Reset the mock feeds
+    mock_feeds = []
+    for _ in range(3):
+        mock_feed = MagicMock()
+
+        # Create an async function that returns True after a short delay
+        async def wait_until_ready_with_delay() -> bool:
+            await asyncio.sleep(0.1)  # Short delay
+            return True
+
+        mock_feed.wait_until_ready = wait_until_ready_with_delay
+        mock_feeds.append(mock_feed)
+
+    # Set the mock feeds in the _feeds dictionary
+    data._feeds = {
+        "tides": mock_feeds[0],
+        "currents": mock_feeds[1],
+        "live_temps": mock_feeds[2],
+    }
+
+    # Test wait_until_ready with feeds that become ready during the wait
+    result = await data.wait_until_ready(timeout=1.0)
+    assert result is True
+
+    # Scenario 3: Timeout occurring before feeds are ready
+    # Create a mock feed that will timeout
+    mock_feed = MagicMock()
+
+    # Create an async function that raises a TimeoutError when called with wait_for
+    async def wait_until_ready_timeout() -> bool:
+        # This will cause the asyncio.wait_for in DataManager.wait_until_ready to timeout
+        await asyncio.sleep(10.0)  # Much longer than our timeout
+        return True
+
+    mock_feed.wait_until_ready = wait_until_ready_timeout
+
+    # Set the mock feed in the _feeds dictionary
+    data._feeds = {"tides": mock_feed}
+
+    # Test wait_until_ready with a feed that will cause a timeout
+    result = await data.wait_until_ready(timeout=0.1)  # Short timeout
+    assert result is False

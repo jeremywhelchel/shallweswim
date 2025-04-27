@@ -275,6 +275,38 @@ class DataManager(object):
         # All configured feeds exist and are not expired
         return True
 
+    async def wait_until_ready(self, timeout: Optional[float] = None) -> bool:
+        """Wait until all configured feeds have data available.
+
+        This method waits until all configured feeds have successfully fetched data and are ready to use.
+        It's useful for coordinating operations that need feed data to be available before proceeding.
+
+        Args:
+            timeout: Maximum time to wait in seconds, or None to wait indefinitely
+
+        Returns:
+            True if all feeds are ready, False if timeout occurred
+        """
+        # Only consider feeds that are configured (not None)
+        configured_feeds = [feed for feed in self._feeds.values() if feed is not None]
+
+        if not configured_feeds:
+            return True  # No feeds to wait for
+
+        try:
+            # Use asyncio.wait_for to apply a timeout to the gather operation
+            await asyncio.wait_for(
+                asyncio.gather(*[feed.wait_until_ready() for feed in configured_feeds]),
+                timeout,
+            )
+            logging.debug(f"[{self.config.code}] All feeds are ready")
+            return True
+        except asyncio.TimeoutError:
+            logging.warning(
+                f"[{self.config.code}] Timeout waiting for feeds to be ready"
+            )
+            return False
+
     def _expired(self, dataset: DatasetName) -> bool:
         """Check if a dataset has expired and needs to be refreshed.
 

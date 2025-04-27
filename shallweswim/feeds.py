@@ -260,13 +260,17 @@ class NoaaTempFeed(TempFeed):
         begin_date = self.start or (end_date - datetime.timedelta(days=8))
 
         try:
+            # Convert our interval to what the NOAA API expects
+            # The NOAA API only accepts "h" or None (which defaults to 6-minute intervals)
+            noaa_interval: Literal["h", None] = "h" if self.interval == "h" else None
+
             df = await noaa.NoaaApi.temperature(
                 station_id,
                 "water_temperature",
                 begin_date,
                 end_date,
+                interval=noaa_interval,
                 location_code=self.location_config.code,
-                # XXX add interval too
             )
             return df
 
@@ -493,14 +497,26 @@ class HistoricalTempsFeed(CompositeFeed):
     def _get_feeds(self) -> List[Feed]:
         """Create a NoaaTempFeed for each year in the range.
 
+        For the current year, caps the end date to today to avoid requesting future dates
+        from the NOAA API, which would result in an error.
+
         Returns:
             List of NoaaTempFeed instances, one for each year in the range
         """
         feeds: List[Feed] = []
+        current_date = utc_now()
+
         for year in range(self.start_year, self.end_year + 1):
             # Calculate start and end dates for this year
             start_date = datetime.datetime(year, 1, 1)
-            end_date = datetime.datetime(year, 12, 31, 23, 59, 59)
+
+            # For the current year, cap the end date to today
+            if year == current_date.year:
+                end_date = datetime.datetime(
+                    year, current_date.month, current_date.day, 23, 59, 59
+                )
+            else:
+                end_date = datetime.datetime(year, 12, 31, 23, 59, 59)
 
             feed = NoaaTempFeed(
                 location_config=self.location_config,

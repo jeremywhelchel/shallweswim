@@ -151,6 +151,35 @@ class DataManager(object):
 
         # Feed instances
         self._live_temp_feed: Optional[feeds.NoaaTempFeed] = None
+        self._historic_temps_feed: Optional[feeds.HistoricalTempsFeed] = None
+
+        # Initialize feeds if configuration is available
+        # Use hasattr to safely check for attributes, which is important for testing with mock objects
+        if hasattr(self.config, "temp_source") and self.config.temp_source:
+            temp_config = self.config.temp_source
+            if (
+                isinstance(temp_config, NoaaTempSource)
+                and hasattr(temp_config, "station")
+                and temp_config.station
+            ):
+                # Initialize live temperature feed
+                self._live_temp_feed = feeds.NoaaTempFeed(
+                    location_config=self.config,
+                    config=temp_config,
+                    interval="6-min",  # Use 6-minute intervals for live data
+                    # Set expiration interval to match our existing settings
+                    expiration_interval=EXPIRATION_PERIODS["live_temps"],
+                )
+
+                # Initialize historical temperature feed
+                self._historic_temps_feed = feeds.HistoricalTempsFeed(
+                    location_config=self.config,
+                    config=temp_config,
+                    start_year=2011,
+                    end_year=utc_now().year,
+                    # Set expiration interval to match our existing settings
+                    expiration_interval=EXPIRATION_PERIODS["historic_temps"],
+                )
 
         # Background update task
         self._update_task: Optional[asyncio.Task[None]] = None
@@ -629,107 +658,39 @@ class DataManager(object):
         except noaa.NoaaApiError as e:
             logging.warning(f"[{self.config.code}] Tide fetch error: {e}")
 
-    async def _fetch_historic_temp_year(self, year: int) -> pd.DataFrame:
-        """Fetch historical temperature data for a specified year.
-
-        This method retrieves both air and water temperature from the
-        NOAA API for the specified year, creating a complete dataset
-        with hourly readings.
-
-        Args:
-            year: The year to fetch data for
-
-        Returns:
-            DataFrame containing both air and water temperature data for the year
-
-        Raises:
-            AssertionError: If temperature station is not configured
-            TypeError: If temperature source is not a supported type
-        """
-        assert self.config.temp_source, "Temperature source not configured"
-
-        temp_config = self.config.temp_source
-        station_id = None
-
-        if isinstance(temp_config, NoaaTempSource):
-            station_id = temp_config.station
-            assert station_id, "NOAA temperature station not configured"
-        else:
-            raise TypeError(f"Unsupported temperature source type: {type(temp_config)}")
-
-        logging.info(f"[{self.config.code}] Fetching historic temps for year {year}")
-
-        begin_date = datetime.datetime(year, 1, 1)
-        end_date = datetime.datetime(year, 12, 31)
-        try:
-            # Get both air and water temperatures concurrently
-            air_temp_task = noaa.NoaaApi.temperature(
-                station_id,
-                "air_temperature",
-                begin_date,
-                end_date,
-                interval="h",
-                location_code=self.config.code,
-            )
-            water_temp_task = noaa.NoaaApi.temperature(
-                station_id,
-                "water_temperature",
-                begin_date,
-                end_date,
-                interval="h",
-                location_code=self.config.code,
-            )
-
-            air_temp, water_temp = await asyncio.gather(air_temp_task, water_temp_task)
-            # Merge the results
-            df = pd.concat([air_temp, water_temp], axis=1)
-            return df
-        except noaa.NoaaApiError as e:
-            logging.warning(
-                f"[{self.config.code}] Historic temp fetch error for {year}: {e}"
-            )
-            return pd.DataFrame()
-
     async def _fetch_historic_temps(self) -> None:
         """Fetch hourly temperature data since 2011.
 
-        Uses asyncio.gather to fetch data by year in parallel, then concatenates
+        Uses HistoricalTempsFeed to fetch data by year in parallel, then concatenates
         the results. Removes known erroneous data points and resamples to hourly intervals.
         Sets the _historic_temps_timestamp to track when data was last retrieved.
 
-        Skips fetching if no temperature station is configured.
+        Skips fetching if no temperature station is configured or if the feed wasn't initialized.
         Logs warnings if the NOAA API returns an error.
         """
-        if not self.config.temp_source:
+        if not self._historic_temps_feed:
+            logging.debug(
+                f"[{self.config.code}] No historical temperature feed configured"
+            )
             return
 
-        temp_config = self.config.temp_source
-
-        if isinstance(temp_config, NoaaTempSource):
-            if not temp_config.station:
-                return
-        else:
-            raise TypeError(f"Unsupported temperature source type: {type(temp_config)}")
         logging.info(f"[{self.config.code}] Fetching historic temps")
         try:
-            years = range(2011, utc_now().year + 1)
-            # Create tasks for each year and gather them
-            tasks = [self._fetch_historic_temp_year(year) for year in years]
-            year_frames = await asyncio.gather(*tasks)
-            # Concat all the yearly data frames
-            historic_temps = pd.concat(year_frames)
+            # Update the feed data
+            await self._historic_temps_feed.update()
 
-            # Remove outliers using the helper method
-            historic_temps = self._remove_outliers(historic_temps)
+            # Get the historical temperature data from the feed
+            # Outlier removal is already handled by the feed's update() method
+            self.historic_temps = self._historic_temps_feed.values
 
-            # Resample to hourly intervals and assign to instance variable
-            self.historic_temps = historic_temps.resample("h").first()
             # Ensure we always store naive timestamps
             now = utc_now()
             assert now.tzinfo is None, "utc_now() must return naive datetime"
             self._historic_temps_timestamp = now
-        except noaa.NoaaApiError as e:
+        except Exception as e:
             logging.warning(f"[{self.config.code}] Historic temp fetch error: {e}")
+            # Re-raise the exception to follow the project principle of failing fast
+            raise
 
     def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
         """Handle exceptions from asyncio tasks to prevent them from being silently ignored.
@@ -739,6 +700,9 @@ class DataManager(object):
 
         Args:
             task: The asyncio task that completed (successfully or with an exception)
+
+        Raises:
+            Exception: Re-raises any exception from the task to ensure failures are visible
         """
         try:
             # If the task raised an exception, this will re-raise it
@@ -751,36 +715,8 @@ class DataManager(object):
             logging.exception(
                 f"[{self.config.code}] Unhandled exception in task {task.get_name()}: {e}"
             )
-            # You could potentially restart the task here or notify an admin
-            # For now, we'll just make sure it's logged properly
-
-    def _remove_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Remove known erroneous data points from a DataFrame.
-
-        Uses the temp_outliers list from the location configuration to identify and
-        remove specific timestamps that are known to have bad data. This helps to
-        improve data quality by filtering out known anomalies.
-
-        Args:
-            df: DataFrame with DatetimeIndex to remove outliers from
-
-        Returns:
-            DataFrame with outliers removed
-        """
-        if not self.config.temp_source or not self.config.temp_source.outliers:
-            return df
-
-        result_df = df.copy()
-        for timestamp in self.config.temp_source.outliers:
-            try:
-                result_df = result_df.drop(pd.to_datetime(timestamp))
-            except KeyError:
-                # Skip if the timestamp doesn't exist in the data
-                logging.debug(
-                    f"[{self.config.code}] Outlier timestamp {timestamp} not found in data"
-                )
-
-        return result_df
+            # Re-raise the exception to follow the project principle of failing fast
+            raise
 
     async def _fetch_live_temps(self) -> None:
         """Fetch live water temperature data using the NoaaTempFeed.
@@ -788,43 +724,18 @@ class DataManager(object):
         Updates the live_temps instance variable with the most recent water temperature
         data. Sets the _live_temps_timestamp to track when data was last retrieved.
 
-        Skips fetching if no temperature station is configured.
+        Skips fetching if no temperature station is configured or if the feed wasn't initialized.
         """
-        if not self.config.temp_source:
-            logging.info(f"[{self.config.code}] No temperature source configured")
+        if not self._live_temp_feed:
+            logging.debug(f"[{self.config.code}] No live temperature feed configured")
             return
-
-        temp_config = self.config.temp_source
-
-        if isinstance(temp_config, NoaaTempSource):
-            if not temp_config.station:
-                logging.info(
-                    f"[{self.config.code}] No NOAA station configured for temperature"
-                )
-                return
-        else:
-            raise TypeError(f"Unsupported temperature source type: {type(temp_config)}")
-
-        # Initialize the feed if it doesn't exist yet
-        if self._live_temp_feed is None:
-            self._live_temp_feed = feeds.NoaaTempFeed(
-                location_config=self.config,
-                config=temp_config,
-                interval="6-min",  # Use 6-minute intervals for live data
-                # Let the feed handle the default date range internally
-                # Set expiration interval to match our existing settings
-                expiration_interval=EXPIRATION_PERIODS["live_temps"],
-            )
 
         try:
             # Update the feed data
             await self._live_temp_feed.update()
 
             # Get the water temperature data from the feed
-            # Note: This now only includes water temperature, not air temperature
             self.live_temps = self._live_temp_feed.values
-
-            # No need to update a separate timestamp - the feed tracks this internally
 
         except Exception as e:
             logging.warning(f"[{self.config.code}] Live temp fetch error: {e}")

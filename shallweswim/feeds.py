@@ -12,7 +12,7 @@ from typing import Optional, Literal
 
 # Third-party imports
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 # Local imports
 from shallweswim import config as config_lib
@@ -46,11 +46,13 @@ class Feed(BaseModel, abc.ABC):
     _timestamp: Optional[datetime.datetime] = None
     _data: Optional[pd.DataFrame] = None
 
-    class Config:
+    # Modern Pydantic v2 configuration using model_config
+    model_config = ConfigDict(
         # Allow arbitrary types like pandas DataFrame
-        arbitrary_types_allowed = True
+        arbitrary_types_allowed=True,
         # Validate assignment to attributes
-        validate_assignment = True
+        validate_assignment=True,
+    )
 
     @property
     def is_expired(self) -> bool:

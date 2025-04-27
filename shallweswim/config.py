@@ -59,13 +59,13 @@ class NoaaTempSource(TempSource, frozen=True):
     """
 
     station: Annotated[
-        Optional[int],
+        int,
         Field(
             ge=1000000,
             le=9999999,
             description="NOAA temperature station ID (7 digits) for fetching water/air temperature (e.g., 8518750 for NYC Battery)",
         ),
-    ] = None
+    ]
 
 
 class TideConfig(BaseModel, frozen=True):

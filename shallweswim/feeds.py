@@ -445,14 +445,13 @@ class MultiStationCurrentsFeed(CompositeFeed):
         """Combine current data from multiple stations.
 
         Strategy: For overlapping timestamps, calculate the average velocity.
-        This provides a more comprehensive view of currents in the area by
-        considering multiple measurement points.
+        This matches the legacy implementation in DataManager._fetch_tides_and_currents.
 
         Args:
             dataframes: List of DataFrames from individual current stations
 
         Returns:
-            Combined DataFrame with averaged current data
+            Combined DataFrame with averaged velocity data
 
         Raises:
             ValueError: If no valid dataframes are provided
@@ -464,29 +463,14 @@ class MultiStationCurrentsFeed(CompositeFeed):
             # If there's only one dataframe, just return it
             return dataframes[0]
 
-        # Combine all dataframes
-        combined_df = pd.concat(dataframes)
+        # Combine all dataframes, select only the velocity column, and average by timestamp
+        # This exactly matches the legacy implementation:
+        # pd.concat(currents)[["velocity"]].groupby(level=0).mean()
+        result_df = pd.concat(dataframes)[["velocity"]].groupby(level=0).mean()
 
-        # Group by timestamp and calculate mean for numeric columns
-        # For non-numeric columns like 'type' (flood/ebb/slack), use the most common value
-        grouped = combined_df.groupby(combined_df.index)
-
-        result_df = pd.DataFrame()
-
-        # Process numeric columns (like velocity, direction)
-        numeric_cols = combined_df.select_dtypes(include=["number"]).columns
-        if not numeric_cols.empty:
-            result_df[numeric_cols] = grouped[numeric_cols].mean()
-
-        # Process categorical columns (like type: flood/ebb/slack)
-        cat_cols = combined_df.select_dtypes(exclude=["number"]).columns
-        for col in cat_cols:
-            # Use the most common value for each timestamp
-            result_df[col] = grouped[col].agg(
-                lambda x: x.mode()[0] if not x.mode().empty else None
-            )
-
-        # Sort by timestamp
-        result_df = result_df.sort_index()
+        # Note for future improvement: A more comprehensive implementation could:
+        # 1. Preserve all numeric columns by averaging them
+        # 2. Handle categorical columns like 'type' (flood/ebb/slack) by using the most common value
+        # 3. Ensure the result is properly sorted by timestamp
 
         return result_df

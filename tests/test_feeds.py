@@ -889,6 +889,8 @@ class TestMultiStationCurrentsFeed:
             freq="1h",
         )
 
+        # Note: We still include the 'type' column in the test data, but our implementation
+        # will only keep the 'velocity' column to match the legacy behavior
         df1 = pd.DataFrame(
             {"velocity": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "type": ["flood"] * 6},
             index=index1,
@@ -909,16 +911,14 @@ class TestMultiStationCurrentsFeed:
             len(result) == 9
         )  # 3 unique timestamps in df1 + 3 overlapping + 3 unique in df2
 
+        # Verify that only the velocity column is present (matching legacy behavior)
+        assert list(result.columns) == ["velocity"]
+
         # Check that overlapping timestamps have averaged velocity values
         # Timestamps 3, 4, 5 are overlapping
         assert result.loc[index1[3], "velocity"] == 4.5  # (4.0 + 5.0) / 2
         assert result.loc[index1[4], "velocity"] == 5.5  # (5.0 + 6.0) / 2
         assert result.loc[index1[5], "velocity"] == 6.5  # (6.0 + 7.0) / 2
-
-        # Check that the type column uses the most common value
-        assert result.loc[index1[3], "type"] == "flood"  # Both are flood
-        assert result.loc[index1[4], "type"] == "flood"  # Both are flood
-        assert result.loc[index1[5], "type"] == "flood"  # Both are flood
 
         # Check that non-overlapping timestamps have the original values
         assert result.loc[index1[0], "velocity"] == 1.0

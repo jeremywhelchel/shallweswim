@@ -2,7 +2,8 @@
 
 # Standard library imports
 import datetime
-from typing import Any, Optional
+import logging
+from typing import Any
 from unittest.mock import patch
 
 # Third-party imports
@@ -114,7 +115,14 @@ def valid_temp_dataframe() -> pd.DataFrame:
 def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
     """Create a concrete implementation of the abstract Feed class."""
 
+    class TestConfig:
+        """Test configuration class for ConcreteFeed."""
+
+        outliers: list[str] = []
+
     class ConcreteFeed(Feed):
+        config: TestConfig = TestConfig()
+
         async def _fetch(self) -> pd.DataFrame:
             # Return a simple DataFrame for testing
             index = pd.date_range(
@@ -124,9 +132,9 @@ def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
             )
             return pd.DataFrame({"value": range(len(index))}, index=index)
 
-        # Override values property to match the implementation
         @property
-        def values(self) -> Optional[pd.DataFrame]:
+        def values(self) -> pd.DataFrame:
+            """Return the data for testing."""
             if self._data is None:
                 raise ValueError("Data not yet fetched")
             return self._data
@@ -256,6 +264,76 @@ class TestFeedBase:
         # Check that the message was logged with the correct format
         assert f"[{concrete_feed.location_config.code}]" in caplog.text
         assert "Test message" in caplog.text
+
+    def test_remove_outliers_with_no_outliers(self, concrete_feed: Feed) -> None:
+        """Test that _remove_outliers returns the original DataFrame when no outliers are configured."""
+        # Create a test DataFrame
+        dates = pd.date_range("2023-01-01", periods=5)
+        df = pd.DataFrame({"value": [1, 2, 3, 4, 5]}, index=dates)
+
+        # Feed config has no outliers attribute
+        result = concrete_feed._remove_outliers(df)
+
+        # Should return the original DataFrame unchanged
+        pd.testing.assert_frame_equal(result, df)
+
+    def test_remove_outliers_with_empty_outliers(self, concrete_feed: Feed) -> None:
+        """Test that _remove_outliers returns the original DataFrame when outliers list is empty."""
+        # Create a test DataFrame
+        dates = pd.date_range("2023-01-01", periods=5)
+        df = pd.DataFrame({"value": [1, 2, 3, 4, 5]}, index=dates)
+
+        # The TestConfig in concrete_feed already has empty outliers
+        result = concrete_feed._remove_outliers(df)
+
+        # Should return the original DataFrame unchanged
+        pd.testing.assert_frame_equal(result, df)
+
+    def test_remove_outliers_with_outliers(self, concrete_feed: Feed) -> None:
+        """Test that _remove_outliers removes the specified outliers from the DataFrame."""
+        # Create a test DataFrame
+        dates = pd.date_range("2023-01-01", periods=5)
+        df = pd.DataFrame({"value": [1, 2, 3, 4, 5]}, index=dates)
+
+        # Set outliers in the TestConfig
+        # Use getattr to avoid type checking issues
+        config = getattr(concrete_feed, "config")
+        config.outliers = ["2023-01-02", "2023-01-04"]
+
+        result = concrete_feed._remove_outliers(df)
+
+        # Expected DataFrame with outliers removed
+        expected_dates = pd.DatetimeIndex(["2023-01-01", "2023-01-03", "2023-01-05"])
+        expected_df = pd.DataFrame({"value": [1, 3, 5]}, index=expected_dates)
+
+        pd.testing.assert_frame_equal(result, expected_df)
+
+    def test_remove_outliers_with_nonexistent_outliers(
+        self, concrete_feed: Feed, caplog: Any
+    ) -> None:
+        """Test that _remove_outliers handles outliers that don't exist in the DataFrame."""
+        # Create a test DataFrame
+        dates = pd.date_range("2023-01-01", periods=3)
+        df = pd.DataFrame({"value": [1, 2, 3]}, index=dates)
+
+        # Set outliers in the TestConfig, including one that doesn't exist in the DataFrame
+        # Use getattr to avoid type checking issues
+        config = getattr(concrete_feed, "config")
+        config.outliers = ["2023-01-02", "2023-01-10"]
+
+        # Set the log level to WARNING to capture the warning messages
+        caplog.set_level(logging.WARNING)
+
+        result = concrete_feed._remove_outliers(df)
+
+        # Expected DataFrame with existing outlier removed
+        expected_dates = pd.DatetimeIndex(["2023-01-01", "2023-01-03"])
+        expected_df = pd.DataFrame({"value": [1, 3]}, index=expected_dates)
+
+        pd.testing.assert_frame_equal(result, expected_df)
+
+        # Check that the log message for the non-existent outlier was recorded
+        assert "Outlier timestamp 2023-01-10 not found in data" in caplog.text
 
 
 class TestNoaaTidesFeed:

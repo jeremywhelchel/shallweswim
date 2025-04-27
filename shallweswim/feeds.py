@@ -170,8 +170,37 @@ class Feed(BaseModel, abc.ABC):
         self.log(f"{self.__class__.__name__} latest datapoint: {latest_dt}")
 
     def _remove_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
-        # XXX Implement
-        return df
+        """Remove known erroneous data points from a DataFrame.
+
+        Uses the outliers list from the temperature configuration to identify and
+        remove specific timestamps that are known to have bad data. This helps to
+        improve data quality by filtering out known anomalies.
+
+        Args:
+            df: DataFrame with DatetimeIndex to remove outliers from
+
+        Returns:
+            DataFrame with outliers removed
+        """
+        # Check if we have a config attribute
+        if not hasattr(self, "config"):
+            return df
+
+        # Check if config has outliers attribute and it's not empty
+        if not hasattr(self.config, "outliers") or not self.config.outliers:
+            return df
+
+        result_df = df
+        for timestamp in self.config.outliers:
+            try:
+                result_df = result_df.drop(pd.to_datetime(timestamp))
+            except KeyError:
+                # Skip if the timestamp doesn't exist in the data
+                self.log(
+                    f"Outlier timestamp {timestamp} not found in data", logging.WARNING
+                )
+
+        return result_df
 
 
 # XXX longterm and short term handled in data management layer

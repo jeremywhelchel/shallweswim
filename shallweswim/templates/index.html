@@ -124,18 +124,20 @@ block content %} {% if config.code == 'nyc' %}
   <li>
     Water temperatures provided by:
     <a
-      href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.temp_station }}"
+      href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.temp_source.station }}"
     >
-      {{ config.temp_station_name }} - Station ID: {{ config.temp_station }}</a
+      {{ config.temp_source.name }} - Station ID: {{ config.temp_source.station
+      }}</a
     >
     (NOAA Tides and Currents)
   </li>
   <li>
     Tides provided by:
     <a
-      href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.tide_station }}"
+      href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.tide_source.station }}"
     >
-      {{ config.tide_station_name }} - Station ID: {{ config.tide_station }}</a
+      {{ config.tide_source.station_name }} - Station ID: {{
+      config.tide_source.station }}</a
     >
     (NOAA Tides and Currents)
   </li>

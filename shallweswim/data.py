@@ -8,7 +8,7 @@ and provides the necessary data for plotting and presentation.
 import asyncio
 import datetime
 import logging
-from typing import Any, Optional, Tuple, cast
+from typing import Any, Optional, Tuple
 
 # Third-party imports
 import numpy as np
@@ -20,6 +20,7 @@ from shallweswim import config as config_lib
 from shallweswim import noaa
 from shallweswim import plot
 from shallweswim import util
+from shallweswim.util import latest_time_value
 from shallweswim.config import NoaaTempSource
 from shallweswim.types import (
     DatasetName,
@@ -107,30 +108,6 @@ def _process_local_magnitude_pct(
         result_df.at[idx, "local_mag_pct"] = local_pct
 
     return result_df
-
-
-def latest_time_value(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
-    """Extract the timestamp of the most recent data point from a DataFrame.
-
-    Args:
-        df: DataFrame with DatetimeIndex, or None
-
-    Returns:
-        Timezone-naive datetime object of the last index value,
-        or None if DataFrame is None
-    """
-    if df is None:
-        return None
-    # Get the datetime from the DataFrame index
-    dt = df.index[-1].to_pydatetime()
-    # Assert that the datetime is already naive or make it naive
-    if dt.tzinfo is not None:
-        # Convert to naive datetime
-        dt = dt.replace(tzinfo=None)
-        logging.warning(
-            "DataFrame index contains timezone info; converted to naive datetime"
-        )
-    return cast(datetime.datetime, dt)
 
 
 class DataManager(object):

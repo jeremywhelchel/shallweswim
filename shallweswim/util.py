@@ -1,6 +1,7 @@
 """Shared utilities."""
 
 import datetime
+from typing import Optional, cast
 import pandas as pd
 
 
@@ -62,3 +63,28 @@ def pivot_year(df: pd.DataFrame) -> pd.DataFrame:
         df.index.strftime("2020-%m-%d %H:%M:%S")
     )
     return df.set_index("year", append=True).unstack("year")
+
+
+def latest_time_value(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
+    """Extract the timestamp of the most recent data point from a DataFrame.
+
+    Args:
+        df: DataFrame with DatetimeIndex, or None
+
+    Returns:
+        Timezone-naive datetime object of the last index value,
+        or None if DataFrame is None
+
+    Raises:
+        ValueError: If the DataFrame index contains timezone information
+    """
+    if df is None:
+        return None
+    # Get the datetime from the DataFrame index
+    dt = df.index[-1].to_pydatetime()
+    # Assert that the datetime is already naive
+    if dt.tzinfo is not None:
+        raise ValueError(
+            "DataFrame index contains timezone info; expected naive datetime"
+        )
+    return cast(datetime.datetime, dt)

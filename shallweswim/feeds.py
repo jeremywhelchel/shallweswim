@@ -6,9 +6,10 @@ including temperature, tides, and currents from various sources like NOAA.
 
 # Standard library imports
 import abc
+import asyncio
 import datetime
 import logging
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 
 # Third-party imports
 import pandas as pd
@@ -353,3 +354,54 @@ class NoaaCurrentsFeed(Feed):
             self.log(f"Current fetch error: {e}", logging.WARNING)
             # Following the project principle of failing fast for internal errors
             raise
+
+
+class CompositeFeed(Feed, abc.ABC):
+    """Base class for feeds that combine data from multiple sources.
+
+    This allows for aggregating data from multiple feeds into a single feed.
+    For example, combining current data from multiple stations or temperature
+    data from multiple years.
+    """
+
+    async def _fetch(self) -> pd.DataFrame:
+        """Fetch data from all underlying feeds and combine them.
+
+        The specific combination logic is implemented in _combine_feeds.
+
+        Returns:
+            Combined DataFrame from all feeds
+
+        Raises:
+            Exception: If fetching fails
+        """
+        # Get all the underlying feeds
+        feeds = self._get_feeds()
+
+        # Fetch data from all feeds concurrently
+        tasks = [feed._fetch() for feed in feeds]
+        results = await asyncio.gather(*tasks)
+
+        # Combine the results using the specific combination logic
+        return self._combine_feeds(results)
+
+    @abc.abstractmethod
+    def _get_feeds(self) -> List[Feed]:
+        """Get the list of feeds to combine.
+
+        Returns:
+            List of Feed objects
+        """
+        pass
+
+    @abc.abstractmethod
+    def _combine_feeds(self, dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+        """Combine the DataFrames from multiple feeds.
+
+        Args:
+            dataframes: List of DataFrames from the underlying feeds
+
+        Returns:
+            Combined DataFrame
+        """
+        pass

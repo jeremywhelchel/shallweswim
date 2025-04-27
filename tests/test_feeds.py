@@ -3,17 +3,24 @@
 # Standard library imports
 import datetime
 import logging
-from typing import Any
-from unittest.mock import patch
+from typing import Any, List
+from unittest.mock import patch, MagicMock
 
 # Third-party imports
 import pandas as pd
 import pytest
 import pytz
+from pydantic import BaseModel
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim.feeds import Feed, NoaaTempFeed, NoaaTidesFeed, NoaaCurrentsFeed
+from shallweswim.feeds import (
+    Feed,
+    NoaaTempFeed,
+    NoaaTidesFeed,
+    NoaaCurrentsFeed,
+    CompositeFeed,
+)
 
 
 @pytest.fixture
@@ -140,6 +147,33 @@ def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
             return self._data
 
     return ConcreteFeed(
+        location_config=location_config,
+        expiration_interval=datetime.timedelta(minutes=10),
+    )
+
+
+@pytest.fixture
+def simple_composite_feed(location_config: config_lib.LocationConfig) -> CompositeFeed:
+    """Create a simple concrete implementation of CompositeFeed for testing."""
+
+    class TestConfig(BaseModel):
+        """Test configuration class for SimpleCompositeFeed."""
+
+        pass
+
+    class SimpleCompositeFeed(CompositeFeed):
+        # Configuration for the feed
+        config: TestConfig = TestConfig()
+
+        def _get_feeds(self) -> List[Feed]:
+            """Get test feeds - this will be mocked in tests."""
+            return []
+
+        def _combine_feeds(self, dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+            """Combine test dataframes - this will be mocked in tests."""
+            return pd.DataFrame()
+
+    return SimpleCompositeFeed(
         location_config=location_config,
         expiration_interval=datetime.timedelta(minutes=10),
     )
@@ -700,3 +734,115 @@ class TestNoaaTempFeed:
             # Allow for small differences due to test execution timing
             date_diff = (end_date - begin_date).days
             assert date_diff == 8
+
+
+class TestCompositeFeed:
+    """Tests for the CompositeFeed class."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_calls_get_feeds_and_combine_feeds(
+        self, simple_composite_feed: CompositeFeed
+    ) -> None:
+        """Test that _fetch calls _get_feeds and _combine_feeds."""
+        # Create mock feeds and a test DataFrame to return
+        mock_feed1 = MagicMock(spec=Feed)
+        mock_feed2 = MagicMock(spec=Feed)
+
+        test_df1 = pd.DataFrame(
+            {"value": [1, 2, 3]}, index=pd.date_range(start="2025-01-01", periods=3)
+        )
+        test_df2 = pd.DataFrame(
+            {"value": [4, 5, 6]}, index=pd.date_range(start="2025-01-04", periods=3)
+        )
+
+        # Configure the mocks
+        mock_feed1._fetch.return_value = test_df1
+        mock_feed2._fetch.return_value = test_df2
+
+        # Mock the _get_feeds and _combine_feeds methods
+        with patch.object(
+            simple_composite_feed, "_get_feeds", return_value=[mock_feed1, mock_feed2]
+        ) as mock_get_feeds, patch.object(
+            simple_composite_feed,
+            "_combine_feeds",
+            return_value=pd.concat([test_df1, test_df2]),
+        ) as mock_combine_feeds:
+
+            # Call _fetch
+            result = await simple_composite_feed._fetch()
+
+            # Verify that the methods were called correctly
+            mock_get_feeds.assert_called_once()
+            mock_combine_feeds.assert_called_once()
+
+            # Verify that the feeds' _fetch methods were called
+            mock_feed1._fetch.assert_awaited_once()
+            mock_feed2._fetch.assert_awaited_once()
+
+            # Check that the result is a DataFrame
+            assert isinstance(result, pd.DataFrame)
+            assert len(result) == len(test_df1) + len(test_df2)
+
+    @pytest.mark.asyncio
+    async def test_fetch_combines_dataframes_correctly(
+        self, simple_composite_feed: CompositeFeed, valid_temp_dataframe: pd.DataFrame
+    ) -> None:
+        """Test that _fetch combines DataFrames correctly."""
+
+        # Create test feeds that return the valid_temp_dataframe
+        class TestFeed(Feed):
+            async def _fetch(self) -> pd.DataFrame:
+                return valid_temp_dataframe
+
+        # Create two instances of TestFeed
+        feed1 = TestFeed(
+            location_config=simple_composite_feed.location_config,
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
+        feed2 = TestFeed(
+            location_config=simple_composite_feed.location_config,
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
+
+        # Create a combined DataFrame for the mock to return
+        combined_df = pd.concat([valid_temp_dataframe, valid_temp_dataframe])
+
+        # Mock both _get_feeds and _combine_feeds methods
+        with patch.object(
+            simple_composite_feed, "_get_feeds", return_value=[feed1, feed2]
+        ), patch.object(
+            simple_composite_feed, "_combine_feeds", return_value=combined_df
+        ):
+            # Call _fetch
+            result = await simple_composite_feed._fetch()
+
+            # Check that the result is the combined DataFrame
+            assert isinstance(result, pd.DataFrame)
+            assert len(result) == len(valid_temp_dataframe) * 2
+            # Verify the result matches our expected combined DataFrame
+            pd.testing.assert_frame_equal(result, combined_df)
+
+    @pytest.mark.asyncio
+    async def test_fetch_propagates_errors(
+        self, simple_composite_feed: CompositeFeed
+    ) -> None:
+        """Test that _fetch propagates errors from underlying feeds."""
+
+        # Create a test feed that raises an exception
+        class ErrorFeed(Feed):
+            async def _fetch(self) -> pd.DataFrame:
+                raise ValueError("Test error")
+
+        # Create an instance of ErrorFeed
+        error_feed = ErrorFeed(
+            location_config=simple_composite_feed.location_config,
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
+
+        # Mock the _get_feeds method to return our error feed
+        with patch.object(
+            simple_composite_feed, "_get_feeds", return_value=[error_feed]
+        ):
+            # Call _fetch and expect it to raise an exception
+            with pytest.raises(ValueError, match="Test error"):
+                await simple_composite_feed._fetch()

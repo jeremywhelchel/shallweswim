@@ -5,7 +5,7 @@ import asyncio
 import datetime
 from unittest.mock import MagicMock
 
-from tests.test_utils import assert_json_serializable
+from tests.helpers import assert_json_serializable
 
 # Third-party imports
 import pandas as pd

@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from shallweswim.api import register_routes, data
 from shallweswim import config as config_lib
 from shallweswim.data import DataManager
-from tests.test_utils import assert_json_serializable
+from tests.helpers import assert_json_serializable
 
 
 @pytest.fixture

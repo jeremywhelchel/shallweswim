@@ -4,7 +4,7 @@
 import asyncio
 import datetime
 
-from tests.test_utils import assert_json_serializable
+from tests.helpers import assert_json_serializable
 from typing import Any, List, cast
 from unittest.mock import patch, MagicMock
 

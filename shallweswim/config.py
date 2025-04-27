@@ -321,8 +321,10 @@ CONFIG_LIST = [
     #    timezone=pytz.timezone("US/Pacific"),
     #    # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
     #    # It is not a live reading (and not available via the same API), so we don't use it.
+    #    # The San Francisco, CA - Station ID: 9414290 has been disabled with this message
+    #    # Disabled - 2025-01-17 02:01:00, Suspect Data - Data failed to meet QC standards - under review.
     #    temp_source=NoaaTempSource(
-    #        station=9414290,
+    #        station=9414769,
     #        name="San Francisco, CA",
     #    ),
     #    tide_source=TideConfig(

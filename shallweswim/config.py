@@ -75,13 +75,13 @@ class TideConfig(BaseModel, frozen=True):
     """
 
     station: Annotated[
-        Optional[int],
+        int,
         Field(
             ge=1000000,
             le=9999999,
             description="NOAA tide station ID (7 digits) for fetching tide predictions (e.g., 8517741 for Coney Island)",
         ),
-    ] = None
+    ]
 
     station_name: Annotated[
         Optional[str],
@@ -98,11 +98,11 @@ class CurrentsConfig(BaseModel, frozen=True):
     """
 
     stations: Annotated[
-        Optional[List[Annotated[str, Field(min_length=1)]]],
+        List[Annotated[str, Field(min_length=1)]],
         Field(
             description="Current stations for water current speed and direction (strings like 'ACT3876', unlike temp/tide stations)"
         ),
-    ] = None
+    ]
 
     predictions_available: Annotated[
         bool,

@@ -12,6 +12,7 @@ from typing import Optional, Literal
 
 # Third-party imports
 import pandas as pd
+from pydantic import BaseModel
 
 # Local imports
 from shallweswim import config as config_lib
@@ -26,23 +27,42 @@ EXPIRATION_BUFFER = datetime.timedelta(seconds=300)
 # XXX Add common logging patterns and error handling too
 
 
-class Feed(abc.ABC):
+class Feed(BaseModel, abc.ABC):
+    """Abstract base class for all data feeds.
+
+    A feed represents a source of time-series data that can be fetched,
+    processed, and cached. Feeds handle their own expiration logic and
+    can be configured to refresh at different intervals.
+    """
+
+    # Configuration for the location this feed is associated with
+    location_config: config_lib.LocationConfig
+
     # Frequency in which this data needs to be fetched, otherwise it is considered expired.
     # If None, this dataset will never expire and only needs to be fetched once.
     expiration_interval: Optional[datetime.timedelta]
-    # Timestamp at which the data was last successfully fetched. None means it has never been fetched.
+
+    # Private fields - not included in serialization but still validated
     _timestamp: Optional[datetime.datetime] = None
-    # Internal data that will be updated
     _data: Optional[pd.DataFrame] = None
 
-    location_config: config_lib.LocationConfig
+    class Config:
+        # Allow arbitrary types like pandas DataFrame
+        arbitrary_types_allowed = True
+        # Validate assignment to attributes
+        validate_assignment = True
 
     @property
     def is_expired(self) -> bool:
+        """Check if the feed data has expired and needs to be refreshed.
+
+        Returns:
+            True if data is expired or not yet fetched, False otherwise
+        """
         if not self._timestamp:
-            return False
-        if not self.expiration_interval:
             return True
+        if not self.expiration_interval:
+            return False
         now = utc_now()
         # Use the EXPIRATION_BUFFER to give the system time to refresh before reporting as expired
         age = now - self._timestamp
@@ -51,24 +71,57 @@ class Feed(abc.ABC):
     @property
     @abc.abstractmethod
     def values(self) -> pd.DataFrame:
+        """Get the processed data from this feed.
+
+        Returns:
+            DataFrame containing the feed data
+
+        Raises:
+            ValueError: If data is not available
+        """
+        if self._data is None:
+            raise ValueError("Data not yet fetched")
         return self._data
 
     async def update(self) -> None:
-        """Update the data from this feed if it is not expired."""
+        """Update the data from this feed if it is expired."""
         if not self.is_expired:
+            logging.debug(f"Skipping update for non-expired feed")
             return
-        df = await self._fetch()
-        # XXX Perform some basic validation here
-        # XXX assert no tzinfo. log latest datapoint, etc...
-        # XXX remove outliers
-        self._data = df
-        self._timestamp = utc_now()
+
+        try:
+            logging.info(f"Fetching data for {self.__class__.__name__}")
+            df = await self._fetch()
+            # XXX Perform some basic validation here
+            # XXX assert no tzinfo. log latest datapoint, etc...
+            # XXX remove outliers
+            self._data = df
+            self._timestamp = utc_now()
+            logging.info(f"Successfully updated {self.__class__.__name__}")
+
+        except Exception as e:
+            # Log the error but don't suppress it - following the project principle
+            # of failing fast for internal errors
+            logging.error(f"Error updating {self.__class__.__name__}: {e}")
+            raise
 
     @abc.abstractmethod
-    async def _fetch(self) -> pd.DataFrame: ...
+    async def _fetch(self) -> pd.DataFrame:
+        """Fetch data from the external source.
+
+        This method should be implemented by subclasses to fetch data
+        from their specific sources and process it.
+
+        Returns:
+            DataFrame containing the fetched data
+
+        Raises:
+            Exception: If fetching fails
+        """
+        ...
 
     def _remove_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
-        # XXX implement this
+        # XXX Implement
         return df
 
 
@@ -78,24 +131,55 @@ class Feed(abc.ABC):
 
 
 class TempFeed(Feed, abc.ABC):
-    name: str
+    """Base class for temperature data feeds.
+
+    This abstract class defines the interface for all temperature data sources,
+    regardless of the specific provider (NOAA, USGS, etc).
+    """
+
+    # Temperature source configuration
     config: config_lib.TempSource
 
+    # Data resolution ("h" for hourly, "6-min" for 6-minute intervals)
     interval: Literal["h", "6-min"]  # XXX 6-min is noaa specific. Make a type
 
-    # XXX if unspecified, end should be now, and we should read the most recent data (how much? XXX)
-    start: Optional[datetime.datetime]
-    end: Optional[datetime.datetime]
+    # Optional time range for data fetch
+    start: Optional[datetime.datetime] = None
+    end: Optional[datetime.datetime] = None
+
+    @property
+    def name(self) -> str:
+        """Get the name of this temperature feed.
+
+        Returns:
+            Human-readable name of the temperature source
+        """
+        return self.config.name or "Unknown Temperature Source"
 
 
 class NoaaTempFeed(TempFeed):
+    """NOAA-specific implementation of temperature data feed.
+
+    Fetches temperature data from NOAA stations using the NOAA API.
+    """
+
     config: config_lib.NoaaTempSource
 
     async def _fetch(self) -> pd.DataFrame:
+        """Fetch temperature data from NOAA API.
+
+        Returns:
+            DataFrame with temperature data
+
+        Raises:
+            Exception: If fetching fails
+        """
         station_id = self.config.station
-        # XXX Get properly from parameters
-        begin_date = datetime.datetime.today() - datetime.timedelta(days=8)
-        end_date = datetime.datetime.today()
+        # Use parameters if provided, otherwise use defaults
+        end_date = self.end or datetime.datetime.today()
+        # XXX Document this default delta better
+        begin_date = self.start or (end_date - datetime.timedelta(days=8))
+
         try:
             df = await noaa.NoaaApi.temperature(
                 station_id,
@@ -109,6 +193,8 @@ class NoaaTempFeed(TempFeed):
 
         except noaa.NoaaApiError as e:
             logging.warning(f"[{self.location_config.code}] Live temp fetch error: {e}")
+            # Following the project principle of failing fast for internal errors
+            raise
 
 
 # class UsgsTempFeed(TempFeed):

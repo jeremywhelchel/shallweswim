@@ -22,26 +22,38 @@
 
 ## Architecture
 
-Shall We Swim is a FastAPI application with a simple architecture:
+Shall We Swim is a FastAPI application with a modular architecture:
 
 ### Core Components
 
-- **Data Management (`data.py`)**: Fetches and processes NOAA data
-- **API Layer (`api.py`)**: JSON endpoints for swim conditions
+- **Feed Framework (`feeds.py`)**: Modular data feed system for different data types
+  - Base `Feed` class with expiration tracking and status reporting
+  - Specialized feed types (NoaaTempFeed, NoaaTidesFeed, etc.)
+  - Composite feeds for combining multiple data sources
+- **Data Management (`data.py`)**: Coordinates feeds and processes NOAA data
+  - Manages feed lifecycle and data freshness
+  - Provides status monitoring and ready-state tracking
+  - Handles data processing and transformation
+- **API Layer (`api.py`)**: JSON endpoints for swim conditions and status
+  - Location-specific endpoints for conditions data
+  - Status endpoints for monitoring system health
+  - Current prediction and tide visualization endpoints
 - **Web UI (`main.py`)**: HTML templates and web interface
 - **NOAA Client (`noaa.py`)**: Interacts with NOAA APIs
 - **Configuration (`config.py`)**: Location settings and station IDs
+- **Utilities (`util.py`)**: Common utilities for time handling and data processing
 
 ### Data Flow
 
-1. **Data Fetching**: NOAA data (tides, currents, temperatures) is fetched for configured locations
+1. **Data Fetching**: Specialized Feed classes fetch NOAA data (tides, currents, temperatures) for configured locations
 2. **Data Processing**: Raw data is processed with appropriate timezone conversions
-3. **Plot Generation**: Visualizations are asynchronously generated for different time spans:
+3. **Status Monitoring**: Feed and DataManager status is tracked and exposed via API endpoints
+4. **Plot Generation**: Visualizations are asynchronously generated for different time spans:
    - 48-hour tide/current predictions
    - 2-month historical temperature data
    - Multi-year temperature trends
-4. **API Endpoints**: Processed data is available via JSON endpoints
-5. **Web UI**: Templates display the data with visualizations
+5. **API Endpoints**: Processed data and system status are available via JSON endpoints
+6. **Web UI**: Templates display the data with visualizations
 
 ## Getting Started
 

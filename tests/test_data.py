@@ -5,6 +5,8 @@ import asyncio
 import datetime
 from unittest.mock import MagicMock
 
+from tests.test_utils import assert_json_serializable
+
 # Third-party imports
 import pandas as pd
 import pytest
@@ -552,3 +554,55 @@ async def test_wait_until_ready() -> None:
     # Test wait_until_ready with a feed that will cause a timeout
     result = await data.wait_until_ready(timeout=0.1)  # Short timeout
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_data_status_property() -> None:
+    """Test the status property of the DataManager class.
+
+    Verifies that the status property returns a dictionary mapping feed names to their status dictionaries,
+    and that the dictionary is JSON serializable.
+    """
+    # Create a DataManager instance
+    config = MagicMock(spec=config_lib.LocationConfig)
+    config.code = "nyc"
+    data = DataManager(config)
+
+    # Create mock feeds with status dictionaries
+    mock_feeds = []
+    for i in range(3):
+        mock_feed = MagicMock()
+        mock_feed.status = {
+            "name": f"MockFeed{i}",
+            "location": "nyc",
+            "timestamp": "2025-04-27T12:00:00",
+            "age_seconds": 3600,
+            "is_expired": False,
+            "is_ready": True,
+            "data_shape": [24, 1],
+            "expiration_seconds": 3600,
+        }
+        mock_feeds.append(mock_feed)
+
+    # Set the mock feeds in the _feeds dictionary
+    data._feeds = {
+        "tides": mock_feeds[0],
+        "currents": mock_feeds[1],
+        "live_temps": mock_feeds[2],
+        "historic_temps": None,  # Test with a None feed
+    }
+
+    # Get the status dictionary
+    status = data.status
+
+    # Check that the status dictionary contains the expected keys
+    assert set(status.keys()) == {"tides", "currents", "live_temps"}
+
+    # Check that the status dictionary contains the expected values
+    for i, name in enumerate(["tides", "currents", "live_temps"]):
+        assert status[name]["name"] == f"MockFeed{i}"
+        assert status[name]["location"] == "nyc"
+        assert status[name]["is_ready"] is True
+
+    # Check that the status dictionary is JSON serializable
+    assert_json_serializable(status)

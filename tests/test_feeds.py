@@ -3,7 +3,8 @@
 # Standard library imports
 import asyncio
 import datetime
-import json
+
+from tests.test_utils import assert_json_serializable
 from typing import Any, List, cast
 from unittest.mock import patch, MagicMock
 
@@ -502,15 +503,8 @@ class TestFeedBase:
         # Get the status dictionary
         status = concrete_feed.status
 
-        # Try to serialize to JSON
-        try:
-            # Just attempt the serialization - we don't need to use the result
-            json.dumps(status)
-            # If we get here, serialization succeeded
-            assert True
-        except (TypeError, ValueError) as e:
-            # If we get here, serialization failed
-            assert False, f"Status dictionary is not JSON serializable: {e}"
+        # Check that the status dictionary is JSON serializable
+        assert_json_serializable(status)
 
 
 class TestNoaaTidesFeed:

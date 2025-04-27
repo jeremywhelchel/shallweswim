@@ -275,6 +275,22 @@ class DataManager(object):
         # All configured feeds exist and are not expired
         return True
 
+    @property
+    def status(self) -> Dict[str, Any]:
+        """Get a dictionary with the status of all configured feeds.
+
+        Returns:
+            Dictionary mapping feed names to their status dictionaries
+        """
+        status_dict: Dict[str, Any] = {}
+
+        # Add status for each configured feed
+        for name, feed in self._feeds.items():
+            if feed is not None:
+                status_dict[name] = feed.status
+
+        return status_dict
+
     async def wait_until_ready(self, timeout: Optional[float] = None) -> bool:
         """Wait until all configured feeds have data available.
 

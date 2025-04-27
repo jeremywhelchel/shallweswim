@@ -8,7 +8,7 @@ and provides the necessary data for plotting and presentation.
 import asyncio
 import datetime
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 # Third-party imports
 import numpy as np
@@ -218,27 +218,24 @@ class DataManager(object):
 
     @property
     def ready(self) -> bool:
-        """Check if all datasets have been fetched and are not expired.
+        """Check if all configured datasets have been fetched and are not expired.
 
         Returns:
-            True if all datasets have been fetched and are not expired, False otherwise
+            True if all configured datasets have been fetched and are not expired, False otherwise
         """
-        # All required feeds must exist and not be expired
-        required_datasets: List[DatasetName] = [
-            "tides",
-            "currents",
-            "live_temps",
-            "historic_temps",
-        ]
+        # Only check feeds that have been configured (non-None values in _feeds)
+        configured_feeds = [feed for feed in self._feeds.values() if feed is not None]
 
-        # Check each required dataset
-        for dataset in required_datasets:
-            feed = self._feeds[dataset]
-            # If any feed is missing or expired, we're not ready
-            if feed is None or feed.is_expired:
+        # If no feeds are configured, we're technically ready (nothing to wait for)
+        if not configured_feeds:
+            return True
+
+        # Check if any configured feed is expired
+        for feed in configured_feeds:
+            if feed.is_expired:
                 return False
 
-        # All feeds exist and are not expired
+        # All configured feeds exist and are not expired
         return True
 
     def _expired(self, dataset: DatasetName) -> bool:

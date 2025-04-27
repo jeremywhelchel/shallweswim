@@ -355,29 +355,33 @@ async def test_current_info_representation() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "tides_timestamp,live_temps_timestamp,historic_temps_timestamp,expected_ready",
+    "tides_timestamp,live_temps_timestamp,historic_temps_timestamp,expected_ready,configured_feeds",
     [
-        # No data is loaded (all None) - not ready
-        (None, None, None, False),
+        # No feeds configured - ready (nothing to wait for)
+        (None, None, None, True, False),
         # All datasets have timestamps but all expired - not ready
         (
             datetime.datetime(2020, 1, 1),
             datetime.datetime(2020, 1, 1),
             datetime.datetime(2020, 1, 1),
             False,
+            True,
         ),
-        # Only some datasets have timestamps - not ready
+        # Some datasets missing but all configured ones are valid - ready
+        # This reflects the new ready logic where we only check configured feeds
         (
             datetime.datetime.now(),
             None,
             datetime.datetime.now(),
-            False,
+            True,
+            True,
         ),
-        # All datasets have recent timestamps - ready
+        # All configured datasets have recent timestamps - ready
         (
             datetime.datetime.now(),
             datetime.datetime.now(),
             datetime.datetime.now(),
+            True,
             True,
         ),
     ],
@@ -388,6 +392,7 @@ async def test_data_ready_property(
     live_temps_timestamp: datetime.datetime,
     historic_temps_timestamp: datetime.datetime,
     expected_ready: bool,
+    configured_feeds: bool,
 ) -> None:
     """Test the ready property of the Data class.
 
@@ -432,32 +437,34 @@ async def test_data_ready_property(
     # Use setattr to avoid mypy method-assign error
     setattr(data, "_expired", mock_expired)
 
-    # Set up feed mocks for each dataset in the _feeds dictionary
-    # Tides feed
-    mock_tides_feed = MagicMock()
-    mock_tides_feed.is_expired = mock_expired("tides")
-    data._feeds["tides"] = mock_tides_feed if tides_timestamp is not None else None
+    # Only set up feed mocks if configured_feeds is True
+    if configured_feeds:
+        # Set up feed mocks for each dataset in the _feeds dictionary
+        # Tides feed
+        mock_tides_feed = MagicMock()
+        mock_tides_feed.is_expired = mock_expired("tides")
+        data._feeds["tides"] = mock_tides_feed if tides_timestamp is not None else None
 
-    # Currents feed
-    mock_currents_feed = MagicMock()
-    mock_currents_feed.is_expired = mock_expired("currents")
-    data._feeds["currents"] = (
-        mock_currents_feed if tides_timestamp is not None else None
-    )
+        # Currents feed - only configure if tides_timestamp is not None
+        # This simulates a location that may not have currents configured
+        if tides_timestamp is not None:
+            mock_currents_feed = MagicMock()
+            mock_currents_feed.is_expired = mock_expired("currents")
+            data._feeds["currents"] = mock_currents_feed
 
-    # Live temps feed
-    mock_live_temps_feed = MagicMock()
-    mock_live_temps_feed.is_expired = mock_expired("live_temps")
-    data._feeds["live_temps"] = (
-        mock_live_temps_feed if live_temps_timestamp is not None else None
-    )
+        # Live temps feed - only configure if live_temps_timestamp is not None
+        # This simulates a location that may not have live temps configured
+        if live_temps_timestamp is not None:
+            mock_live_temps_feed = MagicMock()
+            mock_live_temps_feed.is_expired = mock_expired("live_temps")
+            data._feeds["live_temps"] = mock_live_temps_feed
 
-    # Historic temps feed
-    mock_historic_temps_feed = MagicMock()
-    mock_historic_temps_feed.is_expired = mock_expired("historic_temps")
-    data._feeds["historic_temps"] = (
-        mock_historic_temps_feed if historic_temps_timestamp is not None else None
-    )
+        # Historic temps feed - only configure if historic_temps_timestamp is not None
+        # This simulates a location that may not have historic temps configured
+        if historic_temps_timestamp is not None:
+            mock_historic_temps_feed = MagicMock()
+            mock_historic_temps_feed.is_expired = mock_expired("historic_temps")
+            data._feeds["historic_temps"] = mock_historic_temps_feed
 
     # Test the ready property
     assert data.ready == expected_ready

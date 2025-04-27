@@ -3,6 +3,7 @@
 # Standard library imports
 import asyncio
 import datetime
+import json
 from typing import Any, List, cast
 from unittest.mock import patch, MagicMock
 
@@ -422,15 +423,94 @@ class TestFeedBase:
     @pytest.mark.asyncio
     async def test_wait_until_ready_timeout(self, concrete_feed: Feed) -> None:
         """Test that wait_until_ready returns False when timeout occurs."""
-        # Ensure no data is available
-        concrete_feed._data = None
-        concrete_feed._ready_event.clear()
+        # Set a very short timeout
+        result = await concrete_feed.wait_until_ready(timeout=0.1)
 
-        # Call wait_until_ready with a very short timeout
-        result = await concrete_feed.wait_until_ready(timeout=0.01)
-
-        # Check that it returned False due to timeout
+        # Since the feed has no data and no one is setting the event,
+        # wait_until_ready should timeout and return False
         assert result is False
+
+    def test_age_with_no_timestamp(self, concrete_feed: Feed) -> None:
+        """Test that age returns None when no timestamp is available."""
+        # Ensure the feed has no timestamp
+        concrete_feed._timestamp = None
+
+        # Check that age returns None
+        assert concrete_feed.age is None
+
+    def test_age_with_timestamp(self, concrete_feed: Feed) -> None:
+        """Test that age returns the correct age as a timedelta."""
+        # Set a timestamp 10 seconds in the past (using naive datetime)
+        now = datetime.datetime.utcnow()
+        concrete_feed._timestamp = now - datetime.timedelta(seconds=10)
+
+        # Check that age returns approximately 10 seconds as a timedelta
+        age = concrete_feed.age
+        assert age is not None
+        assert 9.5 <= age.total_seconds() <= 10.5  # Allow for small timing differences
+
+    def test_status_property_with_no_data(self, concrete_feed: Feed) -> None:
+        """Test that status property returns correct information when no data is available."""
+        # Ensure the feed has no data or timestamp
+        concrete_feed._data = None
+        concrete_feed._timestamp = None
+
+        # Get the status dictionary
+        status = concrete_feed.status
+
+        # Check the status dictionary contents
+        assert status["name"] == "ConcreteFeed"
+        assert status["location"] == concrete_feed.location_config.code
+        assert status["timestamp"] is None
+        assert status["age_seconds"] is None
+        assert status["is_expired"] is True
+        assert status["is_ready"] is False
+        assert status["data_shape"] is None
+
+    def test_status_property_with_data(
+        self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
+    ) -> None:
+        """Test that status property returns correct information when data is available."""
+        # Set data and timestamp (using naive datetime)
+        concrete_feed._data = valid_temp_dataframe
+        concrete_feed._timestamp = datetime.datetime.utcnow()
+        concrete_feed._ready_event.set()
+
+        # Get the status dictionary
+        status = concrete_feed.status
+
+        # Check the status dictionary contents
+        assert status["name"] == "ConcreteFeed"
+        assert status["location"] == concrete_feed.location_config.code
+        assert status["timestamp"] is not None
+        assert status["age_seconds"] is not None
+        assert (
+            status["is_expired"] is False
+        )  # Should not be expired with a recent timestamp
+        assert status["is_ready"] is True
+        assert status["data_shape"] == list(valid_temp_dataframe.shape)
+
+    def test_status_property_json_serializable(
+        self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
+    ) -> None:
+        """Test that status property returns a JSON serializable dictionary."""
+        # Set data and timestamp
+        concrete_feed._data = valid_temp_dataframe
+        concrete_feed._timestamp = datetime.datetime.utcnow()
+        concrete_feed._ready_event.set()
+
+        # Get the status dictionary
+        status = concrete_feed.status
+
+        # Try to serialize to JSON
+        try:
+            # Just attempt the serialization - we don't need to use the result
+            json.dumps(status)
+            # If we get here, serialization succeeded
+            assert True
+        except (TypeError, ValueError) as e:
+            # If we get here, serialization failed
+            assert False, f"Status dictionary is not JSON serializable: {e}"
 
 
 class TestNoaaTidesFeed:

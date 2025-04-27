@@ -69,6 +69,20 @@ class Feed(BaseModel, abc.ABC):
             self._ready_event.set()
 
     @property
+    def age(self) -> Optional[datetime.timedelta]:
+        """Calculate the age of the data as a timedelta.
+
+        Returns:
+            Age as a timedelta, or None if data has not been fetched yet
+        """
+        if not self._timestamp:
+            return None
+
+        # All datetimes should be naive
+        now = utc_now()
+        return now - self._timestamp
+
+    @property
     def is_expired(self) -> bool:
         """Check if the feed data has expired and needs to be refreshed.
 
@@ -79,10 +93,14 @@ class Feed(BaseModel, abc.ABC):
             return True
         if not self.expiration_interval:
             return False
-        now = utc_now()
+
+        # Use age to calculate the age
+        age_td = self.age
+        # age will never return None here because we already checked self._timestamp
+        assert age_td is not None
+
         # Use the EXPIRATION_BUFFER to give the system time to refresh before reporting as expired
-        age = now - self._timestamp
-        return age > (self.expiration_interval + EXPIRATION_BUFFER)
+        return age_td > (self.expiration_interval + EXPIRATION_BUFFER)
 
     @property
     def values(self) -> pd.DataFrame:
@@ -107,6 +125,45 @@ class Feed(BaseModel, abc.ABC):
         """
         log_message = f"[{self.location_config.code}] {message}"
         logging.log(level, log_message)
+
+    @property
+    def status(self) -> dict[str, Any]:
+        """Get a dictionary with the current status of this feed.
+
+        Returns:
+            A dictionary containing information about the feed's status
+        """
+        # Get data shape if available
+        shape = None
+        if self._data is not None:
+            shape = self._data.shape
+
+        # Get age as timedelta
+        age_td = self.age
+
+        # Convert age to seconds for the API
+        age_sec = None
+        if age_td is not None:
+            age_sec = age_td.total_seconds()
+
+        # Calculate expiration info
+        expiration_sec = None
+        if self.expiration_interval:
+            expiration_sec = self.expiration_interval.total_seconds()
+
+        # Build status dictionary with JSON serializable values
+        status_dict = {
+            "name": self.__class__.__name__,
+            "location": self.location_config.code,
+            "timestamp": self._timestamp.isoformat() if self._timestamp else None,
+            "age_seconds": age_sec,
+            "is_expired": self.is_expired,
+            "is_ready": self._ready_event.is_set(),
+            "data_shape": list(shape) if shape else None,
+            "expiration_seconds": expiration_sec,
+        }
+
+        return status_dict
 
     async def wait_until_ready(self, timeout: Optional[float] = None) -> bool:
         """Wait until the feed has data available.

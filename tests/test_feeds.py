@@ -21,6 +21,7 @@ from shallweswim.feeds import (
     NoaaCurrentsFeed,
     CompositeFeed,
     MultiStationCurrentsFeed,
+    HistoricalTempsFeed,
 )
 
 
@@ -971,3 +972,147 @@ class TestMultiStationCurrentsFeed:
             # Call _fetch and expect it to raise an exception (following the project principle of failing fast)
             with pytest.raises(ValueError, match="Test station error"):
                 await multi_station_currents_feed._fetch()
+
+
+class TestHistoricalTempsFeed:
+    """Tests for the HistoricalTempsFeed class."""
+
+    @pytest.fixture
+    def historical_temps_feed(
+        self,
+        location_config: config_lib.LocationConfig,
+        temp_config: config_lib.NoaaTempSource,
+    ) -> HistoricalTempsFeed:
+        """Create a HistoricalTempsFeed fixture."""
+        return HistoricalTempsFeed(
+            location_config=location_config,
+            config=temp_config,
+            start_year=2023,
+            end_year=2024,
+            expiration_interval=datetime.timedelta(hours=3),
+        )
+
+    def test_get_feeds_creates_correct_feeds(
+        self, historical_temps_feed: HistoricalTempsFeed
+    ) -> None:
+        """Test that _get_feeds creates the correct number of NoaaTempFeed instances."""
+        # Get the feeds
+        feeds = historical_temps_feed._get_feeds()
+
+        # Check that we have the correct number of feeds (2023-2024 = 2 years)
+        assert len(feeds) == 2
+
+        # Check that each feed is a NoaaTempFeed
+        for feed in feeds:
+            assert isinstance(feed, NoaaTempFeed)
+
+        # Check that the feeds have the correct date ranges
+        # Since we can't directly access the start/end dates of the feeds (they're used internally),
+        # we'll have to trust that they were set correctly based on the implementation
+
+    def test_combine_feeds_with_single_dataframe(
+        self,
+        historical_temps_feed: HistoricalTempsFeed,
+        valid_temp_dataframe: pd.DataFrame,
+    ) -> None:
+        """Test that _combine_feeds returns the input dataframe when only one is provided."""
+        # Call _combine_feeds with a single dataframe
+        result = historical_temps_feed._combine_feeds([valid_temp_dataframe])
+
+        # Check that the result is the same as the input
+        pd.testing.assert_frame_equal(result, valid_temp_dataframe)
+
+    def test_combine_feeds_with_multiple_dataframes(
+        self, historical_temps_feed: HistoricalTempsFeed
+    ) -> None:
+        """Test that _combine_feeds correctly concatenates data from multiple years."""
+        # Create two test dataframes with data from different years
+        index2023 = pd.date_range(
+            start=datetime.datetime(2023, 7, 15, 12, 0, 0),
+            end=datetime.datetime(2023, 7, 15, 14, 0, 0),
+            freq="1h",
+        )
+        index2024 = pd.date_range(
+            start=datetime.datetime(2024, 7, 15, 12, 0, 0),
+            end=datetime.datetime(2024, 7, 15, 14, 0, 0),
+            freq="1h",
+        )
+
+        df2023 = pd.DataFrame({"temperature": [20.0, 21.0, 22.0]}, index=index2023)
+        df2024 = pd.DataFrame({"temperature": [22.0, 23.0, 24.0]}, index=index2024)
+
+        # Call _combine_feeds
+        result = historical_temps_feed._combine_feeds([df2023, df2024])
+
+        # Check that the result has the correct shape
+        assert len(result) == 6  # 3 hours from 2023 + 3 hours from 2024
+
+        # Check that the result contains all the original data
+        # Check 2023 data
+        assert (
+            result.loc[datetime.datetime(2023, 7, 15, 12, 0, 0), "temperature"] == 20.0
+        )
+        assert (
+            result.loc[datetime.datetime(2023, 7, 15, 13, 0, 0), "temperature"] == 21.0
+        )
+        assert (
+            result.loc[datetime.datetime(2023, 7, 15, 14, 0, 0), "temperature"] == 22.0
+        )
+
+        # Check 2024 data
+        assert (
+            result.loc[datetime.datetime(2024, 7, 15, 12, 0, 0), "temperature"] == 22.0
+        )
+        assert (
+            result.loc[datetime.datetime(2024, 7, 15, 13, 0, 0), "temperature"] == 23.0
+        )
+        assert (
+            result.loc[datetime.datetime(2024, 7, 15, 14, 0, 0), "temperature"] == 24.0
+        )
+
+        # Verify that the index is sorted
+        assert result.index.is_monotonic_increasing
+
+    def test_combine_feeds_with_empty_list(
+        self, historical_temps_feed: HistoricalTempsFeed
+    ) -> None:
+        """Test that _combine_feeds raises an error when no dataframes are provided."""
+        with pytest.raises(ValueError, match="No dataframes provided to combine"):
+            historical_temps_feed._combine_feeds([])
+
+    @pytest.mark.asyncio
+    async def test_fetch_handles_year_errors(
+        self,
+        historical_temps_feed: HistoricalTempsFeed,
+        valid_temp_dataframe: pd.DataFrame,
+    ) -> None:
+        """Test error handling when one year fails but others succeed."""
+
+        # Create a test feed that raises an exception
+        class ErrorFeed(Feed):
+            async def _fetch(self) -> pd.DataFrame:
+                raise ValueError("Test year error")
+
+        # Create a test feed that returns valid data
+        class SuccessFeed(Feed):
+            async def _fetch(self) -> pd.DataFrame:
+                return valid_temp_dataframe
+
+        # Mock _get_feeds to return one error feed and one success feed
+        with patch.object(
+            historical_temps_feed,
+            "_get_feeds",
+            return_value=[
+                ErrorFeed(
+                    location_config=historical_temps_feed.location_config,
+                    expiration_interval=datetime.timedelta(hours=3),
+                ),
+                SuccessFeed(
+                    location_config=historical_temps_feed.location_config,
+                    expiration_interval=datetime.timedelta(hours=3),
+                ),
+            ],
+        ):
+            # Call _fetch and expect it to raise an exception (following the project principle of failing fast)
+            with pytest.raises(ValueError, match="Test year error"):
+                await historical_temps_feed._fetch()

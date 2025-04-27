@@ -474,3 +474,67 @@ class MultiStationCurrentsFeed(CompositeFeed):
         # 3. Ensure the result is properly sorted by timestamp
 
         return result_df
+
+
+class HistoricalTempsFeed(CompositeFeed):
+    """Feed for historical temperature data across multiple years.
+
+    Fetches temperature data for multiple years and combines them to provide
+    historical averages for each day of the year. This is useful for showing
+    typical temperatures for a given date based on historical records.
+    """
+
+    config: config_lib.NoaaTempSource
+    start_year: int
+    end_year: int
+
+    def _get_feeds(self) -> List[Feed]:
+        """Create a NoaaTempFeed for each year in the range.
+
+        Returns:
+            List of NoaaTempFeed instances, one for each year in the range
+        """
+        feeds: List[Feed] = []
+        for year in range(self.start_year, self.end_year + 1):
+            # Calculate start and end dates for this year
+            start_date = datetime.datetime(year, 1, 1)
+            end_date = datetime.datetime(year, 12, 31, 23, 59, 59)
+
+            feed = NoaaTempFeed(
+                location_config=self.location_config,
+                config=self.config,
+                start=start_date,
+                end=end_date,
+                interval="h",  # Use hourly data for historical temps
+                expiration_interval=self.expiration_interval,
+            )
+            feeds.append(feed)
+        return feeds
+
+    def _combine_feeds(self, dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+        """Combine temperature data from multiple years.
+
+        Simply concatenates the dataframes from different years. The only reason
+        to fetch years separately is for efficient parallel fetching.
+
+        Args:
+            dataframes: List of DataFrames from individual years
+
+        Returns:
+            Combined DataFrame with temperature data from all years
+
+        Raises:
+            ValueError: If no valid dataframes are provided
+        """
+        if not dataframes:
+            raise ValueError("No dataframes provided to combine")
+
+        if len(dataframes) == 1:
+            # If there's only one dataframe, just return it
+            return dataframes[0]
+
+        # Simply concatenate all dataframes
+        result_df = pd.concat(dataframes)
+
+        # Sort by timestamp index
+        return result_df.sort_index()

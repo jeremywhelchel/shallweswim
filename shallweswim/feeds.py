@@ -46,6 +46,8 @@ class Feed(BaseModel, abc.ABC):
     # Private fields - not included in serialization but still validated
     _timestamp: Optional[datetime.datetime] = None
     _data: Optional[pd.DataFrame] = None
+    # Event used to signal when data is ready
+    _ready_event: asyncio.Event = asyncio.Event()
 
     # Modern Pydantic v2 configuration using model_config
     model_config = ConfigDict(
@@ -54,6 +56,17 @@ class Feed(BaseModel, abc.ABC):
         # Validate assignment to attributes
         validate_assignment=True,
     )
+
+    def __init__(self, **data: Any) -> None:
+        """Initialize the feed with configuration data.
+
+        Args:
+            **data: Configuration parameters for the feed
+        """
+        super().__init__(**data)
+        # If we already have data, set the ready event
+        if self._data is not None:
+            self._ready_event.set()
 
     @property
     def is_expired(self) -> bool:
@@ -95,6 +108,33 @@ class Feed(BaseModel, abc.ABC):
         log_message = f"[{self.location_config.code}] {message}"
         logging.log(level, log_message)
 
+    async def wait_until_ready(self, timeout: Optional[float] = None) -> bool:
+        """Wait until the feed has data available.
+
+        This method waits until the feed has successfully fetched data and is ready to use.
+        It's useful for coordinating dependent operations that need feed data to be available.
+
+        Args:
+            timeout: Maximum time to wait in seconds, or None to wait indefinitely
+
+        Returns:
+            True if the feed is ready, False if timeout occurred
+        """
+        # If data is already available, return immediately
+        if self._data is not None:
+            return True
+
+        try:
+            # Wait for the ready event to be set
+            await asyncio.wait_for(self._ready_event.wait(), timeout)
+            return True
+        except asyncio.TimeoutError:
+            self.log(
+                f"Timeout waiting for {self.__class__.__name__} to be ready",
+                logging.WARNING,
+            )
+            return False
+
     async def update(self) -> None:
         """Update the data from this feed if it is expired."""
         if not self.is_expired:
@@ -115,6 +155,8 @@ class Feed(BaseModel, abc.ABC):
 
             self._data = df
             self._timestamp = utc_now()
+            # Set the ready event to signal that data is available
+            self._ready_event.set()
             self.log(f"Successfully updated {self.__class__.__name__}")
 
         except Exception as e:

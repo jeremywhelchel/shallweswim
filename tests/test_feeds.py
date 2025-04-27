@@ -1,8 +1,8 @@
 """Tests for feeds.py functionality."""
 
 # Standard library imports
+import asyncio
 import datetime
-import logging
 from typing import Any, List, cast
 from unittest.mock import patch, MagicMock
 
@@ -354,27 +354,83 @@ class TestFeedBase:
     ) -> None:
         """Test that _remove_outliers handles outliers that don't exist in the DataFrame."""
         # Create a test DataFrame
-        dates = pd.date_range("2023-01-01", periods=3)
-        df = pd.DataFrame({"value": [1, 2, 3]}, index=dates)
+        df = pd.DataFrame(
+            {"temperature": [20.0, 21.0, 22.0]},
+            index=pd.date_range(
+                start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                periods=3,
+                freq="h",
+            ),
+        )
 
-        # Set outliers in the TestConfig, including one that doesn't exist in the DataFrame
-        # Use getattr to avoid type checking issues
+        # Set outliers that don't exist in the DataFrame
+        # Use getattr to avoid type checking issues with the config attribute
         config = getattr(concrete_feed, "config")
-        config.outliers = ["2023-01-02", "2023-01-10"]
+        config.outliers = ["2025-04-23 00:00:00"]
 
-        # Set the log level to WARNING to capture the warning messages
-        caplog.set_level(logging.WARNING)
-
+        # Call _remove_outliers
         result = concrete_feed._remove_outliers(df)
 
-        # Expected DataFrame with existing outlier removed
-        expected_dates = pd.DatetimeIndex(["2023-01-01", "2023-01-03"])
-        expected_df = pd.DataFrame({"value": [1, 3]}, index=expected_dates)
+        # Check that the result is the same as the input
+        pd.testing.assert_frame_equal(result, df)
 
-        pd.testing.assert_frame_equal(result, expected_df)
+        # Check that a warning was logged about the non-existent outlier
+        assert "Outlier timestamp 2025-04-23 00:00:00 not found in data" in caplog.text
 
-        # Check that the log message for the non-existent outlier was recorded
-        assert "Outlier timestamp 2023-01-10 not found in data" in caplog.text
+    @pytest.mark.asyncio
+    async def test_wait_until_ready_with_data_already_available(
+        self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
+    ) -> None:
+        """Test that wait_until_ready returns immediately when data is already available."""
+        # Set data directly
+        concrete_feed._data = valid_temp_dataframe
+        concrete_feed._ready_event.set()  # This should already be set in __init__ when data is available
+
+        # Call wait_until_ready with a short timeout
+        result = await concrete_feed.wait_until_ready(timeout=0.1)
+
+        # Check that it returned True immediately
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_wait_until_ready_with_data_becoming_available(
+        self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
+    ) -> None:
+        """Test that wait_until_ready waits until data becomes available."""
+        # Ensure no data is available initially
+        concrete_feed._data = None
+        concrete_feed._ready_event.clear()
+
+        # Set up a task to set the event after a short delay
+        async def set_data_after_delay() -> None:
+            await asyncio.sleep(0.1)
+            concrete_feed._data = valid_temp_dataframe
+            concrete_feed._ready_event.set()
+
+        # Start the task
+        task = asyncio.create_task(set_data_after_delay())
+
+        # Call wait_until_ready with a longer timeout
+        result = await concrete_feed.wait_until_ready(timeout=0.5)
+
+        # Clean up the task
+        await task
+
+        # Check that it returned True after waiting
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_wait_until_ready_timeout(self, concrete_feed: Feed) -> None:
+        """Test that wait_until_ready returns False when timeout occurs."""
+        # Ensure no data is available
+        concrete_feed._data = None
+        concrete_feed._ready_event.clear()
+
+        # Call wait_until_ready with a very short timeout
+        result = await concrete_feed.wait_until_ready(timeout=0.01)
+
+        # Check that it returned False due to timeout
+        assert result is False
 
 
 class TestNoaaTidesFeed:

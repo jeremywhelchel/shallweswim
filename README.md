@@ -137,16 +137,12 @@ poetry run black .
 
 # Run all pre-commit hooks
 poetry run pre-commit run --all-files
-```
 
-Additional testing commands:
-
-```bash
 # Run with code coverage
 poetry run pytest --cov=shallweswim
 
-# Run specific NOAA API integration tests
-poetry run pytest tests/test_noaa_integration.py -v --run-integration
+# Run with code coverage and generate HTML report
+poetry run pytest --cov=shallweswim --cov-report=html
 ```
 
 Note: Integration tests connect to live NOAA APIs and may occasionally fail if external services are experiencing issues or if the expected data is temporarily unavailable.

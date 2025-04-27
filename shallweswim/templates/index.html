@@ -11,10 +11,11 @@ header %}
     ...at
     <a href="{{ config.swim_location_link }}">{{ config.swim_location }}</a>
   </span>
-  {% if config.current_predictions %}
+  {% if config.currents_source.predictions_available %}
   <span class="note"
     ><br />
-    <b>NEW</b>: Experimental <a href="/current">current predictions</a>
+    <b>NEW</b>: Experimental
+    <a href="/{{ config.code }}/currents">current predictions</a>
   </span>
   {% endif %}
 </p>

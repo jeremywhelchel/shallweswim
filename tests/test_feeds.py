@@ -12,7 +12,7 @@ import pytz
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim.feeds import Feed, NoaaTempFeed, NoaaTidesFeed
+from shallweswim.feeds import Feed, NoaaTempFeed, NoaaTidesFeed, NoaaCurrentsFeed
 
 
 @pytest.fixture
@@ -45,6 +45,33 @@ def tide_config() -> config_lib.NoaaTideSource:
         station=8517741,  # Using a valid 7-digit station ID
         station_name="Coney Island, NY",
     )
+
+
+@pytest.fixture
+def currents_config() -> config_lib.NoaaCurrentsSource:
+    """Create a currents source config fixture."""
+    return config_lib.NoaaCurrentsSource(
+        stations=["ACT3876", "NYH1905"],  # Using valid station IDs
+        predictions_available=True,
+    )
+
+
+@pytest.fixture
+def valid_currents_dataframe() -> pd.DataFrame:
+    """Create a valid currents prediction DataFrame fixture."""
+    # Create a datetime index with naive datetimes
+    index = pd.date_range(
+        start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+        end=datetime.datetime(2025, 4, 24, 0, 0, 0),
+        freq="1h",  # Hourly current predictions
+    )
+
+    # Generate current velocity values (positive=flood, negative=ebb)
+    velocities = [1.2, 0.8, 0.3, -0.2, -0.7, -1.1, -0.9, -0.5, -0.1, 0.4, 0.9, 1.3] * 4
+
+    # Create the DataFrame
+    df = pd.DataFrame({"velocity": velocities[: len(index)]}, index=index)
+    return df
 
 
 @pytest.fixture
@@ -297,6 +324,174 @@ class TestNoaaTidesFeed:
             feed = NoaaTidesFeed(
                 location_config=location_config,
                 config=tide_config,
+                expiration_interval=datetime.timedelta(hours=24),
+            )
+
+            # Call _fetch and expect it to raise the exception (following fail-fast principle)
+            with pytest.raises(Exception, match="API error"):
+                await feed._fetch()
+
+
+class TestNoaaCurrentsFeed:
+    """Tests for the NoaaCurrentsFeed class."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_calls_noaa_client(
+        self,
+        location_config: config_lib.LocationConfig,
+        currents_config: config_lib.NoaaCurrentsSource,
+    ) -> None:
+        """Test that _fetch calls the NOAA client with correct parameters."""
+        # Create a mock NOAA API with autospec
+        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+            # Configure the mock to return a valid DataFrame
+            MockNoaaApi.currents.return_value = pd.DataFrame(
+                {"velocity": [1.2, 0.8, 0.3, -0.2, -0.7]},
+                index=pd.date_range(
+                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                    end=datetime.datetime(2025, 4, 22, 4, 0, 0),
+                    freq="1h",
+                ),
+            )
+
+            # Create the feed
+            feed = NoaaCurrentsFeed(
+                location_config=location_config,
+                config=currents_config,
+                station=currents_config.stations[0],  # Use the first station
+                expiration_interval=datetime.timedelta(hours=24),
+            )
+
+            # Call _fetch
+            result = await feed._fetch()
+
+            # Check that the NOAA API was called with correct parameters
+            MockNoaaApi.currents.assert_called_once()
+            args, kwargs = MockNoaaApi.currents.call_args
+
+            # Check positional arguments (first is station_id)
+            assert args[0] == currents_config.stations[0]
+            # Check interpolate parameter
+            assert kwargs["interpolate"] is True
+            # Check location_code is passed
+            assert kwargs["location_code"] == location_config.code
+
+            # Check that the result is correct
+            assert isinstance(result, pd.DataFrame)
+            assert "velocity" in result.columns
+
+    @pytest.mark.asyncio
+    async def test_fetch_with_no_station_specified(
+        self,
+        location_config: config_lib.LocationConfig,
+        currents_config: config_lib.NoaaCurrentsSource,
+    ) -> None:
+        """Test that _fetch uses the first station when none is specified."""
+        # Create a mock NOAA API with autospec
+        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+            # Configure the mock to return a valid DataFrame
+            MockNoaaApi.currents.return_value = pd.DataFrame(
+                {"velocity": [1.2, 0.8, 0.3]},
+                index=pd.date_range(
+                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                    end=datetime.datetime(2025, 4, 22, 2, 0, 0),
+                    freq="1h",
+                ),
+            )
+
+            # Create the feed without specifying a station
+            feed = NoaaCurrentsFeed(
+                location_config=location_config,
+                config=currents_config,
+                expiration_interval=datetime.timedelta(hours=24),
+            )
+
+            # Call _fetch
+            await feed._fetch()
+
+            # Check that the NOAA API was called with the first station
+            MockNoaaApi.currents.assert_called_once()
+            args, _ = MockNoaaApi.currents.call_args
+            assert args[0] == currents_config.stations[0]
+
+    @pytest.mark.asyncio
+    async def test_fetch_with_no_stations_configured(
+        self,
+        location_config: config_lib.LocationConfig,
+    ) -> None:
+        """Test that _fetch raises ValueError when no stations configured."""
+        # Create a config with no stations
+        config = config_lib.NoaaCurrentsSource(
+            stations=[],
+        )
+
+        # Create the feed
+        feed = NoaaCurrentsFeed(
+            location_config=location_config,
+            config=config,
+            expiration_interval=datetime.timedelta(hours=24),
+        )
+
+        # Call _fetch and expect it to raise ValueError
+        with pytest.raises(ValueError, match="No current stations configured"):
+            await feed._fetch()
+
+    @pytest.mark.asyncio
+    async def test_fetch_with_valid_station(
+        self,
+        location_config: config_lib.LocationConfig,
+    ) -> None:
+        """Test that _fetch works with a valid station specified directly."""
+        # Create a config with a valid station
+        config = config_lib.NoaaCurrentsSource(
+            stations=["ACT3876", "NYH1905"],
+        )
+
+        # Create a mock NOAA API with autospec
+        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+            # Configure the mock to return a valid DataFrame
+            MockNoaaApi.currents.return_value = pd.DataFrame(
+                {"velocity": [1.2, 0.8, 0.3]},
+                index=pd.date_range(
+                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                    end=datetime.datetime(2025, 4, 22, 2, 0, 0),
+                    freq="1h",
+                ),
+            )
+
+            # Create the feed with a specific station
+            feed = NoaaCurrentsFeed(
+                location_config=location_config,
+                config=config,
+                station="NYH1905",  # Specify the second station
+                expiration_interval=datetime.timedelta(hours=24),
+            )
+
+            # Call _fetch
+            await feed._fetch()
+
+            # Check that the NOAA API was called with the specified station
+            MockNoaaApi.currents.assert_called_once()
+            args, _ = MockNoaaApi.currents.call_args
+            assert args[0] == "NYH1905"
+
+    @pytest.mark.asyncio
+    async def test_fetch_handles_api_error(
+        self,
+        location_config: config_lib.LocationConfig,
+        currents_config: config_lib.NoaaCurrentsSource,
+    ) -> None:
+        """Test that _fetch handles API errors correctly."""
+        # Create a mock NOAA API with autospec that raises an exception
+        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+            # Configure the mock to raise an exception
+            MockNoaaApi.currents.side_effect = Exception("API error")
+
+            # Create the feed
+            feed = NoaaCurrentsFeed(
+                location_config=location_config,
+                config=currents_config,
+                station=currents_config.stations[0],
                 expiration_interval=datetime.timedelta(hours=24),
             )
 

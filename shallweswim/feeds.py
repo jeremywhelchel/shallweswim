@@ -283,6 +283,49 @@ class NoaaTidesFeed(Feed):
             raise
 
 
-class CurrentsFeed(Feed, abc.ABC):
-    # XXX this one I believe is primarily predictions
-    ...
+class NoaaCurrentsFeed(Feed):
+    """Feed for current data from NOAA.
+
+    Fetches current predictions from NOAA stations using the NOAA API.
+    Current predictions include velocity, direction, and type (flood/ebb/slack).
+    """
+
+    config: config_lib.NoaaCurrentsSource
+
+    # The station to use for fetching currents data (optional, will use first station from config if not provided)
+    station: Optional[str] = None
+
+    # Whether to interpolate between flood/slack/ebb points
+    interpolate: bool = True
+
+    async def _fetch(self) -> pd.DataFrame:
+        """Fetch current predictions from NOAA API.
+
+        Returns:
+            DataFrame with current prediction data
+
+        Raises:
+            ValueError: If no current stations are configured
+            Exception: If fetching fails
+        """
+        if not hasattr(self, "station") or not self.station:
+            if not self.config.stations:
+                error_msg = "No current stations configured"
+                self.log(error_msg, logging.ERROR)
+                # Following the project principle of failing fast for internal errors
+                raise ValueError(error_msg)
+            # Use the first station by default
+            self.station = self.config.stations[0]
+
+        try:
+            df = await noaa.NoaaApi.currents(
+                self.station,
+                interpolate=self.interpolate,
+                location_code=self.location_config.code,
+            )
+            return df
+
+        except noaa.NoaaApiError as e:
+            self.log(f"Current fetch error: {e}", logging.WARNING)
+            # Following the project principle of failing fast for internal errors
+            raise

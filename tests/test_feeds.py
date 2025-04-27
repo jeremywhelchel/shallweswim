@@ -12,7 +12,7 @@ import pytz
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim.feeds import Feed, NoaaTempFeed
+from shallweswim.feeds import Feed, NoaaTempFeed, NoaaTidesFeed
 
 
 @pytest.fixture
@@ -36,6 +36,34 @@ def temp_config() -> config_lib.NoaaTempSource:
     return config_lib.NoaaTempSource(
         station=8518750, name="Test Station"  # Using a valid 7-digit station ID
     )
+
+
+@pytest.fixture
+def tide_config() -> config_lib.NoaaTideSource:
+    """Create a tide source config fixture."""
+    return config_lib.NoaaTideSource(
+        station=8517741,  # Using a valid 7-digit station ID
+        station_name="Coney Island, NY",
+    )
+
+
+@pytest.fixture
+def valid_tide_dataframe() -> pd.DataFrame:
+    """Create a valid tide prediction DataFrame fixture."""
+    # Create a datetime index with naive datetimes
+    index = pd.date_range(
+        start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+        end=datetime.datetime(2025, 4, 24, 0, 0, 0),
+        freq="6h",  # High/low tides occur approximately every 6 hours
+    )
+
+    # Generate tide prediction values and types (alternating high and low)
+    predictions = [3.0, 0.5, 3.2, 0.3, 3.5, 0.2, 3.3, 0.4, 3.1]
+    types = ["high", "low", "high", "low", "high", "low", "high", "low", "high"]
+
+    # Create the DataFrame
+    df = pd.DataFrame({"prediction": predictions, "type": types}, index=index)
+    return df
 
 
 @pytest.fixture
@@ -202,6 +230,79 @@ class TestFeedBase:
         # Check that the message was logged with the correct format
         assert f"[{concrete_feed.location_config.code}]" in caplog.text
         assert "Test message" in caplog.text
+
+
+class TestNoaaTidesFeed:
+    """Tests for the NoaaTidesFeed class."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_calls_noaa_client(
+        self,
+        location_config: config_lib.LocationConfig,
+        tide_config: config_lib.NoaaTideSource,
+    ) -> None:
+        """Test that _fetch calls the NOAA client with correct parameters."""
+        # Create a mock NOAA API with autospec
+        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+            # Configure the mock to return a valid DataFrame
+            MockNoaaApi.tides.return_value = pd.DataFrame(
+                {
+                    "prediction": [3.0, 0.5, 3.2],
+                    "type": ["high", "low", "high"],
+                },
+                index=pd.date_range(
+                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                    end=datetime.datetime(2025, 4, 22, 12, 0, 0),
+                    freq="6h",
+                ),
+            )
+
+            # Create the feed
+            feed = NoaaTidesFeed(
+                location_config=location_config,
+                config=tide_config,
+                expiration_interval=datetime.timedelta(hours=24),
+            )
+
+            # Call _fetch
+            result = await feed._fetch()
+
+            # Check that the NOAA API was called with correct parameters
+            MockNoaaApi.tides.assert_called_once()
+            args, kwargs = MockNoaaApi.tides.call_args
+
+            # Check positional arguments (first is station_id)
+            assert args[0] == tide_config.station
+            # Check location_code is passed
+            assert kwargs["location_code"] == location_config.code
+
+            # Check that the result is correct
+            assert isinstance(result, pd.DataFrame)
+            assert "prediction" in result.columns
+            assert "type" in result.columns
+
+    @pytest.mark.asyncio
+    async def test_fetch_handles_api_error(
+        self,
+        location_config: config_lib.LocationConfig,
+        tide_config: config_lib.NoaaTideSource,
+    ) -> None:
+        """Test that _fetch handles API errors correctly."""
+        # Create a mock NOAA API with autospec that raises an exception
+        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
+            # Configure the mock to raise an exception
+            MockNoaaApi.tides.side_effect = Exception("API error")
+
+            # Create the feed
+            feed = NoaaTidesFeed(
+                location_config=location_config,
+                config=tide_config,
+                expiration_interval=datetime.timedelta(hours=24),
+            )
+
+            # Call _fetch and expect it to raise the exception (following fail-fast principle)
+            with pytest.raises(Exception, match="API error"):
+                await feed._fetch()
 
 
 class TestNoaaTempFeed:

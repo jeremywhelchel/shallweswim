@@ -250,11 +250,37 @@ class NoaaTempFeed(TempFeed):
 #    config: config_lib.UsgsTempSource
 
 
-class TidesFeed(Feed, abc.ABC): ...
+class NoaaTidesFeed(Feed):
+    """Feed for tide data from NOAA.
 
+    Fetches tide predictions from NOAA stations using the NOAA API.
+    Tide predictions include high and low tide times and heights.
+    """
 
-# XXX this one will return a feed that includes future projections. But the prev/next split will
-# be done elsewhere.
+    config: config_lib.NoaaTideSource
+
+    async def _fetch(self) -> pd.DataFrame:
+        """Fetch tide predictions from NOAA API.
+
+        Returns:
+            DataFrame with tide prediction data
+
+        Raises:
+            Exception: If fetching fails
+        """
+        station_id = self.config.station
+
+        try:
+            df = await noaa.NoaaApi.tides(
+                station_id,
+                location_code=self.location_config.code,
+            )
+            return df
+
+        except noaa.NoaaApiError as e:
+            self.log(f"Tide fetch error: {e}", logging.WARNING)
+            # Following the project principle of failing fast for internal errors
+            raise
 
 
 class CurrentsFeed(Feed, abc.ABC):

@@ -29,10 +29,6 @@ from shallweswim.types import (
 )
 from shallweswim.util import utc_now
 
-# Additional buffer before reporting data as expired
-# This gives the system time to refresh data without showing as expired
-EXPIRATION_BUFFER = datetime.timedelta(seconds=300)
-
 # Data expiration periods
 EXPIRATION_PERIODS = {
     # Tidal predictions already cover a wide past/present window

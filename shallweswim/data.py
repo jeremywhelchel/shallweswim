@@ -291,6 +291,16 @@ class DataManager(object):
 
         return status_dict
 
+    def log(self, message: str, level: int = logging.INFO) -> None:
+        """Log a message with standardized formatting including location code.
+
+        Args:
+            message: The message to log
+            level: The logging level (default: INFO)
+        """
+        log_message = f"[{self.config.code}] {message}"
+        logging.log(level, log_message)
+
     async def wait_until_ready(self, timeout: Optional[float] = None) -> bool:
         """Wait until all configured feeds have data available.
 
@@ -315,12 +325,10 @@ class DataManager(object):
                 asyncio.gather(*[feed.wait_until_ready() for feed in configured_feeds]),
                 timeout,
             )
-            logging.debug(f"[{self.config.code}] All feeds are ready")
+            self.log("All feeds are ready", level=logging.DEBUG)
             return True
         except asyncio.TimeoutError:
-            logging.warning(
-                f"[{self.config.code}] Timeout waiting for feeds to be ready"
-            )
+            self.log("Timed out waiting for feeds to be ready", level=logging.WARNING)
             return False
 
     def _expired(self, dataset: DatasetName) -> bool:
@@ -357,20 +365,18 @@ class DataManager(object):
 
         # If there's no feed configured, we can't update the dataset
         if feed is None:
-            logging.debug(f"[{self.config.code}] No feed configured for {dataset}")
+            self.log(f"No feed configured for {dataset}", level=logging.DEBUG)
             return
 
         try:
             # Update the feed to get fresh data
-            logging.info(f"[{self.config.code}] Fetching {dataset}")
+            self.log(f"Fetching {dataset}")
             await feed.update()
 
             # No need to update separate data cache variables
             # Data is accessed directly from feed.values when needed
         except Exception as e:
-            logging.warning(
-                f"[{self.config.code}] {dataset.capitalize()} fetch error: {e}"
-            )
+            self.log(f"Error updating {dataset}: {e}", level=logging.ERROR)
             # Re-raise to ensure error is not silently ignored
             raise
 
@@ -437,9 +443,7 @@ class DataManager(object):
                             )
                 except Exception as e:
                     # Log the exception but don't swallow it - let it propagate
-                    logging.exception(
-                        f"Error in data update loop for {self.config.code}: {e}"
-                    )
+                    self.log(f"Error in data update loop: {e}", level=logging.ERROR)
                     # Re-raise to ensure error is not silently ignored
                     raise
 
@@ -450,9 +454,7 @@ class DataManager(object):
             raise
         except Exception as e:
             # Log any unexpected exceptions at the outer level as well
-            logging.exception(
-                f"Fatal error in data update loop for {self.config.code}: {e}"
-            )
+            self.log(f"Fatal error in data update loop: {e}", level=logging.ERROR)
             raise  # Re-raise to ensure error is not silently ignored
 
     def start(self) -> None:
@@ -470,7 +472,7 @@ class DataManager(object):
             if task.get_name() == task_name and not task.done():
                 raise AssertionError("Data update task already running")
 
-        logging.info(f"[{self.config.code}] Starting data fetch task")
+        self.log("Starting data fetch task")
         self._update_task = asyncio.create_task(self.__update_loop())
         self._update_task.set_name(task_name)
 
@@ -797,11 +799,12 @@ class DataManager(object):
             task.result()
         except asyncio.CancelledError:
             # Task was cancelled, which is normal during shutdown
-            logging.debug(f"[{self.config.code}] Task {task.get_name()} was cancelled")
+            self.log(f"Task {task.get_name()} was cancelled", level=logging.DEBUG)
         except Exception as e:
             # Log the exception that was raised by the task
-            logging.exception(
-                f"[{self.config.code}] Unhandled exception in task {task.get_name()}: {e}"
+            self.log(
+                f"Unhandled exception in task {task.get_name()}: {e}",
+                level=logging.ERROR,
             )
             # Re-raise the exception to follow the project principle of failing fast
             raise

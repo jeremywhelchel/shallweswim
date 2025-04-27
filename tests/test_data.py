@@ -76,7 +76,15 @@ async def mock_data_with_currents(
 ) -> DataManager:
     """Create a DataManager instance with mock current data."""
     data = DataManager(mock_config)
-    data.currents = mock_current_data
+
+    # Create a mock currents feed
+    mock_currents_feed = MagicMock()
+    mock_currents_feed.values = mock_current_data
+    mock_currents_feed.is_expired = False
+
+    # Set the mock feed in the _feeds dictionary
+    data._feeds["currents"] = mock_currents_feed
+
     return data
 
 
@@ -139,7 +147,14 @@ async def test_current_prediction_at_ebb_peak() -> None:
 
     # Create the DataFrame with the full tidal cycle
     current_df = pd.DataFrame({"velocity": velocities}, index=idx)
-    data.currents = current_df
+
+    # Create a mock currents feed
+    mock_currents_feed = MagicMock()
+    mock_currents_feed.values = current_df
+    mock_currents_feed.is_expired = False
+
+    # Set the mock feed in the _feeds dictionary
+    data._feeds["currents"] = mock_currents_feed
 
     # Test at peak ebb (9:00)
     peak_time = test_day.replace(hour=9)
@@ -198,7 +213,14 @@ async def test_current_prediction_strengthening() -> None:
 
     # Create the DataFrame with strengthening pattern
     df = pd.DataFrame({"velocity": velocities}, index=idx)
-    data.currents = df
+
+    # Create a mock currents feed
+    mock_currents_feed = MagicMock()
+    mock_currents_feed.values = df
+    mock_currents_feed.is_expired = False
+
+    # Set the mock feed in the _feeds dictionary
+    data._feeds["currents"] = mock_currents_feed
 
     # Test at the middle point where slope is positive
     t = datetime.datetime(2025, 4, 22, 13, 0, 0)
@@ -229,7 +251,14 @@ async def test_current_prediction_weakening() -> None:
 
     # Create the DataFrame with weakening pattern
     df = pd.DataFrame({"velocity": velocities}, index=idx)
-    data.currents = df
+
+    # Create a mock currents feed
+    mock_currents_feed = MagicMock()
+    mock_currents_feed.values = df
+    mock_currents_feed.is_expired = False
+
+    # Set the mock feed in the _feeds dictionary
+    data._feeds["currents"] = mock_currents_feed
 
     # Test at the middle point where slope is negative
     t = datetime.datetime(2025, 4, 22, 16, 0, 0)
@@ -260,7 +289,14 @@ async def test_process_peaks_function() -> None:
 
     # We'll add a slope column to help with trend detection
     currents_df["slope"] = currents_df["velocity"].diff().fillna(0)
-    data.currents = currents_df
+
+    # Create a mock currents feed
+    mock_currents_feed = MagicMock()
+    mock_currents_feed.values = currents_df
+    mock_currents_feed.is_expired = False
+
+    # Set the mock feed in the _feeds dictionary
+    data._feeds["currents"] = mock_currents_feed
 
     # Use a time point that's exactly at the peak
     peak_time = index[1]
@@ -396,28 +432,30 @@ async def test_data_ready_property(
     # Use setattr to avoid mypy method-assign error
     setattr(data, "_expired", mock_expired)
 
-    # Set up feed mocks for each dataset
+    # Set up feed mocks for each dataset in the _feeds dictionary
     # Tides feed
     mock_tides_feed = MagicMock()
     mock_tides_feed.is_expired = mock_expired("tides")
-    data._tides_feed = mock_tides_feed if tides_timestamp is not None else None
+    data._feeds["tides"] = mock_tides_feed if tides_timestamp is not None else None
 
     # Currents feed
     mock_currents_feed = MagicMock()
     mock_currents_feed.is_expired = mock_expired("currents")
-    data._currents_feed = mock_currents_feed if tides_timestamp is not None else None
+    data._feeds["currents"] = (
+        mock_currents_feed if tides_timestamp is not None else None
+    )
 
     # Live temps feed
     mock_live_temps_feed = MagicMock()
     mock_live_temps_feed.is_expired = mock_expired("live_temps")
-    data._live_temp_feed = (
+    data._feeds["live_temps"] = (
         mock_live_temps_feed if live_temps_timestamp is not None else None
     )
 
     # Historic temps feed
     mock_historic_temps_feed = MagicMock()
     mock_historic_temps_feed.is_expired = mock_expired("historic_temps")
-    data._historic_temps_feed = (
+    data._feeds["historic_temps"] = (
         mock_historic_temps_feed if historic_temps_timestamp is not None else None
     )
 

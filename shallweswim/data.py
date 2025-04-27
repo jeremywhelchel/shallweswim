@@ -8,7 +8,7 @@ and provides the necessary data for plotting and presentation.
 import asyncio
 import datetime
 import logging
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Third-party imports
 import numpy as np
@@ -20,14 +20,14 @@ from shallweswim import config as config_lib
 from shallweswim import feeds
 from shallweswim import plot
 from shallweswim import util
-from shallweswim.config import NoaaTempSource
 from shallweswim.types import (
+    CurrentInfo,
     DatasetName,
     LegacyChartInfo,
-    TideInfo,
     TideEntry,
-    CurrentInfo,
+    TideInfo,
 )
+from shallweswim.util import utc_now
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
@@ -139,64 +139,74 @@ class DataManager(object):
         """
         self.config = config
 
-        # Data caches
-        self.tides: Optional[pd.DataFrame] = None
-        self.currents: Optional[pd.DataFrame] = None
-        self.live_temps: Optional[pd.DataFrame] = None
-        self.historic_temps: Optional[pd.DataFrame] = None
-
-        # Note: We no longer need timestamp fields as they're handled by the feeds
-
-        # Feed instances
-        self._live_temp_feed: Optional[feeds.NoaaTempFeed] = None
-        self._historic_temps_feed: Optional[feeds.HistoricalTempsFeed] = None
-        self._tides_feed: Optional[feeds.NoaaTidesFeed] = None
-        self._currents_feed: Optional[feeds.MultiStationCurrentsFeed] = None
+        # Dictionary mapping dataset names to their corresponding feeds
+        # This is the single source of truth for all feed instances and data
+        self._feeds: Dict[DatasetName, Optional[feeds.Feed]] = {
+            "tides": None,
+            "currents": None,
+            "live_temps": None,
+            "historic_temps": None,
+        }
 
         # Initialize feeds if configuration is available
         # Use hasattr to safely check for attributes, which is important for testing with mock objects
+        # Live temperature feed
         if hasattr(self.config, "temp_source") and self.config.temp_source:
             temp_config = self.config.temp_source
-            if (
-                isinstance(temp_config, NoaaTempSource)
-                and hasattr(temp_config, "station")
-                and temp_config.station
-            ):
-                # Initialize live temperature feed
-                self._live_temp_feed = feeds.NoaaTempFeed(
-                    location_config=self.config,
-                    config=temp_config,
-                    interval="6-min",  # Use 6-minute intervals for live data
-                    # Set expiration interval to match our existing settings
-                    expiration_interval=EXPIRATION_PERIODS["live_temps"],
-                )
+            if hasattr(temp_config, "station") and temp_config.station:
+                # Type check to ensure we're passing the right config type
+                if isinstance(temp_config, config_lib.NoaaTempSource):
+                    self._feeds["live_temps"] = feeds.NoaaTempFeed(
+                        location_config=self.config,
+                        config=temp_config,
+                        # Start 24 hours ago to get a full day of data
+                        start=utc_now() - datetime.timedelta(hours=24),
+                        # End at current time
+                        end=utc_now(),
+                        # Use 6-minute interval for live temps
+                        interval="6-min",
+                        # Set expiration interval to match our existing settings
+                        expiration_interval=EXPIRATION_PERIODS["live_temps"],
+                    )
 
-                # Initialize historical temperature feed
-                self._historic_temps_feed = feeds.HistoricalTempsFeed(
-                    location_config=self.config,
-                    config=temp_config,
-                    start_year=2011,
-                    end_year=utc_now().year,
-                    # Set expiration interval to match our existing settings
-                    expiration_interval=EXPIRATION_PERIODS["historic_temps"],
-                )
+        # Historical temperature feed
+        if hasattr(self.config, "temp_source") and self.config.temp_source:
+            temp_config = self.config.temp_source
+            if hasattr(temp_config, "station") and temp_config.station:
+                # Type check to ensure we're passing the right config type
+                if isinstance(temp_config, config_lib.NoaaTempSource):
+                    # Get the start year from config or use default 2011
+                    start_year = 2011
+                    if hasattr(temp_config, "start_year") and temp_config.start_year:
+                        start_year = temp_config.start_year
 
-        # Initialize tides feed if configuration is available
+                    self._feeds["historic_temps"] = feeds.HistoricalTempsFeed(
+                        location_config=self.config,
+                        config=temp_config,
+                        # Use the start year we determined
+                        start_year=start_year,
+                        # End at current year
+                        end_year=utc_now().year,
+                        # Set expiration interval to match our existing settings
+                        expiration_interval=EXPIRATION_PERIODS["historic_temps"],
+                    )
+
+        # Tides feed
         if hasattr(self.config, "tide_source") and self.config.tide_source:
             tide_config = self.config.tide_source
             if hasattr(tide_config, "station") and tide_config.station:
-                self._tides_feed = feeds.NoaaTidesFeed(
+                self._feeds["tides"] = feeds.NoaaTidesFeed(
                     location_config=self.config,
                     config=tide_config,
                     # Set expiration interval to match our existing settings
                     expiration_interval=EXPIRATION_PERIODS["tides"],
                 )
 
-        # Initialize currents feed if configuration is available
+        # Currents feed
         if hasattr(self.config, "currents_source") and self.config.currents_source:
             currents_config = self.config.currents_source
             if hasattr(currents_config, "stations") and currents_config.stations:
-                self._currents_feed = feeds.MultiStationCurrentsFeed(
+                self._feeds["currents"] = feeds.MultiStationCurrentsFeed(
                     location_config=self.config,
                     config=currents_config,
                     # Set expiration interval to match our existing settings
@@ -213,14 +223,23 @@ class DataManager(object):
         Returns:
             True if all datasets have been fetched and are not expired, False otherwise
         """
-        # Check each dataset for expiration
-        datasets: list[DatasetName] = [
+        # All required feeds must exist and not be expired
+        required_datasets: List[DatasetName] = [
             "tides",
             "currents",
             "live_temps",
             "historic_temps",
         ]
-        return all(not self._expired(dataset) for dataset in datasets)
+
+        # Check each required dataset
+        for dataset in required_datasets:
+            feed = self._feeds[dataset]
+            # If any feed is missing or expired, we're not ready
+            if feed is None or feed.is_expired:
+                return False
+
+        # All feeds exist and are not expired
+        return True
 
     def _expired(self, dataset: DatasetName) -> bool:
         """Check if a dataset has expired and needs to be refreshed.
@@ -233,41 +252,45 @@ class DataManager(object):
         Returns:
             True if the dataset is expired or missing, False otherwise
         """
-        # Use the feed's expiration logic for all datasets
-        if dataset == "tides":
-            # If the feed doesn't exist yet or is expired, the data needs refreshing
-            return self._tides_feed is None or self._tides_feed.is_expired
-        elif dataset == "currents":
-            # If the feed doesn't exist yet or is expired, the data needs refreshing
-            return self._currents_feed is None or self._currents_feed.is_expired
-        elif dataset == "live_temps":
-            # If the feed doesn't exist yet or is expired, the data needs refreshing
-            return self._live_temp_feed is None or self._live_temp_feed.is_expired
-        elif dataset == "historic_temps":
-            # If the feed doesn't exist yet or is expired, the data needs refreshing
-            return (
-                self._historic_temps_feed is None
-                or self._historic_temps_feed.is_expired
-            )
-        else:
-            # Unknown dataset
-            logging.warning(f"Unknown dataset: {dataset}")
+        # Get the feed for this dataset from our dictionary
+        feed = self._feeds.get(dataset)
+
+        # If the feed doesn't exist yet or is expired, the data needs refreshing
+        if feed is None:
             return True
+
+        return feed.is_expired
 
     async def _update_dataset(self, dataset: DatasetName) -> None:
         """Update a specific dataset if it has expired.
 
+        Uses the feed's update method to fetch fresh data.
+        Data is accessed directly from the feed's values property when needed.
+
         Args:
             dataset: The dataset to update
         """
-        if dataset == "tides":
-            await self._fetch_tides()
-        elif dataset == "currents":
-            await self._fetch_currents()
-        elif dataset == "live_temps":
-            await self._fetch_live_temps()
-        elif dataset == "historic_temps":
-            await self._fetch_historic_temps()
+        # Get the feed for this dataset
+        feed = self._feeds.get(dataset)
+
+        # If there's no feed configured, we can't update the dataset
+        if feed is None:
+            logging.debug(f"[{self.config.code}] No feed configured for {dataset}")
+            return
+
+        try:
+            # Update the feed to get fresh data
+            logging.info(f"[{self.config.code}] Fetching {dataset}")
+            await feed.update()
+
+            # No need to update separate data cache variables
+            # Data is accessed directly from feed.values when needed
+        except Exception as e:
+            logging.warning(
+                f"[{self.config.code}] {dataset.capitalize()} fetch error: {e}"
+            )
+            # Re-raise to ensure error is not silently ignored
+            raise
 
     async def __update_loop(self) -> None:
         """Background asyncio task that continuously updates data.
@@ -291,9 +314,15 @@ class DataManager(object):
                     if self._expired("live_temps"):
                         await self._update_dataset("live_temps")
                         # Only generate plot if we have valid data
-                        if self.live_temps is not None and len(self.live_temps) >= 2:
+                        live_temps_feed = self._feeds.get("live_temps")
+                        live_temps_data = (
+                            live_temps_feed.values
+                            if live_temps_feed is not None
+                            else None
+                        )
+                        if live_temps_data is not None and len(live_temps_data) >= 2:
                             plot.generate_and_save_live_temp_plot(
-                                self.live_temps,
+                                live_temps_data,
                                 self.config.code,
                                 (
                                     self.config.temp_source.name
@@ -305,12 +334,18 @@ class DataManager(object):
                     if self._expired("historic_temps"):
                         await self._update_dataset("historic_temps")
                         # Only generate plots if we have valid historical data
+                        historic_temps_feed = self._feeds.get("historic_temps")
+                        historic_temps_data = (
+                            historic_temps_feed.values
+                            if historic_temps_feed is not None
+                            else None
+                        )
                         if (
-                            self.historic_temps is not None
-                            and len(self.historic_temps) >= 10
+                            historic_temps_data is not None
+                            and len(historic_temps_data) >= 10
                         ):
                             plot.generate_and_save_historic_plots(
-                                self.historic_temps,
+                                historic_temps_data,
                                 self.config.code,
                                 (
                                     self.config.temp_source.name
@@ -372,7 +407,11 @@ class DataManager(object):
                 - next_tides: List of TideEntry objects with the next two upcoming tides
             If no tide data is available, returns placeholder values.
         """
-        if self.tides is None:
+        # Get tides data from the feed
+        tides_feed = self._feeds.get("tides")
+        tides_data = tides_feed.values if tides_feed is not None else None
+
+        if tides_data is None:
             # Create placeholder entries for missing data
             placeholder_time = datetime.datetime.combine(
                 datetime.date.today(), datetime.time(0)
@@ -389,17 +428,17 @@ class DataManager(object):
 
             # Ensure DataFrame has no timezone info for consistent comparison
             assert (
-                self.tides.index.tz is None
+                tides_data.index.tz is None
             ), "Tide DataFrame should use naive datetimes"
 
             # When we reset_index, the DatetimeIndex becomes a column named 'time'
             # Convert to pandas Timestamp for proper slicing (to satisfy type checking)
             now_ts = pd.Timestamp(now)
             past_tide_dicts = (
-                self.tides[:now_ts].tail(1).reset_index().to_dict(orient="records")
+                tides_data[:now_ts].tail(1).reset_index().to_dict(orient="records")
             )
             next_tide_dicts = (
-                self.tides[now_ts:].head(2).reset_index().to_dict(orient="records")
+                tides_data[now_ts:].head(2).reset_index().to_dict(orient="records")
             )
 
             # Get the location's timezone for converting times
@@ -472,18 +511,22 @@ class DataManager(object):
         """
         if not t:
             t = self.config.local_now()
-        assert self.tides is not None
+
+        # Get tides data from the feed
+        tides_feed = self._feeds.get("tides")
+        tides_data = tides_feed.values if tides_feed is not None else None
+        assert tides_data is not None, "Tide data is required for legacy chart info"
 
         # Handle the timezone compatibility for DataFrame index lookup
         # Check if the DataFrame has a timezone-naive index
-        if self.tides.index.tz is None:
+        if tides_data.index.tz is None:
             # If index is naive, we need a naive datetime for slicing
             t_for_lookup = t.replace(tzinfo=None) if t.tzinfo is not None else t
         else:
             # If index has timezone info, ensure it's in the same timezone
             t_for_lookup = t
 
-        row = self.tides.loc[self.tides.index.asof(t_for_lookup)]
+        row = tides_data.loc[tides_data.index.asof(t_for_lookup)]
         # TODO: Break this into a function
         tide_type = row["type"]
 
@@ -538,10 +581,13 @@ class DataManager(object):
         if not t:
             t = self.config.local_now()
 
-        assert self.currents is not None, "Current data must be loaded first"
+        # Get currents data from the feed
+        currents_feed = self._feeds.get("currents")
+        currents_data = currents_feed.values if currents_feed is not None else None
+        assert currents_data is not None, "Current data must be loaded first"
 
         # Create a working copy of the current data for analysis
-        df = self.currents.copy()
+        df = currents_data.copy()
 
         # Convert raw velocity to magnitude and direction
         df["v"] = df["velocity"]
@@ -640,85 +686,23 @@ class DataManager(object):
             A tuple containing (timestamp, temperature in °F)
             If no data is available, returns default values
         """
-        if self.live_temps is None:
+        # Get live temperature data from the feed
+        live_temps_feed = self._feeds.get("live_temps")
+        live_temps_data = (
+            live_temps_feed.values if live_temps_feed is not None else None
+        )
+
+        if live_temps_data is None:
             return datetime.time(0), 0.0
-        ((time, temp),) = self.live_temps.tail(1)["water_temp"].items()
+
+        ((time, temp),) = live_temps_data.tail(1)["water_temp"].items()
         return time, temp
 
-    async def _fetch_tides(self) -> None:
-        """Fetch tide data using the NoaaTidesFeed.
+    # _fetch_tides method removed - now using _update_dataset with feed dictionary
 
-        Updates the tides instance variable with fresh data from the feed.
-        The feed handles tracking when data was last retrieved.
+    # _fetch_currents method removed - now using _update_dataset with feed dictionary
 
-        Skips fetching if no tide station is configured or if the feed wasn't initialized.
-        """
-        logging.info(f"[{self.config.code}] Fetching tides")
-        if not self._tides_feed:
-            logging.debug(f"[{self.config.code}] No tide feed configured")
-            return
-
-        try:
-            # Update the feed to get fresh data
-            await self._tides_feed.update()
-            # Get the tide data from the feed
-            self.tides = self._tides_feed.values
-        except Exception as e:
-            logging.warning(f"[{self.config.code}] Tide fetch error: {e}")
-            # Re-raise to ensure error is not silently ignored
-            raise
-
-    async def _fetch_currents(self) -> None:
-        """Fetch current data using the MultiStationCurrentsFeed.
-
-        Updates the currents instance variable with fresh data from the feed.
-        The feed handles tracking when data was last retrieved.
-
-        Skips fetching if no current stations are configured or if the feed wasn't initialized.
-        """
-        logging.info(f"[{self.config.code}] Fetching currents")
-        if not self._currents_feed:
-            logging.debug(f"[{self.config.code}] No currents feed configured")
-            return
-
-        try:
-            # Update the feed data
-            await self._currents_feed.update()
-            # Get the currents data from the feed
-            self.currents = self._currents_feed.values
-        except Exception as e:
-            logging.warning(f"[{self.config.code}] Currents fetch error: {e}")
-            # Re-raise to ensure error is not silently ignored
-            raise
-
-    async def _fetch_historic_temps(self) -> None:
-        """Fetch hourly temperature data since 2011.
-
-        Uses HistoricalTempsFeed to fetch data by year in parallel, then concatenates
-        the results. Removes known erroneous data points and resamples to hourly intervals.
-        The feed handles tracking when data was last retrieved.
-
-        Skips fetching if no temperature station is configured or if the feed wasn't initialized.
-        Logs warnings if the NOAA API returns an error.
-        """
-        if not self._historic_temps_feed:
-            logging.debug(
-                f"[{self.config.code}] No historical temperature feed configured"
-            )
-            return
-
-        logging.info(f"[{self.config.code}] Fetching historic temps")
-        try:
-            # Update the feed data
-            await self._historic_temps_feed.update()
-
-            # Get the historical temperature data from the feed
-            # Outlier removal is already handled by the feed's update() method
-            self.historic_temps = self._historic_temps_feed.values
-        except Exception as e:
-            logging.warning(f"[{self.config.code}] Historic temp fetch error: {e}")
-            # Re-raise the exception to follow the project principle of failing fast
-            raise
+    # _fetch_historic_temps method removed - now using _update_dataset with feed dictionary
 
     def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
         """Handle exceptions from asyncio tasks to prevent them from being silently ignored.
@@ -746,26 +730,4 @@ class DataManager(object):
             # Re-raise the exception to follow the project principle of failing fast
             raise
 
-    async def _fetch_live_temps(self) -> None:
-        """Fetch live water temperature data using the NoaaTempFeed.
-
-        Updates the live_temps instance variable with the most recent water temperature
-        data. Sets the _live_temps_timestamp to track when data was last retrieved.
-
-        Skips fetching if no temperature station is configured or if the feed wasn't initialized.
-        """
-        if not self._live_temp_feed:
-            logging.debug(f"[{self.config.code}] No live temperature feed configured")
-            return
-
-        try:
-            # Update the feed data
-            await self._live_temp_feed.update()
-
-            # Get the water temperature data from the feed
-            self.live_temps = self._live_temp_feed.values
-
-        except Exception as e:
-            logging.warning(f"[{self.config.code}] Live temp fetch error: {e}")
-            # Re-raise the exception to follow the project principle of failing fast
-            raise
+    # _fetch_live_temps method removed - now using _update_dataset with feed dictionary

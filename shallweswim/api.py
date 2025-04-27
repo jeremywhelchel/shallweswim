@@ -87,15 +87,17 @@ async def initialize_location_data(
             # This ensures we fail with helpful error messages if data isn't ready
             if not data_dict[code].ready:
                 # Verify tide data was loaded (all locations should have tide data)
+                tides_feed = data_dict[code]._feeds.get("tides")
                 assert (
-                    data_dict[code].tides is not None
+                    tides_feed is not None and tides_feed.values is not None
                 ), f"{code} tide data was not loaded"
 
                 # Only check currents if the location has current predictions enabled
                 location_config = config_lib.get(code)
                 if location_config is not None and location_config.currents_source:
+                    currents_feed = data_dict[code]._feeds.get("currents")
                     assert (
-                        data_dict[code].currents is not None
+                        currents_feed is not None and currents_feed.values is not None
                     ), f"{code} current data was not loaded"
 
     return data_dict
@@ -191,9 +193,15 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Generate the tide/current plot
         try:
-            fig = plot.create_tide_current_plot(
-                data[location].tides, data[location].currents, ts, cfg
-            )
+            # Get data from feeds
+            tides_feed = data[location]._feeds.get("tides")
+            currents_feed = data[location]._feeds.get("currents")
+
+            # Get values from feeds
+            tides_data = tides_feed.values if tides_feed is not None else None
+            currents_data = currents_feed.values if currents_feed is not None else None
+
+            fig = plot.create_tide_current_plot(tides_data, currents_data, ts, cfg)
         except AssertionError as e:
             # The function now raises assertions instead of returning None
             raise HTTPException(status_code=404, detail=str(e))

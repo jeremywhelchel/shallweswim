@@ -518,13 +518,17 @@ class HistoricalTempsFeed(CompositeFeed):
             else:
                 end_date = datetime.datetime(year, 12, 31, 23, 59, 59)
 
+            # Only set expiration interval for the current year
+            # Past years' data won't change, so they don't need to expire
+            expiration = self.expiration_interval if year == current_date.year else None
+
             feed = NoaaTempFeed(
                 location_config=self.location_config,
                 config=self.config,
                 start=start_date,
                 end=end_date,
                 interval="h",  # Use hourly data for historical temps
-                expiration_interval=self.expiration_interval,
+                expiration_interval=expiration,
             )
             feeds.append(feed)
         return feeds

@@ -17,10 +17,10 @@ from scipy.signal import find_peaks
 
 # Local imports
 from shallweswim import config as config_lib
+from shallweswim import feeds
 from shallweswim import noaa
 from shallweswim import plot
 from shallweswim import util
-from shallweswim.util import latest_time_value
 from shallweswim.config import NoaaTempSource
 from shallweswim.types import (
     DatasetName,
@@ -33,6 +33,17 @@ from shallweswim.types import (
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
 EXPIRATION_BUFFER = datetime.timedelta(seconds=300)
+
+# Data expiration periods
+EXPIRATION_PERIODS = {
+    # Tidal predictions already cover a wide past/present window
+    "tides_and_currents": datetime.timedelta(hours=24),
+    # Live temperature readings occur every 6 minutes, and are
+    # generally already 5 minutes old when a new reading first appears
+    "live_temps": datetime.timedelta(minutes=10),
+    # Hourly fetch historic temps + generate charts
+    "historic_temps": datetime.timedelta(hours=3),
+}
 
 
 # Use the utility function for consistent time handling
@@ -135,22 +146,14 @@ class DataManager(object):
 
         # Timestamps for last data retrieval
         self._tides_timestamp: Optional[datetime.datetime] = None
-        self._live_temps_timestamp: Optional[datetime.datetime] = None
+        # Note: We no longer need _live_temps_timestamp as it's handled by the feed
         self._historic_temps_timestamp: Optional[datetime.datetime] = None
+
+        # Feed instances
+        self._live_temp_feed: Optional[feeds.NoaaTempFeed] = None
 
         # Background update task
         self._update_task: Optional[asyncio.Task[None]] = None
-
-        # Data expiration periods
-        self.expirations = {
-            # Tidal predictions already cover a wide past/present window
-            "tides_and_currents": datetime.timedelta(hours=24),
-            # Live temperature readings occur every 6 minutes, and are
-            # generally already 5 minutes old when a new reading first appears
-            "live_temps": datetime.timedelta(minutes=10),
-            # Hourly fetch historic temps + generate charts
-            "historic_temps": datetime.timedelta(hours=3),
-        }
 
     @property
     def ready(self) -> bool:
@@ -176,11 +179,15 @@ class DataManager(object):
         Returns:
             True if the dataset is expired or missing, False otherwise
         """
+        # For live_temps, we use the feed's expiration logic directly
+        if dataset == "live_temps":
+            # If the feed doesn't exist yet or is expired, the data needs refreshing
+            return self._live_temp_feed is None or self._live_temp_feed.is_expired
+
+        # For other datasets, use the traditional timestamp approach
         timestamp = None
         if dataset == "tides_and_currents":
             timestamp = self._tides_timestamp
-        elif dataset == "live_temps":
-            timestamp = self._live_temps_timestamp
         elif dataset == "historic_temps":
             timestamp = self._historic_temps_timestamp
 
@@ -200,7 +207,7 @@ class DataManager(object):
 
         # Use the EXPIRATION_BUFFER to give the system time to refresh before reporting as expired
         age = now - timestamp
-        return age > (self.expirations[dataset] + EXPIRATION_BUFFER)
+        return age > (EXPIRATION_PERIODS[dataset] + EXPIRATION_BUFFER)
 
     async def _update_dataset(self, dataset: DatasetName) -> None:
         """Update a specific dataset if it has expired.
@@ -776,14 +783,12 @@ class DataManager(object):
         return result_df
 
     async def _fetch_live_temps(self) -> None:
-        """Fetch recent air and water temperatures (last 8 days).
+        """Fetch live water temperature data using the NoaaTempFeed.
 
-        Updates the live_temps instance variable with the most recent temperature
-        data from NOAA. Sets the _live_temps_timestamp to track when data was last retrieved.
+        Updates the live_temps instance variable with the most recent water temperature
+        data. Sets the _live_temps_timestamp to track when data was last retrieved.
 
         Skips fetching if no temperature station is configured.
-        Logs the age of the most recent data point.
-        Logs warnings if the NOAA API returns an error.
         """
         if not self.config.temp_source:
             logging.info(f"[{self.config.code}] No temperature source configured")
@@ -800,53 +805,28 @@ class DataManager(object):
         else:
             raise TypeError(f"Unsupported temperature source type: {type(temp_config)}")
 
-        logging.info(f"[{self.config.code}] Fetching live temps")
-        begin_date = datetime.datetime.today() - datetime.timedelta(days=8)
-        end_date = datetime.datetime.today()
-        # TODO: Resample to 6min for more consistent data intervals
+        # Initialize the feed if it doesn't exist yet
+        if self._live_temp_feed is None:
+            self._live_temp_feed = feeds.NoaaTempFeed(
+                location_config=self.config,
+                config=temp_config,
+                interval="6-min",  # Use 6-minute intervals for live data
+                # Let the feed handle the default date range internally
+                # Set expiration interval to match our existing settings
+                expiration_interval=EXPIRATION_PERIODS["live_temps"],
+            )
+
         try:
-            # We already know it's a NoaaTempSource with a valid station at this point
-            station_id = self.config.temp_source.station  # type: ignore
+            # Update the feed data
+            await self._live_temp_feed.update()
 
-            # Fetch air and water temperature data concurrently
-            air_temp_task = noaa.NoaaApi.temperature(
-                station_id,
-                "air_temperature",
-                begin_date,
-                end_date,
-                location_code=self.config.code,
-            )
-            water_temp_task = noaa.NoaaApi.temperature(
-                station_id,
-                "water_temperature",
-                begin_date,
-                end_date,
-                location_code=self.config.code,
-            )
-            # Wait for both requests to complete
-            air_temp, water_temp = await asyncio.gather(air_temp_task, water_temp_task)
-            # Concatenate the results
-            temp_data = pd.concat([air_temp, water_temp], axis=1)
+            # Get the water temperature data from the feed
+            # Note: This now only includes water temperature, not air temperature
+            self.live_temps = self._live_temp_feed.values
 
-            # Remove outliers using the helper method
-            self.live_temps = self._remove_outliers(temp_data)
-            # Ensure we always store naive timestamps
-            now = utc_now()
-            assert now.tzinfo is None, "utc_now() must return naive datetime"
-            self._live_temps_timestamp = now
+            # No need to update a separate timestamp - the feed tracks this internally
 
-            # Log info about the most recent data point
-            last_time = latest_time_value(self.live_temps)
-            age_str = "unknown"
-            if last_time is not None:
-                now = utc_now()  # utc_now returns naive datetime in UTC
-                # Ensure both datetimes are naive for subtraction
-                if hasattr(last_time, "tzinfo") and last_time.tzinfo is not None:
-                    last_time = last_time.replace(tzinfo=None)
-                age = now - last_time
-                age_str = str(datetime.timedelta(seconds=int(age.total_seconds())))
-            logging.info(
-                f"[{self.config.code}] Fetched live temps. Last datapoint age: {age_str}"
-            )
-        except noaa.NoaaApiError as e:
+        except Exception as e:
             logging.warning(f"[{self.config.code}] Live temp fetch error: {e}")
+            # Re-raise the exception to follow the project principle of failing fast
+            raise

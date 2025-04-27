@@ -69,7 +69,6 @@ class Feed(BaseModel, abc.ABC):
         return age > (self.expiration_interval + EXPIRATION_BUFFER)
 
     @property
-    @abc.abstractmethod
     def values(self) -> pd.DataFrame:
         """Get the processed data from this feed.
 

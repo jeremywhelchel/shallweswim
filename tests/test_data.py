@@ -368,6 +368,8 @@ async def test_data_ready_property(
         if dataset == "tides_and_currents":
             timestamp = tides_timestamp
         elif dataset == "live_temps":
+            # For live temps, we'll use the timestamp directly in the test
+            # but the actual implementation will check the feed's is_expired property
             timestamp = live_temps_timestamp
         elif dataset == "historic_temps":
             timestamp = historic_temps_timestamp
@@ -386,7 +388,12 @@ async def test_data_ready_property(
 
     # Set timestamps
     data._tides_timestamp = tides_timestamp
-    data._live_temps_timestamp = live_temps_timestamp
+    # For live temps, we need to set up the feed with the timestamp
+    if live_temps_timestamp is not None:
+        # Create a mock feed with the timestamp
+        mock_feed = MagicMock()
+        mock_feed.is_expired = mock_expired("live_temps")
+        data._live_temp_feed = mock_feed
     data._historic_temps_timestamp = historic_temps_timestamp
 
     # Test the ready property

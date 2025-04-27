@@ -9,7 +9,7 @@ import abc
 import asyncio
 import datetime
 import logging
-from typing import Optional, Literal, List
+from typing import Any, Optional, Literal, List
 
 # Third-party imports
 import pandas as pd
@@ -328,6 +328,12 @@ class NoaaCurrentsFeed(Feed):
     # Whether to interpolate between flood/slack/ebb points
     interpolate: bool = True
 
+    def __init__(self, **data: Any) -> None:
+        """Initialize the feed and set default station if none provided."""
+        super().__init__(**data)
+        if not self.station and self.config.stations:
+            self.station = self.config.stations[0]
+
     async def _fetch(self) -> pd.DataFrame:
         """Fetch current predictions from NOAA API.
 
@@ -335,14 +341,11 @@ class NoaaCurrentsFeed(Feed):
             DataFrame with current prediction data
 
         Raises:
-            ValueError: If no current stations are configured
             Exception: If fetching fails
         """
-        if not hasattr(self, "station") or not self.station:
-            # Use the first station by default
-            self.station = self.config.stations[0]
-
         try:
+            # We know self.station is set in __init__ if it wasn't provided
+            assert self.station is not None, "Station must be set"
             df = await noaa.NoaaApi.currents(
                 self.station,
                 interpolate=self.interpolate,
@@ -405,3 +408,85 @@ class CompositeFeed(Feed, abc.ABC):
             Combined DataFrame
         """
         pass
+
+
+class MultiStationCurrentsFeed(CompositeFeed):
+    """Feed for current data from multiple NOAA stations.
+
+    Fetches current predictions from multiple NOAA stations and combines them.
+    This is useful for locations where multiple current stations provide
+    complementary data about water conditions in the area.
+    """
+
+    config: config_lib.NoaaCurrentsSource
+
+    # Whether to interpolate between flood/slack/ebb points for each station
+    interpolate: bool = True
+
+    def _get_feeds(self) -> List[Feed]:
+        """Create a NoaaCurrentsFeed for each station in the config.
+
+        Returns:
+            List of NoaaCurrentsFeed instances, one for each station
+        """
+        feeds: List[Feed] = []
+        for station in self.config.stations:
+            feed = NoaaCurrentsFeed(
+                location_config=self.location_config,
+                config=self.config,
+                station=station,
+                interpolate=self.interpolate,
+                expiration_interval=self.expiration_interval,
+            )
+            feeds.append(feed)
+        return feeds
+
+    def _combine_feeds(self, dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+        """Combine current data from multiple stations.
+
+        Strategy: For overlapping timestamps, calculate the average velocity.
+        This provides a more comprehensive view of currents in the area by
+        considering multiple measurement points.
+
+        Args:
+            dataframes: List of DataFrames from individual current stations
+
+        Returns:
+            Combined DataFrame with averaged current data
+
+        Raises:
+            ValueError: If no valid dataframes are provided
+        """
+        if not dataframes:
+            raise ValueError("No dataframes provided to combine")
+
+        if len(dataframes) == 1:
+            # If there's only one dataframe, just return it
+            return dataframes[0]
+
+        # Combine all dataframes
+        combined_df = pd.concat(dataframes)
+
+        # Group by timestamp and calculate mean for numeric columns
+        # For non-numeric columns like 'type' (flood/ebb/slack), use the most common value
+        grouped = combined_df.groupby(combined_df.index)
+
+        result_df = pd.DataFrame()
+
+        # Process numeric columns (like velocity, direction)
+        numeric_cols = combined_df.select_dtypes(include=["number"]).columns
+        if not numeric_cols.empty:
+            result_df[numeric_cols] = grouped[numeric_cols].mean()
+
+        # Process categorical columns (like type: flood/ebb/slack)
+        cat_cols = combined_df.select_dtypes(exclude=["number"]).columns
+        for col in cat_cols:
+            # Use the most common value for each timestamp
+            result_df[col] = grouped[col].agg(
+                lambda x: x.mode()[0] if not x.mode().empty else None
+            )
+
+        # Sort by timestamp
+        result_df = result_df.sort_index()
+
+        return result_df

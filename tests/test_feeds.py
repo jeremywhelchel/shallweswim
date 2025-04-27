@@ -3,7 +3,7 @@
 # Standard library imports
 import datetime
 import logging
-from typing import Any, List
+from typing import Any, List, cast
 from unittest.mock import patch, MagicMock
 
 # Third-party imports
@@ -20,6 +20,7 @@ from shallweswim.feeds import (
     NoaaTidesFeed,
     NoaaCurrentsFeed,
     CompositeFeed,
+    MultiStationCurrentsFeed,
 )
 
 
@@ -74,10 +75,15 @@ def valid_currents_dataframe() -> pd.DataFrame:
     )
 
     # Generate current velocity values (positive=flood, negative=ebb)
-    velocities = [1.2, 0.8, 0.3, -0.2, -0.7, -1.1, -0.9, -0.5, -0.1, 0.4, 0.9, 1.3] * 4
+    # Create a repeating pattern that's exactly the right length
+    pattern = [1.2, 0.8, 0.3, -0.2, -0.7, -1.1, -0.9, -0.5, -0.1, 0.4, 0.9, 1.3]
+    velocities: List[float] = []
+    while len(velocities) < len(index):
+        velocities.extend(pattern)
+    velocities = velocities[: len(index)]
 
     # Create the DataFrame
-    df = pd.DataFrame({"velocity": velocities[: len(index)]}, index=index)
+    df = pd.DataFrame({"velocity": velocities}, index=index)
     return df
 
 
@@ -491,39 +497,9 @@ class TestNoaaCurrentsFeed:
             assert isinstance(result, pd.DataFrame)
             assert "velocity" in result.columns
 
-    @pytest.mark.asyncio
-    async def test_fetch_with_no_station_specified(
-        self,
-        location_config: config_lib.LocationConfig,
-        currents_config: config_lib.NoaaCurrentsSource,
-    ) -> None:
-        """Test that _fetch uses the first station when none is specified."""
-        # Create a mock NOAA API with autospec
-        with patch("shallweswim.noaa.NoaaApi", autospec=True) as MockNoaaApi:
-            # Configure the mock to return a valid DataFrame
-            MockNoaaApi.currents.return_value = pd.DataFrame(
-                {"velocity": [1.2, 0.8, 0.3]},
-                index=pd.date_range(
-                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
-                    end=datetime.datetime(2025, 4, 22, 2, 0, 0),
-                    freq="1h",
-                ),
-            )
-
-            # Create the feed without specifying a station
-            feed = NoaaCurrentsFeed(
-                location_config=location_config,
-                config=currents_config,
-                expiration_interval=datetime.timedelta(hours=24),
-            )
-
-            # Call _fetch
-            await feed._fetch()
-
-            # Check that the NOAA API was called with the first station
-            MockNoaaApi.currents.assert_called_once()
-            args, _ = MockNoaaApi.currents.call_args
-            assert args[0] == currents_config.stations[0]
+    # This test was removed because we no longer support automatic station selection
+    # in NoaaCurrentsFeed. Each feed instance must be explicitly configured with a station.
+    # This is consistent with how MultiStationCurrentsFeed creates individual feed instances.
 
     # This test is no longer needed since Pydantic will validate that stations is not empty
 
@@ -846,3 +822,152 @@ class TestCompositeFeed:
             # Call _fetch and expect it to raise an exception
             with pytest.raises(ValueError, match="Test error"):
                 await simple_composite_feed._fetch()
+
+
+class TestMultiStationCurrentsFeed:
+    """Tests for the MultiStationCurrentsFeed class."""
+
+    @pytest.fixture
+    def multi_station_currents_feed(
+        self,
+        location_config: config_lib.LocationConfig,
+        currents_config: config_lib.NoaaCurrentsSource,
+    ) -> MultiStationCurrentsFeed:
+        """Create a MultiStationCurrentsFeed fixture."""
+        return MultiStationCurrentsFeed(
+            location_config=location_config,
+            config=currents_config,
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
+
+    def test_get_feeds_creates_correct_feeds(
+        self,
+        multi_station_currents_feed: MultiStationCurrentsFeed,
+        currents_config: config_lib.NoaaCurrentsSource,
+    ) -> None:
+        """Test that _get_feeds creates the correct number of NoaaCurrentsFeed instances."""
+        # Get the feeds
+        feeds = multi_station_currents_feed._get_feeds()
+
+        # Check that we have the correct number of feeds
+        assert len(feeds) == len(currents_config.stations)
+
+        # Check that each feed is a NoaaCurrentsFeed
+        for feed in feeds:
+            assert isinstance(feed, NoaaCurrentsFeed)
+
+        # Check that each feed is configured with the correct station
+        # We know these are NoaaCurrentsFeed instances which have station attribute
+        stations = [cast(NoaaCurrentsFeed, feed).station for feed in feeds]
+        assert set(stations) == set(currents_config.stations)
+
+    def test_combine_feeds_with_single_dataframe(
+        self,
+        multi_station_currents_feed: MultiStationCurrentsFeed,
+        valid_currents_dataframe: pd.DataFrame,
+    ) -> None:
+        """Test that _combine_feeds returns the input dataframe when only one is provided."""
+        # Call _combine_feeds with a single dataframe
+        result = multi_station_currents_feed._combine_feeds([valid_currents_dataframe])
+
+        # Check that the result is the same as the input
+        pd.testing.assert_frame_equal(result, valid_currents_dataframe)
+
+    def test_combine_feeds_with_multiple_dataframes(
+        self, multi_station_currents_feed: MultiStationCurrentsFeed
+    ) -> None:
+        """Test that _combine_feeds correctly combines data from multiple stations."""
+        # Create two test dataframes with some overlapping timestamps
+        index1 = pd.date_range(
+            start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+            end=datetime.datetime(2025, 4, 22, 5, 0, 0),
+            freq="1h",
+        )
+        index2 = pd.date_range(
+            start=datetime.datetime(2025, 4, 22, 3, 0, 0),
+            end=datetime.datetime(2025, 4, 22, 8, 0, 0),
+            freq="1h",
+        )
+
+        df1 = pd.DataFrame(
+            {"velocity": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "type": ["flood"] * 6},
+            index=index1,
+        )
+        df2 = pd.DataFrame(
+            {
+                "velocity": [5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
+                "type": ["flood"] * 3 + ["ebb"] * 3,
+            },
+            index=index2,
+        )
+
+        # Call _combine_feeds
+        result = multi_station_currents_feed._combine_feeds([df1, df2])
+
+        # Check that the result has the correct shape
+        assert (
+            len(result) == 9
+        )  # 3 unique timestamps in df1 + 3 overlapping + 3 unique in df2
+
+        # Check that overlapping timestamps have averaged velocity values
+        # Timestamps 3, 4, 5 are overlapping
+        assert result.loc[index1[3], "velocity"] == 4.5  # (4.0 + 5.0) / 2
+        assert result.loc[index1[4], "velocity"] == 5.5  # (5.0 + 6.0) / 2
+        assert result.loc[index1[5], "velocity"] == 6.5  # (6.0 + 7.0) / 2
+
+        # Check that the type column uses the most common value
+        assert result.loc[index1[3], "type"] == "flood"  # Both are flood
+        assert result.loc[index1[4], "type"] == "flood"  # Both are flood
+        assert result.loc[index1[5], "type"] == "flood"  # Both are flood
+
+        # Check that non-overlapping timestamps have the original values
+        assert result.loc[index1[0], "velocity"] == 1.0
+        assert result.loc[index1[1], "velocity"] == 2.0
+        assert result.loc[index1[2], "velocity"] == 3.0
+        assert result.loc[index2[3], "velocity"] == 8.0
+        assert result.loc[index2[4], "velocity"] == 9.0
+        assert result.loc[index2[5], "velocity"] == 10.0
+
+    def test_combine_feeds_with_empty_list(
+        self, multi_station_currents_feed: MultiStationCurrentsFeed
+    ) -> None:
+        """Test that _combine_feeds raises an error when no dataframes are provided."""
+        with pytest.raises(ValueError, match="No dataframes provided to combine"):
+            multi_station_currents_feed._combine_feeds([])
+
+    @pytest.mark.asyncio
+    async def test_fetch_handles_station_errors(
+        self,
+        multi_station_currents_feed: MultiStationCurrentsFeed,
+        valid_currents_dataframe: pd.DataFrame,
+    ) -> None:
+        """Test error handling when one station fails but others succeed."""
+
+        # Create a test feed that raises an exception
+        class ErrorFeed(Feed):
+            async def _fetch(self) -> pd.DataFrame:
+                raise ValueError("Test station error")
+
+        # Create a test feed that returns valid data
+        class SuccessFeed(Feed):
+            async def _fetch(self) -> pd.DataFrame:
+                return valid_currents_dataframe
+
+        # Mock _get_feeds to return one error feed and one success feed
+        with patch.object(
+            multi_station_currents_feed,
+            "_get_feeds",
+            return_value=[
+                ErrorFeed(
+                    location_config=multi_station_currents_feed.location_config,
+                    expiration_interval=datetime.timedelta(minutes=10),
+                ),
+                SuccessFeed(
+                    location_config=multi_station_currents_feed.location_config,
+                    expiration_interval=datetime.timedelta(minutes=10),
+                ),
+            ],
+        ):
+            # Call _fetch and expect it to raise an exception (following the project principle of failing fast)
+            with pytest.raises(ValueError, match="Test station error"):
+                await multi_station_currents_feed._fetch()

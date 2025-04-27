@@ -764,12 +764,6 @@ class DataManager(object):
         ((time, temp),) = live_temps_data.tail(1)["water_temp"].items()
         return time, temp
 
-    # _fetch_tides method removed - now using _update_dataset with feed dictionary
-
-    # _fetch_currents method removed - now using _update_dataset with feed dictionary
-
-    # _fetch_historic_temps method removed - now using _update_dataset with feed dictionary
-
     def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
         """Handle exceptions from asyncio tasks to prevent them from being silently ignored.
 
@@ -795,5 +789,3 @@ class DataManager(object):
             )
             # Re-raise the exception to follow the project principle of failing fast
             raise
-
-    # _fetch_live_temps method removed - now using _update_dataset with feed dictionary

@@ -25,6 +25,7 @@ from shallweswim.types import (
     TemperatureInfo,
     TidesInfo,
 )
+from typing import Dict, Any
 
 
 # Global data store for location data
@@ -206,11 +207,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             content=svg_io.getvalue(), media_type="image/svg+xml"
         )
 
-    @app.get(
-        "/api/ready",
-        status_code=200,
-        responses={503: {"description": "Service not ready"}},
-    )
+    @app.get("/api/ready", status_code=200)
     async def ready_status() -> bool:
         """API endpoint that returns whether all locations' data is ready.
 
@@ -218,21 +215,26 @@ def register_routes(app: fastapi.FastAPI) -> None:
             Boolean indicating whether all locations' data is ready
             Status code 200 if ready, 503 if not ready
         """
-        logging.info("[api] Checking readiness status for all locations")
-        # Get all configured locations
-        all_locations = list(config_lib.CONFIGS.keys())
+        logging.info("[api] Processing ready status request")
 
-        # Check if all locations are ready
-        for loc_code in all_locations:
-            # Skip if location not in the data dictionary
-            if loc_code not in data or data[loc_code] is None:
+        # If no locations are configured, we're not ready
+        if not data:
+            logging.warning("[api] No locations configured")
+            raise HTTPException(
+                status_code=503, detail="Service not ready - no locations configured"
+            )
+
+        # Check each location
+        for loc_code, loc_data in data.items():
+            # Check if location data exists
+            if not loc_data:
                 logging.warning(f"[{loc_code}] Location not in data dictionary")
                 raise HTTPException(
                     status_code=503, detail="Service not ready - location data missing"
                 )
 
             # Check if location data is ready
-            if not data[loc_code].ready:
+            if not loc_data.ready:
                 logging.info(f"[{loc_code}] Location data not ready yet")
                 raise HTTPException(
                     status_code=503, detail="Service not ready - data being loaded"
@@ -241,6 +243,59 @@ def register_routes(app: fastapi.FastAPI) -> None:
         # All locations are ready
         logging.info("[api] All locations report ready status")
         return True
+
+    @app.get("/api/status")
+    async def all_locations_status() -> Dict[str, Any]:
+        """API endpoint that returns status information for all configured locations.
+
+        Returns:
+            Dictionary mapping location codes to their status dictionaries
+
+        Raises:
+            HTTPException: If no locations are configured
+        """
+        logging.info("[api] Processing all locations status request")
+
+        # If no locations are configured, return an error
+        if not data:
+            logging.warning("[api] No locations configured")
+            raise HTTPException(status_code=404, detail="No locations configured")
+
+        # Build status dictionary for all locations
+        status_dict: Dict[str, Any] = {}
+        for loc_code, loc_data in data.items():
+            if loc_data:
+                status_dict[loc_code] = loc_data.status
+
+        return status_dict
+
+    @app.get("/api/{location}/status")
+    async def location_status(location: str) -> Dict[str, Any]:
+        """API endpoint that returns status information for a specific location.
+
+        Args:
+            location: Location code (e.g., 'nyc')
+
+        Returns:
+            Status dictionary for the specified location
+
+        Raises:
+            HTTPException: If the location is not configured
+        """
+        logging.info(f"[{location}] Processing location status request")
+
+        # Validate location exists
+        validate_location(location)
+
+        # Check if location data exists
+        if location not in data or not data[location]:
+            logging.warning(f"[{location}] Location not in data dictionary")
+            raise HTTPException(
+                status_code=404, detail=f"Location '{location}' not found in data"
+            )
+
+        # Return the status dictionary for this location
+        return data[location].status
 
     @app.get("/api/{location}/currents", response_model=CurrentsResponse)
     async def location_currents(location: str, shift: int = 0) -> CurrentsResponse:

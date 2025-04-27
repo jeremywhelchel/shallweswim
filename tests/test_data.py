@@ -363,38 +363,63 @@ async def test_data_ready_property(
     # Mock the _expired method to control its behavior based on timestamps
 
     def mock_expired(dataset: str) -> bool:
-        # Get the timestamp based on dataset
-        timestamp = None
-        if dataset == "tides_and_currents":
-            timestamp = tides_timestamp
+        # For all datasets, we'll simulate the feed's is_expired property
+        # based on whether the corresponding feed exists and its timestamp
+        if dataset == "tides":
+            # Consider None timestamps as expired
+            if tides_timestamp is None:
+                return True
+            # Consider timestamps older than 1 hour as expired
+            cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
+            return tides_timestamp < cutoff
+        elif dataset == "currents":
+            # Use the same timestamp as tides for simplicity
+            if tides_timestamp is None:
+                return True
+            cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
+            return tides_timestamp < cutoff
         elif dataset == "live_temps":
-            # For live temps, we'll use the timestamp directly in the test
-            # but the actual implementation will check the feed's is_expired property
-            timestamp = live_temps_timestamp
+            if live_temps_timestamp is None:
+                return True
+            cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
+            return live_temps_timestamp < cutoff
         elif dataset == "historic_temps":
-            timestamp = historic_temps_timestamp
-
-        # Consider None timestamps as expired
-        if timestamp is None:
+            if historic_temps_timestamp is None:
+                return True
+            cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
+            return historic_temps_timestamp < cutoff
+        else:
+            # Unknown dataset
             return True
-
-        # Consider timestamps older than 1 hour as expired
-        cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
-        return timestamp < cutoff
 
     # Apply our mock by directly setting the method
     # Use setattr to avoid mypy method-assign error
     setattr(data, "_expired", mock_expired)
 
-    # Set timestamps
-    data._tides_timestamp = tides_timestamp
-    # For live temps, we need to set up the feed with the timestamp
-    if live_temps_timestamp is not None:
-        # Create a mock feed with the timestamp
-        mock_feed = MagicMock()
-        mock_feed.is_expired = mock_expired("live_temps")
-        data._live_temp_feed = mock_feed
-    data._historic_temps_timestamp = historic_temps_timestamp
+    # Set up feed mocks for each dataset
+    # Tides feed
+    mock_tides_feed = MagicMock()
+    mock_tides_feed.is_expired = mock_expired("tides")
+    data._tides_feed = mock_tides_feed if tides_timestamp is not None else None
+
+    # Currents feed
+    mock_currents_feed = MagicMock()
+    mock_currents_feed.is_expired = mock_expired("currents")
+    data._currents_feed = mock_currents_feed if tides_timestamp is not None else None
+
+    # Live temps feed
+    mock_live_temps_feed = MagicMock()
+    mock_live_temps_feed.is_expired = mock_expired("live_temps")
+    data._live_temp_feed = (
+        mock_live_temps_feed if live_temps_timestamp is not None else None
+    )
+
+    # Historic temps feed
+    mock_historic_temps_feed = MagicMock()
+    mock_historic_temps_feed.is_expired = mock_expired("historic_temps")
+    data._historic_temps_feed = (
+        mock_historic_temps_feed if historic_temps_timestamp is not None else None
+    )
 
     # Test the ready property
     assert data.ready == expected_ready

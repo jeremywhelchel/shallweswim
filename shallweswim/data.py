@@ -18,7 +18,6 @@ from scipy.signal import find_peaks
 # Local imports
 from shallweswim import config as config_lib
 from shallweswim import feeds
-from shallweswim import noaa
 from shallweswim import plot
 from shallweswim import util
 from shallweswim.config import NoaaTempSource
@@ -37,7 +36,9 @@ EXPIRATION_BUFFER = datetime.timedelta(seconds=300)
 # Data expiration periods
 EXPIRATION_PERIODS = {
     # Tidal predictions already cover a wide past/present window
-    "tides_and_currents": datetime.timedelta(hours=24),
+    "tides": datetime.timedelta(hours=24),
+    # Current predictions already cover a wide past/present window
+    "currents": datetime.timedelta(hours=24),
     # Live temperature readings occur every 6 minutes, and are
     # generally already 5 minutes old when a new reading first appears
     "live_temps": datetime.timedelta(minutes=10),
@@ -144,14 +145,13 @@ class DataManager(object):
         self.live_temps: Optional[pd.DataFrame] = None
         self.historic_temps: Optional[pd.DataFrame] = None
 
-        # Timestamps for last data retrieval
-        self._tides_timestamp: Optional[datetime.datetime] = None
-        # Note: We no longer need _live_temps_timestamp as it's handled by the feed
-        self._historic_temps_timestamp: Optional[datetime.datetime] = None
+        # Note: We no longer need timestamp fields as they're handled by the feeds
 
         # Feed instances
         self._live_temp_feed: Optional[feeds.NoaaTempFeed] = None
         self._historic_temps_feed: Optional[feeds.HistoricalTempsFeed] = None
+        self._tides_feed: Optional[feeds.NoaaTidesFeed] = None
+        self._currents_feed: Optional[feeds.MultiStationCurrentsFeed] = None
 
         # Initialize feeds if configuration is available
         # Use hasattr to safely check for attributes, which is important for testing with mock objects
@@ -181,6 +181,28 @@ class DataManager(object):
                     expiration_interval=EXPIRATION_PERIODS["historic_temps"],
                 )
 
+        # Initialize tides feed if configuration is available
+        if hasattr(self.config, "tide_source") and self.config.tide_source:
+            tide_config = self.config.tide_source
+            if hasattr(tide_config, "station") and tide_config.station:
+                self._tides_feed = feeds.NoaaTidesFeed(
+                    location_config=self.config,
+                    config=tide_config,
+                    # Set expiration interval to match our existing settings
+                    expiration_interval=EXPIRATION_PERIODS["tides"],
+                )
+
+        # Initialize currents feed if configuration is available
+        if hasattr(self.config, "currents_source") and self.config.currents_source:
+            currents_config = self.config.currents_source
+            if hasattr(currents_config, "stations") and currents_config.stations:
+                self._currents_feed = feeds.MultiStationCurrentsFeed(
+                    location_config=self.config,
+                    config=currents_config,
+                    # Set expiration interval to match our existing settings
+                    expiration_interval=EXPIRATION_PERIODS["currents"],
+                )
+
         # Background update task
         self._update_task: Optional[asyncio.Task[None]] = None
 
@@ -193,7 +215,8 @@ class DataManager(object):
         """
         # Check each dataset for expiration
         datasets: list[DatasetName] = [
-            "tides_and_currents",
+            "tides",
+            "currents",
             "live_temps",
             "historic_temps",
         ]
@@ -202,41 +225,34 @@ class DataManager(object):
     def _expired(self, dataset: DatasetName) -> bool:
         """Check if a dataset has expired and needs to be refreshed.
 
+        Uses the feed's built-in expiration logic for all datasets.
+
         Args:
             dataset: The dataset to check
 
         Returns:
             True if the dataset is expired or missing, False otherwise
         """
-        # For live_temps, we use the feed's expiration logic directly
-        if dataset == "live_temps":
+        # Use the feed's expiration logic for all datasets
+        if dataset == "tides":
+            # If the feed doesn't exist yet or is expired, the data needs refreshing
+            return self._tides_feed is None or self._tides_feed.is_expired
+        elif dataset == "currents":
+            # If the feed doesn't exist yet or is expired, the data needs refreshing
+            return self._currents_feed is None or self._currents_feed.is_expired
+        elif dataset == "live_temps":
             # If the feed doesn't exist yet or is expired, the data needs refreshing
             return self._live_temp_feed is None or self._live_temp_feed.is_expired
-
-        # For other datasets, use the traditional timestamp approach
-        timestamp = None
-        if dataset == "tides_and_currents":
-            timestamp = self._tides_timestamp
         elif dataset == "historic_temps":
-            timestamp = self._historic_temps_timestamp
-
-        # If no timestamp, data is missing
-        if timestamp is None:
+            # If the feed doesn't exist yet or is expired, the data needs refreshing
+            return (
+                self._historic_temps_feed is None
+                or self._historic_temps_feed.is_expired
+            )
+        else:
+            # Unknown dataset
+            logging.warning(f"Unknown dataset: {dataset}")
             return True
-
-        # Check if data is older than the expiration period
-        # Use naive datetime from utc_now() for consistent handling
-        now = utc_now()  # utc_now returns a naive datetime in UTC
-        assert now.tzinfo is None, "utc_now() should return naive datetime"
-
-        # No timezone information allowed - strict assertion
-        assert (
-            timestamp.tzinfo is None
-        ), f"Timestamp for {dataset} has timezone info - all timestamps must be naive"
-
-        # Use the EXPIRATION_BUFFER to give the system time to refresh before reporting as expired
-        age = now - timestamp
-        return age > (EXPIRATION_PERIODS[dataset] + EXPIRATION_BUFFER)
 
     async def _update_dataset(self, dataset: DatasetName) -> None:
         """Update a specific dataset if it has expired.
@@ -244,8 +260,10 @@ class DataManager(object):
         Args:
             dataset: The dataset to update
         """
-        if dataset == "tides_and_currents":
-            await self._fetch_tides_and_currents()
+        if dataset == "tides":
+            await self._fetch_tides()
+        elif dataset == "currents":
+            await self._fetch_currents()
         elif dataset == "live_temps":
             await self._fetch_live_temps()
         elif dataset == "historic_temps":
@@ -263,8 +281,12 @@ class DataManager(object):
         try:
             while True:
                 try:
-                    if self._expired("tides_and_currents"):
-                        await self._update_dataset("tides_and_currents")
+                    # Check and update tides and currents separately
+                    if self._expired("tides"):
+                        await self._update_dataset("tides")
+
+                    if self._expired("currents"):
+                        await self._update_dataset("currents")
 
                     if self._expired("live_temps"):
                         await self._update_dataset("live_temps")
@@ -623,47 +645,58 @@ class DataManager(object):
         ((time, temp),) = self.live_temps.tail(1)["water_temp"].items()
         return time, temp
 
-    async def _fetch_tides_and_currents(self) -> None:
-        """Fetch tide and current data from NOAA API.
+    async def _fetch_tides(self) -> None:
+        """Fetch tide data using the NoaaTidesFeed.
 
-        Updates the tides and currents instance variables with fresh data from NOAA.
-        Sets the _tides_timestamp to track when data was last retrieved.
+        Updates the tides instance variable with fresh data from the feed.
+        The feed handles tracking when data was last retrieved.
 
-        If multiple current stations are configured, their data is averaged.
-        Logs warnings if the NOAA API returns an error.
+        Skips fetching if no tide station is configured or if the feed wasn't initialized.
         """
-        logging.info(f"[{self.config.code}] Fetching tides and currents")
+        logging.info(f"[{self.config.code}] Fetching tides")
+        if not self._tides_feed:
+            logging.debug(f"[{self.config.code}] No tide feed configured")
+            return
+
         try:
-            if self.config.tide_source and self.config.tide_source.station:
-                self.tides = await noaa.NoaaApi.tides(
-                    station=self.config.tide_source.station,
-                    location_code=self.config.code,
-                )
-
-            if self.config.currents_source and self.config.currents_source.stations:
-                # Use asyncio.gather to fetch all current stations concurrently
-                current_tasks = [
-                    noaa.NoaaApi.currents(stn, location_code=self.config.code)
-                    for stn in self.config.currents_source.stations
-                ]
-                currents = await asyncio.gather(*current_tasks)
-                self.currents = (
-                    pd.concat(currents)[["velocity"]].groupby(level=0).mean()
-                )
-
-            # Ensure we always store naive timestamps
-            now = utc_now()
-            assert now.tzinfo is None, "utc_now() must return naive datetime"
-            self._tides_timestamp = now
-        except noaa.NoaaApiError as e:
+            # Update the feed to get fresh data
+            await self._tides_feed.update()
+            # Get the tide data from the feed
+            self.tides = self._tides_feed.values
+        except Exception as e:
             logging.warning(f"[{self.config.code}] Tide fetch error: {e}")
+            # Re-raise to ensure error is not silently ignored
+            raise
+
+    async def _fetch_currents(self) -> None:
+        """Fetch current data using the MultiStationCurrentsFeed.
+
+        Updates the currents instance variable with fresh data from the feed.
+        The feed handles tracking when data was last retrieved.
+
+        Skips fetching if no current stations are configured or if the feed wasn't initialized.
+        """
+        logging.info(f"[{self.config.code}] Fetching currents")
+        if not self._currents_feed:
+            logging.debug(f"[{self.config.code}] No currents feed configured")
+            return
+
+        try:
+            # Update the feed data
+            await self._currents_feed.update()
+            # Get the currents data from the feed
+            self.currents = self._currents_feed.values
+        except Exception as e:
+            logging.warning(f"[{self.config.code}] Currents fetch error: {e}")
+            # Re-raise to ensure error is not silently ignored
+            raise
 
     async def _fetch_historic_temps(self) -> None:
         """Fetch hourly temperature data since 2011.
 
         Uses HistoricalTempsFeed to fetch data by year in parallel, then concatenates
         the results. Removes known erroneous data points and resamples to hourly intervals.
-        Sets the _historic_temps_timestamp to track when data was last retrieved.
+        The feed handles tracking when data was last retrieved.
 
         Skips fetching if no temperature station is configured or if the feed wasn't initialized.
         Logs warnings if the NOAA API returns an error.
@@ -682,11 +715,6 @@ class DataManager(object):
             # Get the historical temperature data from the feed
             # Outlier removal is already handled by the feed's update() method
             self.historic_temps = self._historic_temps_feed.values
-
-            # Ensure we always store naive timestamps
-            now = utc_now()
-            assert now.tzinfo is None, "utc_now() must return naive datetime"
-            self._historic_temps_timestamp = now
         except Exception as e:
             logging.warning(f"[{self.config.code}] Historic temp fetch error: {e}")
             # Re-raise the exception to follow the project principle of failing fast

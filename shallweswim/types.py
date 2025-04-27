@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 #############################################################
 
 # Common type literals used across the application
-DatasetName = Literal["tides_and_currents", "live_temps", "historic_temps"]
+DatasetName = Literal["tides", "currents", "live_temps", "historic_temps"]
 TideType = Literal["high", "low", "unknown"]
 CurrentDirection = Literal["flooding", "ebbing"]
 

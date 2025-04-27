@@ -459,9 +459,11 @@ class MultiStationCurrentsFeed(CompositeFeed):
         if not dataframes:
             raise ValueError("No dataframes provided to combine")
 
+        # For a single dataframe, we need special handling because we need to select
+        # only the velocity column, which is different from the concat+groupby approach
         if len(dataframes) == 1:
-            # If there's only one dataframe, just return it
-            return dataframes[0]
+            # If there's only one dataframe, just select the velocity column
+            return dataframes[0][["velocity"]]
 
         # Combine all dataframes, select only the velocity column, and average by timestamp
         # This exactly matches the legacy implementation:
@@ -514,14 +516,14 @@ class HistoricalTempsFeed(CompositeFeed):
     def _combine_feeds(self, dataframes: List[pd.DataFrame]) -> pd.DataFrame:
         """Combine temperature data from multiple years.
 
-        Simply concatenates the dataframes from different years. The only reason
-        to fetch years separately is for efficient parallel fetching.
+        Simply concatenates the dataframes from different years and resamples to hourly intervals.
+        The only reason to fetch years separately is for efficient parallel fetching.
 
         Args:
             dataframes: List of DataFrames from individual years
 
         Returns:
-            Combined DataFrame with temperature data from all years
+            Combined DataFrame with temperature data from all years, resampled to hourly intervals
 
         Raises:
             ValueError: If no valid dataframes are provided
@@ -529,12 +531,10 @@ class HistoricalTempsFeed(CompositeFeed):
         if not dataframes:
             raise ValueError("No dataframes provided to combine")
 
-        if len(dataframes) == 1:
-            # If there's only one dataframe, just return it
-            return dataframes[0]
-
-        # Simply concatenate all dataframes
+        # If there's only one dataframe, pd.concat will just return it
+        # If there are multiple dataframes, pd.concat will combine them
         result_df = pd.concat(dataframes)
 
-        # Sort by timestamp index
-        return result_df.sort_index()
+        # Sort by timestamp index and resample to hourly intervals
+        # This matches the legacy implementation: historic_temps.resample("h").first()
+        return result_df.sort_index().resample("h").first()

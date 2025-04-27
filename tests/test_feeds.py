@@ -1015,17 +1015,22 @@ class TestHistoricalTempsFeed:
         historical_temps_feed: HistoricalTempsFeed,
         valid_temp_dataframe: pd.DataFrame,
     ) -> None:
-        """Test that _combine_feeds returns the input dataframe when only one is provided."""
-        # Call _combine_feeds with a single dataframe
-        result = historical_temps_feed._combine_feeds([valid_temp_dataframe])
+        """Test that _combine_feeds resamples the input dataframe when only one is provided."""
+        # Create a copy of the input dataframe with non-hourly timestamps
+        test_df = valid_temp_dataframe.copy()
 
-        # Check that the result is the same as the input
-        pd.testing.assert_frame_equal(result, valid_temp_dataframe)
+        # Call _combine_feeds with a single dataframe
+        result = historical_temps_feed._combine_feeds([test_df])
+
+        # Check that the result has been resampled to hourly intervals
+        for dt in result.index:
+            assert dt.minute == 0
+            assert dt.second == 0
 
     def test_combine_feeds_with_multiple_dataframes(
         self, historical_temps_feed: HistoricalTempsFeed
     ) -> None:
-        """Test that _combine_feeds correctly concatenates data from multiple years."""
+        """Test that _combine_feeds correctly concatenates and resamples data from multiple years."""
         # Create two test dataframes with data from different years
         index2023 = pd.date_range(
             start=datetime.datetime(2023, 7, 15, 12, 0, 0),
@@ -1044,8 +1049,12 @@ class TestHistoricalTempsFeed:
         # Call _combine_feeds
         result = historical_temps_feed._combine_feeds([df2023, df2024])
 
-        # Check that the result has the correct shape
-        assert len(result) == 6  # 3 hours from 2023 + 3 hours from 2024
+        # The resampling will create a continuous hourly series between the two date ranges
+        # Let's check only the non-NaN values to verify our original data is preserved
+        result_no_nans = result.dropna()
+
+        # Check that we have all our original data points
+        assert len(result_no_nans) == 6  # 3 hours from 2023 + 3 hours from 2024
 
         # Check that the result contains all the original data
         # Check 2023 data
@@ -1072,6 +1081,12 @@ class TestHistoricalTempsFeed:
 
         # Verify that the index is sorted
         assert result.index.is_monotonic_increasing
+
+        # Verify that the data is resampled to hourly intervals
+        # All timestamps should be on the hour
+        for dt in result.index:
+            assert dt.minute == 0
+            assert dt.second == 0
 
     def test_combine_feeds_with_empty_list(
         self, historical_temps_feed: HistoricalTempsFeed

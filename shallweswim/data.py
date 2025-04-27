@@ -142,79 +142,120 @@ class DataManager(object):
         # Dictionary mapping dataset names to their corresponding feeds
         # This is the single source of truth for all feed instances and data
         self._feeds: Dict[DatasetName, Optional[feeds.Feed]] = {
-            "tides": None,
-            "currents": None,
-            "live_temps": None,
-            "historic_temps": None,
+            "tides": self._configure_tides_feed(),
+            "currents": self._configure_currents_feed(),
+            "live_temps": self._configure_live_temps_feed(),
+            "historic_temps": self._configure_historic_temps_feed(),
         }
-
-        # Initialize feeds if configuration is available
-        # Use hasattr to safely check for attributes, which is important for testing with mock objects
-        # Live temperature feed
-        if hasattr(self.config, "temp_source") and self.config.temp_source:
-            temp_config = self.config.temp_source
-            if hasattr(temp_config, "station") and temp_config.station:
-                # Type check to ensure we're passing the right config type
-                if isinstance(temp_config, config_lib.NoaaTempSource):
-                    self._feeds["live_temps"] = feeds.NoaaTempFeed(
-                        location_config=self.config,
-                        config=temp_config,
-                        # Start 24 hours ago to get a full day of data
-                        start=utc_now() - datetime.timedelta(hours=24),
-                        # End at current time
-                        end=utc_now(),
-                        # Use 6-minute interval for live temps
-                        interval="6-min",
-                        # Set expiration interval to match our existing settings
-                        expiration_interval=EXPIRATION_PERIODS["live_temps"],
-                    )
-
-        # Historical temperature feed
-        if hasattr(self.config, "temp_source") and self.config.temp_source:
-            temp_config = self.config.temp_source
-            if hasattr(temp_config, "station") and temp_config.station:
-                # Type check to ensure we're passing the right config type
-                if isinstance(temp_config, config_lib.NoaaTempSource):
-                    # Get the start year from config or use default 2011
-                    start_year = 2011
-                    if hasattr(temp_config, "start_year") and temp_config.start_year:
-                        start_year = temp_config.start_year
-
-                    self._feeds["historic_temps"] = feeds.HistoricalTempsFeed(
-                        location_config=self.config,
-                        config=temp_config,
-                        # Use the start year we determined
-                        start_year=start_year,
-                        # End at current year
-                        end_year=utc_now().year,
-                        # Set expiration interval to match our existing settings
-                        expiration_interval=EXPIRATION_PERIODS["historic_temps"],
-                    )
-
-        # Tides feed
-        if hasattr(self.config, "tide_source") and self.config.tide_source:
-            tide_config = self.config.tide_source
-            if hasattr(tide_config, "station") and tide_config.station:
-                self._feeds["tides"] = feeds.NoaaTidesFeed(
-                    location_config=self.config,
-                    config=tide_config,
-                    # Set expiration interval to match our existing settings
-                    expiration_interval=EXPIRATION_PERIODS["tides"],
-                )
-
-        # Currents feed
-        if hasattr(self.config, "currents_source") and self.config.currents_source:
-            currents_config = self.config.currents_source
-            if hasattr(currents_config, "stations") and currents_config.stations:
-                self._feeds["currents"] = feeds.MultiStationCurrentsFeed(
-                    location_config=self.config,
-                    config=currents_config,
-                    # Set expiration interval to match our existing settings
-                    expiration_interval=EXPIRATION_PERIODS["currents"],
-                )
 
         # Background update task
         self._update_task: Optional[asyncio.Task[None]] = None
+
+    def _configure_live_temps_feed(self) -> Optional[feeds.Feed]:
+        """Configure the live temperature feed.
+
+        Returns:
+            Configured feed or None if configuration is not available
+        """
+        if not hasattr(self.config, "temp_source") or not self.config.temp_source:
+            return None
+
+        temp_config = self.config.temp_source
+        if not hasattr(temp_config, "station") or not temp_config.station:
+            return None
+
+        # Type check to ensure we're passing the right config type
+        if not isinstance(temp_config, config_lib.NoaaTempSource):
+            return None
+
+        return feeds.NoaaTempFeed(
+            location_config=self.config,
+            config=temp_config,
+            # Start 24 hours ago to get a full day of data
+            start=utc_now() - datetime.timedelta(hours=24),
+            # End at current time
+            end=utc_now(),
+            # Use 6-minute interval for live temps
+            interval="6-min",
+            # Set expiration interval to match our existing settings
+            expiration_interval=EXPIRATION_PERIODS["live_temps"],
+        )
+
+    def _configure_historic_temps_feed(self) -> Optional[feeds.Feed]:
+        """Configure the historical temperature feed.
+
+        Returns:
+            Configured feed or None if configuration is not available
+        """
+        if not hasattr(self.config, "temp_source") or not self.config.temp_source:
+            return None
+
+        temp_config = self.config.temp_source
+        if not hasattr(temp_config, "station") or not temp_config.station:
+            return None
+
+        # Type check to ensure we're passing the right config type
+        if not isinstance(temp_config, config_lib.NoaaTempSource):
+            return None
+
+        # Get the start year from config or use default 2011
+        start_year = 2011
+        if hasattr(temp_config, "start_year") and temp_config.start_year:
+            start_year = temp_config.start_year
+
+        return feeds.HistoricalTempsFeed(
+            location_config=self.config,
+            config=temp_config,
+            # Use the start year we determined
+            start_year=start_year,
+            # End at current year
+            end_year=utc_now().year,
+            # Set expiration interval to match our existing settings
+            expiration_interval=EXPIRATION_PERIODS["historic_temps"],
+        )
+
+    def _configure_tides_feed(self) -> Optional[feeds.Feed]:
+        """Configure the tides feed.
+
+        Returns:
+            Configured feed or None if configuration is not available
+        """
+        if not hasattr(self.config, "tide_source") or not self.config.tide_source:
+            return None
+
+        tide_config = self.config.tide_source
+        if not hasattr(tide_config, "station") or not tide_config.station:
+            return None
+
+        return feeds.NoaaTidesFeed(
+            location_config=self.config,
+            config=tide_config,
+            # Set expiration interval to match our existing settings
+            expiration_interval=EXPIRATION_PERIODS["tides"],
+        )
+
+    def _configure_currents_feed(self) -> Optional[feeds.Feed]:
+        """Configure the currents feed.
+
+        Returns:
+            Configured feed or None if configuration is not available
+        """
+        if (
+            not hasattr(self.config, "currents_source")
+            or not self.config.currents_source
+        ):
+            return None
+
+        currents_config = self.config.currents_source
+        if not hasattr(currents_config, "stations") or not currents_config.stations:
+            return None
+
+        return feeds.MultiStationCurrentsFeed(
+            location_config=self.config,
+            config=currents_config,
+            # Set expiration interval to match our existing settings
+            expiration_interval=EXPIRATION_PERIODS["currents"],
+        )
 
     @property
     def ready(self) -> bool:

@@ -12,14 +12,14 @@ import logging
 from typing import Any, Optional, Literal, List
 
 # Third-party imports
-import ndbc_api
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
 # Local imports
 from shallweswim import config as config_lib
 from shallweswim import coops
-from shallweswim.util import c_to_f, latest_time_value, utc_now
+from shallweswim import ndbc
+from shallweswim.util import latest_time_value, utc_now
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
@@ -396,37 +396,12 @@ class NdbcTempFeed(TempFeed):
     """NOAA NDBC specific implementation of temperature data feed.
 
     Fetches temperature data from NOAA National Data Buoy Center (NDBC) stations
-    using the ndbc-api package.
+    using the ndbc module.
     """
 
     config: config_lib.NdbcTempSource
     # Default to hourly interval for NDBC data
     interval: Literal["h", "6-min"] = "h"
-
-    def _fix_time(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Convert UTC timestamps to local timezone.
-
-        Args:
-            df: DataFrame with UTC timestamps in the index
-
-        Returns:
-            DataFrame with local timezone timestamps (naive datetimes)
-        """
-        self.log(
-            f"Converting UTC timestamps to local timezone for NDBC station {self.config.station}",
-            logging.INFO,
-        )
-
-        # First, make the timestamps timezone-aware (UTC)
-        df.index = df.index.tz_localize("UTC")
-
-        # Then convert to the location's timezone
-        df.index = df.index.tz_convert(self.location_config.timezone)
-
-        # Finally, make the timestamps naive again (remove timezone info)
-        df.index = df.index.tz_localize(None)
-
-        return df
 
     async def _fetch(self) -> pd.DataFrame:
         """Fetch temperature data from NOAA NDBC API.
@@ -443,79 +418,17 @@ class NdbcTempFeed(TempFeed):
         # Default to 8 days of data if not specified
         begin_date = self.start or (end_date - datetime.timedelta(days=8))
 
-        # Format dates as strings for the NDBC API
-        begin_date_str = begin_date.strftime("%Y-%m-%d")
-        end_date_str = end_date.strftime("%Y-%m-%d")
-
         try:
-            # Initialize the NDBC API client
-            api = ndbc_api.NdbcApi()
-
-            # Fetch the data using asyncio.to_thread to avoid blocking
+            # Fetch the data using the NDBC API client
             self.log(f"Fetching NDBC data for station {station_id}", logging.INFO)
-            raw_result = await asyncio.to_thread(
-                api.get_data,
+
+            temp_df = await ndbc.NdbcApi.temperature(
                 station_id=station_id,
-                mode="stdmet",  # Standard meteorological data
-                start_time=begin_date_str,
-                end_time=end_date_str,
+                begin_date=begin_date,
+                end_date=end_date,
+                timezone=str(self.location_config.timezone),
+                location_code=self.location_config.code,
             )
-
-            # Check if the result is a dictionary (often empty) instead of a DataFrame
-            if isinstance(raw_result, dict):
-                error_msg = (
-                    f"NDBC API returned a dictionary instead of DataFrame: {raw_result}"
-                )
-                self.log(error_msg, logging.ERROR)
-                raise ValueError(error_msg)
-
-            # Explicitly assert that raw_result is a DataFrame
-            if not isinstance(raw_result, pd.DataFrame):
-                error_msg = f"Expected DataFrame, got {type(raw_result)}"
-                self.log(error_msg, logging.ERROR)
-                raise TypeError(error_msg)
-
-            raw_df = raw_result
-
-            # Check if water temperature data is available
-            if "WTMP" not in raw_df.columns:
-                error_msg = (
-                    f"No water temperature data available for NDBC station {station_id}"
-                )
-                self.log(error_msg, logging.ERROR)
-                raise ValueError(error_msg)
-
-            # Extract water temperature data and rename to match our convention
-            temp_df = raw_df[["WTMP"]].copy().rename(columns={"WTMP": "water_temp"})
-
-            # NDBC reports temperatures in Celsius, convert to Fahrenheit to match our standard
-            temp_df["water_temp"] = temp_df["water_temp"].apply(c_to_f)
-
-            # Assert that the index is a MultiIndex (timestamp, station_id)
-            if not isinstance(temp_df.index, pd.MultiIndex):
-                raise ValueError(f"Expected MultiIndex, got {type(temp_df.index)}")
-
-            self.log(
-                f"Converting MultiIndex to DatetimeIndex for NDBC station {station_id}",
-                logging.INFO,
-            )
-
-            # Reset the index and set only the timestamp as the new index
-            temp_df.index = temp_df.index.droplevel("station_id")
-            # Assert that the timestamp level is already a datetime
-            if not pd.api.types.is_datetime64_any_dtype(temp_df.index):
-                raise ValueError(
-                    f"Expected timestamp index to be datetime, got {type(temp_df.index)}"
-                )
-
-            # Convert UTC timestamps to local timezone
-            temp_df = self._fix_time(temp_df)
-
-            # Sort by time to ensure chronological order
-            temp_df.sort_index(inplace=True)
-
-            # XXX Hack to fix mising falues
-            temp_df = temp_df.fillna(-1.234)
 
             self.log(
                 f"Successfully fetched {len(temp_df)} temperature readings for NDBC station {station_id}",
@@ -523,14 +436,12 @@ class NdbcTempFeed(TempFeed):
             )
 
             return temp_df
-
-        except Exception as e:
-            self.log(f"NDBC temp fetch error: {e}", logging.WARNING)
+        except ndbc.NdbcApiError as e:
+            self.log(f"Error fetching NDBC data: {e}", logging.WARNING)
             # Following the project principle of failing fast for internal errors
             raise
 
 
-# class UsgsTempFeed(TempFeed):
 #    config: config_lib.UsgsTempSource
 
 

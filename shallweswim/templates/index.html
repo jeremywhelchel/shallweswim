@@ -51,6 +51,31 @@ block content %} {% if config.code == 'nyc' %}
 </div>
 {% elif config.code == 'sdf' %}
 <h2>Live Webcam</h2>
+<!--
+<div class="webcamdiv">
+  <script
+  class="earthcam-embed"
+  aria-label="earthcam-embed"
+  type="text/javascript"
+  src="https://share.earthcam.net/embed/
+       tJ90CoLmq7TzrY396Yd88MLlsVJ_gbpo-FtC9zSX1TI!/
+       tJ90CoLmq7TzrY396Yd88Cwp1ulcCteQSnD-A42I2VI!">
+</script>
+-->
+<div class="webcamdiv">
+  <iframe
+    src="https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver&format=embed"
+    width="800"
+    height="450"
+    frameborder="0"
+    scrolling="no"
+    sandbox="allow-scripts allow-same-origin"
+    allowfullscreen
+  >
+  </iframe>
+  <!--
+<script src="https://www.earthcam.com/scripts/embed.js"></script>
+--></div>
 <div class="note">
   Alternative option:
   <ul>

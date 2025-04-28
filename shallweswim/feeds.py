@@ -403,6 +403,31 @@ class NdbcTempFeed(TempFeed):
     # Default to hourly interval for NDBC data
     interval: Literal["h", "6-min"] = "h"
 
+    def _fix_time(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convert UTC timestamps to local timezone.
+
+        Args:
+            df: DataFrame with UTC timestamps in the index
+
+        Returns:
+            DataFrame with local timezone timestamps (naive datetimes)
+        """
+        self.log(
+            f"Converting UTC timestamps to local timezone for NDBC station {self.config.station}",
+            logging.INFO,
+        )
+
+        # First, make the timestamps timezone-aware (UTC)
+        df.index = df.index.tz_localize("UTC")
+
+        # Then convert to the location's timezone
+        df.index = df.index.tz_convert(self.location_config.timezone)
+
+        # Finally, make the timestamps naive again (remove timezone info)
+        df.index = df.index.tz_localize(None)
+
+        return df
+
     async def _fetch(self) -> pd.DataFrame:
         """Fetch temperature data from NOAA NDBC API.
 
@@ -482,6 +507,9 @@ class NdbcTempFeed(TempFeed):
                 raise ValueError(
                     f"Expected timestamp index to be datetime, got {type(temp_df.index)}"
                 )
+
+            # Convert UTC timestamps to local timezone
+            temp_df = self._fix_time(temp_df)
 
             # Sort by time to ensure chronological order
             temp_df.sort_index(inplace=True)

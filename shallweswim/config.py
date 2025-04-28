@@ -310,21 +310,6 @@ _CONFIG_LIST = [
         description="La Jolla Cove open water swimming conditions",
     ),
     LocationConfig(
-        code="tst",
-        name="Test",
-        swim_location="TBD",
-        swim_location_link="TBD",
-        latitude=40.258,
-        longitude=-73.175,
-        timezone=pytz.timezone("US/Eastern"),
-        # https://www.ndbc.noaa.gov/station_page.php?station=44025
-        temp_source=NdbcTempSource(
-            station="44025",
-            name="LONG ISLAND - 30 NM South of Islip, NY",
-        ),
-        description="Test location.",
-    ),
-    LocationConfig(
         enabled=False,
         code="chi",
         name="Chicago",
@@ -373,7 +358,6 @@ _CONFIG_LIST = [
         # webcam https://dolphinclub.org/weather/ (code in page JS source...)
     ),
     LocationConfig(
-        enabled=False,
         code="sdf",
         name="Louisville",
         swim_location="Louisville Community Boathouse",
@@ -390,6 +374,21 @@ _CONFIG_LIST = [
         # - webcam:
         #    https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
         #    https://ohiorivercam.com/
+    ),
+    LocationConfig(
+        code="tst",
+        name="Test",
+        swim_location="TBD",
+        swim_location_link="TBD",
+        latitude=40.258,
+        longitude=-73.175,
+        timezone=pytz.timezone("US/Eastern"),
+        # https://www.ndbc.noaa.gov/station_page.php?station=44025
+        temp_source=NdbcTempSource(
+            station="44025",
+            name="LONG ISLAND - 30 NM South of Islip, NY",
+        ),
+        description="Test location.",
     ),
 ]
 # Build lookup dictionaries - use lowercase keys for case-insensitive lookup

@@ -14,14 +14,15 @@ relevant information about swimming locations. The most important elements inclu
 The configuration uses specialized Pydantic models (TempSource/CoopsTempSource, CoopsTideSource, CoopsCurrentsSource)
 to define data sources for each type of measurement, providing more flexibility and abstraction.
 
-Configurations for all supported locations are stored in CONFIG_LIST and can be
+Configurations for all supported locations are stored internally and can be
 accessed via the Get() function using the location's 3-letter code.
 """
 
 # Standard library imports
 import datetime
 from datetime import tzinfo
-from typing import Annotated, Dict, List, Optional, Tuple
+from types import MappingProxyType
+from typing import Annotated, List, Optional, Tuple
 
 # Third-party imports
 import pytz
@@ -209,6 +210,13 @@ class LocationConfig(BaseModel, frozen=True):
         Field(description="Configuration for currents data source"),
     ] = None
 
+    enabled: Annotated[
+        bool,
+        Field(
+            description="Whether this location is enabled and available in the application"
+        ),
+    ] = True
+
     @property
     def coordinates(self) -> Tuple[float, float]:
         """Return the location's coordinates as a (latitude, longitude) tuple.
@@ -254,7 +262,7 @@ class LocationConfig(BaseModel, frozen=True):
         return local_now.replace(tzinfo=None)
 
 
-CONFIG_LIST = [
+_CONFIG_LIST = [
     LocationConfig(
         code="nyc",
         name="New York",
@@ -382,7 +390,9 @@ CONFIG_LIST = [
     # ),
 ]
 # Build lookup dictionaries - use lowercase keys for case-insensitive lookup
-CONFIGS: Dict[str, LocationConfig] = {c.code.lower(): c for c in CONFIG_LIST}
+# Only include enabled locations in the CONFIGS dictionary
+# Use MappingProxyType to create an immutable view of the dictionary
+CONFIGS = MappingProxyType({c.code.lower(): c for c in _CONFIG_LIST if c.enabled})
 
 
 def get(code: str) -> Optional[LocationConfig]:
@@ -399,3 +409,14 @@ def get(code: str) -> Optional[LocationConfig]:
         LocationConfig if found, None otherwise
     """
     return CONFIGS.get(code)
+
+
+def get_all_configs() -> List[LocationConfig]:
+    """Get all location configurations, including disabled ones.
+
+    This function is primarily intended for testing purposes.
+
+    Returns:
+        List of all LocationConfig objects
+    """
+    return _CONFIG_LIST.copy()

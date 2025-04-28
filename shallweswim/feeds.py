@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict
 # Local imports
 from shallweswim import config as config_lib
 from shallweswim import coops
-from shallweswim.util import c_to_f, utc_now
+from shallweswim.util import c_to_f, latest_time_value, utc_now
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
@@ -134,10 +134,16 @@ class Feed(BaseModel, abc.ABC):
         Returns:
             A dictionary containing information about the feed's status
         """
-        # Get data shape if available
-        shape = None
+        # Get data shape and columns if available
+        rows, cols = 0, 0
+        columns = []
+        latest_timestamp = None
+
         if self._data is not None:
-            shape = self._data.shape
+            rows, cols = self._data.shape
+            columns = list(self._data.columns)
+            # Get the latest timestamp from the data
+            latest_timestamp = latest_time_value(self._data)
 
         # Get age as timedelta
         age_td = self.age
@@ -157,10 +163,15 @@ class Feed(BaseModel, abc.ABC):
             "name": self.__class__.__name__,
             "location": self.location_config.code,
             "timestamp": self._timestamp.isoformat() if self._timestamp else None,
+            "latest_timestamp": (
+                latest_timestamp.isoformat() if latest_timestamp else None
+            ),
             "age_seconds": age_sec,
             "is_expired": self.is_expired,
             "is_ready": self._ready_event.is_set(),
-            "data_shape": list(shape) if shape else None,
+            "data_rows": rows,
+            "data_cols": cols,
+            "data_columns": columns,
             "expiration_seconds": expiration_sec,
         }
 

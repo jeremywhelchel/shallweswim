@@ -324,70 +324,73 @@ _CONFIG_LIST = [
         ),
         description="Test location.",
     ),
-    # LocationConfig(
-    #     code="chi",
-    #     name="Chicago",
-    #     swim_location="TBD",
-    #     swim_location_link="TBD",
-    #     latitude=41.894,
-    #     longitude=-87.613,
-    #     timezone=pytz.timezone("US/Central"),
-    #     #temp_source=NdbcTempSource(
-    #     #    station="45198",
-    #     #    name="Ohio Street Beach",
-    #     #),
-    #     temp_source=NdbcTempSource(
-    #         station="45007",
-    #         name="South Michigan",
-    #     ),
-    #     # tide_source=CoopsTideSource(
-    #     #     station=None,
-    #     #     station_name="",
-    #     # ),
-    #     description="Chicago TBD open water swimming conditions",
-    # ),
-    # LocationConfig(
-    #    # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
-    #    code="sfo",
-    #    name="San Francisco",
-    #    swim_location="San Francisco Aquatic Park",
-    #    swim_location_link="https://serc.com/swimming/swimming-in-aquatic-park/",
-    #    latitude=37.808,
-    #    longitude=-122.426,
-    #    timezone=pytz.timezone("US/Pacific"),
-    #    # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
-    #    # It is not a live reading (and not available via the same API), so we don't use it.
-    #    # The San Francisco, CA - Station ID: 9414290 has been disabled with this message
-    #    # Disabled - 2025-01-17 02:01:00, Suspect Data - Data failed to meet QC standards - under review.
-    #    temp_source=CoopsTempSource(
-    #        station=9414769,
-    #        name="San Francisco, CA",
-    #    ),
-    #    tide_source=CoopsTideSource(
-    #        station=9414305,
-    #        station_name="North Point Pier",
-    #    ),
-    #    description="San Francisco Aquatic Park open water swimming conditions",
-    #    # webcam https://dolphinclub.org/weather/ (code in page JS source...)
-    # ),
-    # LocationConfig(
-    #    code="sdf",
-    #    name="Louisville",
-    #    swim_location="Louisville Community Boathouse",
-    #    swim_location_link="https://www.kylmsc.org/rats",
-    #    latitude=38.2647556,
-    #    longitude=-85.7323204,
-    #    # XXX windy "waves" mode inapplicable here
-    #    timezone=pytz.timezone("US/Eastern"),
-    #    description="Louisville Kentucky open water swimming conditions",
-    #    # TODO: add this
-    #    # - temp data
-    #    #    water velocity (mph)
-    #    #    https://colab.research.google.com/drive/17-oyc95BBUUI3g1GBR5QpACAm-4G5vBk#scrollTo=vMXIJh8CCQCF
-    #    # - webcam:
-    #    #    https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
-    #    #    https://ohiorivercam.com/
-    # ),
+    LocationConfig(
+        enabled=False,
+        code="chi",
+        name="Chicago",
+        swim_location="TBD",
+        swim_location_link="TBD",
+        latitude=41.894,
+        longitude=-87.613,
+        timezone=pytz.timezone("US/Central"),
+        # temp_source=NdbcTempSource(
+        #    station="45198",
+        #    name="Ohio Street Beach",
+        # ),
+        temp_source=NdbcTempSource(
+            station="45007",
+            name="South Michigan",
+        ),
+        # tide_source=CoopsTideSource(
+        #     station=None,
+        #     station_name="",
+        # ),
+        description="Chicago TBD open water swimming conditions",
+    ),
+    LocationConfig(
+        enabled=False,
+        # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
+        code="sfo",
+        name="San Francisco",
+        swim_location="San Francisco Aquatic Park",
+        swim_location_link="https://serc.com/swimming/swimming-in-aquatic-park/",
+        latitude=37.808,
+        longitude=-122.426,
+        timezone=pytz.timezone("US/Pacific"),
+        # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
+        # It is not a live reading (and not available via the same API), so we don't use it.
+        # The San Francisco, CA - Station ID: 9414290 has been disabled with this message
+        # Disabled - 2025-01-17 02:01:00, Suspect Data - Data failed to meet QC standards - under review.
+        temp_source=CoopsTempSource(
+            station=9414769,
+            name="San Francisco, CA",
+        ),
+        tide_source=CoopsTideSource(
+            station=9414305,
+            station_name="North Point Pier",
+        ),
+        description="San Francisco Aquatic Park open water swimming conditions",
+        # webcam https://dolphinclub.org/weather/ (code in page JS source...)
+    ),
+    LocationConfig(
+        enabled=False,
+        code="sdf",
+        name="Louisville",
+        swim_location="Louisville Community Boathouse",
+        swim_location_link="https://www.kylmsc.org/rats",
+        latitude=38.2647556,
+        longitude=-85.7323204,
+        # XXX windy "waves" mode inapplicable here
+        timezone=pytz.timezone("US/Eastern"),
+        description="Louisville Kentucky open water swimming conditions",
+        # TODO: add this
+        # - temp data
+        #    water velocity (mph)
+        #    https://colab.research.google.com/drive/17-oyc95BBUUI3g1GBR5QpACAm-4G5vBk#scrollTo=vMXIJh8CCQCF
+        # - webcam:
+        #    https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
+        #    https://ohiorivercam.com/
+    ),
 ]
 # Build lookup dictionaries - use lowercase keys for case-insensitive lookup
 # Only include enabled locations in the CONFIGS dictionary

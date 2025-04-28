@@ -646,21 +646,22 @@ class HistoricalTempsFeed(CompositeFeed):
     typical temperatures for a given date based on historical records.
     """
 
-    config: config_lib.CoopsTempSource
+    config: config_lib.TempSource
     start_year: int
     end_year: int
 
     def _get_feeds(self) -> List[Feed]:
-        """Create a CoopsTempFeed for each year in the range.
+        """Create temperature feeds for each year in the range.
 
         For the current year, caps the end date to today to avoid requesting future dates
-        from the CO-OPS API, which would result in an error.
+        from the API, which would result in an error.
 
         Returns:
-            List of CoopsTempFeed instances, one for each year in the range
+            List of TempFeed instances, one for each year in the range
         """
         feeds: List[Feed] = []
         current_date = utc_now()
+        feed: TempFeed  # Variable to hold the feed for each year
 
         for year in range(self.start_year, self.end_year + 1):
             # Calculate start and end dates for this year
@@ -678,14 +679,30 @@ class HistoricalTempsFeed(CompositeFeed):
             # Past years' data won't change, so they don't need to expire
             expiration = self.expiration_interval if year == current_date.year else None
 
-            feed = CoopsTempFeed(
-                location_config=self.location_config,
-                config=self.config,
-                start=start_date,
-                end=end_date,
-                interval="h",  # Use hourly data for historical temps
-                expiration_interval=expiration,
-            )
+            # Create the appropriate feed based on the config type
+            if isinstance(self.config, config_lib.CoopsTempSource):
+                feed = CoopsTempFeed(
+                    location_config=self.location_config,
+                    config=self.config,
+                    start=start_date,
+                    end=end_date,
+                    interval="h",  # Use hourly data for historical temps
+                    expiration_interval=expiration,
+                )
+            elif isinstance(self.config, config_lib.NdbcTempSource):
+                feed = NdbcTempFeed(
+                    location_config=self.location_config,
+                    config=self.config,
+                    start=start_date,
+                    end=end_date,
+                    # NdbcTempFeed already defaults to hourly data
+                    expiration_interval=expiration,
+                )
+            else:
+                # Unsupported temperature source type - fail fast and loud
+                raise TypeError(
+                    f"Unsupported temperature source type: {type(self.config).__name__}"
+                )
             feeds.append(feed)
         return feeds
 

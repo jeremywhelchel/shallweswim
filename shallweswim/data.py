@@ -152,6 +152,9 @@ class DataManager(object):
 
         Returns:
             Configured feed or None if configuration is not available
+
+        Raises:
+            TypeError: If an unsupported temperature source type is provided
         """
         if not hasattr(self.config, "temp_source") or not self.config.temp_source:
             return None
@@ -186,14 +189,19 @@ class DataManager(object):
                 expiration_interval=EXPIRATION_PERIODS["live_temps"],
             )
         else:
-            # Unsupported temperature source type
-            return None
+            # Unsupported temperature source type - fail fast and loud
+            raise TypeError(
+                f"Unsupported temperature source type: {type(temp_config).__name__}"
+            )
 
     def _configure_historic_temps_feed(self) -> Optional[feeds.Feed]:
         """Configure the historical temperature feed.
 
         Returns:
             Configured feed or None if configuration is not available
+
+        Raises:
+            TypeError: If an unsupported temperature source type is provided
         """
         if not hasattr(self.config, "temp_source") or not self.config.temp_source:
             return None
@@ -202,25 +210,40 @@ class DataManager(object):
         if not hasattr(temp_config, "station") or not temp_config.station:
             return None
 
-        # Type check to ensure we're passing the right config type
-        if not isinstance(temp_config, config_lib.CoopsTempSource):
-            return None
-
         # Get the start year from config or use default 2011
         start_year = 2011
         if hasattr(temp_config, "start_year") and temp_config.start_year:
             start_year = temp_config.start_year
 
-        return feeds.HistoricalTempsFeed(
-            location_config=self.config,
-            config=temp_config,
-            # Use the start year we determined
-            start_year=start_year,
-            # End at current year
-            end_year=utc_now().year,
-            # Set expiration interval to match our existing settings
-            expiration_interval=EXPIRATION_PERIODS["historic_temps"],
-        )
+        # Create the appropriate feed based on the config type
+        if isinstance(temp_config, config_lib.CoopsTempSource):
+            return feeds.HistoricalTempsFeed(
+                location_config=self.config,
+                config=temp_config,
+                # Use the start year we determined
+                start_year=start_year,
+                # End at current year
+                end_year=utc_now().year,
+                # Set expiration interval to match our existing settings
+                expiration_interval=EXPIRATION_PERIODS["historic_temps"],
+            )
+        elif isinstance(temp_config, config_lib.NdbcTempSource):
+            # NDBC sources now support historical data
+            return feeds.HistoricalTempsFeed(
+                location_config=self.config,
+                config=temp_config,
+                # Use the start year we determined
+                start_year=start_year,
+                # End at current year
+                end_year=utc_now().year,
+                # Set expiration interval to match our existing settings
+                expiration_interval=EXPIRATION_PERIODS["historic_temps"],
+            )
+        else:
+            # Unsupported temperature source type - fail fast and loud
+            raise TypeError(
+                f"Unsupported temperature source type: {type(temp_config).__name__}"
+            )
 
     def _configure_tides_feed(self) -> Optional[feeds.Feed]:
         """Configure the tides feed.

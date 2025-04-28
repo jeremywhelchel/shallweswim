@@ -35,6 +35,22 @@ def test_f2c(fahrenheit: float, expected_celsius: float) -> None:
     assert abs(result - expected_celsius) < 0.1  # within 0.1 degree
 
 
+@pytest.mark.parametrize(
+    "celsius,expected_fahrenheit",
+    [
+        (0, 32),  # Freezing point
+        (100, 212),  # Boiling point
+        (37, 98.6),  # Body temperature
+        (-40, -40),  # Same in both scales
+        (20, 68),  # Room temperature
+    ],
+)
+def test_c2f(celsius: float, expected_fahrenheit: float) -> None:
+    """Test Celsius to Fahrenheit conversion."""
+    result = util.c_to_f(celsius)
+    assert abs(result - expected_fahrenheit) < 0.1  # within 0.1 degree
+
+
 def test_pivot_year() -> None:
     df = pd.DataFrame(
         {"air_temp": 60, "water_temp": 50},

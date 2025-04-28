@@ -55,6 +55,11 @@ def f_to_c(temp: float) -> float:
     return (5.0 / 9.0) * (temp - 32)
 
 
+def c_to_f(temp: float) -> float:
+    """Convert Celsius temp to Fahrenheit."""
+    return (9.0 / 5.0) * temp + 32
+
+
 def pivot_year(df: pd.DataFrame) -> pd.DataFrame:
     """Move year dimension to columns."""
     df = df.assign(year=df.index.year)

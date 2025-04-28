@@ -302,23 +302,42 @@ CONFIG_LIST = [
         description="La Jolla Cove open water swimming conditions",
     ),
     LocationConfig(
-        code="chi",
-        name="Chicago",
+        code="tst",
+        name="Test",
         swim_location="TBD",
         swim_location_link="TBD",
-        latitude=41.894,
-        longitude=-87.613,
-        timezone=pytz.timezone("US/Central"),
+        latitude=40.258,
+        longitude=-73.175,
+        timezone=pytz.timezone("US/Eastern"),
+        # https://www.ndbc.noaa.gov/station_page.php?station=44025
         temp_source=NdbcTempSource(
-            station="45198",
-            name="Ohio Street Beach",
+            station="44025",
+            name="LONG ISLAND - 30 NM South of Islip, NY",
         ),
-        # tide_source=CoopsTideSource(
-        #     station=None,
-        #     station_name="",
-        # ),
-        description="Chicago TBD open water swimming conditions",
+        description="Test location.",
     ),
+    # LocationConfig(
+    #     code="chi",
+    #     name="Chicago",
+    #     swim_location="TBD",
+    #     swim_location_link="TBD",
+    #     latitude=41.894,
+    #     longitude=-87.613,
+    #     timezone=pytz.timezone("US/Central"),
+    #     #temp_source=NdbcTempSource(
+    #     #    station="45198",
+    #     #    name="Ohio Street Beach",
+    #     #),
+    #     temp_source=NdbcTempSource(
+    #         station="45007",
+    #         name="South Michigan",
+    #     ),
+    #     # tide_source=CoopsTideSource(
+    #     #     station=None,
+    #     #     station_name="",
+    #     # ),
+    #     description="Chicago TBD open water swimming conditions",
+    # ),
     # LocationConfig(
     #    # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
     #    code="sfo",

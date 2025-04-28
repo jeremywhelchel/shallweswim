@@ -26,9 +26,14 @@ pytestmark = pytest.mark.integration
 # Test locations
 NYC_LOCATION = "nyc"
 SAN_LOCATION = "san"
+TST_LOCATION = "tst"  # Test location with NDBC temperature source
 
 # List of all locations to test
-TEST_LOCATIONS = [NYC_LOCATION, SAN_LOCATION]
+TEST_LOCATIONS = [
+    NYC_LOCATION,
+    SAN_LOCATION,
+    TST_LOCATION,
+]
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -75,7 +80,10 @@ def validate_conditions_response(
     # Validate top-level structure
     assert "location" in data, "Missing location data"
     assert "temperature" in data, "Missing temperature data"
-    assert "tides" in data, "Missing tides data"
+
+    # Only validate tides for locations that supply tide info (not 'tst')
+    if location_code != TST_LOCATION:
+        assert "tides" in data, "Missing tides data"
 
     # Validate location details
     location = data["location"]
@@ -94,55 +102,58 @@ def validate_conditions_response(
         temp["water_temp"], (int, float)
     ), "Water temperature is not a number"
 
-    # Validate tides data
-    tides = data["tides"]
-    assert "past" in tides, "Missing past tides data"
-    assert "next" in tides, "Missing next tides data"
-    assert len(tides["past"]) > 0, "No past tides data"
-    assert len(tides["next"]) > 0, "No next tides data"
+    # Validate tides data (skip for 'tst' location)
+    if location_code != TST_LOCATION and "tides" in data:
+        tides = data["tides"]
+        assert "past" in tides, "Missing past tides data"
+        assert "next" in tides, "Missing next tides data"
+        assert len(tides["past"]) > 0, "No past tides data"
+        assert len(tides["next"]) > 0, "No next tides data"
 
-    # Validate tide entry structure
-    past_tide = tides["past"][0]
-    assert "time" in past_tide, "Missing tide time"
-    assert "type" in past_tide, "Missing tide type"
-    assert "prediction" in past_tide, "Missing tide prediction"
-    assert past_tide["type"] in [
-        "high",
-        "low",
-        "unknown",
-    ], f"Invalid tide type: {past_tide['type']}"
+        # Validate tide entry structure
+        past_tide = tides["past"][0]
+        assert "time" in past_tide, "Missing tide time"
+        assert "type" in past_tide, "Missing tide type"
+        assert "prediction" in past_tide, "Missing tide prediction"
+        assert past_tide["type"] in [
+            "high",
+            "low",
+            "unknown",
+        ], f"Invalid tide type: {past_tide['type']}"
 
-    # Get location config for timezone-aware comparisons
-    location_config = config.get(location_code)
-    assert location_config is not None, f"Config for {location_code} not found"
+        # Get location config for timezone-aware comparisons
+        location_config = config.get(location_code)
+        assert location_config is not None, f"Config for {location_code} not found"
 
-    # Get the current time in the location's timezone as a naive datetime
-    # This matches how the NOAA API data is structured (local time, naive datetime)
-    local_now = location_config.local_now()
+        # Get the current time in the location's timezone as a naive datetime
+        # This matches how the NOAA API data is structured (local time, naive datetime)
+        local_now = location_config.local_now()
 
-    # Validate that past tides are actually in the past
-    for tide in tides["past"]:
-        tide_time = dateutil.parser.isoparse(tide["time"])
-        # Ensure the tide_time is naive for comparison
-        if tide_time.tzinfo is not None:
-            tide_time = tide_time.replace(tzinfo=None)
-        assert (
-            tide_time <= local_now
-        ), f"Past tide time {tide_time} is not in the past compared to local time {local_now}"
+        # Validate that past tides are actually in the past
+        for tide in tides["past"]:
+            tide_time = dateutil.parser.isoparse(tide["time"])
+            # Ensure the tide_time is naive for comparison
+            if tide_time.tzinfo is not None:
+                tide_time = tide_time.replace(tzinfo=None)
+            assert (
+                tide_time <= local_now
+            ), f"Past tide time {tide_time} is not in the past compared to local time {local_now}"
 
-    # Validate that future tides are actually in the future
-    for tide in tides["next"]:
-        tide_time = dateutil.parser.isoparse(tide["time"])
-        # Ensure the tide_time is naive for comparison
-        if tide_time.tzinfo is not None:
-            tide_time = tide_time.replace(tzinfo=None)
-        assert (
-            tide_time >= local_now
-        ), f"Next tide time {tide_time} is not in the future compared to local time {local_now}"
+        # Validate that future tides are actually in the future
+        for tide in tides["next"]:
+            tide_time = dateutil.parser.isoparse(tide["time"])
+            # Ensure the tide_time is naive for comparison
+            if tide_time.tzinfo is not None:
+                tide_time = tide_time.replace(tzinfo=None)
+            assert (
+                tide_time >= local_now
+            ), f"Next tide time {tide_time} is not in the future compared to local time {local_now}"
 
-    # Validate that all tide times are distinct
-    all_tide_times = [tide["time"] for tide in tides["past"] + tides["next"]]
-    assert len(all_tide_times) == len(set(all_tide_times)), "Tide times are not unique"
+        # Validate that all tide times are distinct
+        all_tide_times = [tide["time"] for tide in tides["past"] + tides["next"]]
+        assert len(all_tide_times) == len(
+            set(all_tide_times)
+        ), "Tide times are not unique"
 
     # Get location config for additional checks
     location_config = config.get(location_code)
@@ -169,8 +180,26 @@ def test_conditions_api_san_diego(api_client: TestClient) -> None:
 
     # Additional San Diego-specific checks
     data = response.json()
-    assert "La Jolla" in data["location"]["swim_location"]
+    assert "La Jolla Cove" in data["location"]["swim_location"]
     assert "San Diego" in data["location"]["name"]
+
+
+@pytest.mark.integration
+def test_conditions_api_tst(api_client: TestClient) -> None:
+    """Test the conditions API endpoint for the Test location with NDBC temperature source."""
+    response = api_client.get(f"/api/{TST_LOCATION}/conditions")
+    validate_conditions_response(response, TST_LOCATION)
+
+    # Test location specific checks
+    data = response.json()
+    assert "Test" in data["location"]["name"]
+
+    # Verify temperature data is present and valid
+    temp = data["temperature"]
+    assert "water_temp" in temp, "Missing water temperature value"
+    assert isinstance(
+        temp["water_temp"], (int, float)
+    ), "Water temperature is not a number"
 
 
 def validate_currents_response(

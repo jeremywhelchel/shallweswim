@@ -60,6 +60,7 @@
         The water is currently <strong id="water-temp">Loading...</strong>
       </div>
       <div class="note" id="temp-station-info">at the Battery.</div>
+      {% if config.tide_source %}
       <div class="tides">
         <p>
           Last <strong id="past-tide-type">...</strong> tide was at
@@ -74,6 +75,7 @@
           <strong id="next-tide-1-time">loading</strong>
         </p>
       </div>
+      {% endif %}
     </div>
     {% endblock %} {% block forecast %}{% endblock %} {% block content %}{%
     endblock %} {% block footer %}{% endblock %}

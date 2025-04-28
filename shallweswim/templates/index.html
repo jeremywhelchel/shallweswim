@@ -156,6 +156,7 @@ block content %} {% if config.code == 'nyc' %}
     >
     (NOAA Tides and Currents)
   </li>
+  {% if config.tide_source %}
   <li>
     Tides provided by:
     <a
@@ -166,7 +167,7 @@ block content %} {% if config.code == 'nyc' %}
     >
     (NOAA Tides and Currents)
   </li>
-  {% if config.code == 'nyc' %}
+  {% endif %} {% if config.code == 'nyc' %}
   <li>
     <a href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
       >Webcam</a

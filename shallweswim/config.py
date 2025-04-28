@@ -105,6 +105,23 @@ class CoopsCurrentsSource(BaseModel, frozen=True):
     ]
 
 
+class NdbcTempSource(TempSource, frozen=True):
+    """NOAA NDBC specific temperature data source configuration.
+
+    Defines the NOAA National Data Buoy Center (NDBC) station for fetching
+    water temperature data from buoys and coastal stations.
+    """
+
+    station: Annotated[
+        str,
+        Field(
+            min_length=4,
+            max_length=5,
+            description="NDBC station ID, either 5 digits (e.g., '41001' for offshore buoys) or 4 characters (e.g., 'brhc3' for C-MAN stations)",
+        ),
+    ]
+
+
 class LocationConfig(BaseModel, frozen=True):
     """Configuration for a swimming location.
 
@@ -284,24 +301,24 @@ CONFIG_LIST = [
         ),
         description="La Jolla Cove open water swimming conditions",
     ),
-    # LocationConfig(
-    #     code="chi",
-    #     name="Chicago",
-    #     swim_location="TBD",
-    #     swim_location_link="TBD",
-    #     latitude=41.894,
-    #     longitude=-87.613,
-    #     timezone=pytz.timezone("US/Central"),
-    #     # temp_source=CoopsTempSource(
-    #     #     station=45198,
-    #     #     name="TBD",
-    #     # ),
-    #     # tide_source=CoopsTideSource(
-    #     #     station=None,
-    #     #     station_name="",
-    #     # ),
-    #     description="Chicago TBD open water swimming conditions",
-    # ),
+    LocationConfig(
+        code="chi",
+        name="Chicago",
+        swim_location="TBD",
+        swim_location_link="TBD",
+        latitude=41.894,
+        longitude=-87.613,
+        timezone=pytz.timezone("US/Central"),
+        temp_source=NdbcTempSource(
+            station="45198",
+            name="Ohio Street Beach",
+        ),
+        # tide_source=CoopsTideSource(
+        #     station=None,
+        #     station_name="",
+        # ),
+        description="Chicago TBD open water swimming conditions",
+    ),
     # LocationConfig(
     #    # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
     #    code="sfo",

@@ -160,22 +160,34 @@ class DataManager(object):
         if not hasattr(temp_config, "station") or not temp_config.station:
             return None
 
-        # Type check to ensure we're passing the right config type
-        if not isinstance(temp_config, config_lib.CoopsTempSource):
+        # Create the appropriate feed based on the config type
+        if isinstance(temp_config, config_lib.CoopsTempSource):
+            return feeds.CoopsTempFeed(
+                location_config=self.config,
+                config=temp_config,
+                # Start 24 hours ago to get a full day of data
+                start=utc_now() - datetime.timedelta(hours=24),
+                # End at current time
+                end=utc_now(),
+                # Use 6-minute interval for live temps
+                interval="6-min",
+                # Set expiration interval to match our existing settings
+                expiration_interval=EXPIRATION_PERIODS["live_temps"],
+            )
+        elif isinstance(temp_config, config_lib.NdbcTempSource):
+            return feeds.NdbcTempFeed(
+                location_config=self.config,
+                config=temp_config,
+                # Start 24 hours ago to get a full day of data
+                start=utc_now() - datetime.timedelta(hours=24),
+                # End at current time
+                end=utc_now(),
+                # Set expiration interval to match our existing settings
+                expiration_interval=EXPIRATION_PERIODS["live_temps"],
+            )
+        else:
+            # Unsupported temperature source type
             return None
-
-        return feeds.CoopsTempFeed(
-            location_config=self.config,
-            config=temp_config,
-            # Start 24 hours ago to get a full day of data
-            start=utc_now() - datetime.timedelta(hours=24),
-            # End at current time
-            end=utc_now(),
-            # Use 6-minute interval for live temps
-            interval="6-min",
-            # Set expiration interval to match our existing settings
-            expiration_interval=EXPIRATION_PERIODS["live_temps"],
-        )
 
     def _configure_historic_temps_feed(self) -> Optional[feeds.Feed]:
         """Configure the historical temperature feed.

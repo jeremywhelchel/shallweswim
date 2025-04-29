@@ -1,0 +1,104 @@
+{% from "widget_macro.html" import location_widget, widget_styles, widget_script
+%}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shall We Swim? - Water Temperatures at All Locations</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Lato", sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f5f5f5;
+        color: #333;
+        line-height: 1.6;
+      }
+      header {
+        background-color: #2c3e50;
+        color: white;
+        padding: 30px 20px;
+        text-align: center;
+      }
+      h1 {
+        margin: 0;
+        font-size: 2.5rem;
+        font-weight: 300;
+      }
+      .description {
+        margin: 10px 0 0;
+        font-weight: 300;
+        font-size: 1.2rem;
+        opacity: 0.9;
+      }
+      .widget-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        justify-content: center;
+        margin: 30px auto;
+        max-width: 1200px;
+        padding: 0 20px;
+      }
+      .about {
+        max-width: 800px;
+        margin: 40px auto;
+        background-color: white;
+        padding: 25px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        text-align: center;
+      }
+      .about h2 {
+        color: #2c3e50;
+        margin-top: 0;
+      }
+      .footer {
+        text-align: center;
+        margin-top: 40px;
+        color: #666;
+        font-size: 14px;
+      }
+    </style>
+    {{ widget_styles() }}
+  </head>
+  <body>
+    <header>
+      <h1>Shall We Swim?</h1>
+      <p class="description">
+        Current water temperatures at all swimming locations
+      </p>
+    </header>
+
+    <div class="widget-container">
+      {% for loc_code, loc_config in all_locations.items() %} {{
+      location_widget(loc_config) }} {% endfor %}
+    </div>
+
+    <div class="about">
+      <h2>About Shall We Swim</h2>
+      <p>
+        Shall We Swim provides real-time water temperature data for popular
+        swimming locations. Click on any location above to see detailed
+        information including tides, currents, and forecasts.
+      </p>
+      <p>
+        <small
+          >You can also directly access a location's temperature widget at
+          <code>/{location-code}/widget</code></small
+        >
+      </p>
+    </div>
+
+    <div class="footer">
+      <p>Shall We Swim? - Real-time water conditions for swimmers</p>
+    </div>
+
+    {{ widget_script() }}
+  </body>
+</html>

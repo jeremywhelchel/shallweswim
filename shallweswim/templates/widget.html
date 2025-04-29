@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ config.swim_location }} - Water Temperature</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: "Lato", sans-serif;
+      }
+      .swim-widget {
+        font-family: "Lato", sans-serif;
+        background-color: #f0f8ff;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 12px;
+        max-width: 300px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .swim-widget-title {
+        font-weight: 700;
+        font-size: 18px;
+        margin: 0 0 8px 0;
+      }
+      .swim-widget-temp {
+        font-size: 24px;
+        font-weight: 300;
+        margin: 8px 0;
+      }
+      .swim-widget-temp strong {
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        display: inline-block;
+      }
+      .swim-widget-temp strong.cold {
+        background-color: #e0f7fa;
+        color: #0277bd;
+      }
+      .swim-widget-temp strong.moderate {
+        background-color: #e8f5e9;
+        color: #2e7d32;
+      }
+      .swim-widget-temp strong.warm {
+        background-color: #fff3e0;
+        color: #ef6c00;
+      }
+      .swim-widget-note {
+        font-size: 12px;
+        color: #666;
+        margin: 4px 0 0 0;
+      }
+      .swim-widget-link {
+        font-size: 12px;
+        margin-top: 8px;
+        text-align: right;
+      }
+      .swim-widget-link a {
+        color: #0066cc;
+        text-decoration: none;
+      }
+      .swim-widget-link a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="swim-widget" data-location="{{ config.code }}">
+      <div class="swim-widget-title">{{ config.swim_location }}</div>
+      <div class="swim-widget-temp">
+        Water temperature: <strong id="widget-water-temp">Loading...</strong>
+      </div>
+      {% if config.temp_source %}
+      <div class="swim-widget-note">
+        Data from {{ config.temp_source.name }}
+      </div>
+      {% endif %}
+      <div class="swim-widget-link">
+        <a href="/{{ config.code }}">View full details</a>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const locationCode =
+          document.querySelector(".swim-widget").dataset.location;
+        const tempElement = document.getElementById("widget-water-temp");
+
+        // Fetch location data from API
+        fetch(`/api/${locationCode}/conditions`)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Network response was not ok");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            // Update temperature if available
+            if (data.temperature && data.temperature.water_temp !== null) {
+              tempElement.textContent = `${data.temperature.water_temp}°${data.temperature.units}`;
+
+              // Add color based on temperature
+              const temp = parseFloat(data.temperature.water_temp);
+              if (!isNaN(temp)) {
+                if (temp < 60) {
+                  tempElement.classList.add("cold");
+                } else if (temp > 75) {
+                  tempElement.classList.add("warm");
+                } else {
+                  tempElement.classList.add("moderate");
+                }
+              }
+            } else {
+              tempElement.textContent = "N/A";
+            }
+          })
+          .catch((error) => {
+            console.error("Error fetching data:", error);
+            tempElement.textContent = "Unavailable";
+          });
+      });
+    </script>
+  </body>
+</html>

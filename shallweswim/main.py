@@ -93,6 +93,55 @@ templates = templating.Jinja2Templates(directory="shallweswim/templates")
 api.register_routes(app)
 
 
+@app.get("/{location}/widget")
+async def location_widget(
+    request: fastapi.Request, location: str
+) -> responses.HTMLResponse:
+    """Serve a widget view for a specific location.
+
+    Args:
+        request: FastAPI request object
+        location: Location code (e.g., 'nyc')
+
+    Returns:
+        HTML response with location-specific widget
+
+    Raises:
+        HTTPException: If the location is not configured
+    """
+    cfg = config.get(location)
+    if not cfg:
+        logging.warning("Bad location for widget: %s", location)
+        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
+
+    return templates.TemplateResponse(
+        request=request,
+        name="widget.html",
+        context=dict(
+            config=cfg,
+        ),
+    )
+
+
+@app.get("/all")
+async def all_locations(request: fastapi.Request) -> responses.HTMLResponse:
+    """Serve a landing page showing all swimming locations with their current water temperatures.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        HTML response with all locations and their water temperatures
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="all_locations.html",
+        context=dict(
+            all_locations=config.CONFIGS,
+        ),
+    )
+
+
 @app.get("/")
 async def index() -> responses.RedirectResponse:
     """Redirect root path to default location (NYC).

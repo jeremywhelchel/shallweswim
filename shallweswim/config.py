@@ -52,6 +52,20 @@ class TempSource(BaseModel, frozen=True):
         ),
     ] = []
 
+    live_enabled: Annotated[
+        bool,
+        Field(
+            description="Whether to enable live temperature data fetching for this source"
+        ),
+    ] = True
+
+    historic_enabled: Annotated[
+        bool,
+        Field(
+            description="Whether to enable historical temperature data fetching for this source"
+        ),
+    ] = True
+
 
 class CoopsTempSource(TempSource, frozen=True):
     """NOAA CO-OPS specific temperature data source configuration.
@@ -395,6 +409,7 @@ _CONFIG_LIST = [
             site_no="03292494",  # Ohio River Water Tower
             parameter_cd="00011",  # Water temperature parameter code
             name="Ohio River at Louisville",
+            historic_enabled=False,  # Disable historical temperature data
         ),
         description="Louisville Kentucky open water swimming conditions",
         # Additional resources:

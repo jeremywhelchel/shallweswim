@@ -151,7 +151,7 @@ class DataManager(object):
         """Configure the live temperature feed.
 
         Returns:
-            Configured feed or None if configuration is not available
+            Configured feed or None if configuration is not available or disabled
 
         Raises:
             TypeError: If an unsupported temperature source type is provided
@@ -161,6 +161,13 @@ class DataManager(object):
 
         temp_config = self.config.temp_source
         if not hasattr(temp_config, "station") or not temp_config.station:
+            return None
+
+        # Check if live temperature data is enabled for this source
+        if not temp_config.live_enabled:
+            self.log(
+                f"Live temperature data disabled for {self.config.code}", logging.INFO
+            )
             return None
 
         # Use the factory function to create the appropriate feed
@@ -185,7 +192,7 @@ class DataManager(object):
         """Configure the historical temperature feed.
 
         Returns:
-            Configured feed or None if configuration is not available
+            Configured feed or None if configuration is not available or disabled
 
         Raises:
             TypeError: If an unsupported temperature source type is provided
@@ -195,6 +202,14 @@ class DataManager(object):
 
         temp_config = self.config.temp_source
         if not hasattr(temp_config, "station") or not temp_config.station:
+            return None
+
+        # Check if historical temperature data is enabled for this source
+        if not temp_config.historic_enabled:
+            self.log(
+                f"Historical temperature data disabled for {self.config.code}",
+                logging.INFO,
+            )
             return None
 
         # Get the start year from config or use default 2011

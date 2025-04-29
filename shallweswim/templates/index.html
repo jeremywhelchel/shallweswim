@@ -90,14 +90,15 @@ block content %} {% if config.code == 'nyc' %}
     </li>
   </ul>
 </div>
-{% endif %}
-
+{% endif %} {% if config.temp_source %}
 <h2>Temperature Trends</h2>
+{% if config.temp_source.live_enabled %}
 <img
   class="plot"
   src="/static/plots/{{ config.code }}/live_temps.svg"
   alt="Live temperature plot"
 />
+{% endif %} {% if config.temp_source.historic_enabled %}
 <img
   class="plot"
   src="/static/plots/{{ config.code }}/historic_temps_2mo_24h_mean.svg"
@@ -108,8 +109,7 @@ block content %} {% if config.code == 'nyc' %}
   src="/static/plots/{{ config.code }}/historic_temps_12mo_24h_mean.svg"
   alt="12 month temperature plot, all years"
 />
-
-{% if config.code == 'nyc' %}
+{% endif %} {% endif %} {% if config.code == 'nyc' %}
 <h2>Transit Status</h2>
 <div class="transit-div">
   {% for train in ['Q','B'] %}

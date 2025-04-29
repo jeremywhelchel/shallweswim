@@ -56,11 +56,12 @@
   <body {% block body_attributes %}{% endblock %}>
     {% block header %}{% endblock %} {% block tides_temperature %}
     <div class="infobox">
+      {% if config.temp_source and config.temp_source.live_enabled %}
       <div class="current">
         The water is currently <strong id="water-temp">Loading...</strong>
       </div>
       <div class="note" id="temp-station-info">at the Battery.</div>
-      {% if config.tide_source %}
+      {% endif %} {% if config.tide_source %}
       <div class="tides">
         <p>
           Last <strong id="past-tide-type">...</strong> tide was at

@@ -400,8 +400,8 @@ class NdbcTempFeed(TempFeed):
     """
 
     config: config_lib.NdbcTempSource
-    # Default to hourly interval for NDBC data
     interval: Literal["h", "6-min"] = "h"
+    mode: Literal["stdmet", "ocean"] = "stdmet"
 
     async def _fetch(self) -> pd.DataFrame:
         """Fetch temperature data from NOAA NDBC API.
@@ -428,6 +428,7 @@ class NdbcTempFeed(TempFeed):
                 end_date=end_date,
                 timezone=str(self.location_config.timezone),
                 location_code=self.location_config.code,
+                mode=self.mode,
             )
 
             self.log(

@@ -1,4 +1,8 @@
-"""NOAA NDBC (National Data Buoy Center) API client."""
+"""NOAA NDBC (National Data Buoy Center) API client.
+
+References:
+    - NDBC Measurement Descriptions: https://www.ndbc.noaa.gov/faq/measdes.shtml
+"""
 
 # Standard library imports
 import asyncio
@@ -40,6 +44,7 @@ class NdbcApi:
         end_date: datetime.date,
         timezone: str,
         location_code: str = "unknown",
+        mode: str = "stdmet",
     ) -> pd.DataFrame:
         """Fetch water temperature data from NDBC station.
 
@@ -49,6 +54,9 @@ class NdbcApi:
             end_date: End date for data fetch
             timezone: Timezone to convert timestamps to
             location_code: Optional location code for logging
+            mode: Data mode to fetch. Options:
+                - 'stdmet': Standard meteorological data (uses WTMP column)
+                - 'ocean': Oceanographic data (uses OTMP column)
 
         Returns:
             DataFrame with index=timestamp and columns:
@@ -73,7 +81,7 @@ class NdbcApi:
             raw_result = await asyncio.to_thread(
                 api.get_data,
                 station_id=station_id,
-                mode="stdmet",  # Standard meteorological data
+                mode=mode,  # 'stdmet' or 'ocean'
                 start_time=begin_date_str,
                 end_time=end_date_str,
             )
@@ -94,16 +102,19 @@ class NdbcApi:
 
             raw_df = raw_result
 
+            # Determine which temperature column to use based on mode
+            temp_column = "WTMP" if mode == "stdmet" else "OTMP"
+
             # Check if water temperature data is available
-            if "WTMP" not in raw_df.columns:
-                error_msg = (
-                    f"No water temperature data available for NDBC station {station_id}"
-                )
+            if temp_column not in raw_df.columns:
+                error_msg = f"No water temperature data ('{temp_column}') available for NDBC station {station_id} in mode '{mode}'"
                 logging.error(f"[{location_code}] {error_msg}")
                 raise NdbcDataError(error_msg)
 
             # Extract water temperature data and rename to match our convention
-            temp_df = raw_df[["WTMP"]].copy().rename(columns={"WTMP": "water_temp"})
+            temp_df = (
+                raw_df[[temp_column]].copy().rename(columns={temp_column: "water_temp"})
+            )
 
             # NDBC reports temperatures in Celsius, convert to Fahrenheit to match our standard
             temp_df["water_temp"] = temp_df["water_temp"].apply(c_to_f)

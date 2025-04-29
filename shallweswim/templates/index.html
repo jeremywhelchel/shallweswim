@@ -90,6 +90,18 @@ block content %} {% if config.code == 'nyc' %}
     </li>
   </ul>
 </div>
+{% elif config.code == 'chi' %}
+<h2>Live Webcam</h2>
+<div class="webcamdiv">
+  <iframe
+    class="webcamframe"
+    title="Live webcam"
+    scrolling="no"
+    allowfullscreen
+    src="https://api.wetmet.net/widgets/stream/frame.php?uid=99b98373cd0500d39b0c1671b2774f9e"
+  >
+  </iframe>
+</div>
 {% endif %} {% if config.temp_source %}
 <h2>Temperature Trends</h2>
 {% if config.temp_source.live_enabled %}
@@ -194,7 +206,7 @@ block content %} {% if config.code == 'nyc' %}
     </tr>
     {% endif %} {% if config.code == 'nyc' %}
     <tr>
-      <td><i data-feather="camera"></i></td>
+      <td><i data-feather="video"></i></td>
       <td>
         <a href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
           >Webcam</a
@@ -207,6 +219,16 @@ block content %} {% if config.code == 'nyc' %}
       <td>
         MTA train status provided by:
         <a href="https://goodservice.io">goodservice.io</a>
+      </td>
+    </tr>
+    {% endif %} {% if config.code == 'chi' %}
+    <tr>
+      <td><i data-feather="video"></i></td>
+      <td>
+        <a
+          href="https://chicago-webcams.com/willis-tower-chicago-traffic-webcams/"
+          >Willis Tower Live Cam</a
+        >
       </td>
     </tr>
     {% endif %}

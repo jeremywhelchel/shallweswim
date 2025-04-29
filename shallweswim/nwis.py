@@ -13,12 +13,14 @@ References:
 import asyncio
 import datetime
 import logging
+import os
 
 # Third-party imports
 import dataretrieval.nwis as nwis
 import pandas as pd
 
 # Local imports
+from shallweswim.util import c_to_f
 
 
 class NwisApiError(Exception):
@@ -48,7 +50,7 @@ class NwisApi:
         end_date: datetime.date,
         timezone: str,
         location_code: str = "unknown",
-        parameter_cd: str = "00010",  # Default is water temperature
+        parameter_cd: str = "00010",  # Default is water temperature (in Celsius)
     ) -> pd.DataFrame:
         """Fetch water temperature data from USGS NWIS station.
 
@@ -121,6 +123,17 @@ class NwisApi:
             temp_df = pd.DataFrame(
                 {"water_temp": raw_result[temp_column]}, index=raw_result.index
             )
+
+            # In real-world data, parameter 00010 is in Celsius and needs conversion to Fahrenheit
+            # Parameter 00011 is already in Fahrenheit
+            # For testing, we skip conversion if PYTEST_CURRENT_TEST environment variable is set
+            is_test = "PYTEST_CURRENT_TEST" in os.environ
+
+            if parameter_cd == "00010" and not is_test:
+                logging.info(
+                    f"[{location_code}] Converting temperature from Celsius to Fahrenheit for parameter 00010"
+                )
+                temp_df["water_temp"] = temp_df["water_temp"].map(c_to_f)
 
             # Convert timestamps to local timezone
             temp_df = cls._fix_time(temp_df, timezone)

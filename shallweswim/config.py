@@ -535,6 +535,21 @@ _CONFIG_LIST = [
         # - Fix Windy embed mode. "waves" isnt relevant here.
     ),
     LocationConfig(
+        code="aus",
+        name="Austin",
+        swim_location="Barton Springs",
+        swim_location_link="https://www.austintexas.gov/department/barton-springs-pool",
+        latitude=30.2639,
+        longitude=-97.77,
+        timezone=pytz.timezone("US/Central"),
+        temp_source=NwisTempSource(
+            site_no="08155500",
+            parameter_cd="00010",
+            name="Barton Springs",
+        ),
+        description="Austin, TX open water swimming conditions",
+    ),
+    LocationConfig(
         enabled=False,
         code="tst",
         name="Test",

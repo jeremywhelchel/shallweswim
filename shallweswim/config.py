@@ -374,18 +374,16 @@ _CONFIG_LIST = [
         latitude=41.894,
         longitude=-87.613,
         timezone=pytz.timezone("US/Central"),
-        # temp_source=NdbcTempSource(
-        #    station="45198",
-        #    name="Ohio Street Beach",
-        # ),
         temp_source=NdbcTempSource(
-            station="45007",
-            name="South Michigan",
+            station="45198",
+            name="Ohio Street Beach",
+            live_enabled=False,
         ),
-        # tide_source=CoopsTideSource(
-        #     station=None,
-        #     station_name="",
+        # temp_source=NdbcTempSource(
+        #     station="45007",
+        #     name="South Michigan",
         # ),
+        # XXX Tides?
         description="Chicago TBD open water swimming conditions",
     ),
     LocationConfig(

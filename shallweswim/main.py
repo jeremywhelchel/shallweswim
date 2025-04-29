@@ -12,14 +12,14 @@ import datetime
 import logging
 import os
 import signal
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Callable, Coroutine
 
 # Third-party imports
 import fastapi
 import google.cloud.logging
 import uvicorn
 from fastapi import HTTPException, Request, Response, responses, staticfiles, templating
-from typing import Awaitable, Callable
+from typing import Awaitable
 
 # Local imports
 from shallweswim import config, api
@@ -140,30 +140,28 @@ async def root_embed_redirect() -> responses.RedirectResponse:
 # Static file routes - These should come before parameterized routes
 # ======================================================================
 
+# Define static file redirects for cleaner implementation
+STATIC_FILES = [
+    ("/favicon.ico", "/static/favicon.ico"),
+    ("/apple-touch-icon.png", "/static/apple-touch-icon.png"),
+    ("/apple-touch-icon-precomposed.png", "/static/apple-touch-icon.png"),
+    ("/manifest.json", "/static/manifest.json"),
+    ("/robots.txt", "/static/robots.txt"),
+]
 
-@app.get("/favicon.ico")
-async def favicon() -> responses.RedirectResponse:
-    """Redirect favicon requests to the static file."""
-    return responses.RedirectResponse("/static/favicon.ico", status_code=301)
+# Register each static file route individually
+for path, target in STATIC_FILES:
+    # Use a closure to capture the current value of target
+    def create_static_route(
+        target_path: str,
+    ) -> Callable[[], Coroutine[Any, Any, responses.RedirectResponse]]:
+        async def static_route() -> responses.RedirectResponse:
+            return responses.RedirectResponse(target_path, status_code=301)
 
+        return static_route
 
-@app.get("/apple-touch-icon.png")
-@app.get("/apple-touch-icon-precomposed.png")
-async def apple_touch_icon() -> responses.RedirectResponse:
-    """Redirect Apple touch icon requests to the static file."""
-    return responses.RedirectResponse("/static/apple-touch-icon.png", status_code=301)
-
-
-@app.get("/manifest.json")
-async def manifest() -> responses.RedirectResponse:
-    """Redirect manifest.json requests to the static file."""
-    return responses.RedirectResponse("/static/manifest.json", status_code=301)
-
-
-@app.get("/robots.txt")
-async def robots() -> responses.RedirectResponse:
-    """Redirect robots.txt requests to the static file."""
-    return responses.RedirectResponse("/static/robots.txt", status_code=301)
+    # Register the route with FastAPI
+    app.get(path)(create_static_route(target))
 
 
 # ======================================================================

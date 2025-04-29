@@ -215,6 +215,11 @@ class DataManager(object):
         if hasattr(temp_config, "start_year") and temp_config.start_year:
             start_year = temp_config.start_year
 
+        # Get the end year from config or use current year
+        end_year = utc_now().year
+        if hasattr(temp_config, "end_year") and temp_config.end_year:
+            end_year = temp_config.end_year
+
         try:
             # Use HistoricalTempsFeed which internally uses our factory function
             return feeds.HistoricalTempsFeed(
@@ -222,8 +227,8 @@ class DataManager(object):
                 config=temp_config,
                 # Use the start year we determined
                 start_year=start_year,
-                # End at current year
-                end_year=utc_now().year,
+                # Use the end year we determined
+                end_year=end_year,
                 # Set expiration interval to match our existing settings
                 expiration_interval=EXPIRATION_PERIODS["historic_temps"],
             )

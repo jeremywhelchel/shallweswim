@@ -73,6 +73,13 @@ class TempSource(BaseModel, frozen=True):
         Field(description="Starting year for historical temperature data."),
     ] = None
 
+    end_year: Annotated[
+        Optional[int],
+        Field(
+            description="Ending year for historical temperature data. If not provided, defaults to current year."
+        ),
+    ] = None
+
 
 class CoopsTempSource(TempSource, frozen=True):
     """NOAA CO-OPS specific temperature data source configuration.
@@ -366,7 +373,7 @@ _CONFIG_LIST = [
         description="La Jolla Cove open water swimming conditions",
     ),
     LocationConfig(
-        enabled=False,
+        # enabled=False,
         code="chi",
         name="Chicago",
         swim_location="TBD",
@@ -376,9 +383,17 @@ _CONFIG_LIST = [
         timezone=pytz.timezone("US/Central"),
         temp_source=NdbcTempSource(
             station="45198",
-            name="Ohio Street Beach",
+            name="Chicago Buoy",
+            # Currently the only data is available for this range.
             live_enabled=False,
+            start_year=2021,
+            end_year=2024,
         ),
+        # temp_source=NdbcTempSource(
+        #    station="45198",
+        #    name="Ohio Street Beach",
+        #    live_enabled=False,
+        # ),
         # temp_source=NdbcTempSource(
         #     station="45007",
         #     name="South Michigan",

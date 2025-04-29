@@ -1,6 +1,8 @@
 {% macro location_widget(location_config) %}
 <div class="swim-widget" data-location="{{ location_config.code }}">
-  <div class="swim-widget-title">{{ location_config.swim_location }}</div>
+  <div class="swim-widget-title">
+    {{ location_config.name }} - {{ location_config.swim_location }}
+  </div>
   <div class="swim-widget-temp">
     Water temperature:
     <strong id="widget-water-temp-{{ location_config.code }}"

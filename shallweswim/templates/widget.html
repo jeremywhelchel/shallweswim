@@ -72,7 +72,9 @@
   </head>
   <body>
     <div class="swim-widget" data-location="{{ config.code }}">
-      <div class="swim-widget-title">{{ config.swim_location }}</div>
+      <div class="swim-widget-title">
+        {{ config.name }} - {{ config.swim_location }}
+      </div>
       <div class="swim-widget-temp">
         Water temperature: <strong id="widget-water-temp">Loading...</strong>
       </div>

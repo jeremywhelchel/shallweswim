@@ -201,6 +201,8 @@ block content %} {% if config.code == 'nyc' %}
   <!-- prettier-ignore -->
   <a href="/{{ loc_code }}" {% if config.code == loc_code %}class="active"{% endif %}>{{ loc_code }}</a>
   {% endfor %}
+  <!-- Link to all locations page -->
+  <a href="/all">all</a>
 </div>
 
 <!-- Initialize Feather icons -->

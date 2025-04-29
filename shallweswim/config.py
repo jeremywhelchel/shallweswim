@@ -487,7 +487,7 @@ _CONFIG_LIST = [
         # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
         code="sfo",
         name="San Francisco",
-        swim_location="San Francisco Aquatic Park",
+        swim_location="Aquatic Park",
         swim_location_link="https://serc.com/swimming/swimming-in-aquatic-park/",
         latitude=37.808,
         longitude=-122.426,
@@ -531,6 +531,7 @@ _CONFIG_LIST = [
         # - Fix Windy embed mode. "waves" isnt relevant here.
     ),
     LocationConfig(
+        enabled=False,
         code="tst",
         name="Test",
         swim_location="TBD",

@@ -373,11 +373,10 @@ _CONFIG_LIST = [
         description="La Jolla Cove open water swimming conditions",
     ),
     LocationConfig(
-        # enabled=False,
         code="chi",
         name="Chicago",
-        swim_location="TBD",
-        swim_location_link="TBD",
+        swim_location="Ohio Street Beach",
+        swim_location_link="https://www.chicagoparkdistrict.com/parks-facilities/ohio-street-beach",
         latitude=41.894,
         longitude=-87.613,
         timezone=pytz.timezone("US/Central"),
@@ -399,7 +398,7 @@ _CONFIG_LIST = [
         #     name="South Michigan",
         # ),
         # XXX Tides?
-        description="Chicago TBD open water swimming conditions",
+        description="Chicago Ohio Street Beach open water swimming conditions",
     ),
     LocationConfig(
         enabled=False,

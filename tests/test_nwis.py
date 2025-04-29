@@ -30,15 +30,23 @@ def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:
     # Format similar to what the NWIS API returns: 'USGS:SITE_NO:00010:00000_00003'
     temp_column = f"USGS:03292494:{parameter_cd}:00000_00003"
 
-    # For testing purposes, we provide values that match what the API would return
-    # In real-world data, parameter 00010 is in Celsius, but we're providing the
-    # expected final Fahrenheit values here to make the tests pass
-    df = pd.DataFrame(
-        {
-            temp_column: [59.9, 61.2],  # Values that should appear after any conversion
-        },
-        index=timestamps,
-    )
+    # Create DataFrame with water temperature data
+    if parameter_cd == "00010":
+        # For 00010, provide temperatures in Celsius (15.5°C ≈ 59.9°F, 16.2°C ≈ 61.2°F)
+        df = pd.DataFrame(
+            {
+                temp_column: [15.5, 16.2],  # In Celsius
+            },
+            index=timestamps,
+        )
+    else:
+        # For 00011 or any other parameter, provide temperatures in Fahrenheit
+        df = pd.DataFrame(
+            {
+                temp_column: [59.9, 61.2],  # Already in Fahrenheit
+            },
+            index=timestamps,
+        )
 
     return df
 
@@ -73,15 +81,12 @@ async def test_temperature_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_temperature_with_parameter_cd() -> None:
-    """Test fetching temperature data with a specific parameter code."""
-    # Create mock data with parameter code 00011
-    mock_nwis_data = create_mock_nwis_data(parameter_cd="00011")
-
+async def test_temperature_celsius_param() -> None:
+    """Test temperature fetch with parameter 00010 (Celsius)."""
     # Mock the asyncio.to_thread function
     with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Set up the mock to return the proper DataFrame directly
-        mock_to_thread.return_value = mock_nwis_data
+        # Set up the mock to return Celsius data
+        mock_to_thread.return_value = create_mock_nwis_data(parameter_cd="00010")
 
         # Mock the dataretrieval.nwis module
         with patch("dataretrieval.nwis.get_record") as mock_get_record:
@@ -91,25 +96,49 @@ async def test_temperature_with_parameter_cd() -> None:
             df = await NwisApi.temperature(
                 site_no="03292494",
                 begin_date=datetime.date(2025, 4, 19),
-                end_date=datetime.date(2025, 4, 20),
+                end_date=datetime.date(2025, 4, 19),
                 timezone="America/New_York",
                 location_code="sdf",
-                parameter_cd="00011",
+                parameter_cd="00010",  # Celsius parameter
             )
 
-    # Check that the DataFrame has the expected structure
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-    assert "water_temp" in df.columns
     assert len(df) == 2
+    assert "water_temp" in df.columns
 
-    # Check that temperatures are in Fahrenheit
-    expected_temps = [59.9, 61.2]
-    pd.testing.assert_series_equal(
-        df["water_temp"],
-        pd.Series(expected_temps, index=df.index, name="water_temp"),
-        check_names=False,  # Don't check Series names
-    )
+    # Check that temperatures were converted from Celsius to Fahrenheit
+    # 15.5°C → 59.9°F, 16.2°C → 61.2°F
+    assert round(df["water_temp"].iloc[0], 1) == 59.9
+    assert round(df["water_temp"].iloc[1], 1) == 61.2
+
+
+@pytest.mark.asyncio
+async def test_temperature_fahrenheit_param() -> None:
+    """Test temperature fetch with parameter 00011 (Fahrenheit)."""
+    # Mock the asyncio.to_thread function
+    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+        # Set up the mock to return Fahrenheit data
+        mock_to_thread.return_value = create_mock_nwis_data(parameter_cd="00011")
+
+        # Mock the dataretrieval.nwis module
+        with patch("dataretrieval.nwis.get_record") as mock_get_record:
+            # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
+            mock_get_record.return_value = None
+
+            df = await NwisApi.temperature(
+                site_no="03292494",
+                begin_date=datetime.date(2025, 4, 19),
+                end_date=datetime.date(2025, 4, 19),
+                timezone="America/New_York",
+                location_code="sdf",
+                parameter_cd="00011",  # Fahrenheit parameter
+            )
+
+    assert len(df) == 2
+    assert "water_temp" in df.columns
+
+    # Check that temperatures are unchanged (already in Fahrenheit)
+    assert round(df["water_temp"].iloc[0], 1) == 59.9
+    assert round(df["water_temp"].iloc[1], 1) == 61.2
 
 
 @pytest.mark.asyncio

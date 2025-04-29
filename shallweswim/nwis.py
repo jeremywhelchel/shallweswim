@@ -13,7 +13,6 @@ References:
 import asyncio
 import datetime
 import logging
-import os
 
 # Third-party imports
 import dataretrieval.nwis as nwis
@@ -124,12 +123,8 @@ class NwisApi:
                 {"water_temp": raw_result[temp_column]}, index=raw_result.index
             )
 
-            # In real-world data, parameter 00010 is in Celsius and needs conversion to Fahrenheit
-            # Parameter 00011 is already in Fahrenheit
-            # For testing, we skip conversion if PYTEST_CURRENT_TEST environment variable is set
-            is_test = "PYTEST_CURRENT_TEST" in os.environ
-
-            if parameter_cd == "00010" and not is_test:
+            # Convert temperature from Celsius to Fahrenheit if parameter is 00010
+            if parameter_cd == "00010":
                 logging.info(
                     f"[{location_code}] Converting temperature from Celsius to Fahrenheit for parameter 00010"
                 )

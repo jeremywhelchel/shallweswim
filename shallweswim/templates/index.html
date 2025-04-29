@@ -146,17 +146,9 @@ block content %} {% if config.code == 'nyc' %}
 {% endif %} {% endblock %} {% block footer %}
 <h2>Sources</h2>
 <ul>
-  <li>
-    Water temperatures provided by:
-    <a
-      href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.temp_source.station }}"
-    >
-      {{ config.temp_source.name }} - Station ID: {{ config.temp_source.station
-      }}</a
-    >
-    (NOAA Tides and Currents)
-  </li>
-  {% if config.tide_source %}
+  {% if config.temp_source %}
+  <li>{{ config.temp_source.citation|safe }}</li>
+  {% endif %} {% if config.tide_source %}
   <li>
     Tides provided by:
     <a

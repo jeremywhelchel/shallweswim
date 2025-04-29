@@ -19,6 +19,7 @@ accessed via the Get() function using the location's 3-letter code.
 """
 
 # Standard library imports
+import abc
 import datetime
 from datetime import tzinfo
 from types import MappingProxyType
@@ -32,7 +33,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from shallweswim import util
 
 
-class TempSource(BaseModel, frozen=True):
+class TempSource(BaseModel, abc.ABC, frozen=True):
     """Base configuration for temperature data source.
 
     Abstract base class for all temperature data sources.
@@ -80,6 +81,20 @@ class TempSource(BaseModel, frozen=True):
         ),
     ] = None
 
+    @property
+    @abc.abstractmethod
+    def citation(self) -> str:
+        """Return an HTML snippet with source citation information.
+
+        This property should be implemented by all subclasses to provide
+        appropriate citation information for the data source. The returned
+        string should be a valid HTML snippet that can be included in a webpage.
+
+        Returns:
+            HTML string with citation information
+        """
+        pass
+
 
 class CoopsTempSource(TempSource, frozen=True):
     """NOAA CO-OPS specific temperature data source configuration.
@@ -97,6 +112,18 @@ class CoopsTempSource(TempSource, frozen=True):
             description="NOAA temperature station ID (7 digits) for fetching water/air temperature (e.g., 8518750 for NYC Battery)",
         ),
     ]
+
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with NOAA CO-OPS citation information.
+
+        Returns:
+            HTML string with citation information for NOAA CO-OPS data
+        """
+        station_url = (
+            f"https://tidesandcurrents.noaa.gov/stationhome.html?id={self.station}"
+        )
+        return f"Water temperature data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.name or 'Unknown'})"
 
 
 class CoopsTideSource(BaseModel, frozen=True):
@@ -158,6 +185,18 @@ class NdbcTempSource(TempSource, frozen=True):
         ),
     ]
 
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with NDBC citation information.
+
+        Returns:
+            HTML string with citation information for NDBC data
+        """
+        station_url = (
+            f"https://www.ndbc.noaa.gov/station_page.php?station={self.station}"
+        )
+        return f"Water temperature data provided by <a href=\"{station_url}\" target=\"_blank\">NDBC Station {self.station}</a> ({self.name or 'Unknown'})"
+
 
 class NwisTempSource(TempSource, frozen=True):
     """USGS NWIS specific temperature data source configuration.
@@ -184,6 +223,16 @@ class NwisTempSource(TempSource, frozen=True):
             description="USGS parameter code for water temperature. Default is '00010', but some stations may use '00011'.",
         ),
     ] = "00010"
+
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with USGS NWIS citation information.
+
+        Returns:
+            HTML string with citation information for USGS NWIS data
+        """
+        site_url = f"https://waterdata.usgs.gov/monitoring-location/{self.site_no}/"
+        return f"Water temperature data provided by <a href=\"{site_url}\" target=\"_blank\">USGS NWIS Site {self.site_no}</a> ({self.name or 'Unknown'})"
 
 
 class LocationConfig(BaseModel, frozen=True):

@@ -35,7 +35,7 @@ async def test_live_temperature_fetch() -> None:
     # Fetch temperature data
     df = await NwisApi.temperature(
         site_no="03292494",  # Ohio River at Louisville
-        parameter_cd="00010",  # Water temperature
+        parameter_cd="00011",  # Water temperature
         begin_date=begin_date,
         end_date=end_date,
         timezone="US/Eastern",

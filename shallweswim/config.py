@@ -66,6 +66,11 @@ class TempSource(BaseModel, frozen=True):
         ),
     ] = True
 
+    start_year: Annotated[
+        Optional[int],
+        Field(description="Starting year for historical temperature data."),
+    ] = None
+
 
 class CoopsTempSource(TempSource, frozen=True):
     """NOAA CO-OPS specific temperature data source configuration.
@@ -410,7 +415,7 @@ _CONFIG_LIST = [
             site_no="03292494",
             parameter_cd="00011",  # Water temperature
             name="Ohio River at Louisville",
-            historic_enabled=False,
+            start_year=2024,
         ),
         description="Louisville Kentucky open water swimming conditions",
         # TODO:

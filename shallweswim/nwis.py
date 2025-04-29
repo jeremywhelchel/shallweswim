@@ -75,7 +75,9 @@ class NwisApi:
 
         try:
             # Fetch the data using asyncio.to_thread to avoid blocking
-            logging.info(f"[{location_code}] Fetching NWIS data for site {site_no}")
+            logging.info(
+                f"[{location_code}] Fetching NWIS data for site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}"
+            )
 
             # Convert parameter_cd to list if it's a string
             param_list = (
@@ -127,7 +129,7 @@ class NwisApi:
             temp_df.sort_index(inplace=True)
 
             logging.info(
-                f"[{location_code}] Successfully fetched {len(temp_df)} temperature readings for NWIS site {site_no}"
+                f"[{location_code}] Successfully fetched {len(temp_df)} temperature readings for NWIS site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}"
             )
 
             return temp_df

@@ -29,6 +29,10 @@ from shallweswim.types import (
 )
 from shallweswim.util import utc_now
 
+# Constants
+# Default year to start historical temperature data collection
+DEFAULT_HISTORIC_TEMPS_START_YEAR = 2011
+
 # Data expiration periods
 EXPIRATION_PERIODS = {
     # Tidal predictions already cover a wide past/present window
@@ -206,8 +210,8 @@ class DataManager(object):
             )
             return None
 
-        # Get the start year from config or use default 2011
-        start_year = 2011
+        # Get the start year from config or use default
+        start_year = DEFAULT_HISTORIC_TEMPS_START_YEAR
         if hasattr(temp_config, "start_year") and temp_config.start_year:
             start_year = temp_config.start_year
 

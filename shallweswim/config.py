@@ -150,6 +150,18 @@ class CoopsTideSource(BaseModel, frozen=True):
         ),
     ] = None
 
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with NOAA CO-OPS tide citation information.
+
+        Returns:
+            HTML string with citation information for NOAA CO-OPS tide data
+        """
+        station_url = (
+            f"https://tidesandcurrents.noaa.gov/stationhome.html?id={self.station}"
+        )
+        return f"Tide data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.station_name or 'Unknown'})"
+
 
 class CoopsCurrentsSource(BaseModel, frozen=True):
     """Configuration for currents data source.
@@ -165,6 +177,27 @@ class CoopsCurrentsSource(BaseModel, frozen=True):
             description="Current stations for water current speed and direction (strings like 'ACT3876', unlike temp/tide stations)"
         ),
     ]
+
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with NOAA CO-OPS currents citation information.
+
+        Returns:
+            HTML string with citation information for NOAA CO-OPS currents data
+        """
+        if len(self.stations) == 1:
+            station_id = self.stations[0]
+            station_url = f"https://prod.tidesandcurrents.noaa.gov/noaacurrents/predictions.html?id={station_id}_1"
+            return f'Current data provided by <a href="{station_url}" target="_blank">NOAA CO-OPS Station {station_id}</a>'
+        else:
+            station_links = []
+            for station_id in self.stations:
+                station_url = f"https://prod.tidesandcurrents.noaa.gov/noaacurrents/predictions.html?id={station_id}_1"
+                station_links.append(
+                    f'<a href="{station_url}" target="_blank">{station_id}</a>'
+                )
+
+            return f"Current data provided by NOAA CO-OPS Stations: {', '.join(station_links)}"
 
 
 class NdbcTempSource(TempSource, frozen=True):

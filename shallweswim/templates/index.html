@@ -149,16 +149,9 @@ block content %} {% if config.code == 'nyc' %}
   {% if config.temp_source %}
   <li>{{ config.temp_source.citation|safe }}</li>
   {% endif %} {% if config.tide_source %}
-  <li>
-    Tides provided by:
-    <a
-      href="https://tidesandcurrents.noaa.gov/stationhome.html?id={{ config.tide_source.station }}"
-    >
-      {{ config.tide_source.station_name }} - Station ID: {{
-      config.tide_source.station }}</a
-    >
-    (NOAA Tides and Currents)
-  </li>
+  <li>{{ config.tide_source.citation|safe }}</li>
+  {% endif %} {% if config.currents_source %}
+  <li>{{ config.currents_source.citation|safe }}</li>
   {% endif %} {% if config.code == 'nyc' %}
   <li>
     <a href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"

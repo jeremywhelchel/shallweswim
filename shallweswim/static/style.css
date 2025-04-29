@@ -191,6 +191,31 @@ h6 {
 }
 
 /* ======================================
+ * CITATION TABLE
+ * ====================================== */
+/* Citation table styling with icons */
+.citation-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0;
+}
+.citation-table td {
+  padding: 0.2em 0;
+  vertical-align: top;
+}
+.citation-table td:first-child {
+  width: 1.5em;
+  padding-right: 0.3em;
+}
+.citation-table svg {
+  width: 1em;
+  height: 1em;
+  stroke-width: 2;
+  stroke: currentColor;
+  vertical-align: middle;
+}
+
+/* ======================================
  * SPECIAL EFFECTS
  * ====================================== */
 #snow {

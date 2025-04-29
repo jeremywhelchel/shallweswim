@@ -2,8 +2,11 @@
 description %}{{ config.description }}{% endblock %} {% block scripts %} {{
 super() }} {% if config.code == 'nyc' %}
 <script async src="https://www.youtube.com/iframe_api"></script>
-{% endif %} {% endblock %} {% block body_attributes %}{% endblock %} {% block
-header %}
+{% endif %}
+<!-- Include Feather Icons -->
+<script src="https://unpkg.com/feather-icons"></script>
+{% endblock %} {% block stylesheets %} {{ super() }} {% endblock %} {% block
+body_attributes %}{% endblock %} {% block header %}
 <div id="snow"></div>
 <h1 class="title">shall we swim today?</h1>
 <p>
@@ -145,36 +148,61 @@ block content %} {% if config.code == 'nyc' %}
 </div>
 {% endif %} {% endblock %} {% block footer %}
 <h2>Sources</h2>
-<ul>
-  {% if config.temp_source %}
-  <li>{{ config.temp_source.citation|safe }}</li>
-  {% endif %} {% if config.tide_source %}
-  <li>{{ config.tide_source.citation|safe }}</li>
-  {% endif %} {% if config.currents_source %}
-  <li>{{ config.currents_source.citation|safe }}</li>
-  {% endif %} {% if config.code == 'nyc' %}
-  <li>
-    <a href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
-      >Webcam</a
-    >
-    thanks to David K and Karol L
-  </li>
-  <li>
-    MTA train status provided by:
-    <a href="https://goodservice.io"> goodservice.io</a>
-  </li>
-  {% endif %}
-  <li>
-    Site source on github:
-    <a href="https://github.com/jeremywhelchel/shallweswim"
-      >jeremywhelchel/shallweswim</a
-    >
-  </li>
-</ul>
+<table class="citation-table">
+  <tbody>
+    {% if config.temp_source %}
+    <tr>
+      <td><i data-feather="thermometer"></i></td>
+      <td>{{ config.temp_source.citation|safe }}</td>
+    </tr>
+    {% endif %} {% if config.tide_source %}
+    <tr>
+      <td><i data-feather="anchor"></i></td>
+      <td>{{ config.tide_source.citation|safe }}</td>
+    </tr>
+    {% endif %} {% if config.currents_source %}
+    <tr>
+      <td><i data-feather="shuffle"></i></td>
+      <td>{{ config.currents_source.citation|safe }}</td>
+    </tr>
+    {% endif %} {% if config.code == 'nyc' %}
+    <tr>
+      <td><i data-feather="camera"></i></td>
+      <td>
+        <a href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
+          >Webcam</a
+        >
+        thanks to David K and Karol L
+      </td>
+    </tr>
+    <tr>
+      <td><i data-feather="truck"></i></td>
+      <td>
+        MTA train status provided by:
+        <a href="https://goodservice.io">goodservice.io</a>
+      </td>
+    </tr>
+    {% endif %}
+    <tr>
+      <td><i data-feather="github"></i></td>
+      <td>
+        Site source on github:
+        <a href="https://github.com/jeremywhelchel/shallweswim"
+          >jeremywhelchel/shallweswim</a
+        >
+      </td>
+    </tr>
+  </tbody>
+</table>
 <div class="location-nav">
   {% for loc_code, loc_config in all_locations.items() %}
   <!-- prettier-ignore -->
   <a href="/{{ loc_code }}" {% if config.code == loc_code %}class="active"{% endif %}>{{ loc_code }}</a>
   {% endfor %}
 </div>
+
+<!-- Initialize Feather icons -->
+<script>
+  feather.replace();
+</script>
 {% endblock %}

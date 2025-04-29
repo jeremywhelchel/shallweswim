@@ -401,23 +401,23 @@ _CONFIG_LIST = [
         name="Louisville",
         swim_location="Louisville Community Boathouse",
         swim_location_link="https://www.kylmsc.org/rats",
-        latitude=38.2647556,
-        longitude=-85.7323204,
-        # XXX windy "waves" mode inapplicable here
+        latitude=38.264,
+        longitude=-85.732,
         timezone=pytz.timezone("US/Eastern"),
+        # Ohio River Water Tower
+        # https://waterdata.usgs.gov/monitoring-location/03292494/#dataTypeId=continuous-00011-0&period=P365D
         temp_source=NwisTempSource(
-            site_no="03292494",  # Ohio River Water Tower
-            parameter_cd="00011",  # Water temperature parameter code
+            site_no="03292494",
+            parameter_cd="00011",  # Water temperature
             name="Ohio River at Louisville",
-            historic_enabled=False,  # Disable historical temperature data
+            historic_enabled=False,
         ),
         description="Louisville Kentucky open water swimming conditions",
-        # Additional resources:
-        # - water velocity (mph)
-        #   https://colab.research.google.com/drive/17-oyc95BBUUI3g1GBR5QpACAm-4G5vBk#scrollTo=vMXIJh8CCQCF
-        # - webcam:
+        # TODO:
+        # - Add webcam:
         #   https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
         #   https://ohiorivercam.com/
+        # - Fix Windy embed mode. "waves" isnt relevant here.
     ),
     LocationConfig(
         code="tst",
@@ -435,6 +435,7 @@ _CONFIG_LIST = [
         description="Test location. MID GULF",
     ),
 ]
+
 # Build lookup dictionaries - use lowercase keys for case-insensitive lookup
 # Only include enabled locations in the CONFIGS dictionary
 # Use MappingProxyType to create an immutable view of the dictionary

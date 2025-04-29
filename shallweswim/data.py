@@ -163,11 +163,11 @@ class DataManager(object):
         if not hasattr(temp_config, "station") or not temp_config.station:
             return None
 
-        # Create the appropriate feed based on the config type
-        if isinstance(temp_config, config_lib.CoopsTempSource):
-            return feeds.CoopsTempFeed(
+        # Use the factory function to create the appropriate feed
+        try:
+            return feeds.create_temp_feed(
                 location_config=self.config,
-                config=temp_config,
+                temp_config=temp_config,
                 # Start 24 hours ago to get a full day of data
                 start=utc_now() - datetime.timedelta(hours=24),
                 # End at current time
@@ -177,22 +177,9 @@ class DataManager(object):
                 # Set expiration interval to match our existing settings
                 expiration_interval=EXPIRATION_PERIODS["live_temps"],
             )
-        elif isinstance(temp_config, config_lib.NdbcTempSource):
-            return feeds.NdbcTempFeed(
-                location_config=self.config,
-                config=temp_config,
-                # Start 24 hours ago to get a full day of data
-                start=utc_now() - datetime.timedelta(hours=24),
-                # End at current time
-                end=utc_now(),
-                # Set expiration interval to match our existing settings
-                expiration_interval=EXPIRATION_PERIODS["live_temps"],
-            )
-        else:
-            # Unsupported temperature source type - fail fast and loud
-            raise TypeError(
-                f"Unsupported temperature source type: {type(temp_config).__name__}"
-            )
+        except TypeError as e:
+            # Re-raise with more context about what we were trying to do
+            raise TypeError(f"Error configuring live temperature feed: {e}") from e
 
     def _configure_historic_temps_feed(self) -> Optional[feeds.Feed]:
         """Configure the historical temperature feed.
@@ -215,8 +202,8 @@ class DataManager(object):
         if hasattr(temp_config, "start_year") and temp_config.start_year:
             start_year = temp_config.start_year
 
-        # Create the appropriate feed based on the config type
-        if isinstance(temp_config, config_lib.CoopsTempSource):
+        try:
+            # Use HistoricalTempsFeed which internally uses our factory function
             return feeds.HistoricalTempsFeed(
                 location_config=self.config,
                 config=temp_config,
@@ -227,23 +214,11 @@ class DataManager(object):
                 # Set expiration interval to match our existing settings
                 expiration_interval=EXPIRATION_PERIODS["historic_temps"],
             )
-        elif isinstance(temp_config, config_lib.NdbcTempSource):
-            # NDBC sources now support historical data
-            return feeds.HistoricalTempsFeed(
-                location_config=self.config,
-                config=temp_config,
-                # Use the start year we determined
-                start_year=start_year,
-                # End at current year
-                end_year=utc_now().year,
-                # Set expiration interval to match our existing settings
-                expiration_interval=EXPIRATION_PERIODS["historic_temps"],
-            )
-        else:
-            # Unsupported temperature source type - fail fast and loud
+        except TypeError as e:
+            # Re-raise with more context about what we were trying to do
             raise TypeError(
-                f"Unsupported temperature source type: {type(temp_config).__name__}"
-            )
+                f"Error configuring historical temperature feed: {e}"
+            ) from e
 
     def _configure_tides_feed(self) -> Optional[feeds.Feed]:
         """Configure the tides feed.

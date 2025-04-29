@@ -9,9 +9,7 @@ import abc
 import asyncio
 import datetime
 import logging
-from typing import Any, Optional, Literal, List
-
-# Third-party imports
+from typing import List, Literal, Optional, Any
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
@@ -697,6 +695,78 @@ class MultiStationCurrentsFeed(CompositeFeed):
         return result_df
 
 
+def create_temp_feed(
+    location_config: config_lib.LocationConfig,
+    temp_config: config_lib.TempSource,
+    start: Optional[datetime.datetime] = None,
+    end: Optional[datetime.datetime] = None,
+    interval: Literal["h", "6-min"] = "h",
+    expiration_interval: Optional[datetime.timedelta] = None,
+    **kwargs: Any,
+) -> TempFeed:
+    """Create a temperature feed based on the configuration type.
+
+    This factory function creates the appropriate temperature feed based on the
+    type of the temperature source configuration.
+
+    Args:
+        location_config: Location configuration
+        temp_config: Temperature source configuration
+        start: Start date for data fetching (optional)
+        end: End date for data fetching (optional)
+        interval: Data interval ('h' for hourly, '6-min' for 6-minute)
+        expiration_interval: Custom expiration interval (optional)
+        **kwargs: Additional keyword arguments for specific feed types
+
+    Returns:
+        Configured temperature feed
+
+    Raises:
+        TypeError: If an unsupported temperature source type is provided
+    """
+    # Create the appropriate feed based on the config type
+    if isinstance(temp_config, config_lib.CoopsTempSource):
+        return CoopsTempFeed(
+            location_config=location_config,
+            config=temp_config,
+            start=start,
+            end=end,
+            interval=interval,
+            expiration_interval=expiration_interval,
+        )
+    elif isinstance(temp_config, config_lib.NdbcTempSource):
+        # Get the mode parameter if provided
+        mode = kwargs.get("mode", "stdmet")
+        return NdbcTempFeed(
+            location_config=location_config,
+            config=temp_config,
+            start=start,
+            end=end,
+            mode=mode,
+            expiration_interval=expiration_interval,
+        )
+    elif isinstance(temp_config, config_lib.NwisTempSource):
+        # Get the parameter_cd if provided
+        parameter_cd = kwargs.get("parameter_cd", None)
+        feed_kwargs = {}
+        if parameter_cd is not None:
+            feed_kwargs["parameter_cd"] = parameter_cd
+
+        return NwisTempFeed(
+            location_config=location_config,
+            config=temp_config,
+            start=start,
+            end=end,
+            expiration_interval=expiration_interval,
+            **feed_kwargs,
+        )
+    else:
+        # Unsupported temperature source type - fail fast and loud
+        raise TypeError(
+            f"Unsupported temperature source type: {type(temp_config).__name__}"
+        )
+
+
 class HistoricalTempsFeed(CompositeFeed):
     """Feed for historical temperature data across multiple years.
 
@@ -720,57 +790,34 @@ class HistoricalTempsFeed(CompositeFeed):
         """
         feeds: List[Feed] = []
         current_date = utc_now()
-        feed: TempFeed  # Variable to hold the feed for each year
 
         for year in range(self.start_year, self.end_year + 1):
-            # Calculate start and end dates for this year
+            # For each year, create a feed with start/end dates for that year
             start_date = datetime.datetime(year, 1, 1)
-
             # For the current year, cap the end date to today
             if year == current_date.year:
-                end_date = datetime.datetime(
-                    year, current_date.month, current_date.day, 23, 59, 59
-                )
+                end_date = current_date
             else:
                 end_date = datetime.datetime(year, 12, 31, 23, 59, 59)
 
-            # Only set expiration interval for the current year
-            # Past years' data won't change, so they don't need to expire
-            expiration = self.expiration_interval if year == current_date.year else None
+            # Set expiration based on whether it's historical or current data
+            # Historical data won't change, so use a longer expiration
+            # Current year data might be updated, so use the default expiration
+            expiration_interval = (
+                datetime.timedelta(days=7)
+                if year < current_date.year
+                else self.expiration_interval
+            )
 
-            # Create the appropriate feed based on the config type
-            if isinstance(self.config, config_lib.CoopsTempSource):
-                feed = CoopsTempFeed(
-                    location_config=self.location_config,
-                    config=self.config,
-                    start=start_date,
-                    end=end_date,
-                    interval="h",  # Use hourly data for historical temps
-                    expiration_interval=expiration,
-                )
-            elif isinstance(self.config, config_lib.NdbcTempSource):
-                feed = NdbcTempFeed(
-                    location_config=self.location_config,
-                    config=self.config,
-                    start=start_date,
-                    end=end_date,
-                    # NdbcTempFeed already defaults to hourly data
-                    expiration_interval=expiration,
-                )
-            elif isinstance(self.config, config_lib.NwisTempSource):
-                feed = NwisTempFeed(
-                    location_config=self.location_config,
-                    config=self.config,
-                    start=start_date,
-                    end=end_date,
-                    # NwisTempFeed already defaults to hourly data
-                    expiration_interval=expiration,
-                )
-            else:
-                # Unsupported temperature source type - fail fast and loud
-                raise TypeError(
-                    f"Unsupported temperature source type: {type(self.config).__name__}"
-                )
+            # Create the appropriate feed using the factory function
+            feed = create_temp_feed(
+                location_config=self.location_config,
+                temp_config=self.config,
+                start=start_date,
+                end=end_date,
+                interval="h",  # Use hourly data for historical feeds
+                expiration_interval=expiration_interval,
+            )
             feeds.append(feed)
         return feeds
 

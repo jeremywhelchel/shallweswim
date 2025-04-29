@@ -10,13 +10,15 @@
 
 - Coney Island / Brighton Beach (NYC)
 - La Jolla Cove (San Diego)
+- Additional locations are being added regularly
 
 ## Features
 
-- **Real-time conditions** from NOAA CO-OPS API
+- **Real-time conditions** from NOAA CO-OPS and USGS NWIS APIs
 - **Tide predictions** with high/low tide times and heights
 - **Current velocity** data with flood/ebb direction
 - **Water temperature trends** (48-hour, 2-month, and multi-year)
+- **Transit information** for NYC locations (subway status and alerts)
 - **Mobile-friendly interface** for on-the-go swimmers
 - **JSON API** for programmatic access to swim conditions
 
@@ -34,26 +36,33 @@ Shall We Swim is a FastAPI application with a modular architecture:
   - Manages feed lifecycle and data freshness
   - Provides status monitoring and ready-state tracking
   - Handles data processing and transformation
+  - Formats temperature data with appropriate precision
 - **API Layer (`api.py`)**: JSON endpoints for swim conditions and status
   - Location-specific endpoints for conditions data
   - Status endpoints for monitoring system health
   - Current prediction and tide visualization endpoints
 - **Web UI (`main.py`)**: HTML templates and web interface
+  - Responsive design with modern UI components
+  - Conditional display of data based on feed availability
+  - Transit information for NYC locations
 - **NOAA CO-OPS Client (`coops.py`)**: Interacts with NOAA's Center for Operational Oceanographic Products and Services API
+- **USGS NWIS Client (`nwis.py`)**: Interacts with the USGS National Water Information System API
+  - Handles both Celsius and Fahrenheit temperature parameters
+  - Performs necessary unit conversions
 - **Configuration (`config.py`)**: Location settings and station IDs
 - **Utilities (`util.py`)**: Common utilities for time handling and data processing
 
 ### Data Flow
 
-1. **Data Fetching**: Specialized Feed classes fetch data (tides, currents, temperatures) from NOAA CO-OPS and other sources for configured locations
-2. **Data Processing**: Raw data is processed with appropriate timezone conversions
+1. **Data Fetching**: Specialized Feed classes fetch data (tides, currents, temperatures) from NOAA CO-OPS, USGS NWIS, and other sources for configured locations
+2. **Data Processing**: Raw data is processed with appropriate timezone conversions and unit transformations
 3. **Status Monitoring**: Feed and DataManager status is tracked and exposed via API endpoints
 4. **Plot Generation**: Visualizations are asynchronously generated for different time spans:
    - 48-hour tide/current predictions
    - 2-month historical temperature data
    - Multi-year temperature trends
 5. **API Endpoints**: Processed data and system status are available via JSON endpoints
-6. **Web UI**: Templates display the data with visualizations
+6. **Web UI**: Templates display the data with visualizations and location-specific information (like transit status)
 
 ## Getting Started
 
@@ -161,8 +170,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgements
 
 - [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (Center for Operational Oceanographic Products and Services) for tide, current, and temperature data
+- [USGS NWIS API](https://waterservices.usgs.gov/) (National Water Information System) for water temperature data
 - [FastAPI](https://fastapi.tiangolo.com/) for the web framework
 - [Matplotlib](https://matplotlib.org/) for data visualization
+- [Feather Icons](https://feathericons.com/) for UI icons
+- [GoodService.io](https://goodservice.io/) for NYC subway information
 
 ## Continuous Integration
 

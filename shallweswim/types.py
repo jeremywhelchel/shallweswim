@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import List, Literal, Optional
 
 # Third-party imports
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 #############################################################
 # INTERNAL TYPES - Used for internal data processing         #
@@ -72,6 +72,8 @@ class LegacyChartInfo:
 class LocationInfo(BaseModel):
     """Location information for API responses."""
 
+    model_config = ConfigDict(extra="forbid")
+
     code: str = Field(..., description="Location code (e.g., 'nyc')")
     name: str = Field(..., description="Display name of the location")
     swim_location: str = Field(..., description="Specific swimming location")
@@ -79,6 +81,8 @@ class LocationInfo(BaseModel):
 
 class TemperatureInfo(BaseModel):
     """Water temperature information for API responses."""
+
+    model_config = ConfigDict(extra="forbid")
 
     timestamp: str = Field(
         ...,
@@ -94,6 +98,8 @@ class TemperatureInfo(BaseModel):
 class ApiTideEntry(BaseModel):
     """Individual tide information for API responses."""
 
+    model_config = ConfigDict(extra="forbid")
+
     time: str = Field(
         ...,
         description="ISO 8601 formatted timestamp of the tide event (in location's local timezone)",
@@ -105,12 +111,16 @@ class ApiTideEntry(BaseModel):
 class TidesInfo(BaseModel):
     """Collection of tide information for API responses."""
 
+    model_config = ConfigDict(extra="forbid")
+
     past: List[ApiTideEntry] = Field(..., description="Recently occurred tides")
     next: List[ApiTideEntry] = Field(..., description="Upcoming tides")
 
 
 class CurrentPredictionInfo(BaseModel):
     """Current prediction information for API responses."""
+
+    model_config = ConfigDict(extra="forbid")
 
     timestamp: str = Field(
         ...,
@@ -131,6 +141,8 @@ class CurrentPredictionInfo(BaseModel):
 class LegacyChartDetails(BaseModel):
     """Information about legacy tide charts for API responses."""
 
+    model_config = ConfigDict(extra="forbid")
+
     hours_since_last_tide: float = Field(
         ..., description="Hours since the last tide event"
     )
@@ -146,6 +158,8 @@ class LegacyChartDetails(BaseModel):
 
 class CurrentsResponse(BaseModel):
     """Complete response for currents API endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
 
     location: LocationInfo
     timestamp: str = Field(
@@ -164,6 +178,8 @@ class CurrentsResponse(BaseModel):
 
 class LocationConditions(BaseModel):
     """Complete response for location conditions endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
 
     location: LocationInfo
     temperature: TemperatureInfo

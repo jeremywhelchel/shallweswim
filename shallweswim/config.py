@@ -26,7 +26,7 @@ from typing import Annotated, List, Optional, Tuple
 
 # Third-party imports
 import pytz
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 # Local imports
 from shallweswim import util
@@ -37,6 +37,8 @@ class TempSource(BaseModel, frozen=True):
 
     Abstract base class for all temperature data sources.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: Annotated[
         Optional[str],
@@ -78,6 +80,8 @@ class CoopsTempSource(TempSource, frozen=True):
     Defines the NOAA CO-OPS station for fetching water/air temperature data.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     station: Annotated[
         int,
         Field(
@@ -93,6 +97,8 @@ class CoopsTideSource(BaseModel, frozen=True):
 
     Defines the NOAA CO-OPS station for fetching tide predictions.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     station: Annotated[
         int,
@@ -114,8 +120,10 @@ class CoopsTideSource(BaseModel, frozen=True):
 class CoopsCurrentsSource(BaseModel, frozen=True):
     """Configuration for currents data source.
 
-    Defines the NOAA CO-OPS station(s) for fetching water current predictions.
+    Defines the NOAA CO-OPS stations for fetching current predictions.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     stations: Annotated[
         List[Annotated[str, Field(min_length=1)]],
@@ -126,11 +134,13 @@ class CoopsCurrentsSource(BaseModel, frozen=True):
 
 
 class NdbcTempSource(TempSource, frozen=True):
-    """NOAA NDBC specific temperature data source configuration.
+    """NDBC specific temperature data source configuration.
 
-    Defines the NOAA National Data Buoy Center (NDBC) station for fetching
+    Defines the NDBC buoy or station for fetching sea temperature and
     water temperature data from buoys and coastal stations.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     station: Annotated[
         str,
@@ -148,6 +158,8 @@ class NwisTempSource(TempSource, frozen=True):
     Defines the USGS National Water Information System (NWIS) site for fetching
     water temperature data from rivers, lakes, and other water bodies.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     site_no: Annotated[
         str,
@@ -191,7 +203,7 @@ class LocationConfig(BaseModel, frozen=True):
         temp_station = nyc_config.temp_station  # For NOAA API calls
     """
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     code: Annotated[
         str,

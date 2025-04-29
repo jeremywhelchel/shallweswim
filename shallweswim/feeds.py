@@ -57,6 +57,8 @@ class Feed(BaseModel, abc.ABC):
         arbitrary_types_allowed=True,
         # Validate assignment to attributes
         validate_assignment=True,
+        # Forbid extra fields not defined in the model
+        extra="forbid",
     )
 
     def __init__(self, **data: Any) -> None:

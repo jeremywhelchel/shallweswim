@@ -483,7 +483,6 @@ _CONFIG_LIST = [
         description="Chicago Ohio Street Beach open water swimming conditions",
     ),
     LocationConfig(
-        enabled=False,
         # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
         code="sfo",
         name="San Francisco",
@@ -492,13 +491,18 @@ _CONFIG_LIST = [
         latitude=37.808,
         longitude=-122.426,
         timezone=pytz.timezone("US/Pacific"),
-        # Note that North Point Pier temp (stn 9414305) is a operational forecast (OFS).
-        # It is not a live reading (and not available via the same API), so we don't use it.
-        # The San Francisco, CA - Station ID: 9414290 has been disabled with this message
+        # The San Francisco, CA - Station ID: 9414290 is not currently available.
         # Disabled - 2025-01-17 02:01:00, Suspect Data - Data failed to meet QC standards - under review.
-        temp_source=CoopsTempSource(
-            station=9414769,
-            name="San Francisco, CA",
+        # temp_source=CoopsTempSource(
+        #     station=9414290,
+        #     name="San Francisco, CA",
+        #     live_enabled=False,
+        # ),
+        # Alternative buoy that's further away. Note that this could be as much
+        # as 5 degrees off the Bay location!
+        temp_source=NdbcTempSource(
+            station="46237",
+            name="San Francisco Bar Buoy",
         ),
         tide_source=CoopsTideSource(
             station=9414305,
@@ -510,7 +514,7 @@ _CONFIG_LIST = [
     LocationConfig(
         code="sdf",
         name="Louisville",
-        swim_location="Louisville Community Boathouse",
+        swim_location="Community Boathouse",
         swim_location_link="https://www.kylmsc.org/rats",
         latitude=38.264,
         longitude=-85.732,

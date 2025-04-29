@@ -93,38 +93,22 @@ templates = templating.Jinja2Templates(directory="shallweswim/templates")
 api.register_routes(app)
 
 
-@app.get("/{location}/widget")
-async def location_widget(
-    request: fastapi.Request, location: str
-) -> responses.HTMLResponse:
-    """Serve a widget view for a specific location.
+# ======================================================================
+# Root routes - These must come before parameterized routes to avoid conflicts
+# ======================================================================
 
-    Args:
-        request: FastAPI request object
-        location: Location code (e.g., 'nyc')
 
-    Returns:
-        HTML response with location-specific widget
+@app.get("/")
+async def root_index() -> responses.RedirectResponse:
+    """Redirect root path to default location (NYC).
 
-    Raises:
-        HTTPException: If the location is not configured
+    TODO: Use cookies to redirect to last used or saved location.
     """
-    cfg = config.get(location)
-    if not cfg:
-        logging.warning("Bad location for widget: %s", location)
-        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
-
-    return templates.TemplateResponse(
-        request=request,
-        name="widget.html",
-        context=dict(
-            config=cfg,
-        ),
-    )
+    return responses.RedirectResponse("/nyc", status_code=301)
 
 
 @app.get("/all")
-async def all_locations(request: fastapi.Request) -> responses.HTMLResponse:
+async def view_all_locations(request: fastapi.Request) -> responses.HTMLResponse:
     """Serve a landing page showing all swimming locations with their current water temperatures.
 
     Args:
@@ -142,23 +126,81 @@ async def all_locations(request: fastapi.Request) -> responses.HTMLResponse:
     )
 
 
-@app.get("/")
-async def index() -> responses.RedirectResponse:
-    """Redirect root path to default location (NYC).
-
-    TODO: Use cookies to redirect to last used or saved location.
-    """
-    return responses.RedirectResponse("/nyc", status_code=301)
-
-
 @app.get("/embed")
-async def embed_redirect() -> responses.RedirectResponse:
+async def root_embed_redirect() -> responses.RedirectResponse:
     """Redirect /embed to the default location embed page (NYC).
 
     Returns:
         Redirect response to the NYC embed page
     """
     return responses.RedirectResponse("/nyc/embed", status_code=301)
+
+
+# ======================================================================
+# Static file routes - These should come before parameterized routes
+# ======================================================================
+
+
+@app.get("/favicon.ico")
+async def favicon() -> responses.RedirectResponse:
+    """Redirect favicon requests to the static file."""
+    return responses.RedirectResponse("/static/favicon.ico", status_code=301)
+
+
+@app.get("/apple-touch-icon.png")
+@app.get("/apple-touch-icon-precomposed.png")
+async def apple_touch_icon() -> responses.RedirectResponse:
+    """Redirect Apple touch icon requests to the static file."""
+    return responses.RedirectResponse("/static/apple-touch-icon.png", status_code=301)
+
+
+@app.get("/manifest.json")
+async def manifest() -> responses.RedirectResponse:
+    """Redirect manifest.json requests to the static file."""
+    return responses.RedirectResponse("/static/manifest.json", status_code=301)
+
+
+@app.get("/robots.txt")
+async def robots() -> responses.RedirectResponse:
+    """Redirect robots.txt requests to the static file."""
+    return responses.RedirectResponse("/static/robots.txt", status_code=301)
+
+
+# ======================================================================
+# Location-specific routes - These must come after static and root routes
+# ======================================================================
+
+
+@app.get("/{location}")
+async def location_index(
+    request: fastapi.Request, location: str
+) -> responses.HTMLResponse:
+    """Serve the main page for a specific location.
+
+    Args:
+        request: FastAPI request object
+        location: Location code (e.g., 'nyc')
+
+    Returns:
+        HTML response with location-specific configuration
+
+    Raises:
+        HTTPException: If the location is not configured
+    """
+    cfg = config.get(location)
+    if not cfg:
+        logging.warning("Bad location: %s", location)
+        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
+
+    # Just pass location config - data will be fetched client-side via API
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context=dict(
+            config=cfg,
+            all_locations=config.CONFIGS,
+        ),
+    )
 
 
 @app.get("/{location}/embed")
@@ -191,8 +233,38 @@ async def location_embed(
     )
 
 
+@app.get("/{location}/widget")
+async def location_widget(
+    request: fastapi.Request, location: str
+) -> responses.HTMLResponse:
+    """Serve a widget view for a specific location.
+
+    Args:
+        request: FastAPI request object
+        location: Location code (e.g., 'nyc')
+
+    Returns:
+        HTML response with location-specific widget
+
+    Raises:
+        HTTPException: If the location is not configured
+    """
+    cfg = config.get(location)
+    if not cfg:
+        logging.warning("Bad location for widget: %s", location)
+        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
+
+    return templates.TemplateResponse(
+        request=request,
+        name="widget.html",
+        context=dict(
+            config=cfg,
+        ),
+    )
+
+
 @app.get("/{location}/currents")
-async def location_water_current(
+async def location_currents(
     request: fastapi.Request, location: str, shift: int = 0
 ) -> responses.HTMLResponse:
     """Serve the water current visualization page for the specified location.
@@ -205,49 +277,33 @@ async def location_water_current(
     Returns:
         HTML response with current water conditions
     """
-    # Get location config
-    location_config = config.get(location)
-    if not location_config:
-        raise HTTPException(
-            status_code=404, detail=f"Configuration for {location} not found"
-        )
+    cfg = config.get(location)
+    if not cfg:
+        logging.warning("Bad location for currents: %s", location)
+        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
 
-    # Check if location data exists
-    if (
-        not hasattr(app.state, "data_managers")
-        or location not in app.state.data_managers
-    ):
-        raise HTTPException(
-            status_code=404, detail=f"Data for location {location} not found"
-        )
+    # Calculate the shifted time
+    now = datetime.datetime.now(datetime.timezone.utc)
+    shifted_time = now + datetime.timedelta(minutes=shift)
+
+    # Format the time for display
+    shifted_time_local = shifted_time.astimezone(cfg.timezone)
+    formatted_time = shifted_time_local.strftime("%Y-%m-%d %H:%M")
 
     return templates.TemplateResponse(
         request=request,
         name="current.html",
         context=dict(
-            config=location_config,
-            request=request,
-            shift=shift,  # Pass the shift parameter to the template
+            config=cfg,
+            shift=shift,
+            shifted_time=formatted_time,
         ),
     )
 
 
-# Legacy route for backward compatibility
-@app.get("/current")
-async def water_current(shift: int = 0) -> responses.RedirectResponse:
-    """Redirect to the locationized currents page.
-
-    Args:
-        shift: Time shift in minutes from current time
-
-    Returns:
-        Redirect response to the location-specific currents page
-    """
-    # Redirect to the locationized version with the same shift parameter
-    redirect_url = f"/nyc/currents"
-    if shift != 0:
-        redirect_url += f"?shift={shift}"
-    return responses.RedirectResponse(redirect_url)
+# ======================================================================
+# Template helpers
+# ======================================================================
 
 
 def fmt_datetime(timestamp: datetime.datetime) -> str:
@@ -266,61 +322,9 @@ def fmt_datetime(timestamp: datetime.datetime) -> str:
 templates.env.filters["fmt_datetime"] = fmt_datetime
 
 
-@app.get("/favicon.ico")
-async def favicon() -> responses.RedirectResponse:
-    """Redirect favicon requests to the static file."""
-    return responses.RedirectResponse("/static/favicon.ico", status_code=301)
-
-
-@app.get("/apple-touch-icon.png")
-@app.get("/apple-touch-icon-precomposed.png")
-async def apple_touch_icon() -> responses.RedirectResponse:
-    """Redirect Apple touch icon requests to the static file."""
-    return responses.RedirectResponse("/static/apple-touch-icon.png", status_code=301)
-
-
-@app.get("/manifest.json")
-async def manifest() -> responses.RedirectResponse:
-    """Redirect manifest.json requests to the static file."""
-    return responses.RedirectResponse("/static/manifest.json", status_code=301)
-
-
-@app.get("/robots.txt")
-async def robots() -> responses.RedirectResponse:
-    """Redirect robots.txt requests to the static file."""
-    return responses.RedirectResponse("/static/robots.txt", status_code=301)
-
-
-@app.get("/{location}")
-async def index_w_location(
-    request: fastapi.Request, location: str
-) -> responses.HTMLResponse:
-    """Serve the main page for a specific location.
-
-    Args:
-        request: FastAPI request object
-        location: Location code (e.g., 'nyc')
-
-    Returns:
-        HTML response with location-specific configuration
-
-    Raises:
-        HTTPException: If the location is not configured
-    """
-    cfg = config.get(location)
-    if not cfg:
-        logging.warning("Bad location: %s", location)
-        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
-
-    # Just pass location config - data will be fetched client-side via API
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context=dict(
-            config=cfg,
-            all_locations=config.CONFIGS,
-        ),
-    )
+# ======================================================================
+# Application initialization and signal handling
+# ======================================================================
 
 
 def setup_signal_handlers() -> None:

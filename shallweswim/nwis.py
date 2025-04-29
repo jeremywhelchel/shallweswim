@@ -159,4 +159,7 @@ class NwisApi:
         # Finally, make the timestamps naive again (remove timezone info)
         df.index = df.index.tz_localize(None)
 
+        # Rename the index to 'timestamp' to match our convention
+        df.index.name = "timestamp"
+
         return df

@@ -8,6 +8,7 @@ Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 """
 
 # Standard library imports
+from typing import AsyncGenerator
 
 # Third-party imports
 import dateutil.parser
@@ -28,7 +29,7 @@ TEST_LOCATIONS = list(config.CONFIGS.keys())
 
 
 @pytest_asyncio.fixture(scope="module")
-async def api_client() -> TestClient:
+async def api_client() -> AsyncGenerator[TestClient, None]:
     """Create a test client for API testing.
 
     This creates a dedicated FastAPI app with only the API routes registered.
@@ -55,7 +56,12 @@ async def api_client() -> TestClient:
     # Create a test client for the API-only app
     client = TestClient(app)
 
-    return client
+    # Yield the client to allow tests to run
+    yield client
+
+    # Clean up all data managers after tests are complete
+    for data_manager in app.state.data_managers.values():
+        data_manager.stop()
 
 
 def validate_conditions_response(response: httpx.Response, location_code: str) -> None:

@@ -516,6 +516,23 @@ class LocationDataManager(object):
         # Add exception handling to the task
         self._update_task.add_done_callback(self._handle_task_exception)
 
+    def stop(self) -> None:
+        """Stop the background data fetching process.
+
+        This cancels the background task if it's running.
+        It's important to call this method when the LocationDataManager
+        is no longer needed to prevent task leaks.
+        """
+        if (
+            hasattr(self, "_update_task")
+            and self._update_task
+            and not self._update_task.done()
+        ):
+            self.log("Stopping data fetch task")
+            self._update_task.cancel()
+            # We don't wait for the task to be cancelled here as that would
+            # require an await, making this method a coroutine
+
     def prev_next_tide(self) -> TideInfo:
         """Return the previous tide and next two tides.
 

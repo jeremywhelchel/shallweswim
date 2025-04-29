@@ -48,7 +48,12 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown handling
     logging.info("-----------------------------------------------")
     logging.info("Shutting down app")
-    # Any cleanup needed would be handled here
+
+    # Stop all data managers to properly clean up background tasks
+    if hasattr(app.state, "data_managers"):
+        for location_code, data_manager in app.state.data_managers.items():
+            logging.info(f"Stopping data manager for {location_code}")
+            data_manager.stop()
 
 
 app = fastapi.FastAPI(lifespan=lifespan)

@@ -133,41 +133,60 @@ def register_routes(app: fastapi.FastAPI) -> None:
         logging.info(f"[{location}] Processing conditions request")
         cfg = validate_location(location)
 
-        # Get current water temperature
-        current_time, current_temp = app.state.data_managers[
-            location
-        ].live_temp_reading()
+        # Create location info
+        location_info = LocationInfo(
+            code=location, name=cfg.name, swim_location=cfg.swim_location
+        )
 
-        # Get tide information
-        tide_info = app.state.data_managers[location].prev_next_tide()
+        # Initialize temperature and tides as None
+        temperature_info = None
+        tides_info = None
 
-        # Create Pydantic model instances
-        past_tides = [
-            ApiTideEntry(
-                time=tide.time.isoformat(), type=tide.type, prediction=tide.prediction
-            )
-            for tide in tide_info.past_tides
-        ]
-
-        next_tides = [
-            ApiTideEntry(
-                time=tide.time.isoformat(), type=tide.type, prediction=tide.prediction
-            )
-            for tide in tide_info.next_tides
-        ]
-
-        # Return structured response using Pydantic models
-        return LocationConditions(
-            location=LocationInfo(
-                code=location, name=cfg.name, swim_location=cfg.swim_location
-            ),
-            temperature=TemperatureInfo(
+        # Add temperature data if the location has a temperature source with live_enabled=True
+        if (
+            cfg.temp_source
+            and hasattr(cfg.temp_source, "live_enabled")
+            and cfg.temp_source.live_enabled
+        ):
+            current_time, current_temp = app.state.data_managers[
+                location
+            ].live_temp_reading()
+            temperature_info = TemperatureInfo(
                 timestamp=current_time.isoformat(),
                 water_temp=current_temp,
                 units="F",
-                station_name=cfg.temp_source.name if cfg.temp_source else None,
-            ),
-            tides=TidesInfo(past=past_tides, next=next_tides),
+                station_name=cfg.temp_source.name,
+            )
+
+        # Add tide data only if the location has a tide source
+        if cfg.tide_source:
+            # Get tide information
+            tide_info = app.state.data_managers[location].prev_next_tide()
+
+            # Create Pydantic model instances
+            past_tides = [
+                ApiTideEntry(
+                    time=tide.time.isoformat(),
+                    type=tide.type,
+                    prediction=tide.prediction,
+                )
+                for tide in tide_info.past_tides
+            ]
+
+            next_tides = [
+                ApiTideEntry(
+                    time=tide.time.isoformat(),
+                    type=tide.type,
+                    prediction=tide.prediction,
+                )
+                for tide in tide_info.next_tides
+            ]
+
+            tides_info = TidesInfo(past=past_tides, next=next_tides)
+
+        # Return structured response using Pydantic models
+        return LocationConditions(
+            location=location_info, temperature=temperature_info, tides=tides_info
         )
 
     @app.get("/api/{location}/current_tide_plot")

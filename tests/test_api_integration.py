@@ -23,17 +23,8 @@ from shallweswim import config, api
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
 
-# Test locations
-NYC_LOCATION = "nyc"
-SAN_LOCATION = "san"
-TST_LOCATION = "tst"  # Test location with NDBC temperature source
-
-# List of all locations to test
-TEST_LOCATIONS = [
-    NYC_LOCATION,
-    SAN_LOCATION,
-    TST_LOCATION,
-]
+# Get all available locations from the config
+TEST_LOCATIONS = list(config.CONFIGS.keys())
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -67,10 +58,15 @@ async def api_client() -> TestClient:
     return client
 
 
-def validate_conditions_response(
-    response: httpx.Response, location_code: str = NYC_LOCATION
-) -> None:
-    """Validate the response from the conditions API endpoint."""
+def validate_conditions_response(response: httpx.Response, location_code: str) -> None:
+    """Validate the response from the conditions API endpoint.
+
+    This function dynamically validates the response based on the location's configuration.
+    """
+    # Get location config to determine what should be present
+    location_config = config.get(location_code)
+    assert location_config is not None, f"Config for {location_code} not found"
+
     assert response.status_code == 200
     assert "application/json" in response.headers["content-type"]
 
@@ -79,36 +75,57 @@ def validate_conditions_response(
 
     # Validate top-level structure
     assert "location" in data, "Missing location data"
-    assert "temperature" in data, "Missing temperature data"
 
-    # Only validate tides for locations that supply tide info (not 'tst')
-    if location_code != TST_LOCATION:
+    # Validate temperature data if the location has a temperature source with live_enabled=True
+    has_temp_source = (
+        hasattr(location_config, "temp_source")
+        and location_config.temp_source is not None
+    )
+
+    # Only check live_enabled if temp_source exists
+    has_live_temp = False
+    if has_temp_source and location_config.temp_source is not None:
+        has_live_temp = (
+            hasattr(location_config.temp_source, "live_enabled")
+            and location_config.temp_source.live_enabled is True
+        )
+
+    if has_live_temp:
+        assert (
+            "temperature" in data
+        ), f"Missing temperature data for {location_code} which has live_enabled=True"
+        temp = data["temperature"]
+        if temp is not None:
+            assert "timestamp" in temp, "Missing temperature timestamp"
+            assert "water_temp" in temp, "Missing water temperature value"
+            assert "units" in temp, "Missing temperature units"
+            assert isinstance(
+                temp["water_temp"], (int, float)
+            ), "Water temperature is not a number"
+    elif "temperature" in data:
+        # If temperature data is present even though live_enabled is False, validate it
+        temp = data["temperature"]
+        if temp is not None:
+            assert "timestamp" in temp, "Missing temperature timestamp"
+            assert "water_temp" in temp, "Missing water temperature value"
+            assert "units" in temp, "Missing temperature units"
+            assert isinstance(
+                temp["water_temp"], (int, float)
+            ), "Water temperature is not a number"
+
+    # Validate tides data if the location has a tide source
+    has_tide_source = (
+        hasattr(location_config, "tide_source")
+        and location_config.tide_source is not None
+    )
+    if has_tide_source:
         assert "tides" in data, "Missing tides data"
-
-    # Validate location details
-    location = data["location"]
-    assert (
-        location["code"] == location_code
-    ), f"Expected location code {location_code}, got {location['code']}"
-    assert "name" in location, "Missing location name"
-    assert "swim_location" in location, "Missing swim location"
-
-    # Validate temperature data
-    temp = data["temperature"]
-    assert "timestamp" in temp, "Missing temperature timestamp"
-    assert "water_temp" in temp, "Missing water temperature value"
-    assert "units" in temp, "Missing temperature units"
-    assert isinstance(
-        temp["water_temp"], (int, float)
-    ), "Water temperature is not a number"
-
-    # Validate tides data (skip for 'tst' location)
-    if location_code != TST_LOCATION and "tides" in data:
         tides = data["tides"]
-        assert "past" in tides, "Missing past tides data"
-        assert "next" in tides, "Missing next tides data"
-        assert len(tides["past"]) > 0, "No past tides data"
-        assert len(tides["next"]) > 0, "No next tides data"
+        if tides is not None:
+            assert "past" in tides, "Missing past tides data"
+            assert "next" in tides, "Missing next tides data"
+            assert len(tides["past"]) > 0, "No past tides data"
+            assert len(tides["next"]) > 0, "No next tides data"
 
         # Validate tide entry structure
         past_tide = tides["past"][0]
@@ -121,8 +138,17 @@ def validate_conditions_response(
             "unknown",
         ], f"Invalid tide type: {past_tide['type']}"
 
+    # Validate location details
+    location = data["location"]
+    assert (
+        location["code"] == location_code
+    ), f"Expected location code {location_code}, got {location['code']}"
+    assert "name" in location, "Missing location name"
+    assert "swim_location" in location, "Missing swim location"
+
+    # Additional validation for tides
+    if has_tide_source and "tides" in data:
         # Get location config for timezone-aware comparisons
-        location_config = config.get(location_code)
         assert location_config is not None, f"Config for {location_code} not found"
 
         # Get the current time in the location's timezone as a naive datetime
@@ -161,52 +187,93 @@ def validate_conditions_response(
 
 
 @pytest.mark.integration
-def test_conditions_api_nyc(api_client: TestClient) -> None:
-    """Test the conditions API endpoint for NYC location."""
-    response = api_client.get(f"/api/{NYC_LOCATION}/conditions")
-    validate_conditions_response(response, NYC_LOCATION)
+@pytest.mark.parametrize("location_code", TEST_LOCATIONS)
+def test_conditions_api(api_client: TestClient, location_code: str) -> None:
+    """Test the conditions API endpoint for all configured locations.
 
-    # Additional NYC-specific checks
+    This test dynamically tests all locations in the configuration.
+    """
+    # Get location config to determine what should be present
+    location_config = config.get(location_code)
+    assert location_config is not None, f"Config for {location_code} not found"
+
+    response = api_client.get(f"/api/{location_code}/conditions")
+    validate_conditions_response(response, location_code)
+
+    # Verify location-specific details
     data = response.json()
-    assert "Grimaldo's Chair" in data["location"]["swim_location"]
-    assert "New York" in data["location"]["name"]
+    assert location_config.name in data["location"]["name"]
+    assert location_config.swim_location in data["location"]["swim_location"]
+
+    # Verify temperature data if the location has a temperature source with live_enabled=True
+    has_temp_source = (
+        hasattr(location_config, "temp_source")
+        and location_config.temp_source is not None
+    )
+
+    # Only check live_enabled if temp_source exists
+    has_live_temp = False
+    if has_temp_source and location_config.temp_source is not None:
+        has_live_temp = (
+            hasattr(location_config.temp_source, "live_enabled")
+            and location_config.temp_source.live_enabled is True
+        )
+
+    if has_live_temp:
+        assert (
+            "temperature" in data
+        ), f"Temperature data missing for {location_code} which has live_enabled=True"
+        assert (
+            "water_temp" in data["temperature"]
+        ), f"Water temperature missing for {location_code}"
+    else:
+        # If live_enabled is False, the API might still return temperature data if available,
+        # but we shouldn't require it in our tests
+        pass
+
+    # Verify tides data if the location has a tide source
+    has_tide_source = (
+        hasattr(location_config, "tide_source")
+        and location_config.tide_source is not None
+    )
+    if has_tide_source:
+        assert "tides" in data
+        assert data["tides"] is not None
+    else:
+        # Field might be absent or set to None
+        if "tides" in data:
+            assert (
+                data["tides"] is None
+            ), f"Expected tides to be None for {location_code} which has no tide source"
 
 
-@pytest.mark.integration
-def test_conditions_api_san_diego(api_client: TestClient) -> None:
-    """Test the conditions API endpoint for San Diego location."""
-    response = api_client.get(f"/api/{SAN_LOCATION}/conditions")
-    validate_conditions_response(response, SAN_LOCATION)
+def validate_currents_response(response: httpx.Response, location_code: str) -> None:
+    """Validate the response from the currents API endpoint.
 
-    # Additional San Diego-specific checks
-    data = response.json()
-    assert "La Jolla Cove" in data["location"]["swim_location"]
-    assert "San Diego" in data["location"]["name"]
+    This function dynamically validates the response based on the location's configuration.
+    """
+    # Get location config to determine what should be present
+    location_config = config.get(location_code)
+    assert location_config is not None, f"Config for {location_code} not found"
 
+    # Check if this location supports currents
+    has_currents_source = (
+        hasattr(location_config, "currents_source")
+        and location_config.currents_source is not None
+    )
 
-@pytest.mark.integration
-def test_conditions_api_tst(api_client: TestClient) -> None:
-    """Test the conditions API endpoint for the Test location with NDBC temperature source."""
-    response = api_client.get(f"/api/{TST_LOCATION}/conditions")
-    validate_conditions_response(response, TST_LOCATION)
+    # If the location doesn't support currents, we expect a 404 or 501 response
+    if not has_currents_source:
+        assert response.status_code in [
+            404,
+            501,
+        ], f"Expected 404 or 501 for location without currents, got {response.status_code}"
+        return
 
-    # Test location specific checks
-    data = response.json()
-    assert "Test" in data["location"]["name"]
-
-    # Verify temperature data is present and valid
-    temp = data["temperature"]
-    assert "water_temp" in temp, "Missing water temperature value"
-    assert isinstance(
-        temp["water_temp"], (int, float)
-    ), "Water temperature is not a number"
-
-
-def validate_currents_response(
-    response: httpx.Response, location_code: str = NYC_LOCATION
-) -> None:
-    """Validate the response from the currents API endpoint."""
-    assert response.status_code == 200
+    # For locations with currents, validate the response
+    assert (
+        response.status_code == 200
+    ), f"Expected 200 for location with currents, got {response.status_code}"
     assert "application/json" in response.headers["content-type"]
 
     # Parse JSON response
@@ -214,7 +281,7 @@ def validate_currents_response(
 
     # Validate top-level structure
     assert "location" in data, "Missing location data"
-    assert "timestamp" in data, "Missing timestamp data"
+    assert "timestamp" in data, "Missing timestamp"
     assert "current" in data, "Missing current data"
     assert "legacy_chart" in data, "Missing legacy chart data"
     assert "current_chart_filename" in data, "Missing current chart filename"
@@ -269,21 +336,40 @@ def validate_currents_response(
 
 
 @pytest.mark.integration
-def test_currents_api_nyc(api_client: TestClient) -> None:
-    """Test the currents API endpoint for NYC location."""
-    response = api_client.get(f"/api/{NYC_LOCATION}/currents")
-    validate_currents_response(response, NYC_LOCATION)
+@pytest.mark.parametrize("location_code", TEST_LOCATIONS)
+def test_currents_api(api_client: TestClient, location_code: str) -> None:
+    """Test the currents API endpoint for all configured locations.
 
-    # Additional NYC-specific checks
-    data = response.json()
-    assert "Grimaldo's Chair" in data["location"]["swim_location"]
-    assert "New York" in data["location"]["name"]
+    This test dynamically tests all locations in the configuration.
+    """
+    # Get location config to determine what should be present
+    location_config = config.get(location_code)
+    assert location_config is not None, f"Config for {location_code} not found"
 
-    # Test with a shift parameter
-    response = api_client.get(f"/api/{NYC_LOCATION}/currents?shift=60")
-    validate_currents_response(response, NYC_LOCATION)
-    data = response.json()
-    assert data["navigation"]["shift"] == 60
+    # Test the basic currents endpoint
+    response = api_client.get(f"/api/{location_code}/currents")
+    validate_currents_response(response, location_code)
+
+    # Only continue with additional tests if the location supports currents
+    has_currents_source = (
+        hasattr(location_config, "currents_source")
+        and location_config.currents_source is not None
+    )
+    if not has_currents_source:
+        return
+
+    # For locations with currents, verify the response details
+    if response.status_code == 200:
+        data = response.json()
+        assert location_config.name in data["location"]["name"]
+        assert location_config.swim_location in data["location"]["swim_location"]
+
+        # Test with a shift parameter
+        shift_response = api_client.get(f"/api/{location_code}/currents?shift=60")
+        validate_currents_response(shift_response, location_code)
+        if shift_response.status_code == 200:
+            shift_data = shift_response.json()
+            assert shift_data["navigation"]["shift"] == 60
 
 
 @pytest.mark.integration

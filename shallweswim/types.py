@@ -177,10 +177,19 @@ class CurrentsResponse(BaseModel):
 
 
 class LocationConditions(BaseModel):
-    """Complete response for location conditions endpoint."""
+    """Complete response for location conditions endpoint.
+
+    Fields are conditionally included based on the location's configuration:
+    - temperature: Only included if the location has a temperature source with live_enabled=True
+    - tides: Only included if the location has a tide source
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     location: LocationInfo
-    temperature: TemperatureInfo
-    tides: TidesInfo
+    temperature: Optional[TemperatureInfo] = Field(
+        None, description="Water temperature information (if available)"
+    )
+    tides: Optional[TidesInfo] = Field(
+        None, description="Tide information (if available)"
+    )

@@ -6,18 +6,61 @@ import datetime
 import io
 import logging
 import urllib.parse
-from typing import Literal, cast
+from typing import Literal, Optional, TypedDict, cast
 
 # Third-party imports
 import aiohttp
 import pandas as pd
 
-# Local imports
-from shallweswim.coops_types import (
-    DateFormat,
-    CoopsRequestParams,
-    TimeInterval,
-)
+# Type definitions for NOAA CO-OPS API client
+ProductType = Literal[
+    "predictions", "currents_predictions", "air_temperature", "water_temperature"
+]
+TimeInterval = Literal["hilo", "MAX_SLACK", "h", None]
+DateFormat = "%Y%m%d"
+
+# Temperature product types
+air_temperature = "air_temperature"
+water_temperature = "water_temperature"
+
+
+class CoopsRequestParams(TypedDict, total=False):
+    """Parameters for NOAA CO-OPS API requests."""
+
+    product: ProductType
+    datum: str
+    begin_date: str
+    end_date: str
+    station: int | str
+    interval: TimeInterval
+    application: str
+    time_zone: str
+    units: str
+    format: str
+
+
+class TideData(TypedDict):
+    """Tide prediction data."""
+
+    prediction: float
+    type: Literal["low", "high"]
+
+
+class CurrentData(TypedDict):
+    """Current prediction data."""
+
+    velocity: float
+    depth: Optional[float]
+    type: Optional[str]
+    mean_flood_dir: Optional[float]
+    bin: Optional[int]
+
+
+class TemperatureData(TypedDict):
+    """Temperature data."""
+
+    water_temp: Optional[float]
+    air_temp: Optional[float]
 
 
 class CoopsApiError(Exception):

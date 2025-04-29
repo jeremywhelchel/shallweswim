@@ -5,10 +5,6 @@ This file contains setup for integration tests that hit real NOAA CO-OPS API end
 
 # Third-party imports
 import pytest
-import pytest_asyncio
-
-# Local imports
-from shallweswim.coops import CoopsApi
 
 # Real station to use for API availability check
 TIDE_STATION = 8518750  # NYC Battery - comprehensive station with good data coverage
@@ -42,17 +38,3 @@ def pytest_collection_modifyitems(
         for item in items:
             if "integration" in item.keywords:
                 item.add_marker(skip_integration)
-
-
-@pytest_asyncio.fixture(scope="session")
-async def check_api_availability() -> bool:
-    """Check if the NOAA CO-OPS API is available before running integration tests.
-
-    This prevents all tests from failing if the API is down or there's a network issue.
-    """
-    try:
-        # Make a simple request to verify API is accessible
-        await CoopsApi.tides(station=TIDE_STATION)
-        return True
-    except Exception as e:
-        pytest.skip(f"NOAA CO-OPS API unavailable, skipping integration tests: {e}")

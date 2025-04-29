@@ -24,7 +24,6 @@ NDBC_STDMET_STATION = "42001"
 # Norrie Point, Hudson River Reserve, NY
 NDBC_OCEAN_STATION = "NPQN6"
 
-
 # Basic validation functions
 
 
@@ -44,8 +43,6 @@ def validate_temperature_data(df: pd.DataFrame) -> None:
 @pytest.mark.asyncio
 async def test_live_temperature_fetch_stdmet() -> None:
     """Test fetching real temperature data from NOAA NDBC API using stdmet mode."""
-    # Skip the test if the --run-integration flag is not provided
-    pytest.importorskip("sys").argv.append("--run-integration")
 
     # Get data for the last 8 days
     end_date = datetime.date.today()
@@ -92,8 +89,6 @@ async def test_live_temperature_fetch_stdmet() -> None:
 @pytest.mark.asyncio
 async def test_live_temperature_fetch_ocean() -> None:
     """Test fetching real temperature data from NOAA NDBC API using ocean mode."""
-    # Skip the test if the --run-integration flag is not provided
-    pytest.importorskip("sys").argv.append("--run-integration")
 
     # Get data for the last 8 days
     end_date = datetime.date.today()
@@ -134,11 +129,11 @@ async def test_live_temperature_fetch_ocean() -> None:
             ), f"Water temperatures should be below boiling (212°F). Found {len(above_boiling)} problematic readings:\n{above_boiling.head(10) if len(above_boiling) > 10 else above_boiling}"
     except Exception as e:
         # Some stations might not have oceanographic data
-        # Skip the test if the station doesn't support ocean mode
+        # Fail the test if the station doesn't support ocean mode
         if "No water temperature data ('OTMP')" in str(e):
-            pytest.skip(
-                f"Station {NDBC_OCEAN_STATION} does not have oceanographic data"
-            )
+            assert (
+                False
+            ), f"Station {NDBC_OCEAN_STATION} should have oceanographic data but doesn't"
         else:
             # Re-raise any other exceptions
             raise
@@ -148,8 +143,6 @@ async def test_live_temperature_fetch_ocean() -> None:
 @pytest.mark.asyncio
 async def test_date_range_handling() -> None:
     """Test fetching temperature data with different date ranges."""
-    # Skip the test if the --run-integration flag is not provided
-    pytest.importorskip("sys").argv.append("--run-integration")
 
     # Test with a short date range (1 day)
     end_date = datetime.date.today()
@@ -193,8 +186,6 @@ async def test_date_range_handling() -> None:
 @pytest.mark.asyncio
 async def test_timezone_conversion() -> None:
     """Test timezone conversion with real data."""
-    # Skip the test if the --run-integration flag is not provided
-    pytest.importorskip("sys").argv.append("--run-integration")
 
     # Get data for the last 3 days
     end_date = datetime.date.today()
@@ -231,29 +222,31 @@ async def test_timezone_conversion() -> None:
 
     # The timestamps should be different due to timezone conversion
     # Eastern time is 3 hours ahead of Pacific time
-    if not df_eastern.empty and not df_pacific.empty:
-        # Convert both to UTC for comparison
-        eastern_utc = (
-            pd.DatetimeIndex(df_eastern.index)
-            .tz_localize("America/New_York")
-            .tz_convert("UTC")
-        )
-        pacific_utc = (
-            pd.DatetimeIndex(df_pacific.index)
-            .tz_localize("America/Los_Angeles")
-            .tz_convert("UTC")
-        )
 
-        # The UTC times should be the same
-        pd.testing.assert_index_equal(eastern_utc, pacific_utc)
+    # Add explicit assertions that data exists
+    assert not df_eastern.empty, "Eastern timezone data should not be empty"
+    assert not df_pacific.empty, "Pacific timezone data should not be empty"
+
+    # Convert both to UTC for comparison
+    eastern_utc = (
+        pd.DatetimeIndex(df_eastern.index)
+        .tz_localize("America/New_York")
+        .tz_convert("UTC")
+    )
+    pacific_utc = (
+        pd.DatetimeIndex(df_pacific.index)
+        .tz_localize("America/Los_Angeles")
+        .tz_convert("UTC")
+    )
+
+    # The UTC timestamps should be identical
+    pd.testing.assert_index_equal(eastern_utc, pacific_utc)
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_consecutive_api_calls() -> None:
     """Test making consecutive API calls to validate rate limiting handling."""
-    # Skip the test if the --run-integration flag is not provided
-    pytest.importorskip("sys").argv.append("--run-integration")
 
     # Get data for the last 3 days
     end_date = datetime.date.today()
@@ -280,8 +273,6 @@ async def test_consecutive_api_calls() -> None:
 @pytest.mark.asyncio
 async def test_invalid_station() -> None:
     """Test behavior with an invalid station ID."""
-    # Skip the test if the --run-integration flag is not provided
-    pytest.importorskip("sys").argv.append("--run-integration")
 
     # Get data for the last 3 days
     end_date = datetime.date.today()

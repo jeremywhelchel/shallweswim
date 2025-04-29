@@ -160,10 +160,6 @@ class DataManager(object):
             return None
 
         temp_config = self.config.temp_source
-        if not hasattr(temp_config, "station") or not temp_config.station:
-            return None
-
-        # Check if live temperature data is enabled for this source
         if not temp_config.live_enabled:
             self.log(
                 f"Live temperature data disabled for {self.config.code}", logging.INFO
@@ -201,8 +197,6 @@ class DataManager(object):
             return None
 
         temp_config = self.config.temp_source
-        if not hasattr(temp_config, "station") or not temp_config.station:
-            return None
 
         # Check if historical temperature data is enabled for this source
         if not temp_config.historic_enabled:

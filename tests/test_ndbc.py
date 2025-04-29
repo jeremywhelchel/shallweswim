@@ -1,5 +1,7 @@
 """Tests for NOAA NDBC API client."""
 
+# pylint: disable=duplicate-code
+
 # Standard library imports
 import datetime
 

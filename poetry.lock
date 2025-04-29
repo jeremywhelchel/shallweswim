@@ -600,6 +600,27 @@ docs = ["ipython", "matplotlib", "numpydoc", "sphinx"]
 tests = ["pytest", "pytest-cov", "pytest-xdist"]
 
 [[package]]
+name = "dataretrieval"
+version = "1.0.11"
+description = "Discover and retrieve water data from U.S. federal hydrologic web services."
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "dataretrieval-1.0.11-py3-none-any.whl", hash = "sha256:ba97a0a4926a2f6158f3577344b94d448d543eb646639812dcfa4306309738de"},
+    {file = "dataretrieval-1.0.11.tar.gz", hash = "sha256:b6a8c0336c98572047b366f01ddb1870ed5a0ea2a41e8cb4c6e18174bacf3939"},
+]
+
+[package.dependencies]
+pandas = "==2.*"
+requests = "*"
+
+[package.extras]
+doc = ["ipykernel", "ipython", "matplotlib", "nbsphinx", "nbsphinx-link", "sphinx", "sphinx-rtd-theme"]
+nldi = ["geopandas (>=0.10)"]
+test = ["coverage", "flake8", "pytest (>5.0.0)", "pytest-cov[all]", "requests-mock"]
+
+[[package]]
 name = "deprecated"
 version = "1.2.18"
 description = "Python @deprecated decorator to deprecate old python classes, functions or methods."
@@ -3161,4 +3182,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "~3.12"
-content-hash = "183907705e844b2f6cf77c3aa09609f5e25ff219ef73ea3d995c378596823a8b"
+content-hash = "0cb5d9ca70db801478678ec00b13d850d5033f51abfbaaeaa354b363583d9903"

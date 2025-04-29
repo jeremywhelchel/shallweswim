@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict
 from shallweswim import config as config_lib
 from shallweswim import coops
 from shallweswim import ndbc
+from shallweswim import nwis
 from shallweswim.util import latest_time_value, utc_now
 
 # Additional buffer before reporting data as expired
@@ -443,6 +444,57 @@ class NdbcTempFeed(TempFeed):
             raise
 
 
+class NwisTempFeed(TempFeed):
+    """USGS NWIS specific implementation of temperature data feed.
+
+    Fetches temperature data from USGS National Water Information System (NWIS) sites
+    using the nwis module.
+    """
+
+    config: config_lib.NwisTempSource
+    interval: Literal["h", "6-min"] = "h"  # NWIS typically provides hourly data
+
+    async def _fetch(self) -> pd.DataFrame:
+        """Fetch temperature data from USGS NWIS API.
+
+        Returns:
+            DataFrame with temperature data
+
+        Raises:
+            Exception: If fetching fails
+        """
+        site_no = self.config.site_no
+        parameter_cd = self.config.parameter_cd
+        # Use parameters if provided, otherwise use defaults
+        end_date = self.end or datetime.datetime.today()
+        # Default to 8 days of data if not specified
+        begin_date = self.start or (end_date - datetime.timedelta(days=8))
+
+        try:
+            # Fetch the data using the NWIS API client
+            self.log(f"Fetching NWIS data for site {site_no}", logging.INFO)
+
+            temp_df = await nwis.NwisApi.temperature(
+                site_no=site_no,
+                begin_date=begin_date,
+                end_date=end_date,
+                timezone=str(self.location_config.timezone),
+                location_code=self.location_config.code,
+                parameter_cd=parameter_cd,
+            )
+
+            self.log(
+                f"Successfully fetched {len(temp_df)} temperature readings for NWIS site {site_no}",
+                logging.INFO,
+            )
+
+            return temp_df
+        except nwis.NwisApiError as e:
+            self.log(f"Error fetching NWIS data: {e}", logging.WARNING)
+            # Following the project principle of failing fast for internal errors
+            raise
+
+
 #    config: config_lib.UsgsTempSource
 
 
@@ -703,6 +755,15 @@ class HistoricalTempsFeed(CompositeFeed):
                     start=start_date,
                     end=end_date,
                     # NdbcTempFeed already defaults to hourly data
+                    expiration_interval=expiration,
+                )
+            elif isinstance(self.config, config_lib.NwisTempSource):
+                feed = NwisTempFeed(
+                    location_config=self.location_config,
+                    config=self.config,
+                    start=start_date,
+                    end=end_date,
+                    # NwisTempFeed already defaults to hourly data
                     expiration_interval=expiration,
                 )
             else:

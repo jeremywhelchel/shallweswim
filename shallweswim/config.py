@@ -123,6 +123,31 @@ class NdbcTempSource(TempSource, frozen=True):
     ]
 
 
+class NwisTempSource(TempSource, frozen=True):
+    """USGS NWIS specific temperature data source configuration.
+
+    Defines the USGS National Water Information System (NWIS) site for fetching
+    water temperature data from rivers, lakes, and other water bodies.
+    """
+
+    site_no: Annotated[
+        str,
+        Field(
+            min_length=8,
+            max_length=15,
+            description="USGS site number (e.g., '01646500' for Potomac River at Little Falls near Washington, DC)",
+        ),
+    ]
+
+    parameter_cd: Annotated[
+        str,
+        Field(
+            default="00010",
+            description="USGS parameter code for water temperature. Default is '00010', but some stations may use '00011'.",
+        ),
+    ] = "00010"
+
+
 class LocationConfig(BaseModel, frozen=True):
     """Configuration for a swimming location.
 
@@ -366,29 +391,33 @@ _CONFIG_LIST = [
         longitude=-85.7323204,
         # XXX windy "waves" mode inapplicable here
         timezone=pytz.timezone("US/Eastern"),
+        temp_source=NwisTempSource(
+            site_no="03292494",  # Ohio River Water Tower
+            parameter_cd="00011",  # Water temperature parameter code
+            name="Ohio River at Louisville",
+        ),
         description="Louisville Kentucky open water swimming conditions",
-        # TODO: add this
-        # - temp data
-        #    water velocity (mph)
-        #    https://colab.research.google.com/drive/17-oyc95BBUUI3g1GBR5QpACAm-4G5vBk#scrollTo=vMXIJh8CCQCF
+        # Additional resources:
+        # - water velocity (mph)
+        #   https://colab.research.google.com/drive/17-oyc95BBUUI3g1GBR5QpACAm-4G5vBk#scrollTo=vMXIJh8CCQCF
         # - webcam:
-        #    https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
-        #    https://ohiorivercam.com/
+        #   https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
+        #   https://ohiorivercam.com/
     ),
     LocationConfig(
         code="tst",
         name="Test",
         swim_location="TBD",
         swim_location_link="TBD",
-        latitude=40.258,
-        longitude=-73.175,
-        timezone=pytz.timezone("US/Eastern"),
-        # https://www.ndbc.noaa.gov/station_page.php?station=44025
+        latitude=25.9,
+        longitude=-89.7,
+        timezone=pytz.timezone("US/Central"),
+        # https://www.ndbc.noaa.gov/station_page.php?station=42001
         temp_source=NdbcTempSource(
-            station="44025",
-            name="LONG ISLAND - 30 NM South of Islip, NY",
+            station="42001",  # 44025",
+            name="180 nm South of Southwest Pass, LA",
         ),
-        description="Test location.",
+        description="Test location. MID GULF",
     ),
 ]
 # Build lookup dictionaries - use lowercase keys for case-insensitive lookup

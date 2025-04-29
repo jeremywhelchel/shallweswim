@@ -144,45 +144,112 @@ h6 {
 .transit-div {
   width: 100%;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
 }
+
 .train-div {
-  width: 450px;
-  margin-left: 10px;
-  margin-right: 10px;
+  width: 300px;
+  margin: 10px;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  background-color: #f8f9fa;
 }
+
 .train-header {
   text-align: center;
+  margin-bottom: 15px;
 }
-.centering-div {
+
+.train-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.train-icon {
   display: flex;
   justify-content: center;
   align-items: center;
+  margin: 0 auto 10px;
+}
+
+.train-icon img {
+  width: 50px;
+  height: 50px;
+}
+
+.train-destination {
+  font-size: 16px;
+  margin-top: 5px;
+  font-weight: 500;
+}
+
+.train-status-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
 }
 
 /* Train status indicators */
 .chip {
-  margin-top: 10px;
-  margin-bottom: 5px;
+  margin: 8px 0;
   text-align: center;
   font-weight: bold;
   border-radius: 25px;
-  padding: 5px 15px 5px 15px;
+  padding: 8px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
+
+.chip svg {
+  width: 18px;
+  height: 18px;
+}
+
 .train-status {
   background-color: #1256ba;
+  color: white;
+  width: 80%;
+  margin: 0 auto;
 }
+
 .train-alert-div {
   display: none;
+  margin: 12px 0;
+  border-left: 3px solid;
+  padding-left: 10px;
 }
+
 .train-delay {
-  color: red;
+  color: white;
+  background-color: #dc3545;
+  border-color: #dc3545;
 }
+
 .train-service-change {
   color: black;
-  background-color: yellow;
+  background-color: #ffc107;
+  border-color: #ffc107;
 }
+
 .train-service-irregularity {
-  background-color: orange;
+  color: white;
+  background-color: #fd7e14;
+  border-color: #fd7e14;
+}
+
+.alert-details {
+  margin-top: 8px;
+  padding: 8px;
+  font-size: 14px;
+  background-color: rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
 }
 
 /* Style for the active location link */

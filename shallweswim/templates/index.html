@@ -115,33 +115,60 @@ block content %} {% if config.code == 'nyc' %}
   {% for train in ['Q','B'] %}
   <div class="train-div">
     <div class="train-header">
-      <a href="https://goodservice.io/trains/{{train}}/S" target="_blank">
-        <img src="/static/{{train}}-train.svg" width="50" height="50" />
-        <br />to <span id="{{train}}_destination">...</span>
+      <a
+        href="https://goodservice.io/trains/{{train}}/S"
+        target="_blank"
+        class="train-link"
+      >
+        <div class="train-icon">
+          <img
+            src="/static/{{train}}-train.svg"
+            width="50"
+            height="50"
+            alt="{{train}} train"
+          />
+        </div>
+        <div class="train-destination">
+          to <span id="{{train}}_destination">...</span>
+        </div>
       </a>
     </div>
-    <div class="centering-div">
+
+    <div class="train-status-container">
       <div class="chip train-status">
+        <i data-feather="clock"></i>
         <span id="{{train}}_status">...</span>
       </div>
     </div>
+
     <div class="train-alert-div" id="{{train}}_delay_div">
-      <div class="centering-div">
-        <div class="chip train-delay">Delay</div>
+      <div class="chip train-delay">
+        <i data-feather="alert-circle"></i>
+        <span>Delay</span>
       </div>
-      <span id="{{train}}_delay">...</span>
+      <div class="alert-details">
+        <span id="{{train}}_delay">...</span>
+      </div>
     </div>
+
     <div class="train-alert-div" id="{{train}}_service_change_div">
-      <div class="centering-div">
-        <div class="chip train-service-change">Service Change</div>
+      <div class="chip train-service-change">
+        <i data-feather="alert-triangle"></i>
+        <span>Service Change</span>
       </div>
-      <span id="{{train}}_service_change">...</span>
+      <div class="alert-details">
+        <span id="{{train}}_service_change">...</span>
+      </div>
     </div>
+
     <div class="train-alert-div" id="{{train}}_service_irregularity_div">
-      <div class="centering-div">
-        <div class="chip train-service-irregularity">Service Irregularity</div>
+      <div class="chip train-service-irregularity">
+        <i data-feather="info"></i>
+        <span>Service Irregularity</span>
       </div>
-      <span id="{{train}}_service_irregularity">...</span>
+      <div class="alert-details">
+        <span id="{{train}}_service_irregularity">...</span>
+      </div>
     </div>
   </div>
   {% endfor %}

@@ -16,18 +16,11 @@ import pytest
 # Local imports
 from shallweswim.nwis import NwisApi
 
-
-@pytest.fixture(scope="session")
-def run_integration(pytestconfig: pytest.Config) -> bool:
-    """Determine whether to run integration tests."""
-    return bool(pytestconfig.getoption("run_integration"))
+# Mark all tests in this file as integration tests that hit live services
+pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    "not run_integration",
-    reason="Integration tests skipped. Use --run-integration to enable.",
-)
 async def test_live_temperature_fetch() -> None:
     """Test fetching temperature data from the live USGS NWIS API.
 
@@ -85,10 +78,6 @@ async def test_live_temperature_fetch() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    "not run_integration",
-    reason="Integration tests skipped. Use --run-integration to enable.",
-)
 async def test_live_temperature_fetch_with_parameter_cd() -> None:
     """Test fetching temperature data with a specific parameter code.
 

@@ -20,7 +20,9 @@ pytestmark = pytest.mark.integration
 
 # Real stations to use for testing
 # Mid Gulf of Mexico - 180 nm South of Southwest Pass, LA
-NDBC_STATION = "42001"
+NDBC_STDMET_STATION = "42001"
+# Norrie Point, Hudson River Reserve, NY
+NDBC_OCEAN_STATION = "NPQN6"
 
 
 # Basic validation functions
@@ -51,7 +53,7 @@ async def test_live_temperature_fetch_stdmet() -> None:
 
     # Fetch temperature data from NDBC station using stdmet mode
     df = await NdbcApi.temperature(
-        station_id=NDBC_STATION,
+        station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
         timezone="America/New_York",
@@ -100,7 +102,7 @@ async def test_live_temperature_fetch_ocean() -> None:
     try:
         # Fetch temperature data from NDBC station using ocean mode
         df = await NdbcApi.temperature(
-            station_id=NDBC_STATION,
+            station_id=NDBC_OCEAN_STATION,
             begin_date=begin_date,
             end_date=end_date,
             timezone="America/New_York",
@@ -134,7 +136,9 @@ async def test_live_temperature_fetch_ocean() -> None:
         # Some stations might not have oceanographic data
         # Skip the test if the station doesn't support ocean mode
         if "No water temperature data ('OTMP')" in str(e):
-            pytest.skip(f"Station {NDBC_STATION} does not have oceanographic data")
+            pytest.skip(
+                f"Station {NDBC_OCEAN_STATION} does not have oceanographic data"
+            )
         else:
             # Re-raise any other exceptions
             raise
@@ -153,7 +157,7 @@ async def test_date_range_handling() -> None:
 
     # Fetch temperature data with a short date range
     df_short = await NdbcApi.temperature(
-        station_id=NDBC_STATION,
+        station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
         timezone="America/New_York",
@@ -168,7 +172,7 @@ async def test_date_range_handling() -> None:
 
     # Fetch temperature data with a longer date range
     df_long = await NdbcApi.temperature(
-        station_id=NDBC_STATION,
+        station_id=NDBC_STDMET_STATION,
         begin_date=begin_date_long,
         end_date=end_date,
         timezone="America/New_York",
@@ -198,7 +202,7 @@ async def test_timezone_conversion() -> None:
 
     # Fetch data with Eastern timezone
     df_eastern = await NdbcApi.temperature(
-        station_id=NDBC_STATION,
+        station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
         timezone="America/New_York",
@@ -208,7 +212,7 @@ async def test_timezone_conversion() -> None:
 
     # Fetch the same data with Pacific timezone
     df_pacific = await NdbcApi.temperature(
-        station_id=NDBC_STATION,
+        station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
         timezone="America/Los_Angeles",
@@ -258,7 +262,7 @@ async def test_consecutive_api_calls() -> None:
     # Make multiple API calls in succession
     for _ in range(3):
         df = await NdbcApi.temperature(
-            station_id=NDBC_STATION,
+            station_id=NDBC_STDMET_STATION,
             begin_date=begin_date,
             end_date=end_date,
             timezone="America/New_York",

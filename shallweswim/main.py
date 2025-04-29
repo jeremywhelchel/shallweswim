@@ -152,17 +152,41 @@ async def index() -> responses.RedirectResponse:
 
 
 @app.get("/embed")
-async def embed(request: fastapi.Request) -> responses.HTMLResponse:
-    """Serve the embed view for embedding in other websites.
+async def embed_redirect() -> responses.RedirectResponse:
+    """Redirect /embed to the default location embed page (NYC).
 
-    Currently hardcoded to NYC location. Future enhancement: support other locations.
-    Data will be fetched client-side via API.
+    Returns:
+        Redirect response to the NYC embed page
     """
+    return responses.RedirectResponse("/nyc/embed", status_code=301)
+
+
+@app.get("/{location}/embed")
+async def location_embed(
+    request: fastapi.Request, location: str
+) -> responses.HTMLResponse:
+    """Serve the embed view for a specific location for embedding in other websites.
+
+    Args:
+        request: FastAPI request object
+        location: Location code (e.g., 'nyc')
+
+    Returns:
+        HTML response with location-specific embed
+
+    Raises:
+        HTTPException: If the location is not configured
+    """
+    cfg = config.get(location)
+    if not cfg:
+        logging.warning("Bad location for embed: %s", location)
+        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
+
     return templates.TemplateResponse(
         request=request,
         name="embed.html",
         context=dict(
-            config=config.get("nyc"),
+            config=cfg,
         ),
     )
 

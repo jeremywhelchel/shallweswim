@@ -9,7 +9,9 @@ import abc
 import asyncio
 import datetime
 import logging
-from typing import List, Literal, Optional, Any
+from typing import Any, Optional, Literal, List
+
+# Third-party imports
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
@@ -648,9 +650,9 @@ class MultiStationCurrentsFeed(CompositeFeed):
         """
         feeds: List[Feed] = []
         for station in self.config.stations:
-            feed = CoopsCurrentsFeed(
+            feed = create_current_feed(
                 location_config=self.location_config,
-                config=self.config,
+                current_config=self.config,
                 station=station,
                 interpolate=self.interpolate,
                 expiration_interval=self.expiration_interval,
@@ -846,3 +848,69 @@ class HistoricalTempsFeed(CompositeFeed):
         # Sort by timestamp index and resample to hourly intervals
         # This matches the legacy implementation: historic_temps.resample("h").first()
         return result_df.sort_index().resample("h").first()
+
+
+def create_tide_feed(
+    location_config: config_lib.LocationConfig,
+    tide_config: config_lib.CoopsTideSource,
+    expiration_interval: Optional[datetime.timedelta] = None,
+) -> Feed:
+    """Create a tide feed based on the configuration type.
+
+    This factory function creates the appropriate tide feed based on the
+    tide source configuration. Currently only supports NOAA CO-OPS tide sources.
+
+    Args:
+        location_config: Location configuration
+        tide_config: NOAA CO-OPS tide source configuration
+        expiration_interval: Custom expiration interval (optional)
+
+    Returns:
+        Configured tide feed
+    """
+    # Create the tide feed
+    return CoopsTidesFeed(
+        location_config=location_config,
+        config=tide_config,
+        expiration_interval=expiration_interval,
+    )
+
+
+def create_current_feed(
+    location_config: config_lib.LocationConfig,
+    current_config: config_lib.CoopsCurrentsSource,
+    station: Optional[str] = None,
+    interpolate: bool = True,
+    expiration_interval: Optional[datetime.timedelta] = None,
+) -> Feed:
+    """Create a current feed based on the configuration type.
+
+    This factory function creates the appropriate current feed based on the
+    current source configuration. Currently only supports NOAA CO-OPS current sources.
+
+    Args:
+        location_config: Location configuration
+        current_config: NOAA CO-OPS currents source configuration
+        station: Station ID to use (optional, for multi-station configs)
+        interpolate: Whether to interpolate current data (default: True)
+        expiration_interval: Custom expiration interval (optional)
+
+    Returns:
+        Configured current feed (either single station or multi-station)
+    """
+    # For multi-station configs without a specific station, create a composite feed
+    if hasattr(current_config, "stations") and not station:
+        return MultiStationCurrentsFeed(
+            location_config=location_config,
+            config=current_config,
+            interpolate=interpolate,
+            expiration_interval=expiration_interval,
+        )
+    # For single station or when a specific station is provided
+    return CoopsCurrentsFeed(
+        location_config=location_config,
+        config=current_config,
+        station=station,
+        interpolate=interpolate,
+        expiration_interval=expiration_interval,
+    )

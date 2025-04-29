@@ -233,12 +233,16 @@ class DataManager(object):
         if not hasattr(tide_config, "station") or not tide_config.station:
             return None
 
-        return feeds.CoopsTidesFeed(
-            location_config=self.config,
-            config=tide_config,
-            # Set expiration interval to match our existing settings
-            expiration_interval=EXPIRATION_PERIODS["tides"],
-        )
+        # Use the factory function to create the appropriate feed
+        try:
+            return feeds.create_tide_feed(
+                location_config=self.config,
+                tide_config=tide_config,
+                expiration_interval=EXPIRATION_PERIODS["tides"],
+            )
+        except TypeError as e:
+            # Re-raise with more context about what we were trying to do
+            raise TypeError(f"Error configuring tide feed: {e}") from e
 
     def _configure_currents_feed(self) -> Optional[feeds.Feed]:
         """Configure the currents feed.
@@ -256,12 +260,17 @@ class DataManager(object):
         if not hasattr(currents_config, "stations") or not currents_config.stations:
             return None
 
-        return feeds.MultiStationCurrentsFeed(
-            location_config=self.config,
-            config=currents_config,
-            # Set expiration interval to match our existing settings
-            expiration_interval=EXPIRATION_PERIODS["currents"],
-        )
+        # Use the factory function to create the appropriate feed
+        try:
+            return feeds.create_current_feed(
+                location_config=self.config,
+                current_config=currents_config,
+                interpolate=True,  # Always interpolate for better visualization
+                expiration_interval=EXPIRATION_PERIODS["currents"],
+            )
+        except TypeError as e:
+            # Re-raise with more context about what we were trying to do
+            raise TypeError(f"Error configuring currents feed: {e}") from e
 
     @property
     def ready(self) -> bool:

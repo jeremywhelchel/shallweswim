@@ -834,7 +834,9 @@ class LocationDataManager(object):
             return datetime.time(0), 0.0
 
         ((time, temp),) = live_temps_data.tail(1)["water_temp"].items()
-        return time, temp
+        # Round temperature to 1 decimal place to avoid excessive precision
+        rounded_temp = round(temp, 1)
+        return time, rounded_temp
 
     def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
         """Handle exceptions from asyncio tasks to prevent them from being silently ignored.

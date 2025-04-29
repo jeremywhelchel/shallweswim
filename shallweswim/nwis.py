@@ -19,7 +19,6 @@ import dataretrieval.nwis as nwis
 import pandas as pd
 
 # Local imports
-from shallweswim.util import c_to_f
 
 
 class NwisApiError(Exception):
@@ -121,9 +120,6 @@ class NwisApi:
                 {"water_temp": raw_result[temp_column]}, index=raw_result.index
             )
 
-            # NWIS reports temperatures in Celsius, convert to Fahrenheit to match our standard
-            temp_df["water_temp"] = temp_df["water_temp"].apply(c_to_f)
-
             # Convert timestamps to local timezone
             temp_df = cls._fix_time(temp_df, timezone)
 
@@ -143,19 +139,19 @@ class NwisApi:
 
     @classmethod
     def _fix_time(cls, df: pd.DataFrame, timezone: str) -> pd.DataFrame:
-        """Convert UTC timestamps to local timezone.
+        """Convert timestamps to local timezone.
 
         Args:
-            df: DataFrame with UTC timestamps in the index
+            df: DataFrame with timestamps in the index (either naive or tz-aware)
             timezone: Timezone to convert timestamps to
 
         Returns:
             DataFrame with local timezone timestamps (naive datetimes)
         """
-        # First, make the timestamps timezone-aware (UTC)
-        df.index = df.index.tz_localize("UTC")
 
-        # Then convert to the location's timezone
+        assert df.index.tzinfo is not None
+
+        # Convert to the location's timezone
         df.index = df.index.tz_convert(timezone)
 
         # Finally, make the timestamps naive again (remove timezone info)

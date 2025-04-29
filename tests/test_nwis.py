@@ -12,7 +12,6 @@ from unittest.mock import patch, AsyncMock
 
 # Local imports
 from shallweswim.nwis import NwisApi, NwisApiError
-from shallweswim.util import c_to_f
 
 
 def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:
@@ -21,20 +20,21 @@ def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:
     Args:
         parameter_cd: Parameter code for water temperature ('00010' or '00011')
     """
-    # Create timestamps for the index
+    # Create timezone-aware timestamps for the index (UTC)
     timestamps = [
-        pd.Timestamp("2025-04-19 14:00:00"),
-        pd.Timestamp("2025-04-19 15:00:00"),
+        pd.Timestamp("2025-04-19 14:00:00", tz="UTC"),
+        pd.Timestamp("2025-04-19 15:00:00", tz="UTC"),
     ]
 
     # Create a column name that includes the parameter code
     # Format similar to what the NWIS API returns: 'USGS:SITE_NO:00010:00000_00003'
     temp_column = f"USGS:03292494:{parameter_cd}:00000_00003"
 
-    # Create DataFrame with water temperature in Celsius
+    # Create DataFrame with water temperature in Fahrenheit
+    # NWIS API returns data already in Fahrenheit
     df = pd.DataFrame(
         {
-            temp_column: [15.5, 16.2],  # ~60°F and ~61°F in Fahrenheit
+            temp_column: [59.9, 61.2],  # Already in Fahrenheit
         },
         index=timestamps,
     )
@@ -65,9 +65,9 @@ async def test_temperature_success() -> None:
 
     assert len(df) == 2
     assert "water_temp" in df.columns
-    # Check that temperatures were converted from Celsius to Fahrenheit
-    assert round(df["water_temp"].iloc[0], 1) == 59.9  # 15.5°C = 59.9°F
-    assert round(df["water_temp"].iloc[1], 1) == 61.2  # 16.2°C = 61.2°F
+    # Check that temperatures are in Fahrenheit
+    assert round(df["water_temp"].iloc[0], 1) == 59.9
+    assert round(df["water_temp"].iloc[1], 1) == 61.2
 
 
 @pytest.mark.asyncio
@@ -101,8 +101,8 @@ async def test_temperature_with_parameter_cd() -> None:
     assert "water_temp" in df.columns
     assert len(df) == 2
 
-    # Check that temperatures were converted from Celsius to Fahrenheit
-    expected_temps = [c_to_f(15.5), c_to_f(16.2)]
+    # Check that temperatures are in Fahrenheit
+    expected_temps = [59.9, 61.2]
     pd.testing.assert_series_equal(
         df["water_temp"],
         pd.Series(expected_temps, index=df.index, name="water_temp"),
@@ -196,11 +196,11 @@ async def test_missing_temp_column() -> None:
 @pytest.mark.asyncio
 async def test_fix_time() -> None:
     """Test the _fix_time method."""
-    # Create a DataFrame with UTC timestamps
+    # Create a DataFrame with timezone-aware UTC timestamps
     index = pd.DatetimeIndex(
         [
-            pd.Timestamp("2025-04-19 14:00:00"),  # 10:00 AM EDT
-            pd.Timestamp("2025-04-19 20:00:00"),  # 4:00 PM EDT
+            pd.Timestamp("2025-04-19 14:00:00", tz="UTC"),  # 10:00 AM EDT
+            pd.Timestamp("2025-04-19 20:00:00", tz="UTC"),  # 4:00 PM EDT
         ]
     )
     df = pd.DataFrame({"water_temp": [59.9, 61.2]}, index=index)

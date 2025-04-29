@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 # Local imports
 from shallweswim.api import register_routes, data
 from shallweswim import config as config_lib
-from shallweswim.data import DataManager
+from shallweswim.data import LocationDataManager
 from tests.helpers import assert_json_serializable
 
 
@@ -39,7 +39,7 @@ def mock_data_managers() -> Generator[None, None, None]:
     sf_config.name = "San Francisco"
 
     # Create mock data managers
-    nyc_data = MagicMock(spec=DataManager)
+    nyc_data = MagicMock(spec=LocationDataManager)
     nyc_data.status = {
         "tides": {
             "name": "NoaaTidesFeed",
@@ -64,7 +64,7 @@ def mock_data_managers() -> Generator[None, None, None]:
     }
     nyc_data.ready = True
 
-    sf_data = MagicMock(spec=DataManager)
+    sf_data = MagicMock(spec=LocationDataManager)
     sf_data.status = {
         "tides": {
             "name": "NoaaTidesFeed",

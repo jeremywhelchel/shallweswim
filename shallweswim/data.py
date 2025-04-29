@@ -122,8 +122,8 @@ def _process_local_magnitude_pct(
     return result_df
 
 
-class DataManager(object):
-    """DataManager for ShallWeSwim application.
+class LocationDataManager(object):
+    """LocationDataManager for ShallWeSwim application.
 
     This class manages all the data feeds for one location. It handles fetching, processing,
     and storing data from various NOAA sources, including tides, currents, and temperature

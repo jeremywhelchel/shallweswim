@@ -14,7 +14,7 @@ import pytest_asyncio
 from typing import Any
 
 # Local imports
-from shallweswim.data import DataManager
+from shallweswim.data import LocationDataManager
 from shallweswim.types import CurrentInfo  # Import from types module where it's defined
 from shallweswim import config as config_lib
 
@@ -76,9 +76,9 @@ def mock_current_data() -> pd.DataFrame:
 @pytest_asyncio.fixture
 async def mock_data_with_currents(
     mock_config: Any, mock_current_data: pd.DataFrame
-) -> DataManager:
-    """Create a DataManager instance with mock current data."""
-    data = DataManager(mock_config)
+) -> LocationDataManager:
+    """Create a LocationDataManager instance with mock current data."""
+    data = LocationDataManager(mock_config)
 
     # Create a mock currents feed
     mock_currents_feed = MagicMock()
@@ -93,7 +93,7 @@ async def mock_data_with_currents(
 
 @pytest.mark.asyncio
 async def test_current_prediction_at_flood_peak(
-    mock_data_with_currents: DataManager,
+    mock_data_with_currents: LocationDataManager,
 ) -> None:
     """Test current prediction at a flood peak."""
     # Test at 3:00 PM (15:00) which is a flood peak at 1.5 knots
@@ -112,7 +112,7 @@ async def test_current_prediction_at_ebb_peak() -> None:
     # Create a custom test instance
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    data = DataManager(config)
+    data = LocationDataManager(config)
 
     # Create a more comprehensive dataset for testing ebb currents
     # Create a single day with a complete cycle
@@ -188,7 +188,7 @@ async def test_current_prediction_at_ebb_peak() -> None:
 
 @pytest.mark.asyncio
 async def test_current_prediction_at_slack(
-    mock_data_with_currents: DataManager,
+    mock_data_with_currents: LocationDataManager,
 ) -> None:
     """Test current prediction at slack water."""
     # Test at 4:00 AM (4:00) which is near zero (0.1 knots)
@@ -206,7 +206,7 @@ async def test_current_prediction_strengthening() -> None:
     # Create a custom test instance with clear strengthening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    data = DataManager(config)
+    data = LocationDataManager(config)
 
     # Create data with a clear strengthening pattern
     hours = [12, 13, 14]
@@ -244,7 +244,7 @@ async def test_current_prediction_weakening() -> None:
     # Create a custom test instance with clear weakening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    data = DataManager(config)
+    data = LocationDataManager(config)
 
     # Create data with a clear weakening pattern
     hours = [15, 16, 17]
@@ -279,7 +279,7 @@ async def test_process_peaks_function() -> None:
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
 
-    data = DataManager(config)
+    data = LocationDataManager(config)
 
     # Create a very distinct peak pattern
     index = pd.date_range(start="2025-04-22", periods=5, freq="h")
@@ -402,7 +402,7 @@ async def test_data_ready_property(
     Tests different combinations of dataset states to verify the ready property
     accurately represents if all data has been loaded and is not expired.
     """
-    data = DataManager(mock_config)
+    data = LocationDataManager(mock_config)
 
     # Mock the _expired method to control its behavior based on timestamps
 
@@ -475,17 +475,17 @@ async def test_data_ready_property(
 
 @pytest.mark.asyncio
 async def test_wait_until_ready() -> None:
-    """Test the wait_until_ready method of the DataManager class.
+    """Test the wait_until_ready method of the LocationDataManager class.
 
     Tests different scenarios:
     1. All feeds ready immediately
     2. Feeds becoming ready during the wait
     3. Timeout occurring before feeds are ready
     """
-    # Create a DataManager instance
+    # Create a LocationDataManager instance
     config = MagicMock(spec=config_lib.LocationConfig)
     config.code = "nyc"
-    data = DataManager(config)
+    data = LocationDataManager(config)
 
     # Scenario 1: All feeds ready immediately
     # Create mock feeds that are already ready
@@ -542,7 +542,7 @@ async def test_wait_until_ready() -> None:
 
     # Create an async function that raises a TimeoutError when called with wait_for
     async def wait_until_ready_timeout() -> bool:
-        # This will cause the asyncio.wait_for in DataManager.wait_until_ready to timeout
+        # This will cause the asyncio.wait_for in LocationDataManager.wait_until_ready to timeout
         await asyncio.sleep(10.0)  # Much longer than our timeout
         return True
 
@@ -558,15 +558,15 @@ async def test_wait_until_ready() -> None:
 
 @pytest.mark.asyncio
 async def test_data_status_property() -> None:
-    """Test the status property of the DataManager class.
+    """Test the status property of the LocationDataManager class.
 
     Verifies that the status property returns a dictionary mapping feed names to their status dictionaries,
     and that the dictionary is JSON serializable.
     """
-    # Create a DataManager instance
+    # Create a LocationDataManager instance
     config = MagicMock(spec=config_lib.LocationConfig)
     config.code = "nyc"
-    data = DataManager(config)
+    data = LocationDataManager(config)
 
     # Create mock feeds with status dictionaries
     mock_feeds = []

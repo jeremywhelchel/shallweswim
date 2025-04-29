@@ -666,7 +666,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
         """Combine current data from multiple stations.
 
         Strategy: For overlapping timestamps, calculate the average velocity.
-        This matches the legacy implementation in DataManager._fetch_tides_and_currents.
+        This matches the legacy implementation in LocationDataManager._fetch_tides_and_currents.
 
         Args:
             dataframes: List of DataFrames from individual current stations

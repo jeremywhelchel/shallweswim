@@ -29,18 +29,18 @@ from typing import Dict, Any
 
 
 # Global data store for location data
-data: dict[str, data_lib.DataManager] = {}
+data: dict[str, data_lib.LocationDataManager] = {}
 
 
 async def initialize_location_data(
     location_codes: list[str],
-    data_dict: Optional[dict[str, data_lib.DataManager]] = None,
+    data_dict: Optional[dict[str, data_lib.LocationDataManager]] = None,
     wait_for_data: bool = False,
     timeout: Optional[float] = 30.0,
-) -> dict[str, data_lib.DataManager]:
+) -> dict[str, data_lib.LocationDataManager]:
     """Initialize data for the specified locations.
 
-    This function handles initialization of DataManager objects for the specified locations.
+    This function handles initialization of LocationDataManager objects for the specified locations.
     It can be used by both the main application and tests.
 
     Args:
@@ -50,7 +50,7 @@ async def initialize_location_data(
         timeout: Maximum time in seconds to wait for data to be ready (None for no timeout)
 
     Returns:
-        Dictionary mapping location codes to initialized DataManager objects
+        Dictionary mapping location codes to initialized LocationDataManager objects
 
     Raises:
         AssertionError: If a location's configuration cannot be found or if required data isn't loaded
@@ -66,7 +66,7 @@ async def initialize_location_data(
         assert cfg is not None, f"Config for location '{code}' not found"
 
         # Initialize data for this location
-        data_dict[code] = data_lib.DataManager(cfg)
+        data_dict[code] = data_lib.LocationDataManager(cfg)
         data_dict[code].start()
 
     # Optionally wait for data to be fully loaded

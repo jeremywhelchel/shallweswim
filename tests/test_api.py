@@ -12,22 +12,30 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 # Local imports
-from shallweswim.api import register_routes, data
+from shallweswim.api import register_routes
 from shallweswim import config as config_lib
 from shallweswim.data import LocationDataManager
 from tests.helpers import assert_json_serializable
 
 
 @pytest.fixture
-def test_client() -> TestClient:
+def app() -> FastAPI:
+    """Create a FastAPI application for testing."""
+    app_instance = FastAPI()
+    # Initialize app.state.data_managers
+    app_instance.state.data_managers = {}
+    register_routes(app_instance)
+    return app_instance
+
+
+@pytest.fixture
+def test_client(app: FastAPI) -> TestClient:
     """Create a test client for the FastAPI application."""
-    app = FastAPI()
-    register_routes(app)
     return TestClient(app)
 
 
 @pytest.fixture
-def mock_data_managers() -> Generator[None, None, None]:
+def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
     """Create mock data managers for testing."""
     # Create mock location configs
     nyc_config = MagicMock(spec=config_lib.LocationConfig)
@@ -86,17 +94,11 @@ def mock_data_managers() -> Generator[None, None, None]:
             "sf": sf_config,
         }.get(code)
 
-        # Patch the global data dictionary
-        original_data = data.copy()
-        data.clear()
-        data["nyc"] = nyc_data
-        data["sf"] = sf_data
+        # Add data managers to the app state
+        app.state.data_managers["nyc"] = nyc_data
+        app.state.data_managers["sf"] = sf_data
 
         yield
-
-        # Restore the original data
-        data.clear()
-        data.update(original_data)
 
 
 def test_location_status_endpoint(

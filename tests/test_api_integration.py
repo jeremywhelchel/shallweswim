@@ -43,20 +43,20 @@ async def api_client() -> TestClient:
     This creates a dedicated FastAPI app with only the API routes registered.
     """
 
-    # Clear existing data to ensure a clean state
-    api.data.clear()
+    # Create a dedicated FastAPI app for API testing only
+    app = fastapi.FastAPI(title="ShallWeSwim API Test App")
+
+    # Initialize app.state.data_managers
+    app.state.data_managers = {}
 
     # Initialize data for all test locations
     # We set wait_for_data=True to ensure data is loaded before tests run
     await api.initialize_location_data(
         location_codes=TEST_LOCATIONS,
-        data_dict=api.data,
+        app=app,  # Pass the app instance
         wait_for_data=True,  # Wait for data to load before running tests
         timeout=30.0,  # Maximum time to wait for data to be ready
     )
-
-    # Create a dedicated FastAPI app for API testing only
-    app = fastapi.FastAPI(title="ShallWeSwim API Test App")
 
     # Register only the API routes
     api.register_routes(app)

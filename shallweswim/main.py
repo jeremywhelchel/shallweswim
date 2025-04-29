@@ -26,13 +26,13 @@ from shallweswim import config, api
 
 
 @contextlib.asynccontextmanager
-async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     """Initialize data sources during application startup.
 
     This loads data for all configured locations and starts data collection.
 
     Args:
-        _app: The FastAPI application instance (not used)
+        app: The FastAPI application instance
 
     Yields:
         None when setup is complete
@@ -41,7 +41,7 @@ async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     # Don't wait for data to load since this will block application startup
     await api.initialize_location_data(
         location_codes=list(config.CONFIGS.keys()),
-        data_dict=api.data,
+        app=app,  # Pass the app instance to store data in app.state
         wait_for_data=False,  # Don't block app startup waiting for data
     )
     yield
@@ -135,7 +135,10 @@ async def location_water_current(
         )
 
     # Check if location data exists
-    if location not in api.data:
+    if (
+        not hasattr(app.state, "data_managers")
+        or location not in app.state.data_managers
+    ):
         raise HTTPException(
             status_code=404, detail=f"Data for location {location} not found"
         )

@@ -28,12 +28,12 @@ from shallweswim.types import (
 from typing import Dict, Any
 
 
-# Global data store for location data
-data: dict[str, data_lib.LocationDataManager] = {}
+# Data store for location data will be stored in app.state.data_managers
 
 
 async def initialize_location_data(
     location_codes: list[str],
+    app: Optional[fastapi.FastAPI] = None,
     data_dict: Optional[dict[str, data_lib.LocationDataManager]] = None,
     wait_for_data: bool = False,
     timeout: Optional[float] = 30.0,
@@ -55,9 +55,16 @@ async def initialize_location_data(
     Raises:
         AssertionError: If a location's configuration cannot be found or if required data isn't loaded
     """
-    # Use the provided data dictionary or create a new one
+    # Use the provided data dictionary, app.state.data_managers, or create a new one
     if data_dict is None:
-        data_dict = {}
+        if app is not None and hasattr(app.state, "data_managers"):
+            data_dict = app.state.data_managers
+        else:
+            data_dict = {}
+
+    # If we have an app but no data_managers attribute yet, initialize it
+    if app is not None and not hasattr(app.state, "data_managers"):
+        app.state.data_managers = data_dict
 
     # Initialize each location
     for code in location_codes:
@@ -127,10 +134,12 @@ def register_routes(app: fastapi.FastAPI) -> None:
         cfg = validate_location(location)
 
         # Get current water temperature
-        current_time, current_temp = data[location].live_temp_reading()
+        current_time, current_temp = app.state.data_managers[
+            location
+        ].live_temp_reading()
 
         # Get tide information
-        tide_info = data[location].prev_next_tide()
+        tide_info = app.state.data_managers[location].prev_next_tide()
 
         # Create Pydantic model instances
         past_tides = [
@@ -186,8 +195,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
         # Generate the tide/current plot
         try:
             # Get data from feeds
-            tides_feed = data[location]._feeds.get("tides")
-            currents_feed = data[location]._feeds.get("currents")
+            tides_feed = app.state.data_managers[location]._feeds.get("tides")
+            currents_feed = app.state.data_managers[location]._feeds.get("currents")
 
             # Get values from feeds
             tides_data = tides_feed.values if tides_feed is not None else None
@@ -218,14 +227,14 @@ def register_routes(app: fastapi.FastAPI) -> None:
         logging.info("[api] Processing ready status request")
 
         # If no locations are configured, we're not ready
-        if not data:
+        if not hasattr(app.state, "data_managers") or not app.state.data_managers:
             logging.warning("[api] No locations configured")
             raise HTTPException(
                 status_code=503, detail="Service not ready - no locations configured"
             )
 
         # Check each location
-        for loc_code, loc_data in data.items():
+        for loc_code, loc_data in app.state.data_managers.items():
             # Check if location data exists
             if not loc_data:
                 logging.warning(f"[{loc_code}] Location not in data dictionary")
@@ -257,13 +266,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
         logging.info("[api] Processing all locations status request")
 
         # If no locations are configured, return an error
-        if not data:
+        if not hasattr(app.state, "data_managers") or not app.state.data_managers:
             logging.warning("[api] No locations configured")
             raise HTTPException(status_code=404, detail="No locations configured")
 
         # Build status dictionary for all locations
         status_dict: Dict[str, Any] = {}
-        for loc_code, loc_data in data.items():
+        for loc_code, loc_data in app.state.data_managers.items():
             if loc_data:
                 status_dict[loc_code] = loc_data.status
 
@@ -288,14 +297,18 @@ def register_routes(app: fastapi.FastAPI) -> None:
         validate_location(location)
 
         # Check if location data exists
-        if location not in data or not data[location]:
+        if (
+            location not in app.state.data_managers
+            or not app.state.data_managers[location]
+        ):
             logging.warning(f"[{location}] Location not in data dictionary")
             raise HTTPException(
                 status_code=404, detail=f"Location '{location}' not found in data"
             )
 
         # Return the status dictionary for this location
-        return data[location].status
+        status_dict: Dict[str, Any] = app.state.data_managers[location].status
+        return status_dict
 
     @app.get("/api/{location}/currents", response_model=CurrentsResponse)
     async def location_currents(location: str, shift: int = 0) -> CurrentsResponse:
@@ -333,10 +346,10 @@ def register_routes(app: fastapi.FastAPI) -> None:
         ts = util.effective_time(cfg.timezone, shift_minutes=shift)
 
         # Get current prediction information
-        current_info = data[location].current_prediction(ts)
+        current_info = app.state.data_managers[location].current_prediction(ts)
 
         # Get legacy chart information
-        chart_info = data[location].legacy_chart_info(ts)
+        chart_info = app.state.data_managers[location].legacy_chart_info(ts)
 
         # Get fwd/back shift values for navigation
         fwd = min(shift + 60, util.MAX_SHIFT_LIMIT)

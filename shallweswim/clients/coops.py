@@ -12,6 +12,9 @@ from typing import Literal, Optional, TypedDict, cast
 import aiohttp
 import pandas as pd
 
+# Local imports
+from shallweswim.clients.base import BaseApiClient
+
 # Type definitions for NOAA CO-OPS API client
 ProductType = Literal[
     "predictions", "currents_predictions", "air_temperature", "water_temperature"
@@ -75,7 +78,7 @@ class CoopsDataError(CoopsApiError):
     """Error in data returned by NOAA CO-OPS API."""
 
 
-class CoopsApi:
+class CoopsApi(BaseApiClient):
     """Client for the NOAA CO-OPS Tides and Currents API.
 
     This class provides methods to fetch tide predictions, current predictions,

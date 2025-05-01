@@ -19,6 +19,7 @@ import dataretrieval.nwis as nwis
 import pandas as pd
 
 # Local imports
+from shallweswim.clients.base import BaseApiClient
 from shallweswim.util import c_to_f
 
 
@@ -34,7 +35,7 @@ class NwisDataError(NwisApiError):
     """Error in data returned by USGS NWIS API."""
 
 
-class NwisApi:
+class NwisApi(BaseApiClient):
     """Client for the USGS NWIS API.
 
     This class provides methods to fetch hydrological and water quality data

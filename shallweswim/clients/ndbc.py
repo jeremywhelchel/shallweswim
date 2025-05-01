@@ -10,10 +10,11 @@ import datetime
 import logging
 
 # Third-party imports
-import ndbc_api
 import pandas as pd
+from ndbc_api import NdbcApi as NdbcApiClient  # Alias to avoid name clash
 
 # Local imports
+from shallweswim.clients.base import BaseApiClient
 from shallweswim.util import c_to_f
 
 
@@ -29,11 +30,10 @@ class NdbcDataError(NdbcApiError):
     """Error in data returned by NOAA NDBC API."""
 
 
-class NdbcApi:
-    """Client for the NOAA NDBC API.
+class NdbcApi(BaseApiClient):
+    """NOAA NDBC API client.
 
-    This class provides methods to fetch meteorological and oceanographic data
-    from NOAA's National Data Buoy Center (NDBC) stations.
+    Wrapper around the ndbc-api library to fetch data from NDBC stations.
     """
 
     @classmethod
@@ -72,7 +72,7 @@ class NdbcApi:
 
         try:
             # Initialize the NDBC API client
-            api = ndbc_api.NdbcApi()
+            api = NdbcApiClient()
 
             # Fetch the data using asyncio.to_thread to avoid blocking
             logging.info(

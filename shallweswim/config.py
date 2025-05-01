@@ -550,6 +550,24 @@ _CONFIG_LIST = [
         description="Austin, TX open water swimming conditions",
     ),
     LocationConfig(
+        code="bos",
+        name="Boston",
+        swim_location="L Street Beach",
+        swim_location_link="https://www.openwaterpedia.com/wiki/L_Street_Bathhouse",
+        latitude=42.329,
+        longitude=-71.036,
+        timezone=pytz.timezone("US/Eastern"),
+        temp_source=NdbcTempSource(
+            station="44013",
+            name="Boston Approach Lighted Buoy (16 NM East)",
+        ),
+        tide_source=CoopsTideSource(
+            station=8443970,
+            station_name="Boston, MA",
+        ),
+        description="Boston, MA open water swimming conditions",
+    ),
+    LocationConfig(
         enabled=False,
         code="tst",
         name="Test",

@@ -119,6 +119,26 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
                 temp["water_temp"], (int, float)
             ), "Water temperature is not a number"
 
+            # Always verify the timestamp is recent (within the last 3 hours)
+            # Parse the timestamp - should be naive
+            temp_time = dateutil.parser.isoparse(temp["timestamp"])
+
+            # Make sure it's naive for comparison
+            if temp_time.tzinfo is not None:
+                temp_time = temp_time.replace(tzinfo=None)
+
+            # Get local now time (naive) from the location config
+            local_now = location_config.local_now()
+
+            # Calculate time difference
+            time_diff = local_now - temp_time
+
+            # Use a 3-hour window
+            assert time_diff.total_seconds() <= 3 * 3600, (
+                f"Temperature timestamp {temp_time} is more than 3 hours old "
+                f"(current time: {local_now}, difference: {time_diff})"
+            )
+
     # Validate tides data if the location has a tide source
     has_tide_source = (
         hasattr(location_config, "tide_source")

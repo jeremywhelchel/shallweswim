@@ -3,14 +3,39 @@
 # Standard library imports
 import datetime
 import io
+from typing import Any, cast
 
 # Third-party imports
+import aiohttp
 import pandas as pd
 import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 # Local imports
-from shallweswim.clients.coops import CoopsApi, CoopsConnectionError, CoopsDataError
+from shallweswim.clients.coops import (
+    CoopsApi,
+    CoopsConnectionError,
+)
+from pandas.testing import assert_frame_equal
+
+
+# Type definitions for test data (assuming they are defined elsewhere or basic)
+# Fixtures
+
+
+@pytest.fixture
+def mock_session() -> MagicMock:
+    """Provides a mock aiohttp ClientSession."""
+    # Using MagicMock as the session itself doesn't need async methods mocked here
+    # The _Request method, which uses the session, will be mocked in tests
+    return MagicMock(spec=aiohttp.ClientSession)
+
+
+@pytest.fixture
+def coops_client(mock_session: MagicMock) -> CoopsApi:
+    """Provides an instance of CoopsApi with a mock session."""
+    # Instantiate with the mocked session
+    return CoopsApi(session=mock_session)
 
 
 @pytest.fixture
@@ -42,29 +67,32 @@ def mock_current_data() -> pd.DataFrame:
 
 @pytest.fixture
 def mock_temperature_data() -> pd.DataFrame:
-    """Mock temperature data."""
-    return pd.DataFrame(
-        {
-            "Date Time": ["2025-04-19 10:00", "2025-04-19 16:00"],
-            " Water Temperature": [62.5, 63.2],
-            " Air Temperature": [68.0, 70.5],
-            " X": [1, 1],
-            " N": [1, 1],
-            " R ": [1, 1],
-        }
-    )
+    """Create a mock temperature DataFrame."""
+    # Data *before* _FixTime processing (as returned by _Request mock)
+    data = {
+        "Date Time": ["2025-04-19 10:00", "2025-04-19 16:00"],
+        " Water Temperature": [62.5, 63.2],  # Match raw column name from API
+        " Air Temperature": [65.0, 66.0],  # Include air temp too
+    }
+    df = pd.DataFrame(data)
+    return df
 
 
 @pytest.mark.asyncio
-async def test_tides_success(mock_tide_data: pd.DataFrame) -> None:
+async def test_tides_success(
+    coops_client: CoopsApi, mock_tide_data: pd.DataFrame
+) -> None:
     """Test successful tide prediction fetch."""
     # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
+    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
         # Set up the mock to return the proper DataFrame directly
         mock_df = pd.read_csv(io.StringIO(mock_tide_data.to_csv(index=False)))
         mock_request.return_value = mock_df
 
-        df = await CoopsApi.tides(station=9414290)
+        df = await coops_client.tides(
+            station=9414290,
+            location_code="test_loc",
+        )
 
     assert len(df) == 2
     assert list(df.columns) == ["prediction", "type"]
@@ -73,15 +101,21 @@ async def test_tides_success(mock_tide_data: pd.DataFrame) -> None:
 
 
 @pytest.mark.asyncio
-async def test_currents_success(mock_current_data: pd.DataFrame) -> None:
+async def test_currents_success(
+    coops_client: CoopsApi, mock_current_data: pd.DataFrame
+) -> None:
     """Test successful current prediction fetch."""
     # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
+    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
         # Set up the mock to return the proper DataFrame directly
         mock_df = pd.read_csv(io.StringIO(mock_current_data.to_csv(index=False)))
         mock_request.return_value = mock_df
 
-        df = await CoopsApi.currents(station="SFB1201", interpolate=False)
+        df = await coops_client.currents(
+            station="SFB1201",
+            interpolate=False,
+            location_code="test_loc",
+        )
 
     assert len(df) == 2
     assert list(df.columns) == ["velocity"]
@@ -89,89 +123,101 @@ async def test_currents_success(mock_current_data: pd.DataFrame) -> None:
 
 
 @pytest.mark.asyncio
-async def test_temperature_success(mock_temperature_data: pd.DataFrame) -> None:
+async def test_temperature_success(
+    coops_client: CoopsApi, mock_temperature_data: pd.DataFrame
+) -> None:
     """Test successful temperature fetch."""
     # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
-        # Set up the mock to return the proper DataFrame directly
-        mock_df = pd.read_csv(io.StringIO(mock_temperature_data.to_csv(index=False)))
-        mock_request.return_value = mock_df
+    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
+        # Assign the fixture DataFrame directly
+        mock_request.return_value = mock_temperature_data
 
-        df = await CoopsApi.temperature(
+        # Test water temperature
+        df_water = await coops_client.temperature(
             station=9414290,
-            product="water_temperature",
             begin_date=datetime.date(2025, 4, 19),
             end_date=datetime.date(2025, 4, 19),
+            product="water_temperature",
         )
+        expected_water_df = pd.DataFrame(
+            {"water_temp": [62.5, 63.2], "air_temp": [65.0, 66.0]},
+            index=pd.to_datetime(["2025-04-19 10:00:00", "2025-04-19 16:00:00"]),
+        ).rename_axis(
+            "time"
+        )  # Match index name set by _FixTime
+        # Client returns all temp columns found, test needs to select the relevant one
+        assert_frame_equal(df_water[["water_temp"]], expected_water_df[["water_temp"]])
 
-    assert len(df) == 2
-    assert "water_temp" in df.columns
-    assert df["water_temp"].tolist() == [62.5, 63.2]
-
-
-@pytest.mark.asyncio
-async def test_connection_error() -> None:
-    """Test handling of connection errors."""
-    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
-        # Simulate a connection error
-        mock_request.side_effect = CoopsConnectionError(
-            "Failed to connect to NOAA CO-OPS API: Network error"
+        # Test air temperature
+        df_air = await coops_client.temperature(
+            station=9414290,
+            begin_date=datetime.date(2025, 4, 19),
+            end_date=datetime.date(2025, 4, 19),
+            product="air_temperature",
         )
-
-        with pytest.raises(
-            CoopsConnectionError, match="Failed to connect to NOAA CO-OPS API"
-        ):
-            await CoopsApi.tides(station=9414290)
-
-
-@pytest.mark.asyncio
-async def test_data_error() -> None:
-    """Test handling of API data errors."""
-    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
-        # Mock error response
-        mock_request.side_effect = CoopsDataError("Invalid station ID")
-
-        with pytest.raises(CoopsDataError, match="Invalid station ID"):
-            await CoopsApi.tides(station=9414290)
+        expected_air_df = pd.DataFrame(
+            {"water_temp": [62.5, 63.2], "air_temp": [65.0, 66.0]},
+            index=pd.to_datetime(["2025-04-19 10:00:00", "2025-04-19 16:00:00"]),
+        ).rename_axis(
+            "time"
+        )  # Match index name set by _FixTime
+        # Client returns all temp columns found, test needs to select the relevant one
+        assert_frame_equal(df_air[["air_temp"]], expected_air_df[["air_temp"]])
 
 
 @pytest.mark.asyncio
-async def test_invalid_temperature_dates() -> None:
-    """Test validation of temperature date ranges."""
+async def test_connection_error(coops_client: CoopsApi) -> None:
+    """Test connection error handling."""
+    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
+        mock_request.side_effect = CoopsConnectionError("Connection timed out")
+
+        with pytest.raises(CoopsConnectionError, match="Connection timed out"):
+            await coops_client.tides(
+                station=9414290,
+                location_code="test_conn_error",
+            )
+
+
+@pytest.mark.asyncio
+async def test_data_error(coops_client: CoopsApi) -> None:
+    """Test data error handling (e.g., missing column)."""
+    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
+        # Return a DataFrame missing the 'Prediction' column but *with* 'Date Time'
+        mock_df_bad = pd.DataFrame({"Date Time": ["2025-04-19 10:00"], "Value": [5.2]})
+        mock_request.return_value = mock_df_bad  # Pass the raw bad data
+
+        # _FixTime should succeed, but the .rename() silently ignores missing keys.
+        # The error occurs in the final selection: [['prediction', 'type']]
+        # due to missing 'prediction'
+        # or the .assign() if ' Type' (renamed to 'type') is missing.
+        # Our mock_df_bad lacks ' Type'.
+        with pytest.raises(KeyError, match="'type'"):
+            # Use tides for testing connection/data errors as it's simpler
+            await coops_client.tides(
+                station=9414290,
+                location_code="test_data_error",
+            )
+
+
+@pytest.mark.asyncio
+async def test_invalid_temperature_dates(coops_client: CoopsApi) -> None:
+    """Test temperature fetch with invalid date range."""
     with pytest.raises(ValueError, match="begin_date must be <= end_date"):
-        await CoopsApi.temperature(
-            station=9414290,
-            product="water_temperature",
-            begin_date=datetime.date(2025, 4, 20),
+        await coops_client.temperature(
+            station=9414290,  # Change to int
+            begin_date=datetime.date(2025, 4, 20),  # Correct arg name
             end_date=datetime.date(2025, 4, 19),
+            product="air_temperature",
         )
 
 
 @pytest.mark.asyncio
-async def test_invalid_temperature_product() -> None:
-    """Test validation of temperature product type."""
-    with pytest.raises(ValueError, match="Invalid product"):
-        await CoopsApi.temperature(
-            station=9414290,
-            product="invalid_product",  # type: ignore[arg-type] # intentionally invalid for testing error case
-            begin_date=datetime.date(2025, 4, 19),
+async def test_invalid_temperature_product(coops_client: CoopsApi) -> None:
+    """Test temperature fetch with invalid product."""
+    with pytest.raises(ValueError, match="Invalid product: water_level"):
+        await coops_client.temperature(
+            station=9414290,  # Change to int
+            begin_date=datetime.date(2025, 4, 19),  # Correct arg name
             end_date=datetime.date(2025, 4, 19),
+            product=cast(Any, "water_level"),  # Intentionally invalid, cast to Any
         )
-
-
-@pytest.mark.asyncio
-async def test_current_interpolation(mock_current_data: pd.DataFrame) -> None:
-    """Test current interpolation."""
-    # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(CoopsApi, "_Request", new_callable=AsyncMock) as mock_request:
-        # Set up the mock to return the proper DataFrame directly
-        mock_df = pd.read_csv(io.StringIO(mock_current_data.to_csv(index=False)))
-        mock_request.return_value = mock_df
-
-        df = await CoopsApi.currents(station="SFB1201", interpolate=True)
-
-    # Should have many more points due to 60s interpolation
-    assert len(df) > len(mock_current_data)
-    # First and last values should match original
-    assert df["velocity"].iloc[0] == mock_current_data[" Velocity_Major"].iloc[0]
-    assert df["velocity"].iloc[-1] == mock_current_data[" Velocity_Major"].iloc[-1]

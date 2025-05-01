@@ -17,6 +17,14 @@ from ndbc_api import NdbcApi as NdbcApiClient  # Alias to avoid name clash
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.util import c_to_f
 
+# TODO: Refactor NdbcApi to align with BaseApiClient pattern.
+# Currently, NdbcApi uses classmethods instead of instance methods and doesn't
+# utilize the shared aiohttp session from BaseApiClient. This is because the
+# underlying `ndbc-api` library handles its own synchronous HTTP requests.
+# API calls are wrapped in `asyncio.to_thread` to avoid blocking the event loop.
+# If `ndbc-api` becomes async or we replace it, this client should be updated
+# to instantiate with a session and use instance methods like other clients.
+
 
 class NdbcApiError(Exception):
     """Base error for NOAA NDBC API calls."""

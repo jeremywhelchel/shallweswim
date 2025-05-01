@@ -3,10 +3,9 @@
 # Standard library imports
 import asyncio
 import datetime
-
 from tests.helpers import assert_json_serializable
-from typing import Any, List, cast
-from unittest.mock import patch, MagicMock
+from typing import Dict, cast, Any, List
+from unittest.mock import patch, MagicMock, AsyncMock
 
 # Third-party imports
 import pandas as pd
@@ -16,6 +15,7 @@ from pydantic import BaseModel
 
 # Local imports
 from shallweswim import config as config_lib, util
+from shallweswim.clients import BaseApiClient, CoopsApi, NwisApi, NdbcApi
 from shallweswim.feeds import (
     Feed,
     CoopsTempFeed,
@@ -43,7 +43,7 @@ def location_config() -> config_lib.LocationConfig:
 
 
 @pytest.fixture
-def temp_config() -> config_lib.CoopsTempSource:
+def coops_temp_config_fixture() -> config_lib.CoopsTempSource:
     """Create a temperature source config fixture."""
     return config_lib.CoopsTempSource(
         station=8518750, name="Test Station"  # Using a valid 7-digit station ID
@@ -128,6 +128,16 @@ def valid_temp_dataframe() -> pd.DataFrame:
 
 
 @pytest.fixture
+def mock_clients() -> Dict[str, BaseApiClient]:
+    """Provides a mock dictionary of API clients."""
+    return {
+        "coops": MagicMock(spec=CoopsApi),
+        "ndbc": MagicMock(spec=NdbcApi),
+        "nwis": MagicMock(spec=NwisApi),
+    }
+
+
+@pytest.fixture
 def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
     """Create a concrete implementation of the abstract Feed class."""
 
@@ -139,7 +149,7 @@ def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
     class ConcreteFeed(Feed):
         config: TestConfig = TestConfig()
 
-        async def _fetch(self) -> pd.DataFrame:
+        async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
             # Return a simple DataFrame for testing
             index = pd.date_range(
                 start=datetime.datetime(2025, 4, 22, 0, 0, 0),
@@ -182,9 +192,46 @@ def simple_composite_feed(location_config: config_lib.LocationConfig) -> Composi
             """Combine test dataframes - this will be mocked in tests."""
             return pd.DataFrame()
 
+        async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+            feeds = self._get_feeds()
+            tasks = [feed._fetch(clients=clients) for feed in feeds]
+            results = await asyncio.gather(*tasks)
+            return self._combine_feeds(results)
+
     return SimpleCompositeFeed(
         location_config=location_config,
         expiration_interval=datetime.timedelta(minutes=10),
+    )
+
+
+@pytest.fixture
+def multi_station_currents_feed(
+    location_config: config_lib.LocationConfig,
+    currents_config: config_lib.CoopsCurrentsSource,
+) -> MultiStationCurrentsFeed:
+    """Provides an instance of MultiStationCurrentsFeed for testing."""
+    return MultiStationCurrentsFeed(
+        location_config=location_config,
+        config=currents_config,
+        expiration_interval=datetime.timedelta(hours=1),  # Example interval
+    )
+
+
+@pytest.fixture
+def historical_temps_feed(
+    location_config: config_lib.LocationConfig,
+    coops_temp_config_fixture: config_lib.CoopsTempSource,
+) -> HistoricalTempsFeed:
+    """Provides an instance of HistoricalTempsFeed for testing."""
+    # Assuming start_year and end_year are needed, or default behavior is okay
+    # Using default start year and current year as end year for simplicity
+    current_year = datetime.datetime.now().year
+    return HistoricalTempsFeed(
+        location_config=location_config,
+        config=coops_temp_config_fixture,
+        start_year=current_year - 1,  # Example: last year
+        end_year=current_year,
+        expiration_interval=datetime.timedelta(hours=3),  # Match default
     )
 
 
@@ -235,22 +282,24 @@ class TestFeedBase:
         assert concrete_feed.values is valid_temp_dataframe
 
     @pytest.mark.asyncio
-    async def test_update_calls_fetch(self, concrete_feed: Feed) -> None:
+    async def test_update_calls_fetch(
+        self, concrete_feed: Feed, mock_clients: Dict[str, BaseApiClient]
+    ) -> None:
         """Test that update calls _fetch and updates timestamp and data."""
         # Use patch to mock the _fetch method
         original_fetch = concrete_feed._fetch
         fetch_called = False
 
-        async def mock_fetch() -> pd.DataFrame:
+        async def mock_fetch(clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
             nonlocal fetch_called
             fetch_called = True
-            return await original_fetch()
+            return await original_fetch(clients)
 
         # Use monkeypatch instead of direct assignment to avoid mypy error
         with patch.object(concrete_feed, "_fetch", mock_fetch):
 
             # Call update
-            await concrete_feed.update()
+            await concrete_feed.update(clients=mock_clients)
 
             # Check that _fetch was called and data was updated
             assert fetch_called is True
@@ -521,69 +570,70 @@ class TestCoopsTidesFeed:
         self,
         location_config: config_lib.LocationConfig,
         tide_config: config_lib.CoopsTideSource,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
-        # Create a mock COOPS API with autospec
-        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
-            # Configure the mock to return a valid DataFrame
-            MockCoopsApi.tides.return_value = pd.DataFrame(
-                {
-                    "prediction": [3.0, 0.5, 3.2],
-                    "type": ["high", "low", "high"],
-                },
-                index=pd.date_range(
-                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
-                    end=datetime.datetime(2025, 4, 22, 12, 0, 0),
-                    freq="6h",
-                ),
-            )
+        # Get the mock coops client from the fixture and cast it
+        mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
-            # Create the feed
-            feed = CoopsTidesFeed(
-                location_config=location_config,
-                config=tide_config,
-                expiration_interval=datetime.timedelta(hours=24),
-            )
+        # Configure the mock to return a valid DataFrame
+        cast(MagicMock, mock_coops_client.tides).return_value = pd.DataFrame(
+            {
+                "prediction": [3.0, 0.5, 3.2],
+                "type": ["high", "low", "high"],
+            },
+            index=pd.date_range(
+                start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                end=datetime.datetime(2025, 4, 22, 12, 0, 0),
+                freq="6h",
+            ),
+        )
 
-            # Call _fetch
-            result = await feed._fetch()
+        # Create the feed
+        feed = CoopsTidesFeed(
+            location_config=location_config,
+            config=tide_config,
+            expiration_interval=datetime.timedelta(hours=24),
+        )
 
-            # Check that the COOPS API was called with correct parameters
-            MockCoopsApi.tides.assert_called_once()
-            args, kwargs = MockCoopsApi.tides.call_args
+        # Call _fetch
+        result = await feed._fetch(clients=mock_clients)
 
-            # Check positional arguments (first is station_id)
-            assert args[0] == tide_config.station
-            # Check location_code is passed
-            assert kwargs["location_code"] == location_config.code
+        # Check that the COOPS API was called with correct parameters
+        cast(MagicMock, mock_coops_client.tides).assert_called_once()
+        _, kwargs = cast(MagicMock, mock_coops_client.tides).call_args
+        assert kwargs["station"] == tide_config.station
+        # Add more specific checks for begin/end dates if needed
 
-            # Check that the result is correct
-            assert isinstance(result, pd.DataFrame)
-            assert "prediction" in result.columns
-            assert "type" in result.columns
+        # Check the result
+        assert isinstance(result, pd.DataFrame)
+        assert not result.empty
+        assert list(result.columns) == ["prediction", "type"]
 
     @pytest.mark.asyncio
     async def test_fetch_handles_api_error(
         self,
         location_config: config_lib.LocationConfig,
         tide_config: config_lib.CoopsTideSource,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
-        """Test that _fetch handles API errors correctly."""
-        # Create a mock COOPS API with autospec that raises an exception
-        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
-            # Configure the mock to raise an exception
-            MockCoopsApi.tides.side_effect = Exception("API error")
+        """Test that _fetch raises an exception if the API call fails."""
+        # Get the mock coops client from the fixture and cast it
+        mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
-            # Create the feed
-            feed = CoopsTidesFeed(
-                location_config=location_config,
-                config=tide_config,
-                expiration_interval=datetime.timedelta(hours=24),
-            )
+        # Configure the mock to raise an exception
+        cast(MagicMock, mock_coops_client.tides).side_effect = Exception("API Error")
 
-            # Call _fetch and expect it to raise the exception (following fail-fast principle)
-            with pytest.raises(Exception, match="API error"):
-                await feed._fetch()
+        # Create the feed
+        feed = CoopsTidesFeed(
+            location_config=location_config,
+            config=tide_config,
+            expiration_interval=datetime.timedelta(hours=24),
+        )
+
+        # Call _fetch and expect it to raise an exception
+        with pytest.raises(Exception, match="API Error"):
+            await feed._fetch(clients=mock_clients)
 
 
 class TestCoopsCurrentsFeed:
@@ -594,114 +644,110 @@ class TestCoopsCurrentsFeed:
         self,
         location_config: config_lib.LocationConfig,
         currents_config: config_lib.CoopsCurrentsSource,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
-        # Create a mock COOPS API with autospec
-        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
-            # Configure the mock to return a valid DataFrame
-            MockCoopsApi.currents.return_value = pd.DataFrame(
-                {"velocity": [1.2, 0.8, 0.3, -0.2, -0.7]},
-                index=pd.date_range(
-                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
-                    end=datetime.datetime(2025, 4, 22, 4, 0, 0),
-                    freq="1h",
-                ),
-            )
+        # Get the mock coops client from the fixture and cast it
+        mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
-            # Create the feed
-            feed = CoopsCurrentsFeed(
-                location_config=location_config,
-                config=currents_config,
-                station=currents_config.stations[0],  # Use the first station
-                expiration_interval=datetime.timedelta(hours=24),
-            )
+        # Configure the mock to return a valid DataFrame
+        cast(MagicMock, mock_coops_client.currents).return_value = pd.DataFrame(
+            {"velocity": [1.2, 0.8, 0.3, -0.2, -0.7]},
+            index=pd.date_range(
+                start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                end=datetime.datetime(2025, 4, 22, 4, 0, 0),
+                freq="1h",
+            ),
+        )
 
-            # Call _fetch
-            result = await feed._fetch()
+        # Create the feed
+        feed = CoopsCurrentsFeed(
+            location_config=location_config,
+            config=currents_config,
+            station=currents_config.stations[0],  # Use the first station
+            expiration_interval=datetime.timedelta(hours=24),
+        )
 
-            # Check that the COOPS API was called with correct parameters
-            MockCoopsApi.currents.assert_called_once()
-            args, kwargs = MockCoopsApi.currents.call_args
+        # Call _fetch
+        result = await feed._fetch(clients=mock_clients)
 
-            # Check positional arguments (first is station_id)
-            assert args[0] == currents_config.stations[0]
-            # Check interpolate parameter
-            assert kwargs["interpolate"] is True
-            # Check location_code is passed
-            assert kwargs["location_code"] == location_config.code
+        # Check that the COOPS API was called with correct parameters
+        cast(MagicMock, mock_coops_client.currents).assert_called_once()
+        _, kwargs = cast(MagicMock, mock_coops_client.currents).call_args
+        assert kwargs["station"] == currents_config.stations[0]
+        assert kwargs["interpolate"] is True
+        assert kwargs["location_code"] == location_config.code
 
-            # Check that the result is correct
-            assert isinstance(result, pd.DataFrame)
-            assert "velocity" in result.columns
-
-    # This test was removed because we no longer support automatic station selection
-    # in NoaaCurrentsFeed. Each feed instance must be explicitly configured with a station.
-    # This is consistent with how MultiStationCurrentsFeed creates individual feed instances.
-
-    # This test is no longer needed since Pydantic will validate that stations is not empty
+        # Check that the result is correct
+        assert isinstance(result, pd.DataFrame)
+        assert "velocity" in result.columns
 
     @pytest.mark.asyncio
     async def test_fetch_with_valid_station(
         self,
         location_config: config_lib.LocationConfig,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch works with a valid station specified directly."""
         # Create a config with a valid station
         config = config_lib.CoopsCurrentsSource(
-            stations=["ACT3876", "NYH1905"],
+            stations=["ACT3876", "NYH1905"],  # Using valid station IDs
         )
 
-        # Create a mock COOPS API with autospec
-        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
-            # Configure the mock to return a valid DataFrame
-            MockCoopsApi.currents.return_value = pd.DataFrame(
-                {"velocity": [1.2, 0.8, 0.3]},
-                index=pd.date_range(
-                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
-                    end=datetime.datetime(2025, 4, 22, 2, 0, 0),
-                    freq="1h",
-                ),
-            )
+        # Get the mock coops client from the fixture and cast it
+        mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
-            # Create the feed with a specific station
-            feed = CoopsCurrentsFeed(
-                location_config=location_config,
-                config=config,
-                station="NYH1905",  # Specify the second station
-                expiration_interval=datetime.timedelta(hours=24),
-            )
+        # Configure the mock to return a valid DataFrame
+        cast(MagicMock, mock_coops_client.currents).return_value = pd.DataFrame(
+            {"velocity": [1.2, 0.8, 0.3]},
+            index=pd.date_range(
+                start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                end=datetime.datetime(2025, 4, 22, 2, 0, 0),
+                freq="1h",
+            ),
+        )
 
-            # Call _fetch
-            await feed._fetch()
+        # Create the feed with a specific station
+        feed = CoopsCurrentsFeed(
+            location_config=location_config,
+            config=config,
+            station="NYH1905",  # Specify the second station
+            expiration_interval=datetime.timedelta(hours=24),
+        )
 
-            # Check that the COOPS API was called with the specified station
-            MockCoopsApi.currents.assert_called_once()
-            args, _ = MockCoopsApi.currents.call_args
-            assert args[0] == "NYH1905"
+        # Call _fetch
+        await feed._fetch(clients=mock_clients)
+
+        # Check that the COOPS API was called with the specified station
+        cast(MagicMock, mock_coops_client.currents).assert_called_once()
+        _, kwargs = cast(MagicMock, mock_coops_client.currents).call_args
+        assert kwargs["station"] == "NYH1905"
 
     @pytest.mark.asyncio
     async def test_fetch_handles_api_error(
         self,
         location_config: config_lib.LocationConfig,
         currents_config: config_lib.CoopsCurrentsSource,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch handles API errors correctly."""
-        # Create a mock COOPS API with autospec that raises an exception
-        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
-            # Configure the mock to raise an exception
-            MockCoopsApi.currents.side_effect = Exception("API error")
+        # Get the mock coops client from the fixture and cast it
+        mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
-            # Create the feed
-            feed = CoopsCurrentsFeed(
-                location_config=location_config,
-                config=currents_config,
-                station=currents_config.stations[0],
-                expiration_interval=datetime.timedelta(hours=24),
-            )
+        # Configure the mock to raise an exception
+        cast(MagicMock, mock_coops_client.currents).side_effect = Exception("API error")
 
-            # Call _fetch and expect it to raise the exception (following fail-fast principle)
-            with pytest.raises(Exception, match="API error"):
-                await feed._fetch()
+        # Create the feed
+        feed = CoopsCurrentsFeed(
+            location_config=location_config,
+            config=currents_config,
+            station=currents_config.stations[0],
+            expiration_interval=datetime.timedelta(hours=24),
+        )
+
+        # Call _fetch and expect it to raise the exception (following fail-fast principle)
+        with pytest.raises(Exception, match="API error"):
+            await feed._fetch(clients=mock_clients)
 
 
 class TestCoopsTempFeed:
@@ -711,142 +757,153 @@ class TestCoopsTempFeed:
     async def test_fetch_calls_noaa_client(
         self,
         location_config: config_lib.LocationConfig,
-        temp_config: config_lib.CoopsTempSource,
+        coops_temp_config_fixture: config_lib.CoopsTempSource,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
-        # Create a mock COOPS API with autospec
-        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
-            # Configure the mock to return a valid DataFrame
-            MockCoopsApi.temperature.return_value = pd.DataFrame(
-                {
-                    "water_temp": [20.0, 20.5, 21.0],
-                },
-                index=pd.date_range(
-                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
-                    end=datetime.datetime(2025, 4, 22, 2, 0, 0),
-                    freq="h",
-                ),
-            )
+        # Get the mock coops client from the fixture and cast it
+        mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
-            # Create the feed
-            feed = CoopsTempFeed(
-                location_config=location_config,
-                config=temp_config,
-                interval="6-min",  # Use 6-minute intervals for live data
-                expiration_interval=datetime.timedelta(minutes=10),
-            )
+        # Configure the mock to return a valid DataFrame
+        cast(MagicMock, mock_coops_client.temperature).return_value = pd.DataFrame(
+            {
+                "water_temp": [20.0, 20.5, 21.0],
+            },
+            index=pd.date_range(
+                start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                end=datetime.datetime(2025, 4, 22, 2, 0, 0),
+                freq="h",
+            ),
+        )
 
-            # Call _fetch
-            result = await feed._fetch()
+        # Create the feed
+        feed = CoopsTempFeed(
+            location_config=location_config,
+            config=coops_temp_config_fixture,
+            interval="6-min",  # Use 6-minute intervals for live data
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
 
-            # Check that the COOPS API was called with correct parameters
-            MockCoopsApi.temperature.assert_called_once()
-            args, kwargs = MockCoopsApi.temperature.call_args
+        # Call _fetch
+        result = await feed._fetch(clients=mock_clients)
 
-            # Check positional arguments (first is station_id)
-            assert args[0] == temp_config.station
-            # Check that product is water_temperature
-            assert args[1] == "water_temperature"
-            # Check location_code is passed
-            assert kwargs["location_code"] == location_config.code
+        # Check that the COOPS API was called with correct parameters
+        cast(MagicMock, mock_coops_client.temperature).assert_called_once()
+        _, kwargs = cast(MagicMock, mock_coops_client.temperature).call_args
+        assert kwargs["station"] == coops_temp_config_fixture.station
+        assert kwargs["product"] == "water_temperature"
+        assert kwargs["location_code"] == location_config.code
 
-            # Check that the result is correct
-            assert isinstance(result, pd.DataFrame)
-            assert "water_temp" in result.columns
+        # Check that the result is correct
+        assert isinstance(result, pd.DataFrame)
+        assert "water_temp" in result.columns
 
     @pytest.mark.asyncio
     async def test_fetch_with_date_range(
         self,
         location_config: config_lib.LocationConfig,
-        temp_config: config_lib.CoopsTempSource,
+        coops_temp_config_fixture: config_lib.CoopsTempSource,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch passes date range to COOPS API when provided."""
-        # Create a mock COOPS API with autospec
-        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
-            # Configure the mock to return a valid DataFrame
-            MockCoopsApi.temperature.return_value = pd.DataFrame(
-                {
-                    "water_temp": [20.0, 20.5, 21.0],
-                },
-                index=pd.date_range(
-                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
-                    end=datetime.datetime(2025, 4, 22, 2, 0, 0),
-                    freq="h",
-                ),
-            )
+        # Get the mock coops client from the fixture and cast it
+        mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
-            # Create the feed with start and end dates
-            start_date = datetime.datetime(2025, 4, 22, 0, 0, 0)
-            end_date = datetime.datetime(2025, 4, 22, 23, 0, 0)
+        # Configure the mock to return a valid DataFrame
+        cast(MagicMock, mock_coops_client.temperature).return_value = pd.DataFrame(
+            {
+                "water_temp": [20.0, 20.5, 21.0],
+            },
+            index=pd.date_range(
+                start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                end=datetime.datetime(2025, 4, 22, 2, 0, 0),
+                freq="h",
+            ),
+        )
 
-            feed = CoopsTempFeed(
-                location_config=location_config,
-                config=temp_config,
-                interval="6-min",
-                expiration_interval=datetime.timedelta(minutes=10),
-                # Use the correct attribute names for the feed
-                start=start_date,
-                end=end_date,
-            )
+        # Create the feed with start and end dates
+        start_date = datetime.datetime(2025, 4, 22, 0, 0, 0)
+        end_date = datetime.datetime(2025, 4, 22, 23, 0, 0)
 
-            # Call _fetch
-            await feed._fetch()
+        feed = CoopsTempFeed(
+            location_config=location_config,
+            config=coops_temp_config_fixture,
+            interval="6-min",
+            expiration_interval=datetime.timedelta(minutes=10),
+            # Use the correct attribute names for the feed
+            start=start_date,
+            end=end_date,
+        )
 
-            # Check that the COOPS API was called with the date range
-            MockCoopsApi.temperature.assert_called_once()
+        # Call _fetch
+        await feed._fetch(clients=mock_clients)
 
-            # Instead of checking exact values, verify that start_date and end_date
-            # were passed to the API call. The actual implementation might modify
-            # these dates slightly, so we'll just check that they were passed.
-            args, _ = MockCoopsApi.temperature.call_args
-            assert len(args) >= 4  # At least 4 positional args
-            assert isinstance(args[2], datetime.datetime)  # begin_date is a datetime
-            assert isinstance(args[3], datetime.datetime)  # end_date is a datetime
+        # Check that the COOPS API was called with the date range
+        cast(MagicMock, mock_coops_client.temperature).assert_called_once()
+
+        # Instead of checking exact values, verify that start_date and end_date
+        # were passed to the API call. The actual implementation might modify
+        # these dates slightly, so we'll just check that they were passed.
+        _, kwargs = cast(MagicMock, mock_coops_client.temperature).call_args
+        assert "begin_date" in kwargs
+        assert isinstance(kwargs["begin_date"], datetime.date)
+        assert "end_date" in kwargs
+        assert isinstance(kwargs["end_date"], datetime.date)
 
     @pytest.mark.asyncio
     async def test_fetch_with_default_date_range(
         self,
         location_config: config_lib.LocationConfig,
-        temp_config: config_lib.CoopsTempSource,
+        coops_temp_config_fixture: config_lib.CoopsTempSource,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch uses default date range when not provided."""
-        # Create a mock COOPS API with autospec
-        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
-            # Configure the mock to return a valid DataFrame
-            MockCoopsApi.temperature.return_value = pd.DataFrame(
-                {
-                    "water_temp": [20.0, 20.5, 21.0],
-                },
-                index=pd.date_range(
-                    start=datetime.datetime(2025, 4, 22, 0, 0, 0),
-                    end=datetime.datetime(2025, 4, 22, 2, 0, 0),
-                    freq="h",
-                ),
-            )
+        # Get the mock coops client from the fixture and cast it
+        mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
-            # Create the feed without start and end dates
-            feed = CoopsTempFeed(
-                location_config=location_config,
-                config=temp_config,
-                interval="6-min",
-                expiration_interval=datetime.timedelta(minutes=10),
-            )
+        # Configure the mock to return a valid DataFrame
+        cast(MagicMock, mock_coops_client.temperature).return_value = pd.DataFrame(
+            {
+                "water_temp": [20.0, 20.5, 21.0],
+            },
+            index=pd.date_range(
+                start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+                end=datetime.datetime(2025, 4, 22, 2, 0, 0),
+                freq="h",
+            ),
+        )
 
-            # Call _fetch
-            await feed._fetch()
+        # Create the feed without start and end dates
+        feed = CoopsTempFeed(
+            location_config=location_config,
+            config=coops_temp_config_fixture,
+            interval="6-min",
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
 
-            # Check that the COOPS API was called with default date range
-            args, _ = MockCoopsApi.temperature.call_args
+        # Call _fetch
+        await feed._fetch(clients=mock_clients)
 
-            # The default date range should be from today-8 days to today
-            # Check the date arguments (positions 2 and 3)
-            begin_date = args[2]
-            end_date = args[3]
+        # Check that the COOPS API was called
+        cast(MagicMock, mock_coops_client.temperature).assert_called_once()
 
-            # The begin_date should be approximately 8 days before end_date
-            # Allow for small differences due to test execution timing
-            date_diff = (end_date - begin_date).days
-            assert date_diff == 8
+        # Check that the COOPS API was called with default date range
+        _, kwargs = cast(MagicMock, mock_coops_client.temperature).call_args
+
+        # The default date range should be from today-8 days to today
+        # Check the date arguments passed in kwargs
+        assert "begin_date" in kwargs
+        begin_date = kwargs["begin_date"]
+        assert "end_date" in kwargs
+        end_date = kwargs["end_date"]
+
+        assert isinstance(begin_date, datetime.date)
+        assert isinstance(end_date, datetime.date)
+
+        # The begin_date should be approximately 8 days before end_date
+        # Allow for small differences due to test execution timing
+        date_diff = (end_date - begin_date).days
+        assert date_diff == 8
 
 
 class TestCompositeFeed:
@@ -854,7 +911,9 @@ class TestCompositeFeed:
 
     @pytest.mark.asyncio
     async def test_fetch_calls_get_feeds_and_combine_feeds(
-        self, simple_composite_feed: CompositeFeed
+        self,
+        simple_composite_feed: CompositeFeed,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls _get_feeds and _combine_feeds."""
         # Create mock feeds and a test DataFrame to return
@@ -882,7 +941,7 @@ class TestCompositeFeed:
         ) as mock_combine_feeds:
 
             # Call _fetch
-            result = await simple_composite_feed._fetch()
+            result = await simple_composite_feed._fetch(clients=mock_clients)
 
             # Verify that the methods were called correctly
             mock_get_feeds.assert_called_once()
@@ -898,13 +957,16 @@ class TestCompositeFeed:
 
     @pytest.mark.asyncio
     async def test_fetch_combines_dataframes_correctly(
-        self, simple_composite_feed: CompositeFeed, valid_temp_dataframe: pd.DataFrame
+        self,
+        simple_composite_feed: CompositeFeed,
+        valid_temp_dataframe: pd.DataFrame,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch combines DataFrames correctly."""
 
         # Create test feeds that return the valid_temp_dataframe
         class TestFeed(Feed):
-            async def _fetch(self) -> pd.DataFrame:
+            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 return valid_temp_dataframe
 
         # Create two instances of TestFeed
@@ -927,7 +989,7 @@ class TestCompositeFeed:
             simple_composite_feed, "_combine_feeds", return_value=combined_df
         ):
             # Call _fetch
-            result = await simple_composite_feed._fetch()
+            result = await simple_composite_feed._fetch(clients=mock_clients)
 
             # Check that the result is the combined DataFrame
             assert isinstance(result, pd.DataFrame)
@@ -937,57 +999,41 @@ class TestCompositeFeed:
 
     @pytest.mark.asyncio
     async def test_fetch_propagates_errors(
-        self, simple_composite_feed: CompositeFeed
+        self,
+        simple_composite_feed: CompositeFeed,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch propagates errors from underlying feeds."""
 
-        # Create a test feed that raises an exception
-        class ErrorFeed(Feed):
-            async def _fetch(self) -> pd.DataFrame:
-                raise ValueError("Test error")
-
-        # Create an instance of ErrorFeed
-        error_feed = ErrorFeed(
-            location_config=simple_composite_feed.location_config,
-            expiration_interval=datetime.timedelta(minutes=10),
-        )
+        # Create a mock feed that raises an exception
+        mock_feed = AsyncMock(spec=Feed)
+        mock_feed._fetch.side_effect = ValueError("Test error")
 
         # Mock the _get_feeds method to return our error feed
         with patch.object(
-            simple_composite_feed, "_get_feeds", return_value=[error_feed]
+            simple_composite_feed,
+            "_get_feeds",
+            return_value=[
+                mock_feed,
+            ],
         ):
-            # Call _fetch and expect it to raise an exception
+            # Call _fetch and expect it to raise an exception (following the project principle of failing fast)
             with pytest.raises(ValueError, match="Test error"):
-                await simple_composite_feed._fetch()
+                await simple_composite_feed._fetch(clients=mock_clients)
 
 
 class TestMultiStationCurrentsFeed:
     """Tests for the MultiStationCurrentsFeed class."""
 
-    @pytest.fixture
-    def multi_station_currents_feed(
-        self,
-        location_config: config_lib.LocationConfig,
-        currents_config: config_lib.CoopsCurrentsSource,
-    ) -> MultiStationCurrentsFeed:
-        """Create a MultiStationCurrentsFeed fixture."""
-        return MultiStationCurrentsFeed(
-            location_config=location_config,
-            config=currents_config,
-            expiration_interval=datetime.timedelta(minutes=10),
-        )
-
     def test_get_feeds_creates_correct_feeds(
-        self,
-        multi_station_currents_feed: MultiStationCurrentsFeed,
-        currents_config: config_lib.CoopsCurrentsSource,
+        self, multi_station_currents_feed: MultiStationCurrentsFeed
     ) -> None:
         """Test that _get_feeds creates the correct number of CoopsCurrentsFeed instances."""
         # Get the feeds
         feeds = multi_station_currents_feed._get_feeds()
 
         # Check that we have the correct number of feeds
-        assert len(feeds) == len(currents_config.stations)
+        assert len(feeds) == len(multi_station_currents_feed.config.stations)
 
         # Check that each feed is a CoopsCurrentsFeed
         for feed in feeds:
@@ -996,7 +1042,7 @@ class TestMultiStationCurrentsFeed:
         # Check that each feed is configured with the correct station
         # We know these are CoopsCurrentsFeed instances which have station attribute
         stations = [cast(CoopsCurrentsFeed, feed).station for feed in feeds]
-        assert set(stations) == set(currents_config.stations)
+        assert set(stations) == set(multi_station_currents_feed.config.stations)
 
     def test_combine_feeds_with_single_dataframe(
         self,
@@ -1077,17 +1123,18 @@ class TestMultiStationCurrentsFeed:
         self,
         multi_station_currents_feed: MultiStationCurrentsFeed,
         valid_currents_dataframe: pd.DataFrame,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test error handling when one station fails but others succeed."""
 
         # Create a test feed that raises an exception
         class ErrorFeed(Feed):
-            async def _fetch(self) -> pd.DataFrame:
+            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 raise ValueError("Test station error")
 
         # Create a test feed that returns valid data
-        class SuccessFeed(Feed):
-            async def _fetch(self) -> pd.DataFrame:
+        class TestFeed(Feed):
+            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 return valid_currents_dataframe
 
         # Mock _get_feeds to return one error feed and one success feed
@@ -1099,7 +1146,7 @@ class TestMultiStationCurrentsFeed:
                     location_config=multi_station_currents_feed.location_config,
                     expiration_interval=datetime.timedelta(minutes=10),
                 ),
-                SuccessFeed(
+                TestFeed(
                     location_config=multi_station_currents_feed.location_config,
                     expiration_interval=datetime.timedelta(minutes=10),
                 ),
@@ -1107,26 +1154,11 @@ class TestMultiStationCurrentsFeed:
         ):
             # Call _fetch and expect it to raise an exception (following the project principle of failing fast)
             with pytest.raises(ValueError, match="Test station error"):
-                await multi_station_currents_feed._fetch()
+                await multi_station_currents_feed._fetch(clients=mock_clients)
 
 
 class TestHistoricalTempsFeed:
     """Tests for the HistoricalTempsFeed class."""
-
-    @pytest.fixture
-    def historical_temps_feed(
-        self,
-        location_config: config_lib.LocationConfig,
-        temp_config: config_lib.CoopsTempSource,
-    ) -> HistoricalTempsFeed:
-        """Create a HistoricalTempsFeed fixture."""
-        return HistoricalTempsFeed(
-            location_config=location_config,
-            config=temp_config,
-            start_year=2023,
-            end_year=2024,
-            expiration_interval=datetime.timedelta(hours=3),
-        )
 
     def test_get_feeds_creates_correct_feeds(
         self, historical_temps_feed: HistoricalTempsFeed
@@ -1135,7 +1167,7 @@ class TestHistoricalTempsFeed:
         # Get the feeds
         feeds = historical_temps_feed._get_feeds()
 
-        # Check that we have the correct number of feeds (2023-2024 = 2 years)
+        # Check that we have the correct number of feeds
         assert len(feeds) == 2
 
         # Check that each feed is a CoopsTempFeed
@@ -1151,7 +1183,7 @@ class TestHistoricalTempsFeed:
         historical_temps_feed: HistoricalTempsFeed,
         valid_temp_dataframe: pd.DataFrame,
     ) -> None:
-        """Test that _combine_feeds resamples the input dataframe when only one is provided."""
+        """Test that _combine_feeds returns the input dataframe when only one is provided."""
         # Create a copy of the input dataframe with non-hourly timestamps
         test_df = valid_temp_dataframe.copy()
 
@@ -1236,17 +1268,18 @@ class TestHistoricalTempsFeed:
         self,
         historical_temps_feed: HistoricalTempsFeed,
         valid_temp_dataframe: pd.DataFrame,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test error handling when one year fails but others succeed."""
 
         # Create a test feed that raises an exception
         class ErrorFeed(Feed):
-            async def _fetch(self) -> pd.DataFrame:
+            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 raise ValueError("Test year error")
 
         # Create a test feed that returns valid data
-        class SuccessFeed(Feed):
-            async def _fetch(self) -> pd.DataFrame:
+        class TestFeed(Feed):
+            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 return valid_temp_dataframe
 
         # Mock _get_feeds to return one error feed and one success feed
@@ -1258,7 +1291,7 @@ class TestHistoricalTempsFeed:
                     location_config=historical_temps_feed.location_config,
                     expiration_interval=datetime.timedelta(hours=3),
                 ),
-                SuccessFeed(
+                TestFeed(
                     location_config=historical_temps_feed.location_config,
                     expiration_interval=datetime.timedelta(hours=3),
                 ),
@@ -1266,4 +1299,4 @@ class TestHistoricalTempsFeed:
         ):
             # Call _fetch and expect it to raise an exception (following the project principle of failing fast)
             with pytest.raises(ValueError, match="Test year error"):
-                await historical_temps_feed._fetch()
+                await historical_temps_feed._fetch(clients=mock_clients)

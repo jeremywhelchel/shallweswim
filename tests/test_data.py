@@ -78,7 +78,8 @@ async def mock_data_with_currents(
     mock_config: Any, mock_current_data: pd.DataFrame
 ) -> AsyncGenerator[LocationDataManager, None]:
     """Create a LocationDataManager instance with mock current data."""
-    data = LocationDataManager(mock_config)
+    # Provide an empty clients dict for the test
+    data = LocationDataManager(mock_config, clients={})
 
     # Create a mock currents feed
     mock_currents_feed = MagicMock()
@@ -115,7 +116,9 @@ async def test_current_prediction_at_ebb_peak() -> None:
     # Create a custom test instance
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    data = LocationDataManager(config)
+    config.code = "tst"
+    # Provide an empty clients dict for the test
+    data = LocationDataManager(config, clients={})
 
     try:
         # Create a more comprehensive dataset for testing ebb currents
@@ -214,7 +217,8 @@ async def test_current_prediction_strengthening() -> None:
     # Create a custom test instance with clear strengthening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    data = LocationDataManager(config)
+    # Provide an empty clients dict for the test
+    data = LocationDataManager(config, clients={})
 
     try:
         # Create data with a clear strengthening pattern
@@ -252,7 +256,8 @@ async def test_current_prediction_weakening() -> None:
     # Create a custom test instance with clear weakening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    data = LocationDataManager(config)
+    # Provide an empty clients dict for the test
+    data = LocationDataManager(config, clients={})
 
     try:
         # Create data with a clear weakening pattern
@@ -291,7 +296,8 @@ async def test_process_peaks_function() -> None:
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
 
-    data = LocationDataManager(config)
+    # Provide an empty clients dict for the test
+    data = LocationDataManager(config, clients={})
 
     try:
         # Create a very distinct peak pattern
@@ -418,7 +424,8 @@ async def test_data_ready_property(
     Tests different combinations of dataset states to verify the ready property
     accurately represents if all data has been loaded and is not expired.
     """
-    data = LocationDataManager(mock_config)
+    # Provide an empty clients dict for the test
+    data = LocationDataManager(mock_config, clients={})
 
     try:
         # Mock the _expired method to control its behavior based on timestamps
@@ -504,9 +511,10 @@ async def test_wait_until_ready() -> None:
     3. Timeout occurring before feeds are ready
     """
     # Create a LocationDataManager instance
-    config = MagicMock(spec=config_lib.LocationConfig)
-    config.code = "nyc"
-    data = LocationDataManager(config)
+    mock_config = MagicMock(spec=config_lib.LocationConfig)
+    mock_config.code = "tst"
+    # Provide an empty clients dict for the test
+    data = LocationDataManager(mock_config, clients={})
 
     try:
         # Scenario 1: All feeds ready immediately
@@ -591,7 +599,8 @@ async def test_data_status_property() -> None:
     # Create a LocationDataManager instance
     config = MagicMock(spec=config_lib.LocationConfig)
     config.code = "nyc"
-    data = LocationDataManager(config)
+    # Provide an empty clients dict for the test
+    data = LocationDataManager(config, clients={})
 
     try:
         # Create mock feeds with status dictionaries

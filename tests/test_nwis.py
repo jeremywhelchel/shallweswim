@@ -6,9 +6,10 @@
 import datetime
 
 # Third-party imports
+import aiohttp
 import pandas as pd
 import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 # Local imports
 from shallweswim.clients.nwis import NwisApi, NwisApiError
@@ -51,8 +52,26 @@ def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:
     return df
 
 
+@pytest.fixture
+def mock_session() -> MagicMock:
+    """Provides a mock aiohttp ClientSession."""
+    # NwisApi doesn't directly use the session for dataretrieval,
+    # so a simple MagicMock is sufficient.
+    session = MagicMock(spec=aiohttp.ClientSession)
+    # Mock the __aenter__ and __aexit__ methods for async context management if needed
+    # session.__aenter__.return_value = session
+    # session.__aexit__.return_value = None
+    return session
+
+
+@pytest.fixture
+def nwis_client(mock_session: MagicMock) -> NwisApi:
+    """Provides an instance of NwisApi with a mock session."""
+    return NwisApi(session=mock_session)
+
+
 @pytest.mark.asyncio
-async def test_temperature_success() -> None:
+async def test_temperature_success(nwis_client: NwisApi) -> None:
     """Test successful temperature fetch."""
     # Mock the asyncio.to_thread function
     with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
@@ -64,7 +83,8 @@ async def test_temperature_success() -> None:
             # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
             mock_get_record.return_value = None
 
-            df = await NwisApi.temperature(
+            # Call on instance
+            df = await nwis_client.temperature(
                 site_no="03292494",
                 begin_date=datetime.date(2025, 4, 19),
                 end_date=datetime.date(2025, 4, 19),
@@ -81,7 +101,7 @@ async def test_temperature_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_temperature_celsius_param() -> None:
+async def test_temperature_celsius_param(nwis_client: NwisApi) -> None:
     """Test temperature fetch with parameter 00010 (Celsius)."""
     # Mock the asyncio.to_thread function
     with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
@@ -93,7 +113,8 @@ async def test_temperature_celsius_param() -> None:
             # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
             mock_get_record.return_value = None
 
-            df = await NwisApi.temperature(
+            # Call on instance
+            df = await nwis_client.temperature(
                 site_no="03292494",
                 begin_date=datetime.date(2025, 4, 19),
                 end_date=datetime.date(2025, 4, 19),
@@ -112,7 +133,7 @@ async def test_temperature_celsius_param() -> None:
 
 
 @pytest.mark.asyncio
-async def test_temperature_fahrenheit_param() -> None:
+async def test_temperature_fahrenheit_param(nwis_client: NwisApi) -> None:
     """Test temperature fetch with parameter 00011 (Fahrenheit)."""
     # Mock the asyncio.to_thread function
     with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
@@ -124,7 +145,8 @@ async def test_temperature_fahrenheit_param() -> None:
             # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
             mock_get_record.return_value = None
 
-            df = await NwisApi.temperature(
+            # Call on instance
+            df = await nwis_client.temperature(
                 site_no="03292494",
                 begin_date=datetime.date(2025, 4, 19),
                 end_date=datetime.date(2025, 4, 19),
@@ -142,7 +164,7 @@ async def test_temperature_fahrenheit_param() -> None:
 
 
 @pytest.mark.asyncio
-async def test_api_error() -> None:
+async def test_api_error(nwis_client: NwisApi) -> None:
     """Test handling of API errors."""
     # Mock the asyncio.to_thread function
     with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
@@ -155,7 +177,8 @@ async def test_api_error() -> None:
             mock_get_record.return_value = None
 
             with pytest.raises(NwisApiError, match="Error fetching NWIS data"):
-                await NwisApi.temperature(
+                # Call on instance
+                await nwis_client.temperature(
                     site_no="03292494",
                     begin_date=datetime.date(2025, 4, 19),
                     end_date=datetime.date(2025, 4, 19),
@@ -165,7 +188,7 @@ async def test_api_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_empty_result() -> None:
+async def test_empty_result(nwis_client: NwisApi) -> None:
     """Test handling of empty result."""
     # Mock the asyncio.to_thread function
     with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
@@ -178,7 +201,8 @@ async def test_empty_result() -> None:
             mock_get_record.return_value = None
 
             with pytest.raises(NwisApiError, match="Error fetching NWIS data"):
-                await NwisApi.temperature(
+                # Call on instance
+                await nwis_client.temperature(
                     site_no="03292494",
                     begin_date=datetime.date(2025, 4, 19),
                     end_date=datetime.date(2025, 4, 19),
@@ -188,7 +212,7 @@ async def test_empty_result() -> None:
 
 
 @pytest.mark.asyncio
-async def test_missing_temp_column() -> None:
+async def test_missing_temp_column(nwis_client: NwisApi) -> None:
     """Test handling of missing temperature column."""
     # Create DataFrame without temperature column
     df = pd.DataFrame(
@@ -215,7 +239,8 @@ async def test_missing_temp_column() -> None:
             mock_get_record.return_value = None
 
             with pytest.raises(NwisApiError, match="Error fetching NWIS data"):
-                await NwisApi.temperature(
+                # Call on instance
+                await nwis_client.temperature(
                     site_no="03292494",
                     begin_date=datetime.date(2025, 4, 19),
                     end_date=datetime.date(2025, 4, 19),
@@ -225,7 +250,7 @@ async def test_missing_temp_column() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fix_time() -> None:
+async def test_fix_time(nwis_client: NwisApi) -> None:
     """Test the _fix_time method."""
     # Create a DataFrame with timezone-aware UTC timestamps
     index = pd.DatetimeIndex(
@@ -237,7 +262,8 @@ async def test_fix_time() -> None:
     df = pd.DataFrame({"water_temp": [59.9, 61.2]}, index=index)
 
     # Convert timestamps to EDT
-    result_df = NwisApi._fix_time(df, "America/New_York")
+    # Call on instance
+    result_df = nwis_client._fix_time(df, "America/New_York")
 
     # Check that timestamps were converted correctly
     expected_times = [

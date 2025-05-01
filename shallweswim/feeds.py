@@ -9,7 +9,7 @@ import abc
 import asyncio
 import datetime
 import logging
-from typing import Any, Optional, Literal, List
+from typing import Any, Optional, Literal, List, Dict
 
 # Third-party imports
 import pandas as pd
@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 
 # Local imports
 from shallweswim import config as config_lib
+from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients import coops
 from shallweswim.clients import ndbc
 from shallweswim.clients import nwis
@@ -207,7 +208,7 @@ class Feed(BaseModel, abc.ABC):
             )
             return False
 
-    async def update(self) -> None:
+    async def update(self, clients: Dict[str, BaseApiClient]) -> None:
         """Update the data from this feed if it is expired."""
         if not self.is_expired:
             self.log(
@@ -218,7 +219,8 @@ class Feed(BaseModel, abc.ABC):
 
         try:
             self.log(f"Fetching data for {self.__class__.__name__}")
-            df = await self._fetch()
+            # Pass clients to _fetch
+            df = await self._fetch(clients=clients)
 
             # Validate the dataframe before storing it
             self._validate_frame(df)
@@ -238,7 +240,7 @@ class Feed(BaseModel, abc.ABC):
             raise
 
     @abc.abstractmethod
-    async def _fetch(self) -> pd.DataFrame:
+    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch data from the external source.
 
         This method should be implemented by subclasses to fetch data
@@ -357,8 +359,9 @@ class CoopsTempFeed(TempFeed):
     """
 
     config: config_lib.CoopsTempSource
+    product: Literal["air_temperature", "water_temperature"] = "water_temperature"
 
-    async def _fetch(self) -> pd.DataFrame:
+    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA CO-OPS API.
 
         Returns:
@@ -369,22 +372,20 @@ class CoopsTempFeed(TempFeed):
         """
         station_id = self.config.station
         # Use parameters if provided, otherwise use defaults
-        end_date = self.end or datetime.datetime.today()
-        # XXX Document this default delta better
-        begin_date = self.start or (end_date - datetime.timedelta(days=8))
+        begin_date = self.start or (datetime.date.today() - datetime.timedelta(days=8))
+        end_date = self.end or datetime.date.today()
 
         try:
-            # Convert our interval to what the NOAA API expects
-            # The NOAA API only accepts "h" or None (which defaults to 6-minute intervals)
-            noaa_interval: Literal["h", None] = "h" if self.interval == "h" else None
+            # Get Coops client instance
+            coops_client: CoopsApi = clients["coops"]  # type: ignore
 
-            # Fetch data from NOAA CO-OPS API
-            df = await coops.CoopsApi.temperature(
-                station_id,
-                "water_temperature",
-                begin_date,
-                end_date,
-                interval=noaa_interval,
+            # Fetch data from NOAA CO-OPS API using the client instance
+            df = await coops_client.temperature(
+                station=station_id,
+                begin_date=begin_date,
+                end_date=end_date,
+                product=self.product,  # Use the feed's product attribute
+                interval=self.interval,
                 location_code=self.location_config.code,
             )
             return df
@@ -406,7 +407,7 @@ class NdbcTempFeed(TempFeed):
     interval: Literal["h", "6-min"] = "h"
     mode: Literal["stdmet", "ocean"] = "stdmet"
 
-    async def _fetch(self) -> pd.DataFrame:
+    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA NDBC API.
 
         Returns:
@@ -417,9 +418,10 @@ class NdbcTempFeed(TempFeed):
         """
         station_id = self.config.station
         # Use parameters if provided, otherwise use defaults
+        begin_date = self.start or (
+            datetime.datetime.today() - datetime.timedelta(days=8)
+        )
         end_date = self.end or datetime.datetime.today()
-        # Default to 8 days of data if not specified
-        begin_date = self.start or (end_date - datetime.timedelta(days=8))
 
         try:
             # Fetch the data using the NDBC API client
@@ -456,7 +458,7 @@ class NwisTempFeed(TempFeed):
     config: config_lib.NwisTempSource
     interval: Literal["h", "6-min"] = "h"  # NWIS typically provides hourly data
 
-    async def _fetch(self) -> pd.DataFrame:
+    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from USGS NWIS API.
 
         Returns:
@@ -468,15 +470,15 @@ class NwisTempFeed(TempFeed):
         site_no = self.config.site_no
         parameter_cd = self.config.parameter_cd
         # Use parameters if provided, otherwise use defaults
+        begin_date = self.start or (
+            datetime.datetime.today() - datetime.timedelta(days=8)
+        )
         end_date = self.end or datetime.datetime.today()
-        # Default to 8 days of data if not specified
-        begin_date = self.start or (end_date - datetime.timedelta(days=8))
 
         try:
-            # Fetch the data using the NWIS API client
-            self.log(f"Fetching NWIS data for site {site_no}", logging.INFO)
-
-            temp_df = await nwis.NwisApi.temperature(
+            # Get NWIS instance from the passed clients dict
+            nwis_client: NwisApi = clients["nwis"]  # type: ignore
+            temp_df = await nwis_client.temperature(
                 site_no=site_no,
                 begin_date=begin_date,
                 end_date=end_date,
@@ -508,8 +510,10 @@ class CoopsTidesFeed(Feed):
     """
 
     config: config_lib.CoopsTideSource
+    interval: Literal["h", "6-min"] = "h"  # Add default interval
+    start: Optional[datetime.date] = None
 
-    async def _fetch(self) -> pd.DataFrame:
+    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch tide predictions from NOAA CO-OPS API.
 
         Returns:
@@ -521,9 +525,12 @@ class CoopsTidesFeed(Feed):
         station_id = self.config.station
 
         try:
-            # Fetch data from NOAA CO-OPS API
-            df = await coops.CoopsApi.tides(
-                station_id,
+            # Get Coops client instance
+            coops_client: CoopsApi = clients["coops"]  # type: ignore
+
+            # Fetch data from NOAA CO-OPS API using the client instance
+            df = await coops_client.tides(
+                station=station_id,
                 location_code=self.location_config.code,
             )
             return df
@@ -541,6 +548,8 @@ class CoopsCurrentsFeed(Feed):
     """
 
     config: config_lib.CoopsCurrentsSource
+    interval: Literal["h", "6-min"] = "h"  # Add default interval
+    start: Optional[datetime.date] = None
 
     # The station to use for fetching currents data (optional, will use first station from config if not provided)
     station: Optional[str] = None
@@ -554,7 +563,7 @@ class CoopsCurrentsFeed(Feed):
         if not self.station and self.config.stations:
             self.station = self.config.stations[0]
 
-    async def _fetch(self) -> pd.DataFrame:
+    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch current predictions from NOAA CO-OPS API.
 
         Returns:
@@ -564,13 +573,17 @@ class CoopsCurrentsFeed(Feed):
             Exception: If fetching fails
         """
         try:
+            # Get Coops client instance
+            coops_client: CoopsApi = clients["coops"]  # type: ignore
+
             # We know self.station is set in __init__ if it wasn't provided
             assert self.station is not None, "Station must be set"
-            # Fetch data from NOAA CO-OPS API
-            df = await coops.CoopsApi.currents(
-                self.station,
-                interpolate=self.interpolate,
+
+            # Fetch data from NOAA CO-OPS API using the client instance
+            df = await coops_client.currents(
+                station=self.station,
                 location_code=self.location_config.code,
+                interpolate=self.interpolate,
             )
             return df
 
@@ -588,7 +601,7 @@ class CompositeFeed(Feed, abc.ABC):
     data from multiple years.
     """
 
-    async def _fetch(self) -> pd.DataFrame:
+    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch data from all underlying feeds and combine them.
 
         The specific combination logic is implemented in _combine_feeds.
@@ -603,7 +616,7 @@ class CompositeFeed(Feed, abc.ABC):
         feeds = self._get_feeds()
 
         # Fetch data from all feeds concurrently
-        tasks = [feed._fetch() for feed in feeds]
+        tasks = [feed._fetch(clients=clients) for feed in feeds]
         results = await asyncio.gather(*tasks)
 
         # Combine the results using the specific combination logic
@@ -641,7 +654,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
 
     config: config_lib.CoopsCurrentsSource
 
-    # Whether to interpolate between flood/slack/ebb points for each station
+    # Whether to interpolate between flood/slack/ebb points
     interpolate: bool = True
 
     def _get_feeds(self) -> List[Feed]:
@@ -782,6 +795,7 @@ class HistoricalTempsFeed(CompositeFeed):
     config: config_lib.TempSource
     start_year: int
     end_year: int
+    interval: Literal["h", "6-min"] = "h"
 
     def _get_feeds(self) -> List[Feed]:
         """Create temperature feeds for each year in the range.

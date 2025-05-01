@@ -10,37 +10,94 @@ import datetime
 import logging
 
 # Third-party imports
+import aiohttp
 import pandas as pd
 import pytest
 
 # Local imports
-from shallweswim.clients.nwis import NwisApi
+from shallweswim.clients.nwis import NwisApi, NwisDataError
 
 # Mark all tests in this file as integration tests that hit live services
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_live_temperature_fetch() -> None:
-    """Test fetching temperature data from the live USGS NWIS API.
+async def test_integration_temperature() -> None:
+    """Integration test for fetching NWIS temperature data."""
+    # Dates known to have data for this site
+    begin_date = datetime.date(2024, 6, 1)
+    end_date = datetime.date(2024, 6, 2)
+    site_no = "03292494"  # Example USGS site number
+    timezone = "America/New_York"
+    location_code = "test_loc"
 
-    This test uses the Ohio River at Louisville site (03292494) which should
-    have reliable water temperature data.
-    """
+    # Create a real session and client instance
+    async with aiohttp.ClientSession() as session:
+        nwis_client = NwisApi(session)
+        # Call on instance
+        df = await nwis_client.temperature(
+            site_no=site_no,
+            begin_date=begin_date,
+            end_date=end_date,
+            timezone=timezone,
+            location_code=location_code,
+        )
+
+    # Basic checks
+    assert isinstance(df, pd.DataFrame)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_integration_missing_temp_column() -> None:
+    """Integration test for a site known to be missing the standard temp parameter."""
+    # Dates known to have data for this site
+    begin_date = datetime.date(2024, 6, 1)
+    end_date = datetime.date(2024, 6, 2)
+    site_no = (
+        "01646500"  # Potomac River near Washington, D.C. - Known *not* to have 00010
+    )
+    timezone = "America/New_York"
+    location_code = "test_loc_missing"
+
+    # Site 01646500 doesn't have parameter 00010, so we expect NwisDataError
+    with pytest.raises(NwisDataError, match="No water temperature data"):
+        # Create a real session and client instance
+        async with aiohttp.ClientSession() as session:
+            nwis_client = NwisApi(session)
+            # Call on instance
+            await nwis_client.temperature(
+                site_no=site_no,
+                begin_date=begin_date,
+                end_date=end_date,
+                timezone=timezone,
+                location_code=location_code,
+                parameter_cd="00010",  # Explicitly request the parameter known to be missing
+            )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_integration_live_temperature_fetch() -> None:
+    """Integration test for fetching temperature data from the live USGS NWIS API."""
     # Use a date range in the past to ensure data is available
     # (past 7 days should be safe)
     end_date = datetime.datetime.now().date()
     begin_date = end_date - datetime.timedelta(days=7)
 
-    # Fetch temperature data
-    df = await NwisApi.temperature(
-        site_no="03292494",  # Ohio River at Louisville
-        parameter_cd="00011",  # Water temperature
-        begin_date=begin_date,
-        end_date=end_date,
-        timezone="US/Eastern",
-        location_code="sdf",
-    )
+    # Create a real session and client instance
+    async with aiohttp.ClientSession() as session:
+        nwis_client = NwisApi(session)
+        # Call on instance
+        df = await nwis_client.temperature(
+            site_no="03292494",  # Ohio River at Louisville
+            parameter_cd="00011",  # Water temperature
+            begin_date=begin_date,
+            end_date=end_date,
+            timezone="US/Eastern",
+            location_code="sdf",
+        )
 
     # Log the results for debugging
     logging.info(f"Fetched {len(df)} temperature readings")
@@ -77,26 +134,26 @@ async def test_live_temperature_fetch() -> None:
     ), f"Latest timestamp {df.index.max()} after requested end date {end_date}"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_live_temperature_fetch_with_parameter_cd() -> None:
-    """Test fetching temperature data with a specific parameter code.
-
-    This test uses parameter code 00011 (water temperature, Celsius) instead of
-    the default 00010 (water temperature, Fahrenheit).
-    """
+async def test_integration_live_temperature_fetch_with_parameter_cd() -> None:
+    """Integration test for fetching temperature data with a specific parameter code."""
     # Use a date range in the past to ensure data is available
     end_date = datetime.datetime.now().date()
     begin_date = end_date - datetime.timedelta(days=7)
 
-    # Fetch temperature data with parameter code 00011
-    df = await NwisApi.temperature(
-        site_no="03292494",  # Ohio River at Louisville
-        parameter_cd="00011",  # Water temperature in Celsius
-        begin_date=begin_date,
-        end_date=end_date,
-        timezone="US/Eastern",
-        location_code="sdf",
-    )
+    # Create a real session and client instance
+    async with aiohttp.ClientSession() as session:
+        nwis_client = NwisApi(session)
+        # Call on instance
+        df = await nwis_client.temperature(
+            site_no="03292494",  # Ohio River at Louisville
+            parameter_cd="00011",  # Water temperature in Celsius
+            begin_date=begin_date,
+            end_date=end_date,
+            timezone="US/Eastern",
+            location_code="sdf",
+        )
 
     # Verify the results
     assert isinstance(df, pd.DataFrame)

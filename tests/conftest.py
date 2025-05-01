@@ -6,9 +6,6 @@ This file contains setup for integration tests that hit real NOAA CO-OPS API end
 # Third-party imports
 import pytest
 
-# Real station to use for API availability check
-TIDE_STATION = 8518750  # NYC Battery - comprehensive station with good data coverage
-
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     """Add custom command line options to pytest."""

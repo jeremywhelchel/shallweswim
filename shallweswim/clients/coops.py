@@ -6,14 +6,15 @@ import datetime
 import io
 import logging
 import urllib.parse
-from typing import Literal, Optional, TypedDict, cast
+from types import TracebackType
+from typing import Literal, Optional, TypedDict, cast, Type
 
 # Third-party imports
 import aiohttp
 import pandas as pd
 
 # Local imports
-from shallweswim.clients.base import BaseApiClient
+from .base import BaseApiClient, BaseClientError
 
 # Type definitions for NOAA CO-OPS API client
 ProductType = Literal[
@@ -66,7 +67,7 @@ class TemperatureData(TypedDict):
     air_temp: Optional[float]
 
 
-class CoopsApiError(Exception):
+class CoopsApiError(BaseClientError):
     """Base error for NOAA CO-OPS API calls."""
 
 
@@ -101,16 +102,30 @@ class CoopsApi(BaseApiClient):
     MAX_RETRIES = 3
     RETRY_DELAY = 1  # seconds
 
-    @classmethod
-    def _format_date(cls, date: datetime.date | datetime.datetime) -> str:
+    def __init__(self, session: aiohttp.ClientSession):
+        """Initialize CoopsApi with an aiohttp client session."""
+        super().__init__(session=session)
+
+    async def __aenter__(self) -> "CoopsApi":
+        await self._session.__aenter__()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc: Optional[BaseException],
+        tb: Optional[TracebackType],
+    ) -> None:
+        await self._session.__aexit__(exc_type, exc, tb)
+
+    def _format_date(self, date: datetime.date | datetime.datetime) -> str:
         """Format a date for NOAA CO-OPS API requests."""
         if isinstance(date, datetime.datetime):
             date = date.date()
         return date.strftime(DateFormat)
 
-    @classmethod
     async def _Request(
-        cls, params: CoopsRequestParams, location_code: str = "unknown"
+        self, params: CoopsRequestParams, location_code: str = "unknown"
     ) -> pd.DataFrame:
         """Make a request to the NOAA CO-OPS API with retries.
 
@@ -125,46 +140,51 @@ class CoopsApi(BaseApiClient):
             CoopsConnectionError: If connection to API fails
             CoopsDataError: If API returns error response
         """
-        url_params = dict(cls.BASE_PARAMS, **params)
-        url = cls.BASE_URL + "?" + urllib.parse.urlencode(url_params)
+        url_params = dict(self.BASE_PARAMS, **params)
+        url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
 
-        async with aiohttp.ClientSession() as session:
-            for attempt in range(cls.MAX_RETRIES):
-                try:
-                    logging.info(
-                        f"[{location_code}][coops] NOAA CO-OPS API request (attempt {attempt + 1}): {url}"
-                    )
-                    async with session.get(url) as response:
-                        if response.status != 200:
-                            error_msg = f"HTTP error: {response.status}"
-                            logging.error(f"[{location_code}][coops] {error_msg}")
-                            raise CoopsConnectionError(error_msg)
-
-                        # Read CSV data
-                        csv_data = await response.text()
-                        df = pd.read_csv(io.StringIO(csv_data))
-
-                        if len(df) == 1:
-                            error_msg = df.iloc[0].values[0]
-                            logging.error(
-                                f"[{location_code}][coops] NOAA CO-OPS API data error: {error_msg}"
-                            )
-                            raise CoopsDataError(error_msg)
-                        return df
-                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                    if attempt == cls.MAX_RETRIES - 1:
-                        error_msg = f"Failed to connect to NOAA CO-OPS API: {e}"
-                        logging.error(f"[{location_code}][coops] {error_msg}")
+        attempt = 0
+        while attempt < self.MAX_RETRIES:
+            attempt += 1
+            self.log(
+                f"[{location_code}][coops] NOAA CO-OPS API request (attempt {attempt}): {url}"
+            )
+            try:
+                async with self._session.get(url) as response:
+                    if response.status != 200:
+                        error_msg = f"HTTP error: {response.status}"
+                        self.log(
+                            f"[{location_code}][coops] {error_msg}", level=logging.ERROR
+                        )
                         raise CoopsConnectionError(error_msg)
-                    await asyncio.sleep(cls.RETRY_DELAY * (attempt + 1))
+
+                    # Read CSV data
+                    csv_data = await response.text()
+                    df = pd.read_csv(io.StringIO(csv_data))
+
+                    if len(df) == 1:
+                        error_msg = df.iloc[0].values[0]
+                        self.log(
+                            f"[{location_code}][coops] NOAA CO-OPS API data error: {error_msg}",
+                            level=logging.ERROR,
+                        )
+                        raise CoopsDataError(error_msg)
+                    return df
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt == self.MAX_RETRIES - 1:
+                    error_msg = f"Failed to connect to NOAA CO-OPS API: {e}"
+                    self.log(
+                        f"[{location_code}][coops] {error_msg}", level=logging.ERROR
+                    )
+                    raise CoopsConnectionError(error_msg)
+                await asyncio.sleep(self.RETRY_DELAY * (attempt + 1))
 
         error_msg = "Unexpected error in NOAA CO-OPS API request"
-        logging.error(f"[{location_code}][coops] {error_msg}")
+        self.log(f"[{location_code}][coops] {error_msg}", level=logging.ERROR)
         raise CoopsConnectionError(error_msg)
 
-    @classmethod
     async def tides(
-        cls,
+        self,
         station: int,
         location_code: str = "unknown",
     ) -> pd.DataFrame:
@@ -184,18 +204,18 @@ class CoopsApi(BaseApiClient):
         params: CoopsRequestParams = {
             "product": "predictions",
             "datum": "MLLW",
-            "begin_date": cls._format_date(begin_date),
-            "end_date": cls._format_date(end_date),
+            "begin_date": self._format_date(begin_date),
+            "end_date": self._format_date(end_date),
             "station": station,
             "interval": "hilo",
         }
 
-        logging.info(
-            f"[{location_code}][coops] Fetching tide predictions for station {station} from {cls._format_date(begin_date)} to {cls._format_date(end_date)}"
+        self.log(
+            f"[{location_code}][coops] Fetching tide predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}"
         )
-        df = await cls._Request(params, location_code)
+        df = await self._Request(params, location_code)
         df = (
-            df.pipe(cls._FixTime)
+            df.pipe(self._FixTime)
             .rename(columns={" Prediction": "prediction", " Type": "type"})
             .assign(type=lambda x: x["type"].map({"L": "low", "H": "high"}))[
                 ["prediction", "type"]
@@ -203,9 +223,8 @@ class CoopsApi(BaseApiClient):
         )
         return cast("pd.DataFrame[TideData]", df)
 
-    @classmethod
     async def currents(
-        cls,
+        self,
         station: str,
         interpolate: bool = True,
         location_code: str = "unknown",
@@ -230,18 +249,18 @@ class CoopsApi(BaseApiClient):
         params: CoopsRequestParams = {
             "product": "currents_predictions",
             "datum": "MLLW",
-            "begin_date": cls._format_date(begin_date),
-            "end_date": cls._format_date(end_date),
+            "begin_date": self._format_date(begin_date),
+            "end_date": self._format_date(end_date),
             "station": station,
             "interval": "MAX_SLACK",
         }
 
-        logging.info(
-            f"[{location_code}][coops] Fetching current predictions for station {station} from {cls._format_date(begin_date)} to {cls._format_date(end_date)}"
+        self.log(
+            f"[{location_code}][coops] Fetching current predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}"
         )
-        df = await cls._Request(params, location_code)
+        df = await self._Request(params, location_code)
         currents = (
-            df.pipe(cls._FixTime, time_col="Time").rename(
+            df.pipe(self._FixTime, time_col="Time").rename(
                 columns={
                     " Depth": "depth",
                     " Type": "type",
@@ -267,9 +286,8 @@ class CoopsApi(BaseApiClient):
 
         return cast("pd.DataFrame[CurrentData]", currents)
 
-    @classmethod
     async def temperature(
-        cls,
+        self,
         station: int,
         product: Literal["air_temperature", "water_temperature"],
         begin_date: datetime.date,
@@ -302,18 +320,18 @@ class CoopsApi(BaseApiClient):
 
         params: CoopsRequestParams = {
             "product": product,
-            "begin_date": cls._format_date(begin_date),
-            "end_date": cls._format_date(end_date),
+            "begin_date": self._format_date(begin_date),
+            "end_date": self._format_date(end_date),
             "station": station,
             "interval": interval,
         }
 
-        logging.info(
-            f"[{location_code}][coops] Fetching temperature data for station {station} from {cls._format_date(begin_date)} to {cls._format_date(end_date)}"
+        self.log(
+            f"[{location_code}][coops] Fetching temperature data for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}"
         )
-        df = await cls._Request(params, location_code)
+        df = await self._Request(params, location_code)
         df = (
-            df.pipe(cls._FixTime)
+            df.pipe(self._FixTime)
             .rename(
                 columns={
                     " Water Temperature": "water_temp",
@@ -327,8 +345,7 @@ class CoopsApi(BaseApiClient):
 
         return cast("pd.DataFrame[TemperatureData]", df)
 
-    @classmethod
-    def _FixTime(cls, df: pd.DataFrame, time_col: str = "Date Time") -> pd.DataFrame:
+    def _FixTime(self, df: pd.DataFrame, time_col: str = "Date Time") -> pd.DataFrame:
         """Fix timestamp column in NOAA CO-OPS API response.
 
         Args:

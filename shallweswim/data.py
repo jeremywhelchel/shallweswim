@@ -20,6 +20,7 @@ from shallweswim import config as config_lib
 from shallweswim import feeds
 from shallweswim import plot
 from shallweswim import util
+from shallweswim.clients import BaseApiClient
 from shallweswim.types import (
     CurrentInfo,
     DatasetName,
@@ -131,13 +132,17 @@ class LocationDataManager(object):
     for the web application.
     """
 
-    def __init__(self, config: config_lib.LocationConfig) -> None:
+    def __init__(
+        self, config: config_lib.LocationConfig, clients: Dict[str, BaseApiClient]
+    ):
         """Initialize the Data object with configuration settings.
 
         Args:
             config: Location-specific configuration settings
+            clients: Dictionary of initialized API client instances
         """
         self.config = config
+        self.clients = clients
 
         # Dictionary mapping dataset names to their corresponding feeds
         # This is the single source of truth for all feed instances and data
@@ -408,7 +413,7 @@ class LocationDataManager(object):
         try:
             # Update the feed to get fresh data
             self.log(f"Fetching {dataset}")
-            await feed.update()
+            await feed.update(clients=self.clients)  # Pass the clients dict
 
             # No need to update separate data cache variables
             # Data is accessed directly from feed.values when needed

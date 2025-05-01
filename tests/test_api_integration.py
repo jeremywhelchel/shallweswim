@@ -11,6 +11,7 @@ Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 from typing import AsyncGenerator
 
 # Third-party imports
+import aiohttp
 import dateutil.parser
 import httpx
 import pytest
@@ -40,28 +41,33 @@ async def api_client() -> AsyncGenerator[TestClient, None]:
 
     # Initialize app.state.data_managers
     app.state.data_managers = {}
+    app.state.http_session = None  # Initialize state variable
 
-    # Initialize data for all test locations
-    # We set wait_for_data=True to ensure data is loaded before tests run
-    await api.initialize_location_data(
-        location_codes=TEST_LOCATIONS,
-        app=app,  # Pass the app instance
-        wait_for_data=True,  # Wait for data to load before running tests
-        timeout=30.0,  # Maximum time to wait for data to be ready
-    )
+    # Create and manage the HTTP session within the fixture's scope
+    async with aiohttp.ClientSession() as session:
+        app.state.http_session = session
 
-    # Register only the API routes
-    api.register_routes(app)
+        # Initialize data for all test locations
+        # We set wait_for_data=True to ensure data is loaded before tests run
+        await api.initialize_location_data(
+            location_codes=TEST_LOCATIONS,
+            app=app,  # Pass the app instance
+            wait_for_data=True,  # Wait for data to load before running tests
+            timeout=30.0,  # Maximum time to wait for data to be ready
+        )
 
-    # Create a test client for the API-only app
-    client = TestClient(app)
+        # Register only the API routes
+        api.register_routes(app)
 
-    # Yield the client to allow tests to run
-    yield client
+        # Create a test client for the API-only app
+        client = TestClient(app)
 
-    # Clean up all data managers after tests are complete
-    for data_manager in app.state.data_managers.values():
-        data_manager.stop()
+        # Yield the client to allow tests to run
+        yield client
+
+        # Clean up all data managers after tests are complete
+        for data_manager in app.state.data_managers.values():
+            data_manager.stop()
 
 
 def validate_conditions_response(response: httpx.Response, location_code: str) -> None:

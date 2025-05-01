@@ -15,6 +15,7 @@ import signal
 from typing import Any, AsyncGenerator, Callable, Coroutine
 
 # Third-party imports
+import aiohttp
 import fastapi
 import google.cloud.logging
 import uvicorn
@@ -30,6 +31,7 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     """Initialize data sources during application startup.
 
     This loads data for all configured locations and starts data collection.
+    It also creates the shared HTTP client session.
 
     Args:
         app: The FastAPI application instance
@@ -37,23 +39,26 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     Yields:
         None when setup is complete
     """
-    # Initialize data for all configured locations
-    # Don't wait for data to load since this will block application startup
-    await api.initialize_location_data(
-        location_codes=list(config.CONFIGS.keys()),
-        app=app,  # Pass the app instance to store data in app.state
-        wait_for_data=False,  # Don't block app startup waiting for data
-    )
-    yield
-    # Shutdown handling
-    logging.info("-----------------------------------------------")
-    logging.info("Shutting down app")
+    async with aiohttp.ClientSession() as session:
+        # Store the shared session in app state
+        app.state.http_session = session
 
-    # Stop all data managers to properly clean up background tasks
-    if hasattr(app.state, "data_managers"):
-        for location_code, data_manager in app.state.data_managers.items():
-            logging.info(f"Stopping data manager for {location_code}")
-            data_manager.stop()
+        # Initialize data for all configured locations
+        await api.initialize_location_data(
+            location_codes=list(config.CONFIGS.keys()),
+            app=app,  # Pass the app instance
+            wait_for_data=False,  # Don't block app startup waiting for data
+        )
+        yield
+        # Shutdown handling
+        logging.info("-----------------------------------------------")
+        logging.info("Shutting down app")
+
+        # Stop all data managers to properly clean up background tasks
+        if hasattr(app.state, "data_managers"):
+            for location_code, data_manager in app.state.data_managers.items():
+                logging.info(f"Stopping data manager for {location_code}")
+                data_manager.stop()
 
 
 app = fastapi.FastAPI(lifespan=lifespan)

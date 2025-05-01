@@ -32,6 +32,7 @@ httpx = "^0.28.1"
 pylint = "^3.3.6"
 types-python-dateutil = "^2.9.0.20241206"
 pytest-cov = "^6.1.1"
+pytest-aiohttp = "^1.1.0"
 
 [tool.mypy]
 python_version = "3.12"

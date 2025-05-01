@@ -10,11 +10,13 @@ import logging
 from typing import Optional
 
 # Third-party imports
+import aiohttp
 import fastapi
 from fastapi import HTTPException
 
 # Local imports
 from shallweswim import config as config_lib, data as data_lib, plot, util
+from shallweswim.clients import BaseApiClient, CoopsApi, NwisApi, NdbcApi
 from shallweswim.types import (
     ApiTideEntry,
     CurrentPredictionInfo,
@@ -33,7 +35,7 @@ from typing import Dict, Any
 
 async def initialize_location_data(
     location_codes: list[str],
-    app: Optional[fastapi.FastAPI] = None,
+    app: fastapi.FastAPI,
     data_dict: Optional[dict[str, data_lib.LocationDataManager]] = None,
     wait_for_data: bool = False,
     timeout: Optional[float] = 30.0,
@@ -45,6 +47,7 @@ async def initialize_location_data(
 
     Args:
         location_codes: List of location codes to initialize
+        app: FastAPI application instance
         data_dict: Optional existing data dictionary to populate (creates new if None)
         wait_for_data: Whether to wait for data to be loaded before returning
         timeout: Maximum time in seconds to wait for data to be ready (None for no timeout)
@@ -55,15 +58,26 @@ async def initialize_location_data(
     Raises:
         AssertionError: If a location's configuration cannot be found or if required data isn't loaded
     """
+    # Retrieve the shared session from app state
+    assert hasattr(app.state, "http_session"), "HTTP session not found in app state"
+    session: aiohttp.ClientSession = app.state.http_session
+
+    # Create API client instances using the shared session
+    api_clients: Dict[str, BaseApiClient] = {
+        "coops": CoopsApi(session=session),
+        "nwis": NwisApi(session=session),
+        "ndbc": NdbcApi(session=session),
+    }
+
     # Use the provided data dictionary, app.state.data_managers, or create a new one
     if data_dict is None:
-        if app is not None and hasattr(app.state, "data_managers"):
+        if hasattr(app.state, "data_managers"):
             data_dict = app.state.data_managers
         else:
             data_dict = {}
 
     # If we have an app but no data_managers attribute yet, initialize it
-    if app is not None and not hasattr(app.state, "data_managers"):
+    if not hasattr(app.state, "data_managers"):
         app.state.data_managers = data_dict
 
     # Initialize each location
@@ -72,8 +86,8 @@ async def initialize_location_data(
         cfg = config_lib.get(code)
         assert cfg is not None, f"Config for location '{code}' not found"
 
-        # Initialize data for this location
-        data_dict[code] = data_lib.LocationDataManager(cfg)
+        # Initialize data for this location, passing clients
+        data_dict[code] = data_lib.LocationDataManager(cfg, clients=api_clients)
         data_dict[code].start()
 
     # Optionally wait for data to be fully loaded

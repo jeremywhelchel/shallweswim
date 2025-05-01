@@ -569,6 +569,24 @@ _CONFIG_LIST = [
         description="Boston, MA open water swimming conditions",
     ),
     LocationConfig(
+        code="sea",
+        name="Seattle",
+        swim_location="Alki Beach",
+        swim_location_link="https://www.seattle.gov/parks/rentals-and-permits/indoor-event-rentals/alki-beach-bathhouse",
+        latitude=47.580,
+        longitude=-122.410,
+        timezone=pytz.timezone("US/Pacific"),
+        temp_source=CoopsTempSource(
+            station=9446484,
+            name="Station TCNW1 - Tacoma, WA",
+        ),
+        tide_source=CoopsTideSource(
+            station=9447130,
+            station_name="Seattle, WA",
+        ),
+        description="Seattle, WA open water swimming conditions",
+    ),
+    LocationConfig(
         enabled=False,
         code="tst",
         name="Test",

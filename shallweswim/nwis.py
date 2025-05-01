@@ -77,7 +77,7 @@ class NwisApi:
         try:
             # Fetch the data using asyncio.to_thread to avoid blocking
             logging.info(
-                f"[{location_code}] Fetching NWIS data for site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}"
+                f"[{location_code}][nwis] Fetching NWIS data for site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}"
             )
 
             # Convert parameter_cd to list if it's a string
@@ -101,7 +101,7 @@ class NwisApi:
                 or raw_result.empty
             ):
                 error_msg = f"No data returned from NWIS API for site {site_no}"
-                logging.error(f"[{location_code}] {error_msg}")
+                logging.error(f"[{location_code}][nwis] {error_msg}")
                 raise NwisDataError(error_msg)
 
             # Find the temperature column in the result
@@ -112,7 +112,7 @@ class NwisApi:
 
             if not temp_columns:
                 error_msg = f"No water temperature data (parameter {parameter_cd}) available for NWIS site {site_no}"
-                logging.error(f"[{location_code}] {error_msg}")
+                logging.error(f"[{location_code}][nwis] {error_msg}")
                 raise NwisDataError(error_msg)
 
             # Extract the first temperature column found
@@ -126,7 +126,7 @@ class NwisApi:
             # Convert temperature from Celsius to Fahrenheit if parameter is 00010
             if parameter_cd == "00010":
                 logging.info(
-                    f"[{location_code}] Converting temperature from Celsius to Fahrenheit for parameter 00010"
+                    f"[{location_code}][nwis] Converting temperature from Celsius to Fahrenheit for parameter 00010"
                 )
                 temp_df["water_temp"] = temp_df["water_temp"].map(c_to_f)
 
@@ -137,14 +137,14 @@ class NwisApi:
             temp_df.sort_index(inplace=True)
 
             logging.info(
-                f"[{location_code}] Successfully fetched {len(temp_df)} temperature readings for NWIS site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}"
+                f"[{location_code}][nwis] Successfully fetched {len(temp_df)} temperature readings for NWIS site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}"
             )
 
             return temp_df
 
         except Exception as e:
             error_msg = f"Error fetching NWIS data: {e}"
-            logging.error(f"[{location_code}] {error_msg}")
+            logging.error(f"[{location_code}][nwis] {error_msg}")
             raise NwisApiError(error_msg)
 
     @classmethod

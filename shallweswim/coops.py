@@ -129,12 +129,12 @@ class CoopsApi:
             for attempt in range(cls.MAX_RETRIES):
                 try:
                     logging.info(
-                        f"[{location_code}] NOAA CO-OPS API request (attempt {attempt + 1}): {url}"
+                        f"[{location_code}][coops] NOAA CO-OPS API request (attempt {attempt + 1}): {url}"
                     )
                     async with session.get(url) as response:
                         if response.status != 200:
                             error_msg = f"HTTP error: {response.status}"
-                            logging.error(f"[{location_code}] {error_msg}")
+                            logging.error(f"[{location_code}][coops] {error_msg}")
                             raise CoopsConnectionError(error_msg)
 
                         # Read CSV data
@@ -144,19 +144,19 @@ class CoopsApi:
                         if len(df) == 1:
                             error_msg = df.iloc[0].values[0]
                             logging.error(
-                                f"[{location_code}] NOAA CO-OPS API data error: {error_msg}"
+                                f"[{location_code}][coops] NOAA CO-OPS API data error: {error_msg}"
                             )
                             raise CoopsDataError(error_msg)
                         return df
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     if attempt == cls.MAX_RETRIES - 1:
                         error_msg = f"Failed to connect to NOAA CO-OPS API: {e}"
-                        logging.error(f"[{location_code}] {error_msg}")
+                        logging.error(f"[{location_code}][coops] {error_msg}")
                         raise CoopsConnectionError(error_msg)
                     await asyncio.sleep(cls.RETRY_DELAY * (attempt + 1))
 
         error_msg = "Unexpected error in NOAA CO-OPS API request"
-        logging.error(f"[{location_code}] {error_msg}")
+        logging.error(f"[{location_code}][coops] {error_msg}")
         raise CoopsConnectionError(error_msg)
 
     @classmethod
@@ -176,17 +176,19 @@ class CoopsApi:
                 type: str - Either 'low' or 'high'
         """
         today = datetime.date.today()
+        begin_date = today - datetime.timedelta(days=1)
+        end_date = today + datetime.timedelta(days=2)
         params: CoopsRequestParams = {
             "product": "predictions",
             "datum": "MLLW",
-            "begin_date": cls._format_date(today - datetime.timedelta(days=1)),
-            "end_date": cls._format_date(today + datetime.timedelta(days=2)),
+            "begin_date": cls._format_date(begin_date),
+            "end_date": cls._format_date(end_date),
             "station": station,
             "interval": "hilo",
         }
 
         logging.info(
-            f"[{location_code}] Fetching tide predictions for station {station}"
+            f"[{location_code}][coops] Fetching tide predictions for station {station} from {cls._format_date(begin_date)} to {cls._format_date(end_date)}"
         )
         df = await cls._Request(params, location_code)
         df = (
@@ -220,17 +222,19 @@ class CoopsApi:
                 bin: Optional[int] - Bin number
         """
         today = datetime.date.today()
+        begin_date = today - datetime.timedelta(days=1)
+        end_date = today + datetime.timedelta(days=2)
         params: CoopsRequestParams = {
             "product": "currents_predictions",
             "datum": "MLLW",
-            "begin_date": cls._format_date(today - datetime.timedelta(days=1)),
-            "end_date": cls._format_date(today + datetime.timedelta(days=2)),
+            "begin_date": cls._format_date(begin_date),
+            "end_date": cls._format_date(end_date),
             "station": station,
             "interval": "MAX_SLACK",
         }
 
         logging.info(
-            f"[{location_code}] Fetching current predictions for station {station}"
+            f"[{location_code}][coops] Fetching current predictions for station {station} from {cls._format_date(begin_date)} to {cls._format_date(end_date)}"
         )
         df = await cls._Request(params, location_code)
         currents = (
@@ -302,7 +306,7 @@ class CoopsApi:
         }
 
         logging.info(
-            f"[{location_code}] Fetching tide predictions for station {station}"
+            f"[{location_code}][coops] Fetching temperature data for station {station} from {cls._format_date(begin_date)} to {cls._format_date(end_date)}"
         )
         df = await cls._Request(params, location_code)
         df = (

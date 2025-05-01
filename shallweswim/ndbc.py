@@ -76,7 +76,7 @@ class NdbcApi:
 
             # Fetch the data using asyncio.to_thread to avoid blocking
             logging.info(
-                f"[{location_code}] Fetching NDBC data for station {station_id} from {begin_date_str} to {end_date_str}"
+                f"[{location_code}][ndbc] Fetching NDBC data for station {station_id} from {begin_date_str} to {end_date_str}"
             )
             raw_result = await asyncio.to_thread(
                 api.get_data,
@@ -91,13 +91,13 @@ class NdbcApi:
                 error_msg = (
                     f"NDBC API returned a dictionary instead of DataFrame: {raw_result}"
                 )
-                logging.error(f"[{location_code}] {error_msg}")
+                logging.error(f"[{location_code}][ndbc] {error_msg}")
                 raise NdbcDataError(error_msg)
 
             # Explicitly assert that raw_result is a DataFrame
             if not isinstance(raw_result, pd.DataFrame):
                 error_msg = f"Expected DataFrame, got {type(raw_result)}"
-                logging.error(f"[{location_code}] {error_msg}")
+                logging.error(f"[{location_code}][ndbc] {error_msg}")
                 raise NdbcDataError(error_msg)
 
             raw_df = raw_result
@@ -108,7 +108,7 @@ class NdbcApi:
             # Check if water temperature data is available
             if temp_column not in raw_df.columns:
                 error_msg = f"No water temperature data ('{temp_column}') available for NDBC station {station_id} in mode '{mode}'"
-                logging.error(f"[{location_code}] {error_msg}")
+                logging.error(f"[{location_code}][ndbc] {error_msg}")
                 raise NdbcDataError(error_msg)
 
             # Extract water temperature data and rename to match our convention
@@ -124,7 +124,7 @@ class NdbcApi:
                 raise ValueError(f"Expected MultiIndex, got {type(temp_df.index)}")
 
             logging.info(
-                f"[{location_code}] Converting MultiIndex to DatetimeIndex for NDBC station {station_id}"
+                f"[{location_code}][ndbc] Converting MultiIndex to DatetimeIndex for NDBC station {station_id}"
             )
 
             # Reset the index and set only the timestamp as the new index
@@ -142,14 +142,14 @@ class NdbcApi:
             temp_df.sort_index(inplace=True)
 
             logging.info(
-                f"[{location_code}] Successfully fetched {len(temp_df)} temperature readings for NDBC station {station_id}"
+                f"[{location_code}][ndbc] Successfully fetched {len(temp_df)} temperature readings for NDBC station {station_id} from {begin_date_str} to {end_date_str}"
             )
 
             return temp_df
 
         except Exception as e:
             error_msg = f"Error fetching NDBC data: {e}"
-            logging.error(f"[{location_code}] {error_msg}")
+            logging.error(f"[{location_code}][ndbc] {error_msg}")
             raise NdbcApiError(error_msg)
 
     @classmethod

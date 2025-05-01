@@ -9,6 +9,12 @@
       >Loading...</strong
     >
   </div>
+  <div
+    class="swim-widget-timestamp"
+    id="widget-timestamp-{{ location_config.code }}"
+  >
+    Last updated: <span>...</span>
+  </div>
   {% if location_config.temp_source %}
   <div class="swim-widget-note">
     Data from {{ location_config.temp_source.name }}
@@ -63,6 +69,12 @@
     font-size: 12px;
     color: #666;
     margin: 4px 0 0 0;
+  }
+  .swim-widget-timestamp {
+    font-size: 11px;
+    color: #888;
+    margin: 2px 0 4px 0;
+    font-style: italic;
   }
   .swim-widget-link {
     font-size: 12px;
@@ -120,6 +132,29 @@
               } else {
                 tempElement.classList.add("moderate");
               }
+            }
+
+            // Update timestamp
+            const timestampElement = document.getElementById(
+              `widget-timestamp-${locationCode}`,
+            );
+            if (timestampElement && data.temperature.timestamp) {
+              // Format the timestamp nicely without seconds
+              const timestamp = new Date(data.temperature.timestamp);
+              const options = {
+                year: "numeric",
+                month: "numeric",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              };
+              const formattedTime = timestamp.toLocaleString(
+                undefined,
+                options,
+              );
+              timestampElement.querySelector("span").textContent =
+                formattedTime;
             }
           } else {
             tempElement.textContent = "N/A";

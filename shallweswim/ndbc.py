@@ -76,7 +76,7 @@ class NdbcApi:
 
             # Fetch the data using asyncio.to_thread to avoid blocking
             logging.info(
-                f"[{location_code}] Fetching NDBC data for station {station_id}"
+                f"[{location_code}] Fetching NDBC data for station {station_id} from {begin_date_str} to {end_date_str}"
             )
             raw_result = await asyncio.to_thread(
                 api.get_data,

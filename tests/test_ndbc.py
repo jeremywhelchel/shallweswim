@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
 # Local imports
-from shallweswim.ndbc import NdbcApi, NdbcApiError
+from shallweswim.clients.ndbc import NdbcApi, NdbcApiError
 from shallweswim.util import c_to_f
 
 
@@ -52,7 +52,7 @@ async def test_temperature_success() -> None:
         mock_to_thread.return_value = create_mock_ndbc_data(mode="stdmet")
 
         # Mock the ndbc_api.NdbcApi class
-        with patch("ndbc_api.NdbcApi") as mock_ndbc_api_class:
+        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
             # The instance doesn't need to do anything as we're mocking to_thread
             mock_ndbc_api_instance = MagicMock()
             mock_ndbc_api_class.return_value = mock_ndbc_api_instance
@@ -84,7 +84,7 @@ async def test_temperature_stdmet() -> None:
         mock_to_thread.return_value = mock_ndbc_temp_data
 
         # Mock the ndbc_api.NdbcApi class
-        with patch("ndbc_api.NdbcApi") as mock_ndbc_api_class:
+        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
             # The instance doesn't need to do anything as we're mocking to_thread
             mock_ndbc_api_instance = MagicMock()
             mock_ndbc_api_class.return_value = mock_ndbc_api_instance
@@ -125,7 +125,7 @@ async def test_temperature_ocean() -> None:
         mock_to_thread.return_value = mock_ndbc_temp_data
 
         # Mock the ndbc_api.NdbcApi class
-        with patch("ndbc_api.NdbcApi") as mock_ndbc_api_class:
+        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
             # The instance doesn't need to do anything as we're mocking to_thread
             mock_ndbc_api_instance = MagicMock()
             mock_ndbc_api_class.return_value = mock_ndbc_api_instance
@@ -163,7 +163,7 @@ async def test_api_error() -> None:
         mock_to_thread.side_effect = Exception("NDBC API error")
 
         # Mock the ndbc_api.NdbcApi class
-        with patch("ndbc_api.NdbcApi") as mock_ndbc_api_class:
+        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
             # The instance doesn't need to do anything as we're mocking to_thread
             mock_ndbc_api_instance = MagicMock()
             mock_ndbc_api_class.return_value = mock_ndbc_api_instance
@@ -187,7 +187,7 @@ async def test_dictionary_result() -> None:
         mock_to_thread.return_value = {"error": "No data available"}
 
         # Mock the ndbc_api.NdbcApi class
-        with patch("ndbc_api.NdbcApi") as mock_ndbc_api_class:
+        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
             # The instance doesn't need to do anything as we're mocking to_thread
             mock_ndbc_api_instance = MagicMock()
             mock_ndbc_api_class.return_value = mock_ndbc_api_instance
@@ -225,7 +225,7 @@ async def test_missing_temp_column_stdmet() -> None:
         mock_to_thread.return_value = df
 
         # Mock the ndbc_api.NdbcApi class
-        with patch("ndbc_api.NdbcApi") as mock_ndbc_api_class:
+        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
             # The instance doesn't need to do anything as we're mocking to_thread
             mock_ndbc_api_instance = MagicMock()
             mock_ndbc_api_class.return_value = mock_ndbc_api_instance
@@ -263,7 +263,7 @@ async def test_missing_temp_column_ocean() -> None:
         mock_to_thread.return_value = df
 
         # Mock the ndbc_api.NdbcApi class
-        with patch("ndbc_api.NdbcApi") as mock_ndbc_api_class:
+        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
             # The instance doesn't need to do anything as we're mocking to_thread
             mock_ndbc_api_instance = MagicMock()
             mock_ndbc_api_class.return_value = mock_ndbc_api_instance

@@ -13,7 +13,7 @@ import pandas as pd
 import datetime
 import asyncio
 
-from shallweswim.ndbc import NdbcApi
+from shallweswim.clients.ndbc import NdbcApi
 
 # Mark all tests in this file as integration tests that hit live services
 pytestmark = pytest.mark.integration

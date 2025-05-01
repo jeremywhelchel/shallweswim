@@ -14,7 +14,7 @@ import datetime
 import asyncio
 from typing import Literal
 
-from shallweswim.coops import CoopsApi
+from shallweswim.clients.coops import CoopsApi
 
 # Mark all tests in this file as integration tests that hit live services
 pytestmark = pytest.mark.integration

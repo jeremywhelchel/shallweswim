@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import patch, AsyncMock
 
 # Local imports
-from shallweswim.coops import CoopsApi, CoopsConnectionError, CoopsDataError
+from shallweswim.clients.coops import CoopsApi, CoopsConnectionError, CoopsDataError
 
 
 @pytest.fixture

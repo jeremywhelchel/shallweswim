@@ -17,9 +17,9 @@ from pydantic import BaseModel, ConfigDict
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim import coops
-from shallweswim import ndbc
-from shallweswim import nwis
+from shallweswim.clients import coops
+from shallweswim.clients import ndbc
+from shallweswim.clients import nwis
 from shallweswim.util import latest_time_value, utc_now
 
 # Additional buffer before reporting data as expired

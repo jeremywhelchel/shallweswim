@@ -524,7 +524,7 @@ class TestCoopsTidesFeed:
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
         # Create a mock COOPS API with autospec
-        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
+        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.tides.return_value = pd.DataFrame(
                 {
@@ -570,7 +570,7 @@ class TestCoopsTidesFeed:
     ) -> None:
         """Test that _fetch handles API errors correctly."""
         # Create a mock COOPS API with autospec that raises an exception
-        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
+        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to raise an exception
             MockCoopsApi.tides.side_effect = Exception("API error")
 
@@ -597,7 +597,7 @@ class TestCoopsCurrentsFeed:
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
         # Create a mock COOPS API with autospec
-        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
+        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.currents.return_value = pd.DataFrame(
                 {"velocity": [1.2, 0.8, 0.3, -0.2, -0.7]},
@@ -652,7 +652,7 @@ class TestCoopsCurrentsFeed:
         )
 
         # Create a mock COOPS API with autospec
-        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
+        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.currents.return_value = pd.DataFrame(
                 {"velocity": [1.2, 0.8, 0.3]},
@@ -687,7 +687,7 @@ class TestCoopsCurrentsFeed:
     ) -> None:
         """Test that _fetch handles API errors correctly."""
         # Create a mock COOPS API with autospec that raises an exception
-        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
+        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to raise an exception
             MockCoopsApi.currents.side_effect = Exception("API error")
 
@@ -715,7 +715,7 @@ class TestCoopsTempFeed:
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
         # Create a mock COOPS API with autospec
-        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
+        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.temperature.return_value = pd.DataFrame(
                 {
@@ -762,7 +762,7 @@ class TestCoopsTempFeed:
     ) -> None:
         """Test that _fetch passes date range to COOPS API when provided."""
         # Create a mock COOPS API with autospec
-        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
+        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.temperature.return_value = pd.DataFrame(
                 {
@@ -811,7 +811,7 @@ class TestCoopsTempFeed:
     ) -> None:
         """Test that _fetch uses default date range when not provided."""
         # Create a mock COOPS API with autospec
-        with patch("shallweswim.coops.CoopsApi", autospec=True) as MockCoopsApi:
+        with patch("shallweswim.clients.coops.CoopsApi", autospec=True) as MockCoopsApi:
             # Configure the mock to return a valid DataFrame
             MockCoopsApi.temperature.return_value = pd.DataFrame(
                 {

@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 
 # Local imports
-from shallweswim.nwis import NwisApi
+from shallweswim.clients.nwis import NwisApi
 
 # Mark all tests in this file as integration tests that hit live services
 pytestmark = pytest.mark.integration

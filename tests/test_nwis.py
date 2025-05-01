@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import patch, AsyncMock
 
 # Local imports
-from shallweswim.nwis import NwisApi, NwisApiError
+from shallweswim.clients.nwis import NwisApi, NwisApiError
 
 
 def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:

@@ -512,6 +512,7 @@ _CONFIG_LIST = [
         # webcam https://dolphinclub.org/weather/ (code in page JS source...)
     ),
     LocationConfig(
+        enabled=False,
         code="sdf",
         name="Louisville",
         swim_location="Community Boathouse",

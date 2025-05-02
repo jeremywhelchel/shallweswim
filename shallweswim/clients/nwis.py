@@ -44,6 +44,13 @@ class NwisApi(BaseApiClient):
     from USGS's National Water Information System (NWIS) stations.
     """
 
+    MAX_RETRIES = 3
+    RETRY_DELAY = 1  # seconds
+
+    @property
+    def client_type(self) -> str:
+        return "nwis"
+
     def __init__(self, session: aiohttp.ClientSession) -> None:
         """Initialize the NWIS client with an aiohttp session.
 
@@ -87,7 +94,8 @@ class NwisApi(BaseApiClient):
         try:
             # Fetch the data using asyncio.to_thread to avoid blocking
             self.log(
-                f"[{location_code}][nwis] Fetching NWIS data for site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}"
+                f"Fetching NWIS data for site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}",
+                location_code=location_code,
             )
 
             # Convert parameter_cd to list if it's a string
@@ -111,7 +119,7 @@ class NwisApi(BaseApiClient):
                 or raw_result.empty
             ):
                 error_msg = f"No data returned from NWIS API for site {site_no}"
-                self.log(f"[{location_code}][nwis] {error_msg}", level=logging.ERROR)
+                self.log(error_msg, level=logging.ERROR, location_code=location_code)
                 raise NwisDataError(error_msg)
 
             # Find the temperature column in the result
@@ -122,7 +130,7 @@ class NwisApi(BaseApiClient):
 
             if not temp_columns:
                 error_msg = f"No water temperature data (parameter {parameter_cd}) available for NWIS site {site_no}"
-                self.log(f"[{location_code}][nwis] {error_msg}", level=logging.ERROR)
+                self.log(error_msg, level=logging.ERROR, location_code=location_code)
                 raise NwisDataError(error_msg)
 
             # Extract the first temperature column found
@@ -136,7 +144,8 @@ class NwisApi(BaseApiClient):
             # Convert temperature from Celsius to Fahrenheit if parameter is 00010
             if parameter_cd == "00010":
                 self.log(
-                    f"[{location_code}][nwis] Converting temperature from Celsius to Fahrenheit for parameter 00010"
+                    f"Converting temperature from Celsius to Fahrenheit for parameter 00010",
+                    location_code=location_code,
                 )
                 temp_df["water_temp"] = temp_df["water_temp"].map(c_to_f)
 
@@ -147,14 +156,15 @@ class NwisApi(BaseApiClient):
             temp_df.sort_index(inplace=True)
 
             self.log(
-                f"[{location_code}][nwis] Successfully fetched {len(temp_df)} temperature readings for NWIS site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}"
+                f"Successfully fetched {len(temp_df)} temperature readings for NWIS site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}",
+                location_code=location_code,
             )
 
             return temp_df
 
         except Exception as e:
             error_msg = f"Error fetching NWIS data: {e}"
-            self.log(f"[{location_code}][nwis] {error_msg}", level=logging.ERROR)
+            self.log(error_msg, level=logging.ERROR, location_code=location_code)
             raise NwisApiError(error_msg)
 
     def _fix_time(self, df: pd.DataFrame, timezone: str) -> pd.DataFrame:

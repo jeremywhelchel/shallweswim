@@ -3,6 +3,7 @@
 import abc
 import logging
 import aiohttp
+from typing import Optional
 
 
 class BaseClientError(Exception):
@@ -14,6 +15,12 @@ class BaseApiClient(abc.ABC):
 
     _session: aiohttp.ClientSession
 
+    @property
+    @abc.abstractmethod
+    def client_type(self) -> str:
+        """Return the string identifier for the client type (e.g., 'coops', 'ndbc')."""
+        raise NotImplementedError
+
     def __init__(self, session: aiohttp.ClientSession) -> None:
         """Initialize the base client with an aiohttp session.
 
@@ -22,15 +29,20 @@ class BaseApiClient(abc.ABC):
         """
         self._session = session
 
-    def log(self, message: str, level: int = logging.INFO) -> None:
-        """Log a message using the class's logger.
-
-        Subclasses should ideally implement a more specific logger,
-        perhaps incorporating a location code or client name.
-        """
-        # Basic implementation - subclasses might override
-        logger = logging.getLogger(f"{self.__module__}.{self.__class__.__name__}")
-        logger.log(level, message)
+    def log(
+        self,
+        message: str,
+        level: int = logging.INFO,
+        location_code: Optional[str] = None,
+    ) -> None:
+        """Log a message, automatically prepending client type and optional location code."""
+        client_tag = self.client_type
+        if location_code:
+            prefix = f"[{location_code}][{client_tag}]"
+        else:
+            prefix = f"[{client_tag}]"
+        formatted_message = f"{prefix} {message}"
+        logging.log(level, formatted_message)
 
     # TODO: Define common methods and properties here, e.g.,
     # - Shared request logic (e.g., _make_request)

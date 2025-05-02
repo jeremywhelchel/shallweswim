@@ -44,6 +44,10 @@ class NdbcApi(BaseApiClient):
     Wrapper around the ndbc-api library to fetch data from NDBC stations.
     """
 
+    @property
+    def client_type(self) -> str:
+        return "ndbc"
+
     @classmethod
     async def temperature(
         cls,

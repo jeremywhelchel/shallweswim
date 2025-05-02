@@ -101,6 +101,10 @@ class CoopsApi(BaseApiClient):
     MAX_RETRIES = 3
     RETRY_DELAY = 1  # seconds
 
+    @property
+    def client_type(self) -> str:
+        return "coops"
+
     def __init__(self, session: aiohttp.ClientSession):
         """Initialize CoopsApi with an aiohttp client session."""
         super().__init__(session=session)
@@ -134,14 +138,15 @@ class CoopsApi(BaseApiClient):
         while attempt < self.MAX_RETRIES:
             attempt += 1
             self.log(
-                f"[{location_code}][coops] NOAA CO-OPS API request (attempt {attempt}): {url}"
+                f"NOAA CO-OPS API request (attempt {attempt}): {url}",
+                location_code=location_code,
             )
             try:
                 async with self._session.get(url) as response:
                     if response.status != 200:
                         error_msg = f"HTTP error: {response.status}"
                         self.log(
-                            f"[{location_code}][coops] {error_msg}", level=logging.ERROR
+                            error_msg, level=logging.ERROR, location_code=location_code
                         )
                         raise CoopsConnectionError(error_msg)
 
@@ -152,23 +157,32 @@ class CoopsApi(BaseApiClient):
                     if len(df) == 1:
                         error_msg = df.iloc[0].values[0]
                         self.log(
-                            f"[{location_code}][coops] NOAA CO-OPS API data error: {error_msg}",
+                            f"NOAA CO-OPS API data error: {error_msg}",
                             level=logging.ERROR,
+                            location_code=location_code,
                         )
                         raise CoopsDataError(error_msg)
                     return df
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                if attempt == self.MAX_RETRIES - 1:
-                    error_msg = f"Failed to connect to NOAA CO-OPS API: {e}"
+                error_msg = f"Connection error: {e.__class__.__name__}: {e}"
+                if attempt >= self.MAX_RETRIES:
                     self.log(
-                        f"[{location_code}][coops] {error_msg}", level=logging.ERROR
+                        error_msg, level=logging.ERROR, location_code=location_code
                     )
-                    raise CoopsConnectionError(error_msg)
-                await asyncio.sleep(self.RETRY_DELAY * (attempt + 1))
+                    raise CoopsConnectionError(error_msg) from e
+                else:
+                    self.log(
+                        f"{error_msg}. Retrying in {self.RETRY_DELAY * attempt} seconds...",
+                        level=logging.WARNING,
+                        location_code=location_code,
+                    )
+                    await asyncio.sleep(self.RETRY_DELAY * attempt)
 
-        error_msg = "Unexpected error in NOAA CO-OPS API request"
-        self.log(f"[{location_code}][coops] {error_msg}", level=logging.ERROR)
-        raise CoopsConnectionError(error_msg)
+        # If all retries fail
+        error_msg = f"Failed after {self.MAX_RETRIES} retries."
+        self.log(error_msg, level=logging.ERROR, location_code=location_code)
+        # The last exception caught (either connection or data error) will be the cause
+        # If no exception was caught but loop finished, raise a generic error
 
     async def tides(
         self,
@@ -198,7 +212,8 @@ class CoopsApi(BaseApiClient):
         }
 
         self.log(
-            f"[{location_code}][coops] Fetching tide predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}"
+            f"Fetching tide predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
+            location_code=location_code,
         )
         df = await self._Request(params, location_code)
         df = (
@@ -243,7 +258,8 @@ class CoopsApi(BaseApiClient):
         }
 
         self.log(
-            f"[{location_code}][coops] Fetching current predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}"
+            f"Fetching current predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
+            location_code=location_code,
         )
         df = await self._Request(params, location_code)
         currents = (
@@ -314,7 +330,8 @@ class CoopsApi(BaseApiClient):
         }
 
         self.log(
-            f"[{location_code}][coops] Fetching temperature data for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}"
+            f"Fetching temperature data for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
+            location_code=location_code,
         )
         df = await self._Request(params, location_code)
         df = (

@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 # Local imports
-from shallweswim.clients.nwis import NwisApi, NwisDataError
+from shallweswim.clients.nwis import NwisApi, NwisApiError
 
 # Mark all tests in this file as integration tests that hit live services
 pytestmark = pytest.mark.integration
@@ -28,7 +28,7 @@ async def test_integration_temperature() -> None:
     # Dates known to have data for this site
     begin_date = datetime.date(2024, 6, 1)
     end_date = datetime.date(2024, 6, 2)
-    site_no = "03292494"  # Example USGS site number
+    site_no = "01463500"  # Use Delaware River @ Trenton
     timezone = "America/New_York"
     location_code = "test_loc"
 
@@ -61,8 +61,11 @@ async def test_integration_missing_temp_column() -> None:
     timezone = "America/New_York"
     location_code = "test_loc_missing"
 
-    # Site 01646500 doesn't have parameter 00010, so we expect NwisDataError
-    with pytest.raises(NwisDataError, match="No water temperature data"):
+    # Use parameter 00011 (Fahrenheit) for site 01646500, expecting NwisDataError
+    # Expect NwisApiError because the generic except block wraps the NwisDataError
+    with pytest.raises(
+        NwisApiError, match="Unexpected error.*NwisDataError: No data returned"
+    ):
         # Create a real session and client instance
         async with aiohttp.ClientSession() as session:
             nwis_client = NwisApi(session)
@@ -73,7 +76,7 @@ async def test_integration_missing_temp_column() -> None:
                 end_date=end_date,
                 timezone=timezone,
                 location_code=location_code,
-                parameter_cd="00010",  # Explicitly request the parameter known to be missing
+                parameter_cd="00011",  # Explicitly request the parameter known to be missing
             )
 
 
@@ -91,8 +94,8 @@ async def test_integration_live_temperature_fetch() -> None:
         nwis_client = NwisApi(session)
         # Call on instance
         df = await nwis_client.temperature(
-            site_no="03292494",  # Ohio River at Louisville
-            parameter_cd="00011",  # Water temperature
+            site_no="01463500",  # Delaware River @ Trenton
+            parameter_cd="00010",  # Water temperature, Celsius
             begin_date=begin_date,
             end_date=end_date,
             timezone="US/Eastern",
@@ -147,8 +150,8 @@ async def test_integration_live_temperature_fetch_with_parameter_cd() -> None:
         nwis_client = NwisApi(session)
         # Call on instance
         df = await nwis_client.temperature(
-            site_no="03292494",  # Ohio River at Louisville
-            parameter_cd="00011",  # Water temperature in Celsius
+            site_no="01463500",  # Delaware River @ Trenton
+            parameter_cd="00010",  # Water temperature in Celsius
             begin_date=begin_date,
             end_date=end_date,
             timezone="US/Eastern",

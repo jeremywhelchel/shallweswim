@@ -14,7 +14,7 @@ import aiohttp
 import pandas as pd
 
 # Local imports
-from .base import BaseApiClient, BaseClientError
+from shallweswim.clients.base import BaseApiClient, BaseClientError
 
 # Type definitions for NOAA CO-OPS API client
 ProductType = Literal[

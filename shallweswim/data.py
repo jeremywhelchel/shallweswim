@@ -434,63 +434,88 @@ class LocationDataManager(object):
         """Background asyncio task that continuously updates data.
 
         This runs as an asyncio task and periodically checks if datasets
-        have expired. If so, it fetches new data and generates updated plots.
+        have expired. If so, it fetches new data and generates updated plots
+        using the shared process pool for CPU-bound plotting tasks.
 
         This method catches and logs exceptions to prevent silent failures in the event loop,
         but will re-raise them to ensure they're not silently ignored.
         """
+        loop = asyncio.get_running_loop()
         try:
             while True:
                 try:
+                    plot_tasks = []  # Tasks for parallel execution
+
                     # Check and update tides and currents separately
                     if self._expired("tides"):
                         await self._update_dataset("tides")
-
                     if self._expired("currents"):
                         await self._update_dataset("currents")
 
                     if self._expired("live_temps"):
                         await self._update_dataset("live_temps")
-                        # Only generate plot if we have valid data
                         live_temps_feed = self._feeds.get("live_temps")
                         live_temps_data = (
                             live_temps_feed.values
                             if live_temps_feed is not None
                             else None
                         )
+                        temp_source_name = (
+                            self.config.temp_source.name
+                            if self.config.temp_source
+                            else None
+                        )
                         if live_temps_data is not None and len(live_temps_data) >= 2:
-                            plot.generate_and_save_live_temp_plot(
+                            self.log("Submitting live temps plot generation.")
+                            task = loop.run_in_executor(
+                                self.process_pool,
+                                plot.generate_and_save_live_temp_plot,
                                 live_temps_data,
                                 self.config.code,
-                                (
-                                    self.config.temp_source.name
-                                    if self.config.temp_source
-                                    else None
-                                ),
+                                temp_source_name,
                             )
+                            plot_tasks.append(task)
 
                     if self._expired("historic_temps"):
                         await self._update_dataset("historic_temps")
-                        # Only generate plots if we have valid historical data
                         historic_temps_feed = self._feeds.get("historic_temps")
                         historic_temps_data = (
                             historic_temps_feed.values
                             if historic_temps_feed is not None
                             else None
                         )
+                        temp_source_name = (
+                            self.config.temp_source.name
+                            if self.config.temp_source
+                            else None
+                        )
                         if (
                             historic_temps_data is not None
                             and len(historic_temps_data) >= 10
                         ):
-                            plot.generate_and_save_historic_plots(
+                            self.log("Submitting historic temps plot generation.")
+                            task = loop.run_in_executor(
+                                self.process_pool,
+                                plot.generate_and_save_historic_plots,
                                 historic_temps_data,
                                 self.config.code,
-                                (
-                                    self.config.temp_source.name
-                                    if self.config.temp_source
-                                    else None
-                                ),
+                                temp_source_name,
                             )
+                            plot_tasks.append(task)
+
+                    # Wait for any submitted plotting tasks to complete in parallel
+                    if plot_tasks:
+                        self.log(f"Waiting for {len(plot_tasks)} plot task(s)...")
+                        try:
+                            await asyncio.gather(*plot_tasks)
+                            self.log(f"Completed {len(plot_tasks)} plot task(s).")
+                        except Exception as e:
+                            self.log(
+                                f"Error during parallel plot generation: {e}",
+                                level=logging.ERROR,
+                            )
+                            # Decide whether to raise e or just log
+
                 except Exception as e:
                     # Log the exception but don't swallow it - let it propagate
                     self.log(f"Error in data update loop: {e}", level=logging.ERROR)

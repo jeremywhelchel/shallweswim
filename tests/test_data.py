@@ -12,6 +12,8 @@ import pandas as pd
 import pytest
 import pytest_asyncio
 from typing import Any, AsyncGenerator
+from freezegun import freeze_time
+from typing import Literal, get_args
 
 # Local imports
 from shallweswim.data import LocationDataManager
@@ -204,6 +206,7 @@ async def test_current_prediction_strengthening() -> None:
     # Create a custom test instance with clear strengthening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+
     # Provide an empty clients dict and a process pool for the test
     pool = ProcessPoolExecutor()
     data = LocationDataManager(config, clients={}, process_pool=pool)
@@ -244,6 +247,7 @@ async def test_current_prediction_weakening() -> None:
     # Create a custom test instance with clear weakening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+
     # Provide an empty clients dict and a process pool for the test
     pool = ProcessPoolExecutor()
     data = LocationDataManager(config, clients={}, process_pool=pool)
@@ -370,44 +374,86 @@ async def test_current_info_representation() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "tides_timestamp,live_temps_timestamp,historic_temps_timestamp,expected_ready,configured_feeds",
+    "tides_timestamp, live_temps_timestamp, historic_temps_timestamp, expected_ready, configured_feeds",
     [
-        # No feeds configured - ready (nothing to wait for)
-        (None, None, None, True, False),
-        # All datasets have timestamps but all expired - not ready
+        # --- All feeds configured ---
+        # Case 1: All feeds ready (timestamps are recent)
         (
-            datetime.datetime(2020, 1, 1),
-            datetime.datetime(2020, 1, 1),
-            datetime.datetime(2020, 1, 1),
-            False,
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            True,  # Expected ready
+            True,  # All feeds configured
+        ),
+        # Case 2: Tides expired
+        (
+            datetime.datetime(2025, 4, 27, 10, 0, 0),
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            False,  # Expected not ready
             True,
         ),
-        # Some datasets missing but all configured ones are valid - ready
-        # This reflects the new ready logic where we only check configured feeds
+        # Case 3: Live temps expired
         (
-            datetime.datetime.now(),
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            datetime.datetime(2025, 4, 27, 10, 0, 0),
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            False,  # Expected not ready
+            True,
+        ),
+        # Case 4: Historic temps expired
+        (
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            datetime.datetime(2025, 4, 19, 12, 0, 0),
+            False,  # Expected not ready
+            True,
+        ),
+        # Case 5: Multiple feeds expired
+        (
+            datetime.datetime(2025, 4, 27, 10, 0, 0),
+            datetime.datetime(2025, 4, 27, 10, 0, 0),
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            False,  # Expected not ready
+            True,
+        ),
+        # --- Only tides and historic configured ---
+        # Case 6: Configured feeds ready
+        (
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            None,  # Live temps not configured
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            True,  # Expected ready
+            False,  # Live temps not configured
+        ),
+        # Case 7: Configured tides expired
+        (
+            datetime.datetime(2025, 4, 27, 10, 0, 0),
             None,
-            datetime.datetime.now(),
-            True,
-            True,
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            False,  # Expected not ready
+            False,
         ),
-        # All configured datasets have recent timestamps - ready
+        # Case 8: Configured historic temps expired
         (
-            datetime.datetime.now(),
-            datetime.datetime.now(),
-            datetime.datetime.now(),
-            True,
-            True,
+            datetime.datetime(2025, 4, 27, 12, 0, 0),
+            None,
+            datetime.datetime(2025, 4, 19, 12, 0, 0),
+            False,  # Expected not ready
+            False,
         ),
     ],
 )
+@pytest.mark.asyncio
+@freeze_time("2025-04-27 12:00:00")  # Freeze time for consistent expiration checks
+# pylint: disable=unused-argument
 async def test_data_ready_property(
     mock_config: Any,
-    tides_timestamp: datetime.datetime,
-    live_temps_timestamp: datetime.datetime,
-    historic_temps_timestamp: datetime.datetime,
+    tides_timestamp: datetime.datetime | None,
+    live_temps_timestamp: datetime.datetime | None,
+    historic_temps_timestamp: datetime.datetime | None,
     expected_ready: bool,
-    configured_feeds: bool,
+    configured_feeds: bool,  # True if live temps feed is configured
     process_pool: ProcessPoolExecutor,
 ) -> None:
     """Test the ready property of the Data class.
@@ -418,78 +464,55 @@ async def test_data_ready_property(
     # Use the provided process_pool fixture
     data = LocationDataManager(mock_config, clients={}, process_pool=process_pool)
 
-    try:
-        # Mock the _expired method to control its behavior based on timestamps
-        def mock_expired(dataset: str) -> bool:
-            # For all datasets, we'll simulate the feed's is_expired property
-            # based on whether the corresponding feed exists and its timestamp
-            if dataset == "tides":
-                # Consider None timestamps as expired
-                if tides_timestamp is None:
-                    return True
-                # Consider timestamps older than 1 hour as expired
-                cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
-                return tides_timestamp < cutoff
-            elif dataset == "currents":
-                # Use the same timestamp as tides for simplicity
-                if tides_timestamp is None:
-                    return True
-                cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
-                return tides_timestamp < cutoff
-            elif dataset == "live_temps":
-                if live_temps_timestamp is None:
-                    return True
-                cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
-                return live_temps_timestamp < cutoff
-            elif dataset == "historic_temps":
-                if historic_temps_timestamp is None:
-                    return True
-                cutoff = datetime.datetime.now() - datetime.timedelta(hours=1)
-                return historic_temps_timestamp < cutoff
-            else:
-                # Unknown dataset
-                return True
+    # Define the Literal type for feed names used as keys in data._feeds
+    FeedName = Literal["tides", "currents", "live_temps", "historic_temps"]
 
-        # Apply our mock by directly setting the method
-        # Use setattr to avoid mypy method-assign error
-        setattr(data, "_expired", mock_expired)
+    # --- Mock Feed Setup ---
+    # Start with base feeds, type explicitly allows all FeedName possibilities
+    feeds_to_configure: list[FeedName] = ["tides", "historic_temps"]
+    if configured_feeds:
+        feeds_to_configure.append("live_temps")  # Now compatible
 
-        # Only set up feed mocks if configured_feeds is True
-        if configured_feeds:
-            # Set up feed mocks for each dataset in the _feeds dictionary
-            # Tides feed
-            mock_tides_feed = MagicMock()
-            mock_tides_feed.is_expired = mock_expired("tides")
-            data._feeds["tides"] = (
-                mock_tides_feed if tides_timestamp is not None else None
-            )
+    # Configure feeds based on the 'configured_feeds' parameter
+    mock_config.feeds = feeds_to_configure
 
-            # Currents feed - only configure if tides_timestamp is not None
-            # This simulates a location that may not have currents configured
-            if tides_timestamp is not None:
-                mock_currents_feed = MagicMock()
-                mock_currents_feed.is_expired = mock_expired("currents")
-                data._feeds["currents"] = mock_currents_feed
+    # Define expiration times (adjust as needed for your feeds)
+    expiration_map = {
+        "tides": datetime.timedelta(hours=1),  # Example: 1 hour expiry
+        "live_temps": datetime.timedelta(hours=1),  # Example: 1 hour expiry
+        "historic_temps": datetime.timedelta(days=7),  # Example: 7 day expiry
+    }
 
-            # Live temps feed - only configure if live_temps_timestamp is not None
-            # This simulates a location that may not have live temps configured
-            if live_temps_timestamp is not None:
-                mock_live_temps_feed = MagicMock()
-                mock_live_temps_feed.is_expired = mock_expired("live_temps")
-                data._feeds["live_temps"] = mock_live_temps_feed
+    # Initialize the dictionary; type is inferred or handled by mock/class def
+    data._feeds = {}
+    for feed_name in feeds_to_configure:
+        mock_feed = MagicMock()
+        timestamp = locals().get(f"{feed_name}_timestamp")
 
-            # Historic temps feed - only configure if historic_temps_timestamp is not None
-            # This simulates a location that may not have historic temps configured
-            if historic_temps_timestamp is not None:
-                mock_historic_temps_feed = MagicMock()
-                mock_historic_temps_feed.is_expired = mock_expired("historic_temps")
-                data._feeds["historic_temps"] = mock_historic_temps_feed
+        if timestamp is not None:
+            mock_feed.timestamp = timestamp
+            mock_feed.expiration_seconds = expiration_map[feed_name].total_seconds()
+            # Let the actual is_expired logic (using frozen time) work
+            mock_feed.is_expired = (
+                datetime.datetime(2025, 4, 27, 12, 0, 0) - timestamp
+            ) > expiration_map[feed_name]
+            mock_feed.values = pd.DataFrame({feed_name: [1]})  # Needs some data
+        else:
+            # Feed is configured but has no data yet
+            mock_feed.timestamp = None
+            mock_feed.is_expired = True  # Treat as expired if no timestamp
+            mock_feed.values = None
 
-        # Test the ready property
-        assert data.ready == expected_ready
-    finally:
-        # No longer needed, fixture handles shutdown
-        pass
+        data._feeds[feed_name] = mock_feed
+
+    # Ensure other potentially configured feeds are None if not in this test case
+    # Iterate through all defined FeedName literals
+    for feed_name in get_args(FeedName):
+        if feed_name not in data._feeds:
+            data._feeds[feed_name] = None
+
+    # --- Test the ready property ---
+    assert data.ready == expected_ready
 
 
 @pytest.mark.asyncio

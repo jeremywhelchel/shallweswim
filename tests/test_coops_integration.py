@@ -120,7 +120,7 @@ async def test_live_currents_fetch() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("product", ["water_temperature", "air_temperature"])
 async def test_live_temperature_fetch(
-    product: Literal["water_temperature", "air_temperature"]
+    product: Literal["water_temperature", "air_temperature"],
 ) -> None:
     """Test fetching real temperature data from NOAA CO-OPS API."""
     async with aiohttp.ClientSession() as session:

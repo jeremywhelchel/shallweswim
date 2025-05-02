@@ -518,13 +518,10 @@ class TestFeedBase:
         assert status["name"] == "ConcreteFeed"
         assert status["location"] == concrete_feed.location_config.code
         assert status["timestamp"] is None
-        assert status["latest_timestamp"] is None
+        assert status["data"] is None
         assert status["age_seconds"] is None
         assert status["is_expired"] is True
         assert status["is_ready"] is False
-        assert status["data_rows"] == 0
-        assert status["data_cols"] == 0
-        assert status["data_columns"] == []
 
     def test_status_property_with_data(
         self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
@@ -542,15 +539,16 @@ class TestFeedBase:
         assert status["name"] == "ConcreteFeed"
         assert status["location"] == concrete_feed.location_config.code
         assert status["timestamp"] is not None
-        assert status["latest_timestamp"] is not None
+        assert isinstance(status["data"], dict)
+        assert status["data"]["length"] == len(valid_temp_dataframe)
+        assert status["data"]["column_names"] == list(valid_temp_dataframe.columns)
+        expected_oldest = valid_temp_dataframe.index.min().isoformat()
+        expected_newest = valid_temp_dataframe.index.max().isoformat()
+        assert status["data"]["index_oldest"] == expected_oldest
+        assert status["data"]["index_newest"] == expected_newest
         assert status["age_seconds"] is not None
-        assert (
-            status["is_expired"] is False
-        )  # Should not be expired with a recent timestamp
+        assert status["is_expired"] is False
         assert status["is_ready"] is True
-        assert status["data_rows"] == valid_temp_dataframe.shape[0]
-        assert status["data_cols"] == valid_temp_dataframe.shape[1]
-        assert status["data_columns"] == list(valid_temp_dataframe.columns)
 
     def test_status_property_json_serializable(
         self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame

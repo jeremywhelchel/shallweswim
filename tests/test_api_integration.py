@@ -67,7 +67,7 @@ async def api_client() -> AsyncGenerator[TestClient, None]:
 
         # Clean up all data managers after tests are complete
         for data_manager in app.state.data_managers.values():
-            data_manager.stop()
+            await data_manager.stop()
 
 
 def validate_conditions_response(response: httpx.Response, location_code: str) -> None:

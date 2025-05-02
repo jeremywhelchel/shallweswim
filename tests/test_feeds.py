@@ -251,26 +251,57 @@ class TestFeedBase:
         assert concrete_feed.is_expired is True
 
     @pytest.mark.asyncio
+    async def test_is_expired_with_no_interval(self, concrete_feed: Feed) -> None:
+        """Test that a feed with no expiration interval is not expired."""
+        concrete_feed._timestamp = util.utc_now()
+        concrete_feed.expiration_interval = None
+        assert concrete_feed.is_expired is False
+
+    @pytest.mark.asyncio
     async def test_is_expired_with_recent_timestamp(self, concrete_feed: Feed) -> None:
         """Test that a feed with a recent timestamp is not expired."""
-        # Mock the utc_now function to return a fixed time
-        fixed_now = datetime.datetime(2025, 4, 22, 12, 0, 0)
-
-        with patch("shallweswim.feeds.utc_now", return_value=fixed_now):
-            # Set timestamp to be very recent (1 minute ago)
-            concrete_feed._timestamp = fixed_now - datetime.timedelta(minutes=1)
-            # Set a large enough expiration interval
-            concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
-
-            # This should not be expired
-            assert concrete_feed.is_expired is False
+        # Set a recent timestamp
+        concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=5)
+        concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
+        assert concrete_feed.is_expired is False
 
     @pytest.mark.asyncio
     async def test_is_expired_with_old_timestamp(self, concrete_feed: Feed) -> None:
         """Test that a feed with an old timestamp is expired."""
         # Set an old timestamp
-        concrete_feed._timestamp = datetime.datetime.now() - datetime.timedelta(hours=1)
+        concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=11)
+        concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
         assert concrete_feed.is_expired is True
+
+    @pytest.mark.asyncio
+    async def test_is_unhealthy_with_no_timestamp(self, concrete_feed: Feed) -> None:
+        """Test that a feed with no timestamp is considered unhealthy."""
+        assert concrete_feed.is_unhealthy is True
+
+    @pytest.mark.asyncio
+    async def test_is_unhealthy_with_no_interval(self, concrete_feed: Feed) -> None:
+        """Test that a feed with no expiration interval is not unhealthy."""
+        concrete_feed._timestamp = util.utc_now()
+        concrete_feed.expiration_interval = None
+        assert concrete_feed.is_unhealthy is False
+
+    @pytest.mark.asyncio
+    async def test_is_unhealthy_with_recent_timestamp(
+        self, concrete_feed: Feed
+    ) -> None:
+        """Test that a feed with a recent timestamp is not unhealthy."""
+        # Set a recent timestamp
+        concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=20)
+        concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
+        assert concrete_feed.is_unhealthy is False
+
+    @pytest.mark.asyncio
+    async def test_is_unhealthy_with_old_timestamp(self, concrete_feed: Feed) -> None:
+        """Test that a feed with an old timestamp is unhealthy."""
+        # Set an old timestamp
+        concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=30)
+        concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
+        assert concrete_feed.is_unhealthy is True
 
     @pytest.mark.asyncio
     async def test_values_property_with_no_data(self, concrete_feed: Feed) -> None:
@@ -522,6 +553,7 @@ class TestFeedBase:
         assert status.data_summary is None
         assert status.age_seconds is None
         assert status.is_expired is True
+        assert status.is_unhealthy is True
 
     def test_status_property_with_data(
         self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
@@ -554,6 +586,7 @@ class TestFeedBase:
 
         assert status.age_seconds is not None
         assert status.is_expired is False
+        assert status.is_unhealthy is False
 
     def test_status_property_json_serializable(
         self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame

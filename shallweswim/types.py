@@ -190,6 +190,9 @@ class FeedStatus(BaseModel):
     expiration_seconds: Optional[float] = Field(
         None, description="Configured expiration time in seconds for the feed"
     )
+    is_unhealthy: bool = Field(
+        ..., description="Whether the data is old enough to be considered unhealthy"
+    )
     data_summary: Optional[DataFrameSummary] = Field(
         None, description="Summary statistics of the feed's DataFrame, if available"
     )

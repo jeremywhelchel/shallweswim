@@ -298,27 +298,21 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 )
 
             # Check if location data is ready
-            if not loc_data.ready:
+            unhealthy_feeds_in_location = []
+            for feed_name, feed in loc_data._feeds.items():
+                if feed is not None and feed.is_unhealthy:
+                    unhealthy_feeds_in_location.append(
+                        feed.status.model_dump(mode="json")
+                    )
+                    logging.warning(
+                        f"[{loc_code}/{feed_name}] Feed is unhealthy. Status: {feed.status.model_dump_json()}"
+                    )
+
+            if unhealthy_feeds_in_location:
                 any_location_not_ready = True  # Set the flag
-                # --- Perform logging ---
-                logging.info(f"[{loc_code}] Location data not ready yet.")
                 logging.warning(
-                    f"[/api/ready] Location '{loc_code}' reported not ready. "
-                    f"Logging status for its expired feeds..."
+                    f"[/api/ready] Location '{loc_code}' reported not ready. Logging status for its unhealthy feeds..."
                 )
-                # Log status only for expired feeds within this location
-                for feed_name, feed in loc_data._feeds.items():
-                    try:
-                        if feed is not None and feed.is_expired:
-                            status = feed.status
-                            logging.warning(
-                                f"[{loc_code}/{feed_name}] Expired feed status: {status.model_dump_json(indent=2)}"
-                            )
-                    except Exception as e:
-                        logging.error(
-                            f"[{loc_code}/{feed_name}] Error retrieving expired feed status: {e}"
-                        )
-                # --- Logging done, DO NOT raise exception here ---
 
         # After checking all locations, decide final action based on the flag
         if any_location_not_ready:
@@ -326,7 +320,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 "[/api/ready] At least one location reported not ready. Raising 503."
             )
             raise HTTPException(
-                status_code=503, detail="Service not ready - data being loaded"
+                status_code=503,
+                detail="Service not ready - data being loaded",
             )
         else:
             # All locations are ready

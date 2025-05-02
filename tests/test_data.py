@@ -630,6 +630,7 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
             expiration_seconds=3600,
             data_summary=None,  # Explicitly set optional fields if needed
             error=None,  # Explicitly set optional fields if needed
+            is_unhealthy=False,  # Add missing field
         )
         mock_feeds.append(mock_feed)
 

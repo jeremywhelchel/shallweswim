@@ -26,7 +26,9 @@ from shallweswim.util import utc_now, summarize_dataframe
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
-EXPIRATION_BUFFER = datetime.timedelta(seconds=300)
+HEALTH_CHECK_BUFFER = datetime.timedelta(
+    minutes=15
+)  # Longer buffer for service health checks
 
 
 class Feed(BaseModel, abc.ABC):
@@ -103,8 +105,26 @@ class Feed(BaseModel, abc.ABC):
         # age will never return None here because we already checked self._timestamp
         assert age_td is not None
 
-        # Use the EXPIRATION_BUFFER to give the system time to refresh before reporting as expired
-        return age_td > (self.expiration_interval + EXPIRATION_BUFFER)
+        # Check age directly against the configured interval
+        return age_td > self.expiration_interval
+
+    @property
+    def is_unhealthy(self) -> bool:
+        """Check if the feed data is old enough to be considered unhealthy for service status."""
+        if not self._timestamp:
+            # If data was never fetched successfully, it's unhealthy
+            return True
+        if not self.expiration_interval:
+            # If there's no expiration configured, it cannot become unhealthy due to age
+            return False
+
+        # Ensure age is calculated correctly
+        age_td = self.age
+        if age_td is None:  # Should not happen if _timestamp exists, but safety check
+            return True
+
+        # Check against the longer health check buffer
+        return age_td > (self.expiration_interval + HEALTH_CHECK_BUFFER)
 
     @property
     def values(self) -> pd.DataFrame:
@@ -162,8 +182,9 @@ class Feed(BaseModel, abc.ABC):
             timestamp=self._timestamp,  # Pass datetime object directly
             age_seconds=age_sec,
             is_expired=self.is_expired,
-            data_summary=data_summary,  # Pass the summary object directly
+            is_unhealthy=self.is_unhealthy,
             expiration_seconds=expiration_sec,
+            data_summary=data_summary,  # Pass the summary object directly
             error=str(self._last_error) if self._last_error else None,
         )
 

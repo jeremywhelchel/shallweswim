@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """Integration tests for the ShallWeSwim API endpoints.
 
 These tests use FastAPI's TestClient to test only the API endpoints with real data.
@@ -17,6 +18,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
+from concurrent.futures import ProcessPoolExecutor
 
 # Local imports
 import fastapi
@@ -42,6 +44,11 @@ async def api_client() -> AsyncGenerator[TestClient, None]:
     # Initialize app.state.data_managers
     app.state.data_managers = {}
     app.state.http_session = None  # Initialize state variable
+    app.state.process_pool = None  # Initialize state variable
+
+    # Create a process pool for CPU-bound tasks (e.g., plotting)
+    pool = ProcessPoolExecutor()  # Create the pool
+    app.state.process_pool = pool  # Assign to app state
 
     # Create and manage the HTTP session within the fixture's scope
     async with aiohttp.ClientSession() as session:
@@ -68,6 +75,9 @@ async def api_client() -> AsyncGenerator[TestClient, None]:
         # Clean up all data managers after tests are complete
         for data_manager in app.state.data_managers.values():
             await data_manager.stop()
+
+        # Shut down the process pool
+        pool.shutdown(wait=False)
 
 
 def validate_conditions_response(response: httpx.Response, location_code: str) -> None:

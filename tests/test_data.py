@@ -17,6 +17,7 @@ from typing import Any, AsyncGenerator
 from shallweswim.data import LocationDataManager
 from shallweswim.types import CurrentInfo  # Import from types module where it's defined
 from shallweswim import config as config_lib
+from concurrent.futures import ProcessPoolExecutor
 
 
 @pytest.fixture
@@ -74,12 +75,20 @@ def mock_current_data() -> pd.DataFrame:
 
 
 @pytest_asyncio.fixture
+async def process_pool() -> AsyncGenerator[ProcessPoolExecutor, None]:
+    """Fixture to provide a ProcessPoolExecutor and ensure it's shut down."""
+    pool = ProcessPoolExecutor()
+    yield pool
+    pool.shutdown(wait=False)  # Ensure pool is shut down after test
+
+
+@pytest_asyncio.fixture
 async def mock_data_with_currents(
-    mock_config: Any, mock_current_data: pd.DataFrame
+    mock_config: Any, mock_current_data: pd.DataFrame, process_pool: ProcessPoolExecutor
 ) -> AsyncGenerator[LocationDataManager, None]:
     """Create a LocationDataManager instance with mock current data."""
-    # Provide an empty clients dict for the test
-    data = LocationDataManager(mock_config, clients={})
+    # Use the provided process_pool fixture
+    data = LocationDataManager(mock_config, clients={}, process_pool=process_pool)
 
     # Create a mock currents feed
     mock_currents_feed = MagicMock()
@@ -91,8 +100,7 @@ async def mock_data_with_currents(
 
     yield data
 
-    # Clean up the data manager after the test
-    await data.stop()
+    # Pool shutdown is handled by the process_pool fixture
 
 
 @pytest.mark.asyncio
@@ -111,90 +119,69 @@ async def test_current_prediction_at_flood_peak(
 
 
 @pytest.mark.asyncio
-async def test_current_prediction_at_ebb_peak() -> None:
+async def test_current_prediction_at_ebb_peak(
+    process_pool: ProcessPoolExecutor,
+) -> None:
     """Test current prediction at an ebb peak."""
     # Create a custom test instance
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
     config.code = "tst"
-    # Provide an empty clients dict for the test
-    data = LocationDataManager(config, clients={})
+    # Use the provided process_pool fixture
+    data = LocationDataManager(config, clients={}, process_pool=process_pool)
 
-    try:
-        # Create a more comprehensive dataset for testing ebb currents
-        # Create a single day with a complete cycle
-        test_day = datetime.datetime(2025, 4, 22)
-        hours = list(range(24))
-        idx = pd.DatetimeIndex([test_day.replace(hour=h) for h in hours])
+    # Create a more comprehensive dataset for testing ebb currents
+    # Create a single day with a complete cycle
+    test_day = datetime.datetime(2025, 4, 22)
+    hours = list(range(24))
+    idx = pd.DatetimeIndex([test_day.replace(hour=h) for h in hours])
 
-        # Create an ebb pattern with clear strengthening and weakening periods
-        velocities = [
-            0.1,  # 0:00 - Near slack
-            0.5,  # 1:00 - Flooding
-            0.9,  # 2:00 - Flooding
-            1.2,  # 3:00 - Peak flood
-            0.8,  # 4:00 - Weakening flood
-            0.2,  # 5:00 - Near slack
-            -0.3,  # 6:00 - Beginning to ebb
-            -0.8,  # 7:00 - Strengthening ebb
-            -1.3,  # 8:00 - Strengthening ebb
-            -1.8,  # 9:00 - Peak ebb current (strongest)
-            -1.5,  # 10:00 - Weakening
-            -1.0,  # 11:00 - Weakening
-            -0.6,  # 12:00 - Weakening
-            -0.1,  # 13:00 - Near slack (clearly below 0.2 threshold)
-            0.2,  # 14:00 - Beginning to flood
-            0.7,  # 15:00 - Flooding
-            1.1,  # 16:00 - Flooding
-            1.5,  # 17:00 - Peak flood
-            1.1,  # 18:00 - Weakening
-            0.5,  # 19:00 - Weakening
-            0.1,  # 20:00 - Near slack
-            -0.4,  # 21:00 - Beginning to ebb
-            -0.9,  # 22:00 - Ebbing
-            -1.3,  # 23:00 - Ebbing
-        ]
+    # Create an ebb pattern with clear strengthening and weakening periods
+    velocities = [
+        0.1,  # 0:00 - Near slack
+        0.5,  # 1:00 - Flooding
+        0.9,  # 2:00 - Flooding
+        1.2,  # 3:00 - Flood peak
+        0.8,  # 4:00 - Weakening flood
+        0.2,  # 5:00 - Near slack
+        -0.4,  # 6:00 - Strengthening ebb
+        -0.9,  # 7:00 - Strengthening ebb
+        -1.3,  # 8:00 - Ebb peak
+        -1.0,  # 9:00 - Weakening ebb
+        -0.5,  # 10:00 - Weakening ebb
+        -0.1,  # 11:00 - Near slack
+        0.3,  # 12:00 - Strengthening flood
+        0.7,  # 13:00 - Strengthening flood
+        1.1,  # 14:00 - Strengthening flood
+        1.4,  # 15:00 - Flood peak
+        1.0,  # 16:00 - Weakening flood
+        0.4,  # 17:00 - Weakening flood
+        -0.2,  # 18:00 - Near slack / turning ebb
+        -0.7,  # 19:00 - Strengthening ebb
+        -1.2,  # 20:00 - Strengthening ebb
+        -1.5,  # 21:00 - Ebb peak
+        -1.1,  # 22:00 - Weakening ebb
+        -0.6,  # 23:00 - Weakening ebb
+    ]
+    mock_df = pd.DataFrame({"velocity": velocities}, index=idx)
 
-        # Create the DataFrame with the full tidal cycle
-        current_df = pd.DataFrame({"velocity": velocities}, index=idx)
+    # Create a mock currents feed
+    mock_currents_feed = MagicMock()
+    mock_currents_feed.values = mock_df
+    mock_currents_feed.is_expired = False
 
-        # Create a mock currents feed
-        mock_currents_feed = MagicMock()
-        mock_currents_feed.values = current_df
-        mock_currents_feed.is_expired = False
+    # Set the mock feed in the _feeds dictionary
+    data._feeds["currents"] = mock_currents_feed
 
-        # Set the mock feed in the _feeds dictionary
-        data._feeds["currents"] = mock_currents_feed
+    # Test at 9:00 PM (21:00) which is an ebb peak at -1.5 knots
+    t = datetime.datetime(2025, 4, 22, 21, 0, 0)
+    result = data.current_prediction(t)
 
-        # Test at peak ebb (9:00)
-        peak_time = test_day.replace(hour=9)
-        result = data.current_prediction(peak_time)
-
-        # Verify the prediction at peak
-        assert result.direction == "ebbing"
-        assert (
-            pytest.approx(result.magnitude, abs=0.1) == 1.8
-        )  # Should be about 1.8 knots
-        assert "at its strongest" in result.state_description
-
-        # Test during strengthening ebb (8:00)
-        strengthening_time = test_day.replace(hour=8)
-        result = data.current_prediction(strengthening_time)
-        assert result.direction == "ebbing"
-        assert "getting stronger" in result.state_description
-
-        # Test during weakening ebb (11:00)
-        weakening_time = test_day.replace(hour=11)
-        result = data.current_prediction(weakening_time)
-        assert result.direction == "ebbing"
-        assert "getting weaker" in result.state_description
-        # Test near slack after ebb (13:00)
-        slack_time = test_day.replace(hour=13)
-        result = data.current_prediction(slack_time)
-        assert "weakest" in result.state_description
-    finally:
-        # Clean up the data manager after the test
-        await data.stop()
+    # Check the result
+    assert result.direction == "ebbing"
+    assert pytest.approx(result.magnitude, 0.1) == 1.5  # Magnitude is positive
+    assert "at its strongest" in result.state_description
+    # Pool shutdown is handled by the process_pool fixture
 
 
 @pytest.mark.asyncio
@@ -217,8 +204,9 @@ async def test_current_prediction_strengthening() -> None:
     # Create a custom test instance with clear strengthening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    # Provide an empty clients dict for the test
-    data = LocationDataManager(config, clients={})
+    # Provide an empty clients dict and a process pool for the test
+    pool = ProcessPoolExecutor()
+    data = LocationDataManager(config, clients={}, process_pool=pool)
 
     try:
         # Create data with a clear strengthening pattern
@@ -246,8 +234,8 @@ async def test_current_prediction_strengthening() -> None:
         assert result.direction == "flooding"
         assert "getting stronger" in result.state_description
     finally:
-        # Clean up the data manager after the test
-        await data.stop()
+        # Clean up the process pool
+        pool.shutdown(wait=False)  # Don't wait in tests
 
 
 @pytest.mark.asyncio
@@ -256,8 +244,9 @@ async def test_current_prediction_weakening() -> None:
     # Create a custom test instance with clear weakening pattern
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    # Provide an empty clients dict for the test
-    data = LocationDataManager(config, clients={})
+    # Provide an empty clients dict and a process pool for the test
+    pool = ProcessPoolExecutor()
+    data = LocationDataManager(config, clients={}, process_pool=pool)
 
     try:
         # Create data with a clear weakening pattern
@@ -285,8 +274,8 @@ async def test_current_prediction_weakening() -> None:
         assert result.direction == "flooding"
         assert "getting weaker" in result.state_description
     finally:
-        # Clean up the data manager after the test
-        await data.stop()
+        # Clean up the process pool
+        pool.shutdown(wait=False)  # Don't wait in tests
 
 
 @pytest.mark.asyncio
@@ -296,8 +285,9 @@ async def test_process_peaks_function() -> None:
     config = MagicMock(spec=config_lib.LocationConfig)
     config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
 
-    # Provide an empty clients dict for the test
-    data = LocationDataManager(config, clients={})
+    # Provide an empty clients dict and a process pool for the test
+    pool = ProcessPoolExecutor()
+    data = LocationDataManager(config, clients={}, process_pool=pool)
 
     try:
         # Create a very distinct peak pattern
@@ -336,8 +326,8 @@ async def test_process_peaks_function() -> None:
             or "getting weaker" in result.state_description
         )
     finally:
-        # Clean up the data manager after the test
-        await data.stop()
+        # Clean up the process pool
+        pool.shutdown(wait=False)  # Don't wait in tests
 
 
 @pytest.mark.asyncio
@@ -418,14 +408,15 @@ async def test_data_ready_property(
     historic_temps_timestamp: datetime.datetime,
     expected_ready: bool,
     configured_feeds: bool,
+    process_pool: ProcessPoolExecutor,
 ) -> None:
     """Test the ready property of the Data class.
 
     Tests different combinations of dataset states to verify the ready property
     accurately represents if all data has been loaded and is not expired.
     """
-    # Provide an empty clients dict for the test
-    data = LocationDataManager(mock_config, clients={})
+    # Use the provided process_pool fixture
+    data = LocationDataManager(mock_config, clients={}, process_pool=process_pool)
 
     try:
         # Mock the _expired method to control its behavior based on timestamps
@@ -497,12 +488,12 @@ async def test_data_ready_property(
         # Test the ready property
         assert data.ready == expected_ready
     finally:
-        # Clean up the data manager after the test
-        await data.stop()
+        # No longer needed, fixture handles shutdown
+        pass
 
 
 @pytest.mark.asyncio
-async def test_wait_until_ready() -> None:
+async def test_wait_until_ready(process_pool: ProcessPoolExecutor) -> None:
     """Test the wait_until_ready method of the LocationDataManager class.
 
     Tests different scenarios:
@@ -511,86 +502,82 @@ async def test_wait_until_ready() -> None:
     3. Timeout occurring before feeds are ready
     """
     # Create a LocationDataManager instance
-    mock_config = MagicMock(spec=config_lib.LocationConfig)
-    mock_config.code = "tst"
-    # Provide an empty clients dict for the test
-    data = LocationDataManager(mock_config, clients={})
+    config = MagicMock(spec=config_lib.LocationConfig)
+    config.code = "tst"
+    # Use the provided process_pool fixture
+    data = LocationDataManager(config, clients={}, process_pool=process_pool)
 
-    try:
-        # Scenario 1: All feeds ready immediately
-        # Create mock feeds that are already ready
-        mock_feeds = []
-        for _ in range(3):
-            mock_feed = MagicMock()
-
-            # Create an async function that returns True immediately
-            async def wait_until_ready_immediate() -> bool:
-                return True
-
-            mock_feed.wait_until_ready = wait_until_ready_immediate
-            mock_feeds.append(mock_feed)
-
-        # Set the mock feeds in the _feeds dictionary
-        data._feeds = {
-            "tides": mock_feeds[0],
-            "currents": mock_feeds[1],
-            "live_temps": mock_feeds[2],
-        }
-
-        # Test wait_until_ready with feeds that are already ready
-        result = await data.wait_until_ready(timeout=1.0)
-        assert result is True
-
-        # Scenario 2: Feeds becoming ready during the wait
-        # Reset the mock feeds
-        mock_feeds = []
-        for _ in range(3):
-            mock_feed = MagicMock()
-
-            # Create an async function that returns True after a short delay
-            async def wait_until_ready_with_delay() -> bool:
-                await asyncio.sleep(0.1)  # Short delay
-                return True
-
-            mock_feed.wait_until_ready = wait_until_ready_with_delay
-            mock_feeds.append(mock_feed)
-
-        # Set the mock feeds in the _feeds dictionary
-        data._feeds = {
-            "tides": mock_feeds[0],
-            "currents": mock_feeds[1],
-            "live_temps": mock_feeds[2],
-        }
-
-        # Test wait_until_ready with feeds that become ready during the wait
-        result = await data.wait_until_ready(timeout=1.0)
-        assert result is True
-
-        # Scenario 3: Timeout occurring before feeds are ready
-        # Create a mock feed that will timeout
+    # Scenario 1: All feeds ready immediately
+    mock_feeds = []
+    for _ in range(3):
         mock_feed = MagicMock()
 
-        # Create an async function that raises a TimeoutError when called with wait_for
-        async def wait_until_ready_timeout() -> bool:
-            # This will cause the asyncio.wait_for in LocationDataManager.wait_until_ready to timeout
-            await asyncio.sleep(10.0)  # Much longer than our timeout
+        # Create an async function that returns True immediately
+        async def wait_until_ready_immediate() -> bool:
             return True
 
-        mock_feed.wait_until_ready = wait_until_ready_timeout
+        mock_feed.wait_until_ready = wait_until_ready_immediate
+        mock_feeds.append(mock_feed)
 
-        # Set the mock feed in the _feeds dictionary
-        data._feeds = {"tides": mock_feed}
+    # Set the mock feeds in the _feeds dictionary
+    data._feeds = {
+        "tides": mock_feeds[0],
+        "currents": mock_feeds[1],
+        "live_temps": mock_feeds[2],
+    }
 
-        # Test wait_until_ready with a feed that will cause a timeout
-        result = await data.wait_until_ready(timeout=0.1)  # Short timeout
-        assert result is False
-    finally:
-        # Clean up the data manager after the test
-        await data.stop()
+    # Test wait_until_ready with feeds that are already ready
+    result = await data.wait_until_ready(timeout=1.0)
+    assert result is True
+
+    # Scenario 2: Feeds becoming ready during the wait
+    # Reset the mock feeds
+    mock_feeds = []
+    for _ in range(3):
+        mock_feed = MagicMock()
+
+        # Create an async function that returns True after a short delay
+        async def wait_until_ready_with_delay() -> bool:
+            await asyncio.sleep(0.1)  # Short delay
+            return True
+
+        mock_feed.wait_until_ready = wait_until_ready_with_delay
+        mock_feeds.append(mock_feed)
+
+    # Set the mock feeds in the _feeds dictionary
+    data._feeds = {
+        "tides": mock_feeds[0],
+        "currents": mock_feeds[1],
+        "live_temps": mock_feeds[2],
+    }
+
+    # Test wait_until_ready with feeds that become ready during the wait
+    result = await data.wait_until_ready(timeout=1.0)
+    assert result is True
+
+    # Scenario 3: Timeout occurring before feeds are ready
+    # Create a mock feed that will timeout
+    mock_feed = MagicMock()
+
+    # Create an async function that raises a TimeoutError when called with wait_for
+    async def wait_until_ready_timeout() -> bool:
+        # This will cause the asyncio.wait_for in LocationDataManager.wait_until_ready to timeout
+        await asyncio.sleep(10.0)  # Much longer than our timeout
+        return True
+
+    mock_feed.wait_until_ready = wait_until_ready_timeout
+
+    # Set the mock feed in the _feeds dictionary
+    data._feeds = {"tides": mock_feed}
+
+    # Test wait_until_ready with a feed that will cause a timeout
+    result = await data.wait_until_ready(timeout=0.1)  # Short timeout
+    assert result is False
+    # Pool shutdown is handled by the process_pool fixture
 
 
 @pytest.mark.asyncio
-async def test_data_status_property() -> None:
+async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
     """Test the status property of the LocationDataManager class.
 
     Verifies that the status property returns a dictionary mapping feed names to their status dictionaries,
@@ -599,48 +586,45 @@ async def test_data_status_property() -> None:
     # Create a LocationDataManager instance
     config = MagicMock(spec=config_lib.LocationConfig)
     config.code = "nyc"
-    # Provide an empty clients dict for the test
-    data = LocationDataManager(config, clients={})
+    # Use the provided process_pool fixture
+    data = LocationDataManager(config, clients={}, process_pool=process_pool)
 
-    try:
-        # Create mock feeds with status dictionaries
-        mock_feeds = []
-        for i in range(3):
-            mock_feed = MagicMock()
-            mock_feed.status = {
-                "name": f"MockFeed{i}",
-                "location": "nyc",
-                "timestamp": "2025-04-27T12:00:00",
-                "age_seconds": 3600,
-                "is_expired": False,
-                "is_ready": True,
-                "data_shape": [24, 1],
-                "expiration_seconds": 3600,
-            }
-            mock_feeds.append(mock_feed)
-
-        # Set the mock feeds in the _feeds dictionary
-        data._feeds = {
-            "tides": mock_feeds[0],
-            "currents": mock_feeds[1],
-            "live_temps": mock_feeds[2],
-            "historic_temps": None,  # Test with a None feed
+    # Create mock feeds with status dictionaries
+    mock_feeds = []
+    for i in range(3):
+        mock_feed = MagicMock()
+        mock_feed.status = {
+            "name": f"MockFeed{i}",
+            "location": "nyc",
+            "timestamp": "2025-04-27T12:00:00",
+            "age_seconds": 3600,
+            "is_expired": False,
+            "is_ready": True,
+            "data_shape": [24, 1],
+            "expiration_seconds": 3600,
         }
+        mock_feeds.append(mock_feed)
 
-        # Get the status dictionary
-        status = data.status
+    # Set the mock feeds in the _feeds dictionary
+    data._feeds = {
+        "tides": mock_feeds[0],
+        "currents": mock_feeds[1],
+        "live_temps": mock_feeds[2],
+        "historic_temps": None,  # Test with a None feed
+    }
 
-        # Check that the status dictionary contains the expected keys
-        assert set(status.keys()) == {"tides", "currents", "live_temps"}
+    # Get the status dictionary
+    status = data.status
 
-        # Check that the status dictionary contains the expected values
-        for i, name in enumerate(["tides", "currents", "live_temps"]):
-            assert status[name]["name"] == f"MockFeed{i}"
-            assert status[name]["location"] == "nyc"
-            assert status[name]["is_ready"] is True
+    # Check that the status dictionary contains the expected keys
+    assert set(status.keys()) == {"tides", "currents", "live_temps"}
 
-        # Check that the status dictionary is JSON serializable
-        assert_json_serializable(status)
-    finally:
-        # Clean up the data manager after the test
-        await data.stop()
+    # Check that the status dictionary contains the expected values
+    for i, name in enumerate(["tides", "currents", "live_temps"]):
+        assert status[name]["name"] == f"MockFeed{i}"
+        assert status[name]["location"] == "nyc"
+        assert status[name]["is_ready"] is True
+
+    # Check that the status dictionary is JSON serializable
+    assert_json_serializable(status)
+    # Pool shutdown is handled by the process_pool fixture

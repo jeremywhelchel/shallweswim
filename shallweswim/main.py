@@ -13,6 +13,7 @@ import logging
 import os
 import signal
 from typing import Any, AsyncGenerator, Callable, Coroutine
+from concurrent.futures import ProcessPoolExecutor
 
 # Third-party imports
 import aiohttp
@@ -39,6 +40,10 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
     Yields:
         None when setup is complete
     """
+    # Create a process pool for CPU-bound tasks (e.g., plotting)
+    pool = ProcessPoolExecutor()
+    app.state.process_pool = pool
+
     async with aiohttp.ClientSession() as session:
         # Store the shared session in app state
         app.state.http_session = session
@@ -49,10 +54,14 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
             app=app,  # Pass the app instance
             wait_for_data=False,  # Don't block app startup waiting for data
         )
-        yield
+
+        yield  # Run the app
+
         # Shutdown handling
         logging.info("-----------------------------------------------")
         logging.info("Shutting down app")
+
+        pool.shutdown(wait=True)
 
         # Stop all data managers to properly clean up background tasks
         if hasattr(app.state, "data_managers"):

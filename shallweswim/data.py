@@ -9,6 +9,7 @@ import asyncio
 import datetime
 import logging
 from typing import Any, Dict, Optional, Tuple
+from concurrent.futures import ProcessPoolExecutor
 
 # Third-party imports
 import numpy as np
@@ -133,16 +134,21 @@ class LocationDataManager(object):
     """
 
     def __init__(
-        self, config: config_lib.LocationConfig, clients: Dict[str, BaseApiClient]
+        self,
+        config: config_lib.LocationConfig,
+        clients: Dict[str, BaseApiClient],
+        process_pool: ProcessPoolExecutor,  # For CPU-bound tasks like plotting
     ):
-        """Initialize the Data object with configuration settings.
+        """Initialize the Data manager for a specific location.
 
         Args:
-            config: Location-specific configuration settings
-            clients: Dictionary of initialized API client instances
+            config: Location configuration object.
+            clients: Dictionary of initialized API client instances.
+            process_pool: A ProcessPoolExecutor for offloading CPU-bound work.
         """
         self.config = config
         self.clients = clients
+        self.process_pool = process_pool
 
         # Dictionary mapping dataset names to their corresponding feeds
         # This is the single source of truth for all feed instances and data

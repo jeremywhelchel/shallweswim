@@ -65,6 +65,10 @@ async def initialize_location_data(
     assert hasattr(app.state, "http_session"), "HTTP session not found in app state"
     session: aiohttp.ClientSession = app.state.http_session
 
+    # Retrieve the process pool from app state
+    assert hasattr(app.state, "process_pool"), "Process pool not found in app state"
+    process_pool = app.state.process_pool
+
     # Create API client instances using the shared session
     api_clients: Dict[str, BaseApiClient] = {
         "coops": CoopsApi(session=session),
@@ -89,8 +93,10 @@ async def initialize_location_data(
         cfg = config_lib.get(code)
         assert cfg is not None, f"Config for location '{code}' not found"
 
-        # Initialize data for this location, passing clients
-        data_dict[code] = data_lib.LocationDataManager(cfg, clients=api_clients)
+        # Initialize data for this location, passing clients and process pool
+        data_dict[code] = data_lib.LocationDataManager(
+            cfg, clients=api_clients, process_pool=process_pool
+        )
         data_dict[code].start()
 
     # Optionally wait for data to be fully loaded

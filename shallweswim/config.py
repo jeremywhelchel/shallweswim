@@ -512,7 +512,6 @@ _CONFIG_LIST = [
         # webcam https://dolphinclub.org/weather/ (code in page JS source...)
     ),
     LocationConfig(
-        enabled=False,
         code="sdf",
         name="Louisville",
         swim_location="Community Boathouse",
@@ -525,8 +524,9 @@ _CONFIG_LIST = [
         temp_source=NwisTempSource(
             site_no="03292494",
             parameter_cd="00011",  # Water temperature
-            name="Ohio River at Louisville",
-            start_year=2024,
+            name="Ohio River at Water Tower",
+            # It appears that this source may only provide ~120 days worth of data.
+            start_year=2025,
         ),
         description="Louisville Kentucky open water swimming conditions",
         # TODO:

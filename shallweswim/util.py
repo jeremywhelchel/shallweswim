@@ -3,6 +3,7 @@
 import datetime
 from typing import Optional, cast
 import pandas as pd
+from shallweswim.types import DataFrameSummary
 
 
 # Time shift limits for current predictions (in minutes)
@@ -93,3 +94,50 @@ def latest_time_value(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]
             "DataFrame index contains timezone info; expected naive datetime"
         )
     return cast(datetime.datetime, dt)
+
+
+def summarize_dataframe(df: Optional[pd.DataFrame]) -> DataFrameSummary:
+    """Generates a summary object for a given pandas DataFrame.
+
+    Args:
+        df: The pandas DataFrame to summarize. Can be None.
+
+    Returns:
+        A DataFrameSummary object containing statistics about the DataFrame.
+    """
+    if df is None or df.empty:
+        return DataFrameSummary(
+            length=0,
+            width=0,
+            column_names=[],
+            index_oldest=None,
+            index_newest=None,
+            missing_values={},
+        )
+
+    length = len(df)
+    width = len(df.columns)
+    column_names = df.columns.tolist()
+
+    # Calculate missing values (convert Series result to dict)
+    missing_values = df.isnull().sum().astype(int).to_dict()
+
+    # Get index min/max, checking if index is DatetimeIndex
+    index_oldest: Optional[datetime.datetime] = None
+    index_newest: Optional[datetime.datetime] = None
+    if isinstance(df.index, pd.DatetimeIndex) and not df.index.empty:
+        # Ensure pandas Timestamps are converted to standard Python datetimes
+        # Use .to_pydatetime() which handles potential NaT values gracefully (returns None)
+        min_ts = df.index.min()
+        max_ts = df.index.max()
+        index_oldest = min_ts.to_pydatetime() if pd.notna(min_ts) else None
+        index_newest = max_ts.to_pydatetime() if pd.notna(max_ts) else None
+
+    return DataFrameSummary(
+        length=length,
+        width=width,
+        column_names=column_names,
+        index_oldest=index_oldest,
+        index_newest=index_newest,
+        missing_values=missing_values,
+    )

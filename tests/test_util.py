@@ -1,9 +1,14 @@
+# pylint: disable=duplicate-code
+import datetime
+from typing import Optional
+
 import numpy as np
 import pandas as pd
-import datetime
 import pytest
+from freezegun import freeze_time
 
 from shallweswim import util
+from shallweswim.types import DataFrameSummary
 
 
 def test_now() -> None:
@@ -87,3 +92,90 @@ def test_latest_time_value() -> None:
     df_tz = pd.DataFrame({"value": range(len(dates_tz))}, index=dates_tz)
     with pytest.raises(ValueError, match="DataFrame index contains timezone info"):
         util.latest_time_value(df_tz)
+
+
+# Test data setup for summarize_dataframe
+basic_dates = pd.to_datetime(
+    ["2024-01-01 10:00", "2024-01-01 11:00", "2024-01-01 12:00"]
+)
+basic_df = pd.DataFrame(
+    {"temp": [10, 11, 12], "humidity": [50, 51, 52]}, index=basic_dates
+)
+nan_df = pd.DataFrame(
+    {"temp": [10, np.nan, 12], "humidity": [np.nan, 51, np.nan]}, index=basic_dates
+)
+empty_df = pd.DataFrame()
+non_dt_index_df = pd.DataFrame({"temp": [10, 11, 12], "humidity": [50, 51, 52]})
+
+summarize_test_cases = [
+    pytest.param(
+        basic_df,
+        DataFrameSummary(
+            length=3,
+            width=2,
+            column_names=["temp", "humidity"],
+            index_oldest=datetime.datetime(2024, 1, 1, 10, 0),
+            index_newest=datetime.datetime(2024, 1, 1, 12, 0),
+            missing_values={"temp": 0, "humidity": 0},
+        ),
+        id="basic_datetime_index",
+    ),
+    pytest.param(
+        nan_df,
+        DataFrameSummary(
+            length=3,
+            width=2,
+            column_names=["temp", "humidity"],
+            index_oldest=datetime.datetime(2024, 1, 1, 10, 0),
+            index_newest=datetime.datetime(2024, 1, 1, 12, 0),
+            missing_values={"temp": 1, "humidity": 2},
+        ),
+        id="with_nan",
+    ),
+    pytest.param(
+        empty_df,
+        DataFrameSummary(
+            length=0,
+            width=0,
+            column_names=[],
+            index_oldest=None,
+            index_newest=None,
+            missing_values={},
+        ),
+        id="empty_dataframe",
+    ),
+    pytest.param(
+        None,
+        DataFrameSummary(
+            length=0,
+            width=0,
+            column_names=[],
+            index_oldest=None,
+            index_newest=None,
+            missing_values={},
+        ),
+        id="none_input",
+    ),
+    pytest.param(
+        non_dt_index_df,
+        DataFrameSummary(
+            length=3,
+            width=2,
+            column_names=["temp", "humidity"],
+            index_oldest=None,
+            index_newest=None,
+            missing_values={"temp": 0, "humidity": 0},
+        ),
+        id="non_datetime_index",
+    ),
+]
+
+
+@freeze_time("2024-01-15 12:00:00 UTC")
+@pytest.mark.parametrize("df_input, expected_summary", summarize_test_cases)
+def test_summarize_dataframe(
+    df_input: Optional[pd.DataFrame], expected_summary: DataFrameSummary
+) -> None:
+    """Test summarize_dataframe with various inputs using parametrization."""
+    summary = util.summarize_dataframe(df_input)
+    assert summary == expected_summary

@@ -9,7 +9,7 @@ two main categories:
 # Standard library imports
 import datetime
 from dataclasses import dataclass
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict
 
 # Third-party imports
 from pydantic import BaseModel, Field, ConfigDict
@@ -77,6 +77,28 @@ class LocationInfo(BaseModel):
     code: str = Field(..., description="Location code (e.g., 'nyc')")
     name: str = Field(..., description="Display name of the location")
     swim_location: str = Field(..., description="Specific swimming location")
+
+
+class DataFrameSummary(BaseModel):
+    """Provides summary statistics for a time-series DataFrame."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    length: int = Field(..., description="Number of rows in the DataFrame.")
+    width: int = Field(..., description="Number of columns in the DataFrame.")
+    column_names: List[str] = Field(
+        ..., description="List of column names in the DataFrame."
+    )
+    index_oldest: Optional[datetime.datetime] = Field(
+        None, description="Timestamp of the oldest entry in the DataFrame index."
+    )
+    index_newest: Optional[datetime.datetime] = Field(
+        None, description="Timestamp of the newest entry in the DataFrame index."
+    )
+    missing_values: Dict[str, int] = Field(
+        ...,
+        description="Dictionary mapping column names to the count of missing (NaN) values.",
+    )
 
 
 class TemperatureInfo(BaseModel):

@@ -16,7 +16,10 @@ from fastapi import HTTPException
 
 # Local imports
 from shallweswim import config as config_lib, data as data_lib, plot, util
-from shallweswim.clients import BaseApiClient, CoopsApi, NwisApi, NdbcApi
+from shallweswim.clients.base import BaseApiClient
+from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.nwis import NwisApi
+from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.types import (
     ApiTideEntry,
     CurrentPredictionInfo,

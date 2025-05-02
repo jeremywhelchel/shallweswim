@@ -15,7 +15,10 @@ from pydantic import BaseModel
 
 # Local imports
 from shallweswim import config as config_lib, util
-from shallweswim.clients import BaseApiClient, CoopsApi, NwisApi, NdbcApi
+from shallweswim.clients.base import BaseApiClient
+from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.nwis import NwisApi
+from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.feeds import (
     Feed,
     CoopsTempFeed,

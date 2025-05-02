@@ -20,7 +20,7 @@ from shallweswim import config as config_lib
 from shallweswim import feeds
 from shallweswim import plot
 from shallweswim import util
-from shallweswim.clients import BaseApiClient
+from shallweswim.clients.base import BaseApiClient
 from shallweswim.types import (
     CurrentInfo,
     DatasetName,

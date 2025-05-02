@@ -419,10 +419,6 @@ _CONFIG_LIST = [
         temp_source=CoopsTempSource(
             station=8518750,
             name="The Battery, NY",
-            outliers=[
-                "2017-05-23 12:00:00",
-                "2020-05-22 13:00:00",
-            ],
         ),
         tide_source=CoopsTideSource(
             station=8517741,

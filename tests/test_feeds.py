@@ -522,7 +522,6 @@ class TestFeedBase:
         assert status.data_summary is None
         assert status.age_seconds is None
         assert status.is_expired is True
-        assert status.is_ready is False
 
     def test_status_property_with_data(
         self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
@@ -555,7 +554,6 @@ class TestFeedBase:
 
         assert status.age_seconds is not None
         assert status.is_expired is False
-        assert status.is_ready is True
 
     def test_status_property_json_serializable(
         self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame

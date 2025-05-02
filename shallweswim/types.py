@@ -187,10 +187,6 @@ class FeedStatus(BaseModel):
         None, description="Data age in seconds at the time of status check"
     )
     is_expired: bool = Field(..., description="Whether the data is considered expired")
-    is_ready: bool = Field(
-        ...,
-        description="Whether the feed has successfully fetched data at least once and is ready",
-    )
     expiration_seconds: Optional[float] = Field(
         None, description="Configured expiration time in seconds for the feed"
     )

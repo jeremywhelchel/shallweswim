@@ -162,7 +162,6 @@ class Feed(BaseModel, abc.ABC):
             timestamp=self._timestamp,  # Pass datetime object directly
             age_seconds=age_sec,
             is_expired=self.is_expired,
-            is_ready=self._ready_event.is_set(),
             data_summary=data_summary,  # Pass the summary object directly
             expiration_seconds=expiration_sec,
             error=str(self._last_error) if self._last_error else None,

@@ -627,9 +627,6 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
             timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
             age_seconds=3600,
             is_expired=False,
-            is_ready=True,
-            # Remove data_shape as it's not in FeedStatus
-            # data_shape=[24, 1],
             expiration_seconds=3600,
             data_summary=None,  # Explicitly set optional fields if needed
             error=None,  # Explicitly set optional fields if needed

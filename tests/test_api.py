@@ -58,7 +58,6 @@ def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
                 timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
                 age_seconds=3600,
                 is_expired=False,
-                is_ready=True,
                 expiration_seconds=86400,
                 data_summary=None,
                 error=None,
@@ -69,7 +68,6 @@ def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
                 timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
                 age_seconds=3600,
                 is_expired=False,
-                is_ready=True,
                 expiration_seconds=86400,
                 data_summary=None,
                 error=None,
@@ -87,7 +85,6 @@ def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
                 timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
                 age_seconds=3600,
                 is_expired=False,
-                is_ready=True,
                 expiration_seconds=86400,
                 data_summary=None,
                 error=None,
@@ -128,7 +125,6 @@ def test_location_status_endpoint(
     assert "currents" in status_data["feeds"]
     assert status_data["feeds"]["tides"]["name"] == "NoaaTidesFeed"
     assert status_data["feeds"]["tides"]["location"] == "nyc"
-    assert status_data["feeds"]["tides"]["is_ready"] is True
 
     # Test the SF location status endpoint
     response = test_client.get("/api/sf/status")

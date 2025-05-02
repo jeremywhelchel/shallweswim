@@ -5,6 +5,7 @@
 # Standard library imports
 from unittest.mock import MagicMock, patch
 from typing import Generator
+import datetime
 
 # Third-party imports
 import pytest
@@ -15,6 +16,7 @@ from fastapi.testclient import TestClient
 from shallweswim.api import register_routes
 from shallweswim import config as config_lib
 from shallweswim.data import LocationDataManager
+from shallweswim.types import LocationStatus, FeedStatus
 from tests.helpers import assert_json_serializable
 
 
@@ -48,43 +50,50 @@ def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
 
     # Create mock data managers
     nyc_data = MagicMock(spec=LocationDataManager)
-    nyc_data.status = {
-        "tides": {
-            "name": "NoaaTidesFeed",
-            "location": "nyc",
-            "timestamp": "2025-04-27T12:00:00",
-            "age_seconds": 3600,
-            "is_expired": False,
-            "is_ready": True,
-            "data_shape": [24, 1],
-            "expiration_seconds": 86400,
-        },
-        "currents": {
-            "name": "MultiStationCurrentsFeed",
-            "location": "nyc",
-            "timestamp": "2025-04-27T12:00:00",
-            "age_seconds": 3600,
-            "is_expired": False,
-            "is_ready": True,
-            "data_shape": [24, 1],
-            "expiration_seconds": 86400,
-        },
-    }
+    nyc_data.status = LocationStatus(
+        feeds={
+            "tides": FeedStatus(
+                name="NoaaTidesFeed",
+                location="nyc",
+                timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+                age_seconds=3600,
+                is_expired=False,
+                is_ready=True,
+                expiration_seconds=86400,
+                data_summary=None,
+                error=None,
+            ),
+            "currents": FeedStatus(
+                name="MultiStationCurrentsFeed",
+                location="nyc",
+                timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+                age_seconds=3600,
+                is_expired=False,
+                is_ready=True,
+                expiration_seconds=86400,
+                data_summary=None,
+                error=None,
+            ),
+        }
+    )
     nyc_data.ready = True
 
     sf_data = MagicMock(spec=LocationDataManager)
-    sf_data.status = {
-        "tides": {
-            "name": "NoaaTidesFeed",
-            "location": "sf",
-            "timestamp": "2025-04-27T12:00:00",
-            "age_seconds": 3600,
-            "is_expired": False,
-            "is_ready": True,
-            "data_shape": [24, 1],
-            "expiration_seconds": 86400,
-        },
-    }
+    sf_data.status = LocationStatus(
+        feeds={
+            "tides": FeedStatus(
+                name="NoaaTidesFeed",
+                location="sf",
+                timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+                age_seconds=3600,
+                is_expired=False,
+                is_ready=True,
+                expiration_seconds=86400,
+                data_summary=None,
+                error=None,
+            )
+        }
+    )
     sf_data.ready = True
 
     # Patch the config.get function to return our mock configs
@@ -114,11 +123,12 @@ def test_location_status_endpoint(
     assert_json_serializable(status_data)
 
     # Check that the response contains the expected data
-    assert "tides" in status_data
-    assert "currents" in status_data
-    assert status_data["tides"]["name"] == "NoaaTidesFeed"
-    assert status_data["tides"]["location"] == "nyc"
-    assert status_data["tides"]["is_ready"] is True
+    assert "feeds" in status_data
+    assert "tides" in status_data["feeds"]
+    assert "currents" in status_data["feeds"]
+    assert status_data["feeds"]["tides"]["name"] == "NoaaTidesFeed"
+    assert status_data["feeds"]["tides"]["location"] == "nyc"
+    assert status_data["feeds"]["tides"]["is_ready"] is True
 
     # Test the SF location status endpoint
     response = test_client.get("/api/sf/status")
@@ -129,9 +139,10 @@ def test_location_status_endpoint(
     assert_json_serializable(status_data)
 
     # Check that the response contains the expected data
-    assert "tides" in status_data
-    assert status_data["tides"]["name"] == "NoaaTidesFeed"
-    assert status_data["tides"]["location"] == "sf"
+    assert "feeds" in status_data
+    assert "tides" in status_data["feeds"]
+    assert status_data["feeds"]["tides"]["name"] == "NoaaTidesFeed"
+    assert status_data["feeds"]["tides"]["location"] == "sf"
 
     # Test a non-existent location
     response = test_client.get("/api/nonexistent/status")
@@ -155,12 +166,14 @@ def test_all_locations_status_endpoint(
     assert "sf" in status_data
 
     # Check the NYC data
-    assert "tides" in status_data["nyc"]
-    assert "currents" in status_data["nyc"]
-    assert status_data["nyc"]["tides"]["name"] == "NoaaTidesFeed"
-    assert status_data["nyc"]["tides"]["location"] == "nyc"
+    assert "feeds" in status_data["nyc"]
+    assert "tides" in status_data["nyc"]["feeds"]
+    assert "currents" in status_data["nyc"]["feeds"]
+    assert status_data["nyc"]["feeds"]["tides"]["name"] == "NoaaTidesFeed"
+    assert status_data["nyc"]["feeds"]["tides"]["location"] == "nyc"
 
     # Check the SF data
-    assert "tides" in status_data["sf"]
-    assert status_data["sf"]["tides"]["name"] == "NoaaTidesFeed"
-    assert status_data["sf"]["tides"]["location"] == "sf"
+    assert "feeds" in status_data["sf"]
+    assert "tides" in status_data["sf"]["feeds"]
+    assert status_data["sf"]["feeds"]["tides"]["name"] == "NoaaTidesFeed"
+    assert status_data["sf"]["feeds"]["tides"]["location"] == "sf"

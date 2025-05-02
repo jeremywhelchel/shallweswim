@@ -23,11 +23,12 @@ from shallweswim import plot
 from shallweswim import util
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.types import (
-    CurrentInfo,
-    DatasetName,
+    FeedStatus,
     LegacyChartInfo,
+    LocationStatus,
     TideEntry,
     TideInfo,
+    CurrentInfo,
 )
 from shallweswim.util import utc_now
 
@@ -152,7 +153,7 @@ class LocationDataManager(object):
 
         # Dictionary mapping dataset names to their corresponding feeds
         # This is the single source of truth for all feed instances and data
-        self._feeds: Dict[DatasetName, Optional[feeds.Feed]] = {
+        self._feeds: Dict[str, Optional[feeds.Feed]] = {
             "tides": self._configure_tides_feed(),
             "currents": self._configure_currents_feed(),
             "live_temps": self._configure_live_temps_feed(),
@@ -326,20 +327,21 @@ class LocationDataManager(object):
         return True
 
     @property
-    def status(self) -> Dict[str, Any]:
-        """Get a dictionary with the status of all configured feeds.
+    def status(self) -> LocationStatus:
+        """Get a Pydantic model with the status of all configured feeds.
 
         Returns:
-            Dictionary mapping feed names to their status dictionaries
+            A LocationStatus object containing a dictionary mapping feed names
+            to their FeedStatus objects.
         """
-        status_dict: Dict[str, Any] = {}
+        status_dict: Dict[str, FeedStatus] = {}
 
         # Add status for each configured feed
         for name, feed in self._feeds.items():
             if feed is not None:
                 status_dict[name] = feed.status
 
-        return status_dict
+        return LocationStatus(feeds=status_dict)
 
     def log(self, message: str, level: int = logging.INFO) -> None:
         """Log a message with standardized formatting including location code.
@@ -381,7 +383,7 @@ class LocationDataManager(object):
             self.log("Timed out waiting for feeds to be ready", level=logging.WARNING)
             return False
 
-    def _expired(self, dataset: DatasetName) -> bool:
+    def _expired(self, dataset: str) -> bool:
         """Check if a dataset has expired and needs to be refreshed.
 
         Uses the feed's built-in expiration logic for all datasets.
@@ -401,7 +403,7 @@ class LocationDataManager(object):
 
         return feed.is_expired
 
-    async def _update_dataset(self, dataset: DatasetName) -> None:
+    async def _update_dataset(self, dataset: str) -> None:
         """Update a specific dataset if it has expired.
 
         Uses the feed's update method to fetch fresh data.

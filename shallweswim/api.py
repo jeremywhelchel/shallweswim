@@ -7,7 +7,7 @@ This module contains FastAPI route handlers for the API endpoints and data manag
 import asyncio
 import io
 import logging
-from typing import Optional
+from typing import Optional, Dict
 
 # Third-party imports
 import aiohttp
@@ -27,10 +27,10 @@ from shallweswim.types import (
     LegacyChartDetails,
     LocationConditions,
     LocationInfo,
+    LocationStatus,
     TemperatureInfo,
     TidesInfo,
 )
-from typing import Dict, Any
 
 
 # Data store for location data will be stored in app.state.data_managers
@@ -305,8 +305,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
         logging.info("[api] All locations report ready status")
         return True
 
-    @app.get("/api/status")
-    async def all_locations_status() -> Dict[str, Any]:
+    @app.get("/api/status", response_model=Dict[str, LocationStatus])
+    async def all_locations_status() -> Dict[str, LocationStatus]:
         """API endpoint that returns status information for all configured locations.
 
         Returns:
@@ -322,16 +322,14 @@ def register_routes(app: fastapi.FastAPI) -> None:
             logging.warning("[api] No locations configured")
             raise HTTPException(status_code=404, detail="No locations configured")
 
-        # Build status dictionary for all locations
-        status_dict: Dict[str, Any] = {}
-        for loc_code, loc_data in app.state.data_managers.items():
-            if loc_data:
-                status_dict[loc_code] = loc_data.status
-
+        # Construct status dictionary
+        status_dict = {
+            code: manager.status for code, manager in app.state.data_managers.items()
+        }
         return status_dict
 
-    @app.get("/api/{location}/status")
-    async def location_status(location: str) -> Dict[str, Any]:
+    @app.get("/api/{location}/status", response_model=LocationStatus)
+    async def location_status(location: str) -> LocationStatus:
         """API endpoint that returns status information for a specific location.
 
         Args:
@@ -343,7 +341,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Raises:
             HTTPException: If the location is not configured
         """
-        logging.info(f"[{location}] Processing location status request")
+        logging.info(f"[{location}] Processing status request")
 
         # Validate location exists
         validate_location(location)
@@ -359,8 +357,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
             )
 
         # Return the status dictionary for this location
-        status_dict: Dict[str, Any] = app.state.data_managers[location].status
-        return status_dict
+        status_obj: LocationStatus = app.state.data_managers[location].status
+        return status_obj
 
     @app.get("/api/{location}/currents", response_model=CurrentsResponse)
     async def location_currents(location: str, shift: int = 0) -> CurrentsResponse:

@@ -17,9 +17,13 @@ from typing import Literal, get_args
 
 # Local imports
 from shallweswim.data import LocationDataManager
-from shallweswim.types import CurrentInfo  # Import from types module where it's defined
+from shallweswim.types import (
+    CurrentInfo,
+    FeedStatus,
+)  # Import from types module where it's defined
 from shallweswim import config as config_lib
 from concurrent.futures import ProcessPoolExecutor
+from shallweswim.feeds import Feed
 
 
 @pytest.fixture
@@ -615,17 +619,21 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
     # Create mock feeds with status dictionaries
     mock_feeds = []
     for i in range(3):
-        mock_feed = MagicMock()
-        mock_feed.status = {
-            "name": f"MockFeed{i}",
-            "location": "nyc",
-            "timestamp": "2025-04-27T12:00:00",
-            "age_seconds": 3600,
-            "is_expired": False,
-            "is_ready": True,
-            "data_shape": [24, 1],
-            "expiration_seconds": 3600,
-        }
+        mock_feed = MagicMock(spec=Feed)
+        # Use FeedStatus model instead of dict
+        mock_feed.status = FeedStatus(
+            name=f"MockFeed{i}",
+            location="nyc",
+            timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+            age_seconds=3600,
+            is_expired=False,
+            is_ready=True,
+            # Remove data_shape as it's not in FeedStatus
+            # data_shape=[24, 1],
+            expiration_seconds=3600,
+            data_summary=None,  # Explicitly set optional fields if needed
+            error=None,  # Explicitly set optional fields if needed
+        )
         mock_feeds.append(mock_feed)
 
     # Set the mock feeds in the _feeds dictionary
@@ -640,14 +648,13 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
     status = data.status
 
     # Check that the status dictionary contains the expected keys
-    assert set(status.keys()) == {"tides", "currents", "live_temps"}
+    assert set(status.feeds.keys()) == {"tides", "currents", "live_temps"}
 
-    # Check that the status dictionary contains the expected values
-    for i, name in enumerate(["tides", "currents", "live_temps"]):
-        assert status[name]["name"] == f"MockFeed{i}"
-        assert status[name]["location"] == "nyc"
-        assert status[name]["is_ready"] is True
+    # Check that the status dictionaries for each feed match the mock status
+    assert status.feeds["tides"] == mock_feeds[0].status
+    assert status.feeds["currents"] == mock_feeds[1].status
+    assert status.feeds["live_temps"] == mock_feeds[2].status
 
-    # Check that the status dictionary is JSON serializable
-    assert_json_serializable(status)
+    # Check that the status dictionary derived from the model is JSON serializable
+    assert_json_serializable(status.model_dump(mode="json"))
     # Pool shutdown is handled by the process_pool fixture

@@ -173,6 +173,43 @@ class LegacyChartDetails(BaseModel):
     map_title: str = Field(..., description="Title for the legacy map")
 
 
+class FeedStatus(BaseModel):
+    """Represents the status of a single data feed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., description="Class name of the Feed")
+    location: str = Field(..., description="Location code associated with the feed")
+    timestamp: Optional[datetime.datetime] = Field(
+        None, description="Timestamp of the last successful data fetch"
+    )
+    age_seconds: Optional[float] = Field(
+        None, description="Data age in seconds at the time of status check"
+    )
+    is_expired: bool = Field(..., description="Whether the data is considered expired")
+    is_ready: bool = Field(
+        ...,
+        description="Whether the feed has successfully fetched data at least once and is ready",
+    )
+    expiration_seconds: Optional[float] = Field(
+        None, description="Configured expiration time in seconds for the feed"
+    )
+    data_summary: Optional[DataFrameSummary] = Field(
+        None, description="Summary statistics of the feed's DataFrame, if available"
+    )
+    error: Optional[str] = Field(
+        None, description="Last error message encountered by the feed, if any"
+    )
+
+
+class LocationStatus(BaseModel):
+    """Represents the status of all feeds for a specific location."""
+
+    feeds: Dict[str, FeedStatus] = Field(
+        ..., description="Dictionary mapping feed names to their FeedStatus objects."
+    )
+
+
 #############################################################
 # API RESPONSE MODELS - Complete response objects            #
 #############################################################

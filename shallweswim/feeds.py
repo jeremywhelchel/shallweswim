@@ -21,15 +21,12 @@ from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients import coops
 from shallweswim.clients import ndbc
 from shallweswim.clients import nwis
-from shallweswim.types import DataFrameSummary
+from shallweswim.types import DataFrameSummary, FeedStatus
 from shallweswim.util import utc_now, summarize_dataframe
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
 EXPIRATION_BUFFER = datetime.timedelta(seconds=300)
-
-# XXX Make async methods
-# XXX Add common logging patterns and error handling too
 
 
 class Feed(BaseModel, abc.ABC):
@@ -52,6 +49,7 @@ class Feed(BaseModel, abc.ABC):
     _data: Optional[pd.DataFrame] = None
     # Event used to signal when data is ready
     _ready_event: asyncio.Event = asyncio.Event()
+    _last_error: Optional[Exception] = None
 
     # Modern Pydantic v2 configuration using model_config
     model_config = ConfigDict(
@@ -133,11 +131,11 @@ class Feed(BaseModel, abc.ABC):
         logging.log(level, log_message)
 
     @property
-    def status(self) -> dict[str, Any]:
-        """Get a dictionary with the current status of this feed.
+    def status(self) -> FeedStatus:
+        """Get a Pydantic model with the current status of this feed.
 
         Returns:
-            A dictionary containing information about the feed's status
+            A FeedStatus object containing information about the feed's status
         """
         # Replace manual extraction with summarize_dataframe
         data_summary: Optional[DataFrameSummary] = None
@@ -157,28 +155,20 @@ class Feed(BaseModel, abc.ABC):
         if self.expiration_interval:
             expiration_sec = self.expiration_interval.total_seconds()
 
-        # Build status dictionary with JSON serializable values
-        status_dict = {
-            "name": self.__class__.__name__,
-            "location": self.location_config.code,
-            "timestamp": self._timestamp.isoformat() if self._timestamp else None,
-            # Remove old data fields
-            # "latest_timestamp": (
-            #     latest_timestamp.isoformat() if latest_timestamp else None
-            # ),
-            "age_seconds": age_sec,
-            "is_expired": self.is_expired,
-            "is_ready": self._ready_event.is_set(),
-            # "data_rows": rows,
-            # "data_cols": cols,
-            # "data_columns": columns,
-            # Add the data summary object (ensure it's serializable)
-            # Use mode='json' to ensure datetimes are ISO strings
-            "data": data_summary.model_dump(mode="json") if data_summary else None,
-            "expiration_seconds": expiration_sec,
-        }
+        # Build status object
+        status_obj = FeedStatus(
+            name=self.__class__.__name__,
+            location=self.location_config.code,
+            timestamp=self._timestamp,  # Pass datetime object directly
+            age_seconds=age_sec,
+            is_expired=self.is_expired,
+            is_ready=self._ready_event.is_set(),
+            data_summary=data_summary,  # Pass the summary object directly
+            expiration_seconds=expiration_sec,
+            error=str(self._last_error) if self._last_error else None,
+        )
 
-        return status_dict
+        return status_obj
 
     async def wait_until_ready(self, timeout: Optional[float] = None) -> bool:
         """Wait until the feed has data available.
@@ -236,6 +226,7 @@ class Feed(BaseModel, abc.ABC):
             # Log the error but don't suppress it - following the project principle
             # of failing fast for internal errors
             self.log(f"Error updating {self.__class__.__name__}: {e}", logging.ERROR)
+            self._last_error = e
             raise
 
     @abc.abstractmethod
@@ -497,9 +488,6 @@ class NwisTempFeed(TempFeed):
             self.log(f"Error fetching NWIS data: {e}", logging.WARNING)
             # Following the project principle of failing fast for internal errors
             raise
-
-
-#    config: config_lib.UsgsTempSource
 
 
 class CoopsTidesFeed(Feed):

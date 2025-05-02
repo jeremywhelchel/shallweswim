@@ -450,3 +450,18 @@ def test_ready_endpoint(api_client: TestClient) -> None:
 
     # Since the fixture waits for data to be ready, we expect True
     assert ready_status is True
+
+
+@pytest.mark.integration
+def test_get_current_tide_plot_nyc(api_client: TestClient) -> None:
+    """Test the GET /api/nyc/current_tide_plot endpoint."""
+    response = api_client.get("/api/nyc/current_tide_plot")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    svg_content = response.text
+    assert svg_content is not None
+    assert len(svg_content) > 100  # Check it's not trivially small
+    assert "<svg" in svg_content
+    assert "</svg>" in svg_content
+    # TODO: Could add more specific checks on SVG content if needed

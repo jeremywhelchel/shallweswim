@@ -244,7 +244,17 @@ def register_routes(app: fastapi.FastAPI) -> None:
             tides_data = tides_feed.values if tides_feed is not None else None
             currents_data = currents_feed.values if currents_feed is not None else None
 
-            fig = plot.create_tide_current_plot(tides_data, currents_data, ts, cfg)
+            # Offload plotting to the process pool
+            pool = app.state.process_pool
+            loop = asyncio.get_running_loop()
+            fig = await loop.run_in_executor(
+                pool,
+                plot.create_tide_current_plot,  # Function to run
+                tides_data,  # Argument 1
+                currents_data,  # Argument 2
+                ts,  # Argument 3
+                cfg,  # Argument 4
+            )
         except AssertionError as e:
             # The function now raises assertions instead of returning None
             raise HTTPException(status_code=404, detail=str(e))

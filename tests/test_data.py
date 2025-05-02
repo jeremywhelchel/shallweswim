@@ -92,7 +92,7 @@ async def mock_data_with_currents(
     yield data
 
     # Clean up the data manager after the test
-    data.stop()
+    await data.stop()
 
 
 @pytest.mark.asyncio
@@ -194,7 +194,7 @@ async def test_current_prediction_at_ebb_peak() -> None:
         assert "weakest" in result.state_description
     finally:
         # Clean up the data manager after the test
-        data.stop()
+        await data.stop()
 
 
 @pytest.mark.asyncio
@@ -247,7 +247,7 @@ async def test_current_prediction_strengthening() -> None:
         assert "getting stronger" in result.state_description
     finally:
         # Clean up the data manager after the test
-        data.stop()
+        await data.stop()
 
 
 @pytest.mark.asyncio
@@ -286,7 +286,7 @@ async def test_current_prediction_weakening() -> None:
         assert "getting weaker" in result.state_description
     finally:
         # Clean up the data manager after the test
-        data.stop()
+        await data.stop()
 
 
 @pytest.mark.asyncio
@@ -337,7 +337,7 @@ async def test_process_peaks_function() -> None:
         )
     finally:
         # Clean up the data manager after the test
-        data.stop()
+        await data.stop()
 
 
 @pytest.mark.asyncio
@@ -498,7 +498,7 @@ async def test_data_ready_property(
         assert data.ready == expected_ready
     finally:
         # Clean up the data manager after the test
-        data.stop()
+        await data.stop()
 
 
 @pytest.mark.asyncio
@@ -586,7 +586,7 @@ async def test_wait_until_ready() -> None:
         assert result is False
     finally:
         # Clean up the data manager after the test
-        data.stop()
+        await data.stop()
 
 
 @pytest.mark.asyncio
@@ -643,4 +643,4 @@ async def test_data_status_property() -> None:
         assert_json_serializable(status)
     finally:
         # Clean up the data manager after the test
-        data.stop()
+        await data.stop()

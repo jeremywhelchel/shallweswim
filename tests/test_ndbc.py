@@ -8,10 +8,11 @@ import datetime
 # Third-party imports
 import pandas as pd
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 
 # Local imports
-from shallweswim.clients.ndbc import NdbcApi, NdbcApiError
+from shallweswim.clients.ndbc import NdbcApi, NdbcDataError
+from shallweswim.clients.base import RetryableClientError
 from shallweswim.util import c_to_f
 
 
@@ -43,260 +44,235 @@ def create_mock_ndbc_data(mode: str = "stdmet") -> pd.DataFrame:
     return df
 
 
+@pytest.fixture
+def ndbc_client() -> NdbcApi:
+    """Provides an NdbcApi instance for testing."""
+    # Session isn't used by ndbc_api, but pass None or a dummy object if BaseApiClient requires it
+    client = NdbcApi(session=None)  # Pass None or a dummy session
+    return client
+
+
+# Mock data fixtures
+@pytest.fixture
+def mock_ndbc_stdmet_raw() -> pd.DataFrame:
+    """Mock raw DataFrame for stdmet data from ndbc_api."""
+    index = pd.MultiIndex.from_tuples(
+        [
+            ("44013", pd.Timestamp("2025-04-19 10:00:00")),
+            ("44013", pd.Timestamp("2025-04-19 11:00:00")),
+        ],
+        names=["station_id", "timestamp"],
+    )
+    return pd.DataFrame({"WTMP": [15.0, 15.5]}, index=index)  # Celsius
+
+
+@pytest.fixture
+def mock_ndbc_ocean_raw() -> pd.DataFrame:
+    """Mock raw DataFrame for ocean data from ndbc_api."""
+    index = pd.MultiIndex.from_tuples(
+        [
+            ("44013", pd.Timestamp("2025-04-19 10:00:00")),
+            ("44013", pd.Timestamp("2025-04-19 11:00:00")),
+        ],
+        names=["station_id", "timestamp"],
+    )
+    return pd.DataFrame({"OTMP": [14.8, 15.2]}, index=index)  # Celsius
+
+
 @pytest.mark.asyncio
-async def test_temperature_success() -> None:
-    """Test successful temperature fetch."""
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Set up the mock to return the proper DataFrame directly
-        mock_to_thread.return_value = create_mock_ndbc_data(mode="stdmet")
+async def test_temperature_success(
+    ndbc_client: NdbcApi, mock_ndbc_stdmet_raw: pd.DataFrame
+) -> None:
+    """Test successful temperature fetch using default stdmet."""
+    with patch.object(
+        ndbc_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.return_value = mock_ndbc_stdmet_raw
 
-        # Mock the ndbc_api.NdbcApi class
-        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
-            # The instance doesn't need to do anything as we're mocking to_thread
-            mock_ndbc_api_instance = MagicMock()
-            mock_ndbc_api_class.return_value = mock_ndbc_api_instance
+        result = await ndbc_client.temperature(  # Use instance
+            station_id="44013",
+            begin_date=datetime.date(2025, 4, 19),
+            end_date=datetime.date(2025, 4, 19),
+            timezone="America/New_York",
+        )
 
-            df = await NdbcApi.temperature(
-                station_id="44025",
+        assert not result.empty
+        assert "water_temp" in result.columns
+        assert pd.api.types.is_datetime64_any_dtype(result.index)
+        # Check C to F conversion
+        assert result["water_temp"].iloc[0] == pytest.approx(c_to_f(15.0))
+        mock_request.assert_called_once()
+        call_args = mock_request.call_args[1]
+        assert call_args["station_id"] == "44013"
+        assert call_args["mode"] == "stdmet"
+
+
+@pytest.mark.asyncio
+async def test_temperature_stdmet(
+    ndbc_client: NdbcApi, mock_ndbc_stdmet_raw: pd.DataFrame
+) -> None:
+    """Test temperature fetch explicitly using stdmet mode."""
+    with patch.object(
+        ndbc_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.return_value = mock_ndbc_stdmet_raw
+
+        result = await ndbc_client.temperature(  # Use instance
+            station_id="44013",
+            begin_date=datetime.date(2025, 4, 19),
+            end_date=datetime.date(2025, 4, 19),
+            timezone="America/New_York",
+            mode="stdmet",
+        )
+
+        assert not result.empty
+        assert result["water_temp"].iloc[0] == pytest.approx(c_to_f(15.0))
+        mock_request.assert_called_once()
+        assert mock_request.call_args[1]["mode"] == "stdmet"
+
+
+@pytest.mark.asyncio
+async def test_temperature_ocean(
+    ndbc_client: NdbcApi, mock_ndbc_ocean_raw: pd.DataFrame
+) -> None:
+    """Test temperature fetch using ocean mode."""
+    with patch.object(
+        ndbc_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.return_value = mock_ndbc_ocean_raw
+
+        result = await ndbc_client.temperature(  # Use instance
+            station_id="44013",
+            begin_date=datetime.date(2025, 4, 19),
+            end_date=datetime.date(2025, 4, 19),
+            timezone="America/New_York",
+            mode="ocean",
+        )
+
+        assert not result.empty
+        assert result["water_temp"].iloc[0] == pytest.approx(c_to_f(14.8))
+        mock_request.assert_called_once()
+        assert mock_request.call_args[1]["mode"] == "ocean"
+
+
+@pytest.mark.asyncio
+async def test_api_error(
+    ndbc_client: NdbcApi,
+) -> None:
+    """Test handling of connection errors (RetryableClientError)."""
+    with patch.object(
+        ndbc_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.side_effect = RetryableClientError("NDBC connection failed")
+
+        with pytest.raises(RetryableClientError, match="NDBC connection failed"):
+            await ndbc_client.temperature(  # Use instance
+                station_id="44013",
                 begin_date=datetime.date(2025, 4, 19),
                 end_date=datetime.date(2025, 4, 19),
                 timezone="America/New_York",
-                location_code="nyc",
             )
-
-    assert len(df) == 2
-    assert "water_temp" in df.columns
-    # Check that temperatures were converted from Celsius to Fahrenheit
-    assert round(df["water_temp"].iloc[0], 1) == 59.9  # 15.5°C = 59.9°F
-    assert round(df["water_temp"].iloc[1], 1) == 61.2  # 16.2°C = 61.2°F
 
 
 @pytest.mark.asyncio
-async def test_temperature_stdmet() -> None:
-    """Test fetching temperature data from NDBC API using stdmet mode."""
-    # Create mock data for stdmet mode
-    mock_ndbc_temp_data = create_mock_ndbc_data(mode="stdmet")
+async def test_dictionary_result(
+    ndbc_client: NdbcApi,
+) -> None:
+    """Test handling when API returns a dictionary instead of DataFrame."""
+    with patch.object(
+        ndbc_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request:
+        # Simulate _execute_request raising NdbcDataError
+        mock_request.side_effect = NdbcDataError("NDBC API returned a dictionary")
 
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Set up the mock to return the proper DataFrame directly
-        mock_to_thread.return_value = mock_ndbc_temp_data
-
-        # Mock the ndbc_api.NdbcApi class
-        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
-            # The instance doesn't need to do anything as we're mocking to_thread
-            mock_ndbc_api_instance = MagicMock()
-            mock_ndbc_api_class.return_value = mock_ndbc_api_instance
-
-            df = await NdbcApi.temperature(
-                station_id="44025",
+        with pytest.raises(NdbcDataError, match="NDBC API returned a dictionary"):
+            await ndbc_client.temperature(  # Use instance
+                station_id="44013",
                 begin_date=datetime.date(2025, 4, 19),
-                end_date=datetime.date(2025, 4, 20),
+                end_date=datetime.date(2025, 4, 19),
                 timezone="America/New_York",
-                location_code="tst",
+            )
+
+
+@pytest.mark.asyncio
+async def test_missing_temp_column_stdmet(
+    ndbc_client: NdbcApi,
+) -> None:
+    """Test handling when stdmet data misses WTMP column."""
+    with patch.object(
+        ndbc_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request:
+        # Return data missing the expected column
+        index = pd.MultiIndex.from_tuples(
+            [("44013", pd.Timestamp("2025-04-19 10:00:00"))],
+            names=["station_id", "timestamp"],
+        )
+        mock_df_bad = pd.DataFrame({"ATMP": [20.0]}, index=index)
+        mock_request.return_value = mock_df_bad
+
+        with pytest.raises(
+            NdbcDataError, match=r"No water temperature data \(\'WTMP\'\) available"
+        ):
+            await ndbc_client.temperature(  # Use instance
+                station_id="44013",
+                begin_date=datetime.date(2025, 4, 19),
+                end_date=datetime.date(2025, 4, 19),
+                timezone="America/New_York",
                 mode="stdmet",
             )
 
-    # Check that the DataFrame has the expected structure
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-    assert "water_temp" in df.columns
-    assert len(df) == 2
-
-    # Check that temperatures were converted from Celsius to Fahrenheit
-    expected_temps = [c_to_f(15.5), c_to_f(16.2)]
-    pd.testing.assert_series_equal(
-        df["water_temp"],
-        pd.Series(expected_temps, index=df.index, name="water_temp"),
-        check_names=False,  # Don't check Series names
-    )
-
 
 @pytest.mark.asyncio
-async def test_temperature_ocean() -> None:
-    """Test fetching temperature data from NDBC API using ocean mode."""
-    # Create mock data for ocean mode
-    mock_ndbc_temp_data = create_mock_ndbc_data(mode="ocean")
+async def test_missing_temp_column_ocean(
+    ndbc_client: NdbcApi,
+) -> None:
+    """Test handling when ocean data misses OTMP column."""
+    with patch.object(
+        ndbc_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request:
+        index = pd.MultiIndex.from_tuples(
+            [("44013", pd.Timestamp("2025-04-19 10:00:00"))],
+            names=["station_id", "timestamp"],
+        )
+        mock_df_bad = pd.DataFrame({"SomeOtherMetric": [10.0]}, index=index)
+        mock_request.return_value = mock_df_bad
 
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Set up the mock to return the proper DataFrame directly
-        mock_to_thread.return_value = mock_ndbc_temp_data
-
-        # Mock the ndbc_api.NdbcApi class
-        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
-            # The instance doesn't need to do anything as we're mocking to_thread
-            mock_ndbc_api_instance = MagicMock()
-            mock_ndbc_api_class.return_value = mock_ndbc_api_instance
-
-            df = await NdbcApi.temperature(
-                station_id="44025",
+        with pytest.raises(
+            NdbcDataError, match=r"No water temperature data \(\'OTMP\'\) available"
+        ):
+            await ndbc_client.temperature(  # Use instance
+                station_id="44013",
                 begin_date=datetime.date(2025, 4, 19),
-                end_date=datetime.date(2025, 4, 20),
+                end_date=datetime.date(2025, 4, 19),
                 timezone="America/New_York",
-                location_code="tst",
                 mode="ocean",
             )
 
-    # Check that the DataFrame has the expected structure
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-    assert "water_temp" in df.columns
-    assert len(df) == 2
 
-    # Check that temperatures were converted from Celsius to Fahrenheit
-    expected_temps = [c_to_f(15.5), c_to_f(16.2)]
-    pd.testing.assert_series_equal(
-        df["water_temp"],
-        pd.Series(expected_temps, index=df.index, name="water_temp"),
-        check_names=False,  # Don't check Series names
-    )
+def test_fix_time(ndbc_client: NdbcApi) -> None:
+    """Test the _fix_time method for timezone conversion.
 
-
-@pytest.mark.asyncio
-async def test_api_error() -> None:
-    """Test handling of API errors."""
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Simulate an API error
-        mock_to_thread.side_effect = Exception("NDBC API error")
-
-        # Mock the ndbc_api.NdbcApi class
-        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
-            # The instance doesn't need to do anything as we're mocking to_thread
-            mock_ndbc_api_instance = MagicMock()
-            mock_ndbc_api_class.return_value = mock_ndbc_api_instance
-
-            with pytest.raises(NdbcApiError, match="Error fetching NDBC data"):
-                await NdbcApi.temperature(
-                    station_id="44025",
-                    begin_date=datetime.date(2025, 4, 19),
-                    end_date=datetime.date(2025, 4, 19),
-                    timezone="America/New_York",
-                    location_code="nyc",
-                )
-
-
-@pytest.mark.asyncio
-async def test_dictionary_result() -> None:
-    """Test handling of dictionary result instead of DataFrame."""
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Return a dictionary instead of a DataFrame
-        mock_to_thread.return_value = {"error": "No data available"}
-
-        # Mock the ndbc_api.NdbcApi class
-        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
-            # The instance doesn't need to do anything as we're mocking to_thread
-            mock_ndbc_api_instance = MagicMock()
-            mock_ndbc_api_class.return_value = mock_ndbc_api_instance
-
-            with pytest.raises(NdbcApiError, match="Error fetching NDBC data"):
-                await NdbcApi.temperature(
-                    station_id="44025",
-                    begin_date=datetime.date(2025, 4, 19),
-                    end_date=datetime.date(2025, 4, 19),
-                    timezone="America/New_York",
-                    location_code="nyc",
-                )
-
-
-@pytest.mark.asyncio
-async def test_missing_temp_column_stdmet() -> None:
-    """Test handling of missing WTMP column in stdmet mode."""
-    # Create DataFrame without WTMP column
-    df = pd.DataFrame(
-        {
-            "ATMP": [20.5, 21.2],  # Air temperature instead of water
-        },
-        index=pd.MultiIndex.from_tuples(
-            [
-                (pd.Timestamp("2025-04-19 10:00"), "44025"),
-                (pd.Timestamp("2025-04-19 16:00"), "44025"),
-            ],
-            names=["timestamp", "station_id"],
-        ),
-    )
-
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Return DataFrame without WTMP column
-        mock_to_thread.return_value = df
-
-        # Mock the ndbc_api.NdbcApi class
-        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
-            # The instance doesn't need to do anything as we're mocking to_thread
-            mock_ndbc_api_instance = MagicMock()
-            mock_ndbc_api_class.return_value = mock_ndbc_api_instance
-
-            with pytest.raises(NdbcApiError, match="Error fetching NDBC data"):
-                await NdbcApi.temperature(
-                    station_id="44025",
-                    begin_date=datetime.date(2025, 4, 19),
-                    end_date=datetime.date(2025, 4, 19),
-                    timezone="America/New_York",
-                    location_code="nyc",
-                )
-
-
-@pytest.mark.asyncio
-async def test_missing_temp_column_ocean() -> None:
-    """Test handling of missing OTMP column in ocean mode."""
-    # Create DataFrame without OTMP column
-    df = pd.DataFrame(
-        {
-            "ATMP": [20.5, 21.2],  # Air temperature instead of water
-        },
-        index=pd.MultiIndex.from_tuples(
-            [
-                (pd.Timestamp("2025-04-19 10:00"), "44025"),
-                (pd.Timestamp("2025-04-19 16:00"), "44025"),
-            ],
-            names=["timestamp", "station_id"],
-        ),
-    )
-
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Return DataFrame without OTMP column
-        mock_to_thread.return_value = df
-
-        # Mock the ndbc_api.NdbcApi class
-        with patch("shallweswim.clients.ndbc.NdbcApi") as mock_ndbc_api_class:
-            # The instance doesn't need to do anything as we're mocking to_thread
-            mock_ndbc_api_instance = MagicMock()
-            mock_ndbc_api_class.return_value = mock_ndbc_api_instance
-
-            with pytest.raises(NdbcApiError, match="Error fetching NDBC data"):
-                await NdbcApi.temperature(
-                    station_id="44025",
-                    begin_date=datetime.date(2025, 4, 19),
-                    end_date=datetime.date(2025, 4, 19),
-                    timezone="America/New_York",
-                    location_code="nyc",
-                    mode="ocean",
-                )
-
-
-@pytest.mark.asyncio
-async def test_fix_time() -> None:
-    """Test the _fix_time method."""
-    # Create a DataFrame with UTC timestamps
+    Based on original implementation provided by user.
+    Checks conversion from naive (assumed UTC) to local naive.
+    """
+    # Create a DataFrame with a naive DatetimeIndex (as might come from MultiIndex drop)
+    # Original test used naive times assumed to be UTC
     index = pd.DatetimeIndex(
         [
-            pd.Timestamp("2025-04-19 14:00:00"),  # 10:00 AM EDT
-            pd.Timestamp("2025-04-19 20:00:00"),  # 4:00 PM EDT
+            pd.Timestamp("2025-04-19 14:00:00"),  # Represents 10:00 AM EDT
+            pd.Timestamp("2025-04-19 20:00:00"),  # Represents 4:00 PM EDT
         ]
     )
-    df = pd.DataFrame({"water_temp": [59.9, 61.2]}, index=index)
+    df = pd.DataFrame({"water_temp": [15.0, 15.5]}, index=index)
 
-    # Convert timestamps to EDT
-    result_df = NdbcApi._fix_time(df, "America/New_York")
+    # Call instance method via fixture
+    result_df = ndbc_client._fix_time(df, "America/New_York")
 
-    # Check that timestamps were converted correctly
+    # Check that timestamps were converted correctly and result is naive
     expected_times = [
-        pd.Timestamp("2025-04-19 10:00:00"),  # 10:00 AM EDT
-        pd.Timestamp("2025-04-19 16:00:00"),  # 4:00 PM EDT
+        pd.Timestamp("2025-04-19 10:00:00"),  # Expected 10:00 AM EDT (naive)
+        pd.Timestamp("2025-04-19 16:00:00"),  # Expected 4:00 PM EDT (naive)
     ]
+    # Ensure result index is naive
+    assert result_df.index.tz is None
     pd.testing.assert_index_equal(result_df.index, pd.DatetimeIndex(expected_times))

@@ -48,8 +48,15 @@ async def test_live_temperature_fetch_stdmet() -> None:
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=8)
 
+    # NOTE: NdbcApi(session=None) works because NdbcApi._execute_request currently
+    # bypasses the BaseApiClient's aiohttp session. Instead, it creates its own
+    # synchronous NdbcApiClient (from the ndbc-api library) and calls its methods
+    # using asyncio.to_thread. If NdbcApi is refactored to use aiohttp directly,
+    # this test will need a valid session fixture.
+    ndbc_api = NdbcApi(session=None)
+
     # Fetch temperature data from NDBC station using stdmet mode
-    df = await NdbcApi.temperature(
+    df = await ndbc_api.temperature(
         station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
@@ -94,9 +101,11 @@ async def test_live_temperature_fetch_ocean() -> None:
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=8)
 
+    ndbc_api = NdbcApi(session=None)
+
     try:
         # Fetch temperature data from NDBC station using ocean mode
-        df = await NdbcApi.temperature(
+        df = await ndbc_api.temperature(
             station_id=NDBC_OCEAN_STATION,
             begin_date=begin_date,
             end_date=end_date,
@@ -148,8 +157,10 @@ async def test_date_range_handling() -> None:
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=1)
 
+    ndbc_api = NdbcApi(session=None)
+
     # Fetch temperature data with a short date range
-    df_short = await NdbcApi.temperature(
+    df_short = await ndbc_api.temperature(
         station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
@@ -164,7 +175,7 @@ async def test_date_range_handling() -> None:
     begin_date_long = end_date - datetime.timedelta(days=14)
 
     # Fetch temperature data with a longer date range
-    df_long = await NdbcApi.temperature(
+    df_long = await ndbc_api.temperature(
         station_id=NDBC_STDMET_STATION,
         begin_date=begin_date_long,
         end_date=end_date,
@@ -191,8 +202,10 @@ async def test_timezone_conversion() -> None:
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=3)
 
+    ndbc_api = NdbcApi(session=None)
+
     # Fetch data with Eastern timezone
-    df_eastern = await NdbcApi.temperature(
+    df_eastern = await ndbc_api.temperature(
         station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
@@ -202,7 +215,7 @@ async def test_timezone_conversion() -> None:
     )
 
     # Fetch the same data with Pacific timezone
-    df_pacific = await NdbcApi.temperature(
+    df_pacific = await ndbc_api.temperature(
         station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
@@ -252,9 +265,11 @@ async def test_consecutive_api_calls() -> None:
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=3)
 
+    ndbc_api = NdbcApi(session=None)
+
     # Make multiple API calls in succession
     for _ in range(3):
-        df = await NdbcApi.temperature(
+        df = await ndbc_api.temperature(
             station_id=NDBC_STDMET_STATION,
             begin_date=begin_date,
             end_date=end_date,
@@ -278,11 +293,13 @@ async def test_invalid_station() -> None:
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=3)
 
+    ndbc_api = NdbcApi(session=None)
+
     # Use a non-existent station ID
     invalid_station = "99999"
 
     with pytest.raises(Exception):
-        await NdbcApi.temperature(
+        await ndbc_api.temperature(
             station_id=invalid_station,
             begin_date=begin_date,
             end_date=end_date,

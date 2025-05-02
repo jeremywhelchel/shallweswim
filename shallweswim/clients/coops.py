@@ -13,7 +13,11 @@ import aiohttp
 import pandas as pd
 
 # Local imports
-from shallweswim.clients.base import BaseApiClient, BaseClientError
+from shallweswim.clients.base import (
+    BaseApiClient,
+    BaseClientError,
+    RetryableClientError,
+)
 
 # Type definitions for NOAA CO-OPS API client
 ProductType = Literal[
@@ -98,9 +102,6 @@ class CoopsApi(BaseApiClient):
         "format": "csv",
     }
 
-    MAX_RETRIES = 3
-    RETRY_DELAY = 1  # seconds
-
     @property
     def client_type(self) -> str:
         return "coops"
@@ -115,74 +116,75 @@ class CoopsApi(BaseApiClient):
             date = date.date()
         return date.strftime(DateFormat)
 
-    async def _Request(
-        self, params: CoopsRequestParams, location_code: str = "unknown"
-    ) -> pd.DataFrame:
-        """Make a request to the NOAA CO-OPS API with retries.
+    async def _execute_request(self, url: str, location_code: str) -> pd.DataFrame:
+        """Performs the CO-OPS API request, handles errors, and parses the response.
+
+        This method is intended to be called by the `request_with_retry` logic
+        in the base class.
 
         Args:
-            params: API request parameters
-            location_code: Optional location code for logging
+            url: The fully constructed URL for the CO-OPS API request.
+            location_code: The location code for logging purposes.
 
         Returns:
-            DataFrame containing the API response
+            A pandas DataFrame containing the successfully parsed data.
 
         Raises:
-            CoopsConnectionError: If connection to API fails
-            CoopsDataError: If API returns error response
+            RetryableClientError: For transient network errors (connection, timeout).
+            CoopsConnectionError: For non-retryable HTTP errors (e.g., status 404, 500).
+            CoopsDataError: For errors parsing the response or API-level errors in data.
         """
-        url_params = dict(self.BASE_PARAMS, **params)
-        url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
-
-        attempt = 0
-        while attempt < self.MAX_RETRIES:
-            attempt += 1
-            self.log(
-                f"NOAA CO-OPS API request (attempt {attempt}): {url}",
-                location_code=location_code,
-            )
-            try:
-                async with self._session.get(url) as response:
-                    if response.status != 200:
-                        error_msg = f"HTTP error: {response.status}"
-                        self.log(
-                            error_msg, level=logging.ERROR, location_code=location_code
-                        )
-                        raise CoopsConnectionError(error_msg)
-
-                    # Read CSV data
-                    csv_data = await response.text()
-                    df = pd.read_csv(io.StringIO(csv_data))
-
-                    if len(df) == 1:
-                        error_msg = df.iloc[0].values[0]
-                        self.log(
-                            f"NOAA CO-OPS API data error: {error_msg}",
-                            level=logging.ERROR,
-                            location_code=location_code,
-                        )
-                        raise CoopsDataError(error_msg)
-                    return df
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                error_msg = f"Connection error: {e.__class__.__name__}: {e}"
-                if attempt >= self.MAX_RETRIES:
+        self.log(
+            f"Executing CO-OPS request: {url}",
+            location_code=location_code,
+        )
+        csv_data: str
+        try:
+            async with self._session.get(url) as response:
+                if response.status != 200:
+                    # Treat non-200 responses as non-retryable connection errors
+                    error_msg = f"HTTP error {response.status} for {url}"
                     self.log(
                         error_msg, level=logging.ERROR, location_code=location_code
                     )
-                    raise CoopsConnectionError(error_msg) from e
-                else:
-                    self.log(
-                        f"{error_msg}. Retrying in {self.RETRY_DELAY * attempt} seconds...",
-                        level=logging.WARNING,
-                        location_code=location_code,
-                    )
-                    await asyncio.sleep(self.RETRY_DELAY * attempt)
+                    # Raise specific connection error, not retryable
+                    raise CoopsConnectionError(error_msg)
 
-        # If all retries fail
-        error_msg = f"Failed after {self.MAX_RETRIES} retries."
-        self.log(error_msg, level=logging.ERROR, location_code=location_code)
-        # The last exception caught (either connection or data error) will be the cause
-        # If no exception was caught but loop finished, raise a generic error
+                # Read CSV data if status is OK
+                csv_data = await response.text()
+
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            # Convert specific connection/timeout errors into our standard retryable error
+            error_msg = f"Network error during CO-OPS request to {url}: {e.__class__.__name__}: {e}"
+            # Log is handled by the tenacity retry logger in the base class
+            raise RetryableClientError(error_msg) from e
+
+        # --- Parsing logic (outside the network try/except) ---
+        try:
+            df = pd.read_csv(io.StringIO(csv_data))
+        except Exception as e:
+            # Catch broad exceptions during parsing
+            error_msg = f"Failed to parse CO-OPS CSV response from {url}: {e}"
+            self.log(error_msg, level=logging.ERROR, location_code=location_code)
+            raise CoopsDataError(error_msg) from e  # Parsing error is a data error
+
+        # Check for API-level errors reported in the CSV data
+        # Example: {'Error': 'No data was found for the specified station.'}
+        # Check if the DataFrame has one row and potentially an 'Error' message
+        if len(df) == 1 and df.shape[1] == 1 and "error" in str(df.iloc[0, 0]).lower():
+            error_msg = df.iloc[0, 0]  # Get the actual error message
+            self.log(
+                f"NOAA CO-OPS API data error for {url}: {error_msg}",
+                level=logging.ERROR,
+                location_code=location_code,
+            )
+            raise CoopsDataError(error_msg)  # API error is a data error
+
+        self.log(
+            f"Successfully parsed {len(df)} records from {url}",
+            location_code=location_code,
+        )
+        return df  # Return the raw DataFrame, no processing here
 
     async def tides(
         self,
@@ -215,9 +217,15 @@ class CoopsApi(BaseApiClient):
             f"Fetching tide predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
             location_code=location_code,
         )
-        df = await self._Request(params, location_code)
+
+        # Construct URL and call using request_with_retry
+        url_params = dict(self.BASE_PARAMS, **params)
+        url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
+        raw_df: pd.DataFrame = await self.request_with_retry(location_code, url)
+
+        # Existing processing logic
         df = (
-            df.pipe(self._FixTime)
+            raw_df.pipe(self._FixTime)
             .rename(columns={" Prediction": "prediction", " Type": "type"})
             .assign(type=lambda x: x["type"].map({"L": "low", "H": "high"}))[
                 ["prediction", "type"]
@@ -261,9 +269,15 @@ class CoopsApi(BaseApiClient):
             f"Fetching current predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
             location_code=location_code,
         )
-        df = await self._Request(params, location_code)
+
+        # Construct URL and call using request_with_retry
+        url_params = dict(self.BASE_PARAMS, **params)
+        url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
+        raw_df: pd.DataFrame = await self.request_with_retry(location_code, url)
+
+        # Existing processing logic (using raw_df as input)
         currents = (
-            df.pipe(self._FixTime, time_col="Time").rename(
+            raw_df.pipe(self._FixTime, time_col="Time").rename(
                 columns={
                     " Depth": "depth",
                     " Type": "type",
@@ -333,9 +347,15 @@ class CoopsApi(BaseApiClient):
             f"Fetching temperature data for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
             location_code=location_code,
         )
-        df = await self._Request(params, location_code)
+
+        # Construct URL and call using request_with_retry
+        url_params = dict(self.BASE_PARAMS, **params)
+        url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
+        raw_df: pd.DataFrame = await self.request_with_retry(location_code, url)
+
+        # Existing processing logic
         df = (
-            df.pipe(self._FixTime)
+            raw_df.pipe(self._FixTime)
             .rename(
                 columns={
                     " Water Temperature": "water_temp",

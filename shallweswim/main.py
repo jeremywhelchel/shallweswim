@@ -58,7 +58,9 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
         if hasattr(app.state, "data_managers"):
             for location_code, data_manager in app.state.data_managers.items():
                 logging.info(f"Stopping data manager for {location_code}")
-                data_manager.stop()
+                await data_manager.stop()
+
+        # Context manager exits here, closing the session
 
 
 app = fastapi.FastAPI(lifespan=lifespan)

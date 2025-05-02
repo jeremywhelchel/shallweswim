@@ -12,7 +12,10 @@ import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
 # Local imports
-from shallweswim.clients.nwis import NwisApi, NwisApiError
+from shallweswim.clients.nwis import NwisApi, NwisDataError
+from shallweswim.clients.base import (
+    ClientConnectionError,
+)
 
 
 def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:
@@ -165,55 +168,55 @@ async def test_temperature_fahrenheit_param(nwis_client: NwisApi) -> None:
 
 @pytest.mark.asyncio
 async def test_api_error(nwis_client: NwisApi) -> None:
-    """Test handling of API errors."""
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Simulate an API error
-        mock_to_thread.side_effect = Exception("NWIS API error")
+    """Test handling of connection errors after retries fail."""
+    # Mock request_with_retry to simulate exhausted retries
+    with patch.object(
+        nwis_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request_with_retry:
+        mock_request_with_retry.side_effect = ClientConnectionError(
+            "Simulated connection error after retries"
+        )
 
-        # Mock the dataretrieval.nwis module
-        with patch("dataretrieval.nwis.get_record") as mock_get_record:
-            # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
-            mock_get_record.return_value = None
-
-            with pytest.raises(NwisApiError, match="Error fetching NWIS data"):
-                # Call on instance
-                await nwis_client.temperature(
-                    site_no="03292494",
-                    begin_date=datetime.date(2025, 4, 19),
-                    end_date=datetime.date(2025, 4, 19),
-                    timezone="America/New_York",
-                    location_code="sdf",
-                )
+        with pytest.raises(
+            ClientConnectionError, match="Simulated connection error after retries"
+        ):
+            await nwis_client.temperature(
+                site_no="03292494",
+                begin_date=datetime.date(2025, 4, 19),
+                end_date=datetime.date(2025, 4, 19),
+                timezone="America/New_York",
+                location_code="sdf",
+            )
 
 
 @pytest.mark.asyncio
-async def test_empty_result(nwis_client: NwisApi) -> None:
-    """Test handling of empty result."""
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Return an empty DataFrame
-        mock_to_thread.return_value = pd.DataFrame()
+async def test_data_error(nwis_client: NwisApi) -> None:
+    """Test handling of NwisDataError when API returns empty results."""
+    # Mock request_with_retry to simulate _execute_request returning empty DataFrame
+    with patch.object(
+        nwis_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request_with_retry:
+        # Simulate _execute_request raising NwisDataError because the result was empty
+        # This happens *inside* the retry logic, so request_with_retry re-raises it.
+        mock_request_with_retry.side_effect = NwisDataError(
+            "No data returned from NWIS API for site 03292494, params ['00010']"
+        )
 
-        # Mock the dataretrieval.nwis module
-        with patch("dataretrieval.nwis.get_record") as mock_get_record:
-            # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
-            mock_get_record.return_value = None
-
-            with pytest.raises(NwisApiError, match="Error fetching NWIS data"):
-                # Call on instance
-                await nwis_client.temperature(
-                    site_no="03292494",
-                    begin_date=datetime.date(2025, 4, 19),
-                    end_date=datetime.date(2025, 4, 19),
-                    timezone="America/New_York",
-                    location_code="sdf",
-                )
+        # Expect NwisDataError because the fetch itself returned no data
+        with pytest.raises(
+            NwisDataError, match="No data returned from NWIS API for site 03292494"
+        ):
+            await nwis_client.temperature(
+                site_no="03292494",
+                begin_date=datetime.date(2025, 4, 19),
+                end_date=datetime.date(2025, 4, 19),
+                timezone="America/New_York",
+                location_code="sdf",
+            )
 
 
 @pytest.mark.asyncio
 async def test_missing_temp_column(nwis_client: NwisApi) -> None:
-    """Test handling of missing temperature column."""
     # Create DataFrame without temperature column
     df = pd.DataFrame(
         {
@@ -228,25 +231,24 @@ async def test_missing_temp_column(nwis_client: NwisApi) -> None:
         ],
     )
 
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Return DataFrame without temperature column
-        mock_to_thread.return_value = df
+    # Mock request_with_retry to return the DataFrame *without* the temperature column
+    # This simulates a successful fetch, but with incorrect data for post-processing.
+    with patch.object(
+        nwis_client, "request_with_retry", new_callable=AsyncMock
+    ) as mock_request_with_retry:
+        mock_request_with_retry.return_value = df
 
-        # Mock the dataretrieval.nwis module
-        with patch("dataretrieval.nwis.get_record") as mock_get_record:
-            # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
-            mock_get_record.return_value = None
-
-            with pytest.raises(NwisApiError, match="Error fetching NWIS data"):
-                # Call on instance
-                await nwis_client.temperature(
-                    site_no="03292494",
-                    begin_date=datetime.date(2025, 4, 19),
-                    end_date=datetime.date(2025, 4, 19),
-                    timezone="America/New_York",
-                    location_code="sdf",
-                )
+        # Expect NwisDataError because the post-processing in temperature() fails
+        # The expected column '...00010...' is missing.
+        expected_message = r"No water temperature data \(parameter 00010\) available for NWIS site 03292494"
+        with pytest.raises(NwisDataError, match=expected_message):
+            await nwis_client.temperature(
+                site_no="03292494",
+                begin_date=datetime.date(2025, 4, 19),
+                end_date=datetime.date(2025, 4, 19),
+                timezone="America/New_York",
+                location_code="sdf",
+            )
 
 
 @pytest.mark.asyncio

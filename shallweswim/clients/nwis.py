@@ -20,12 +20,15 @@ import dataretrieval.nwis as nwis
 import pandas as pd
 
 # Local imports
-from shallweswim.clients.base import BaseApiClient
-from shallweswim.clients.base import BaseClientError
+from shallweswim.clients.base import (
+    BaseApiClient,
+    BaseClientError,  # Import BaseClientError
+    RetryableClientError,
+)  # noqa
 from shallweswim.util import c_to_f
 
 
-class NwisApiError(BaseClientError):
+class NwisApiError(BaseClientError):  # Inherit from BaseClientError
     """Base error for USGS NWIS API calls."""
 
 
@@ -38,26 +41,98 @@ class NwisDataError(NwisApiError):
 
 
 class NwisApi(BaseApiClient):
-    """Client for the USGS NWIS API.
+    """Client for the USGS NWIS API using the dataretrieval library.
 
     This class provides methods to fetch hydrological and water quality data
     from USGS's National Water Information System (NWIS) stations.
     """
-
-    MAX_RETRIES = 3
-    RETRY_DELAY = 1  # seconds
 
     @property
     def client_type(self) -> str:
         return "nwis"
 
     def __init__(self, session: aiohttp.ClientSession) -> None:
-        """Initialize the NWIS client with an aiohttp session.
+        """Initialize the NWIS client.
 
         Args:
-            session: The aiohttp client session (not used directly by dataretrieval).
+            session: The aiohttp client session (required by base class, but not used directly by dataretrieval).
         """
         super().__init__(session)
+
+    async def _execute_request(
+        self,
+        sites: str,
+        service: str,
+        parameterCd: list[str],
+        start: str,
+        end: str,
+        location_code: str,
+    ) -> pd.DataFrame:
+        """Executes the nwis.get_record call within asyncio.to_thread and handles errors.
+
+        This method is called by the `request_with_retry` logic in the base class.
+
+        Args:
+            sites: Site number.
+            service: NWIS service (e.g., 'iv').
+            parameterCd: List of parameter codes.
+            start: Start date string (YYYY-MM-DD).
+            end: End date string (YYYY-MM-DD).
+            location_code: Location code for logging.
+
+        Returns:
+            The raw DataFrame returned by nwis.get_record.
+
+        Raises:
+            RetryableClientError: If a transient connection/timeout error occurs.
+            NwisDataError: If no data is returned or essential columns are missing.
+            NwisApiError: For other unexpected errors during the nwis call.
+        """
+        self.log(
+            f"Executing NWIS request for site {sites}, params={parameterCd}, start={start}, end={end}",
+            location_code=location_code,
+        )
+        try:
+            # Fetch the data using asyncio.to_thread to avoid blocking
+            # dataretrieval uses requests internally
+            raw_result = await asyncio.to_thread(
+                nwis.get_record,
+                sites=sites,
+                service=service,
+                parameterCd=parameterCd,
+                start=start,
+                end=end,
+            )
+            # Check if the result is empty or not a DataFrame after successful execution
+            if (
+                raw_result is None
+                or not isinstance(raw_result, pd.DataFrame)
+                or raw_result.empty
+            ):
+                error_msg = f"No data returned from NWIS API for site {sites}, params {parameterCd}"
+                # This is treated as a data error, not necessarily retryable
+                self.log(error_msg, level=logging.WARNING, location_code=location_code)
+                raise NwisDataError(error_msg)
+
+            return raw_result
+
+        except (
+            # Assuming dataretrieval might raise these if it uses requests
+            # Need to confirm actual exceptions raised by dataretrieval on network errors
+            aiohttp.ClientConnectionError,  # Example: if underlying requests uses aiohttp? Unlikely.
+            asyncio.TimeoutError,
+            # Add specific exceptions from dataretrieval/requests if known
+        ) as e:
+            # Convert known transient network errors to our retryable type
+            error_msg = f"Network error during NWIS request for site {sites}: {e.__class__.__name__}: {e}"
+            # Log is handled by tenacity, just raise the correct error type
+            raise RetryableClientError(error_msg) from e
+        except Exception as e:
+            # Catch other potential errors from dataretrieval or pandas within the thread
+            error_msg = f"Unexpected error during NWIS request for site {sites}: {e.__class__.__name__}: {e}"
+            self.log(error_msg, level=logging.ERROR, location_code=location_code)
+            # Re-raise as a general NwisApiError
+            raise NwisApiError(error_msg) from e
 
     async def temperature(
         self,
@@ -68,7 +143,7 @@ class NwisApi(BaseApiClient):
         location_code: str = "unknown",
         parameter_cd: str = "00010",  # Default is water temperature (in Celsius)
     ) -> pd.DataFrame:
-        """Fetch water temperature data from USGS NWIS station.
+        """Fetch water temperature data from USGS NWIS station with retries.
 
         Args:
             site_no: USGS site number (e.g., '01646500')
@@ -88,40 +163,29 @@ class NwisApi(BaseApiClient):
             NwisDataError: If API returns error or invalid data
         """
         # Format dates as strings for the NWIS API
+        location_code = (
+            location_code or site_no
+        )  # Use site_no if location_code is empty
         begin_date_str = begin_date.strftime("%Y-%m-%d")
         end_date_str = end_date.strftime("%Y-%m-%d")
 
+        # Convert parameter_cd to list if it's a string
+        param_list = [parameter_cd] if isinstance(parameter_cd, str) else parameter_cd
+
+        # Call the execution logic via the retry wrapper
+        raw_result: pd.DataFrame = await self.request_with_retry(
+            location_code,  # First arg for request_with_retry
+            # Remaining positional args for the implicit self._execute_request:
+            site_no,
+            "iv",
+            param_list,
+            begin_date_str,
+            end_date_str,
+        )
+
+        # --- Post-processing starts (UNCHANGED from original logic) ---
+        # Wrap unexpected errors during post-processing
         try:
-            # Fetch the data using asyncio.to_thread to avoid blocking
-            self.log(
-                f"Fetching NWIS data for site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}",
-                location_code=location_code,
-            )
-
-            # Convert parameter_cd to list if it's a string
-            param_list = (
-                [parameter_cd] if isinstance(parameter_cd, str) else parameter_cd
-            )
-
-            raw_result = await asyncio.to_thread(
-                nwis.get_record,
-                sites=site_no,
-                service="iv",  # Instantaneous values
-                parameterCd=param_list,
-                start=begin_date_str,
-                end=end_date_str,
-            )
-
-            # Check if the result is empty or not a DataFrame
-            if (
-                raw_result is None
-                or not isinstance(raw_result, pd.DataFrame)
-                or raw_result.empty
-            ):
-                error_msg = f"No data returned from NWIS API for site {site_no}"
-                self.log(error_msg, level=logging.ERROR, location_code=location_code)
-                raise NwisDataError(error_msg)
-
             # Find the temperature column in the result
             # The exact column name format can vary, so we need to search for the parameter code
             temp_columns = [
@@ -156,16 +220,21 @@ class NwisApi(BaseApiClient):
             temp_df.sort_index(inplace=True)
 
             self.log(
-                f"Successfully fetched {len(temp_df)} temperature readings for NWIS site {site_no} with parameter {parameter_cd} from {begin_date_str} to {end_date_str}",
+                f"Successfully processed {len(temp_df)} temperature readings for NWIS site {site_no} from {begin_date_str} to {end_date_str}",
                 location_code=location_code,
             )
 
             return temp_df
 
+        except NwisDataError:  # Let specific NwisDataError raised above propagate
+            raise
         except Exception as e:
-            error_msg = f"Error fetching NWIS data: {e}"
+            # Catch *unexpected* errors during post-processing (column finding, conversion, time fixing)
+            error_msg = f"Unexpected error processing NWIS data for site {site_no} after successful fetch: {e.__class__.__name__}: {e}"
             self.log(error_msg, level=logging.ERROR, location_code=location_code)
-            raise NwisApiError(error_msg)
+            # Raise as NwisDataError as it indicates an issue with the retrieved data format/content
+            raise NwisDataError(error_msg) from e
+        # --- Post-processing ends ---
 
     def _fix_time(self, df: pd.DataFrame, timezone: str) -> pd.DataFrame:
         """Convert timestamps to local timezone.

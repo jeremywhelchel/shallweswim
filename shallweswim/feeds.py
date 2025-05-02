@@ -406,6 +406,7 @@ class NdbcTempFeed(TempFeed):
     config: config_lib.NdbcTempSource
     interval: Literal["h", "6-min"] = "h"
     mode: Literal["stdmet", "ocean"] = "stdmet"
+    client: ndbc.NdbcApi  # Add type hint for mypy
 
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA NDBC API.
@@ -427,7 +428,7 @@ class NdbcTempFeed(TempFeed):
             # Fetch the data using the NDBC API client
             self.log(f"Fetching NDBC data for station {station_id}", logging.INFO)
 
-            temp_df = await ndbc.NdbcApi.temperature(
+            temp_df = await self.client.temperature(  # Corrected call
                 station_id=station_id,
                 begin_date=begin_date,
                 end_date=end_date,
@@ -719,6 +720,7 @@ def create_temp_feed(
     end: Optional[datetime.datetime] = None,
     interval: Literal["h", "6-min"] = "h",
     expiration_interval: Optional[datetime.timedelta] = None,
+    clients: Dict[str, BaseApiClient] = {},  # Add clients dict parameter
     **kwargs: Any,
 ) -> TempFeed:
     """Create a temperature feed based on the configuration type.
@@ -733,6 +735,7 @@ def create_temp_feed(
         end: End date for data fetching (optional)
         interval: Data interval ('h' for hourly, '6-min' for 6-minute)
         expiration_interval: Custom expiration interval (optional)
+        clients: Dict of clients to use for fetching data (optional)
         **kwargs: Additional keyword arguments for specific feed types
 
     Returns:
@@ -752,14 +755,22 @@ def create_temp_feed(
             expiration_interval=expiration_interval,
         )
     elif isinstance(temp_config, config_lib.NdbcTempSource):
+        ndbc_client = clients.get("ndbc")
+        if not isinstance(ndbc_client, ndbc.NdbcApi):
+            raise TypeError(
+                "NDBC client not found or incorrect type in provided clients dict"
+            )
+
         # Get the mode parameter if provided
         mode = kwargs.get("mode", "stdmet")
+
         return NdbcTempFeed(
             location_config=location_config,
             config=temp_config,
             start=start,
             end=end,
             mode=mode,
+            client=ndbc_client,  # Pass the client instance
             expiration_interval=expiration_interval,
         )
     elif isinstance(temp_config, config_lib.NwisTempSource):
@@ -768,6 +779,13 @@ def create_temp_feed(
         feed_kwargs = {}
         if parameter_cd is not None:
             feed_kwargs["parameter_cd"] = parameter_cd
+
+        # Retrieve the specific NWIS client
+        nwis_client = clients.get("nwis")
+        if not isinstance(nwis_client, nwis.NwisApi):
+            raise TypeError(
+                "NWIS client not found or incorrect type in provided clients dict"
+            )
 
         return NwisTempFeed(
             location_config=location_config,
@@ -796,6 +814,7 @@ class HistoricalTempsFeed(CompositeFeed):
     start_year: int
     end_year: int
     interval: Literal["h", "6-min"] = "h"
+    clients: Dict[str, BaseApiClient] = {}  # Add clients dict parameter
 
     def _get_feeds(self) -> List[Feed]:
         """Create temperature feeds for each year in the range.
@@ -835,6 +854,7 @@ class HistoricalTempsFeed(CompositeFeed):
                 end=end_date,
                 interval="h",  # Use hourly data for historical feeds
                 expiration_interval=expiration_interval,
+                clients=self.clients,
             )
             feeds.append(feed)
         return feeds

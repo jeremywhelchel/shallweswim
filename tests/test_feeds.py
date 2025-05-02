@@ -15,7 +15,10 @@ from pydantic import BaseModel
 
 # Local imports
 from shallweswim import config as config_lib, util
-from shallweswim.clients.base import BaseApiClient
+from shallweswim.clients.base import (
+    BaseApiClient,
+    RetryableClientError,
+)
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.clients.ndbc import NdbcApi
@@ -625,7 +628,9 @@ class TestCoopsTidesFeed:
         mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
         # Configure the mock to raise an exception
-        cast(MagicMock, mock_coops_client.tides).side_effect = Exception("API Error")
+        cast(MagicMock, mock_coops_client.tides).side_effect = RetryableClientError(
+            "API Error"
+        )
 
         # Create the feed
         feed = CoopsTidesFeed(
@@ -635,7 +640,7 @@ class TestCoopsTidesFeed:
         )
 
         # Call _fetch and expect it to raise an exception
-        with pytest.raises(Exception, match="API Error"):
+        with pytest.raises(RetryableClientError, match="API Error"):
             await feed._fetch(clients=mock_clients)
 
 
@@ -738,7 +743,9 @@ class TestCoopsCurrentsFeed:
         mock_coops_client = cast(CoopsApi, mock_clients["coops"])
 
         # Configure the mock to raise an exception
-        cast(MagicMock, mock_coops_client.currents).side_effect = Exception("API error")
+        cast(MagicMock, mock_coops_client.currents).side_effect = RetryableClientError(
+            "API error"
+        )
 
         # Create the feed
         feed = CoopsCurrentsFeed(
@@ -749,7 +756,7 @@ class TestCoopsCurrentsFeed:
         )
 
         # Call _fetch and expect it to raise the exception (following fail-fast principle)
-        with pytest.raises(Exception, match="API error"):
+        with pytest.raises(RetryableClientError, match="API error"):
             await feed._fetch(clients=mock_clients)
 
 

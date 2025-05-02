@@ -180,6 +180,7 @@ class LocationDataManager(object):
             return feeds.create_temp_feed(
                 location_config=self.config,
                 temp_config=temp_config,
+                clients=self.clients,  # Pass the clients dictionary explicitly
                 # Start 24 hours ago to get a full day of data
                 start=utc_now() - datetime.timedelta(hours=24),
                 # End at current time
@@ -236,6 +237,7 @@ class LocationDataManager(object):
                 end_year=end_year,
                 # Set expiration interval to match our existing settings
                 expiration_interval=EXPIRATION_PERIODS["historic_temps"],
+                clients=self.clients,  # Pass the clients dict
             )
         except TypeError as e:
             # Re-raise with more context about what we were trying to do
@@ -521,22 +523,31 @@ class LocationDataManager(object):
         # Add exception handling to the task
         self._update_task.add_done_callback(self._handle_task_exception)
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         """Stop the background data fetching process.
 
-        This cancels the background task if it's running.
+        This cancels the background task if it's running and waits for it to finish.
         It's important to call this method when the LocationDataManager
         is no longer needed to prevent task leaks.
         """
-        if (
-            hasattr(self, "_update_task")
-            and self._update_task
-            and not self._update_task.done()
-        ):
+        update_task = getattr(self, "_update_task", None)
+        if update_task and not update_task.done():
             self.log("Stopping data fetch task")
-            self._update_task.cancel()
-            # We don't wait for the task to be cancelled here as that would
-            # require an await, making this method a coroutine
+            update_task.cancel()
+            try:
+                # Wait for the task to actually finish cancelling
+                await update_task
+            except asyncio.CancelledError:
+                # This is expected, signifies successful cancellation
+                self.log("Data fetch task successfully cancelled")
+            except Exception as e:
+                # Log any other unexpected error during task finalization
+                self.log(
+                    f"Error awaiting cancelled data fetch task: {e}",
+                    level=logging.ERROR,
+                )
+                # Optionally re-raise depending on desired shutdown behavior
+                # raise
 
     def prev_next_tide(self) -> TideInfo:
         """Return the previous tide and next two tides.

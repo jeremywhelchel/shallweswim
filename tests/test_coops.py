@@ -83,9 +83,12 @@ async def test_tides_success(
     coops_client: CoopsApi, mock_tide_data: pd.DataFrame
 ) -> None:
     """Test successful tide prediction fetch."""
-    # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
+    # Mock the _execute_request method directly instead of trying to mock aiohttp
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
         # Set up the mock to return the proper DataFrame directly
+        # The mock should return what _execute_request returns (raw CSV data as DF)
         mock_df = pd.read_csv(io.StringIO(mock_tide_data.to_csv(index=False)))
         mock_request.return_value = mock_df
 
@@ -105,8 +108,10 @@ async def test_currents_success(
     coops_client: CoopsApi, mock_current_data: pd.DataFrame
 ) -> None:
     """Test successful current prediction fetch."""
-    # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
+    # Mock the _execute_request method directly instead of trying to mock aiohttp
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
         # Set up the mock to return the proper DataFrame directly
         mock_df = pd.read_csv(io.StringIO(mock_current_data.to_csv(index=False)))
         mock_request.return_value = mock_df
@@ -127,8 +132,10 @@ async def test_temperature_success(
     coops_client: CoopsApi, mock_temperature_data: pd.DataFrame
 ) -> None:
     """Test successful temperature fetch."""
-    # Mock the _Request method directly instead of trying to mock aiohttp
-    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
+    # Mock the _execute_request method directly instead of trying to mock aiohttp
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
         # Assign the fixture DataFrame directly
         mock_request.return_value = mock_temperature_data
 
@@ -168,9 +175,13 @@ async def test_temperature_success(
 @pytest.mark.asyncio
 async def test_connection_error(coops_client: CoopsApi) -> None:
     """Test connection error handling."""
-    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
+    # Mock _execute_request to raise the error that request_with_retry expects
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
         mock_request.side_effect = CoopsConnectionError("Connection timed out")
 
+        # request_with_retry should propagate the CoopsConnectionError after retries
         with pytest.raises(CoopsConnectionError, match="Connection timed out"):
             await coops_client.tides(
                 station=9414290,
@@ -181,16 +192,18 @@ async def test_connection_error(coops_client: CoopsApi) -> None:
 @pytest.mark.asyncio
 async def test_data_error(coops_client: CoopsApi) -> None:
     """Test data error handling (e.g., missing column)."""
-    with patch.object(coops_client, "_Request", new_callable=AsyncMock) as mock_request:
+    # Mock _execute_request to return bad data
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
         # Return a DataFrame missing the 'Prediction' column but *with* 'Date Time'
-        mock_df_bad = pd.DataFrame({"Date Time": ["2025-04-19 10:00"], "Value": [5.2]})
-        mock_request.return_value = mock_df_bad  # Pass the raw bad data
+        # _execute_request returns the raw data before _FixTime
+        mock_df_bad = pd.DataFrame({"Date Time": ["2025-04-19 10:00"], " Value": [5.2]})
+        mock_request.return_value = mock_df_bad
 
-        # _FixTime should succeed, but the .rename() silently ignores missing keys.
-        # The error occurs in the final selection: [['prediction', 'type']]
-        # due to missing 'prediction'
-        # or the .assign() if ' Type' (renamed to 'type') is missing.
-        # Our mock_df_bad lacks ' Type'.
+        # The error should occur during processing *after* _execute_request returns
+        # Specifically, the .rename() step ignores missing columns (' Prediction', ' Type')
+        # The error occurs in the .assign() step trying to access the non-existent 'type' column.
         with pytest.raises(KeyError, match="'type'"):
             # Use tides for testing connection/data errors as it's simpler
             await coops_client.tides(

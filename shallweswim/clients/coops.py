@@ -6,8 +6,7 @@ import datetime
 import io
 import logging
 import urllib.parse
-from types import TracebackType
-from typing import Literal, Optional, TypedDict, cast, Type
+from typing import Literal, Optional, TypedDict, cast
 
 # Third-party imports
 import aiohttp
@@ -105,18 +104,6 @@ class CoopsApi(BaseApiClient):
     def __init__(self, session: aiohttp.ClientSession):
         """Initialize CoopsApi with an aiohttp client session."""
         super().__init__(session=session)
-
-    async def __aenter__(self) -> "CoopsApi":
-        await self._session.__aenter__()
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: Optional[Type[BaseException]],
-        exc: Optional[BaseException],
-        tb: Optional[TracebackType],
-    ) -> None:
-        await self._session.__aexit__(exc_type, exc, tb)
 
     def _format_date(self, date: datetime.date | datetime.datetime) -> str:
         """Format a date for NOAA CO-OPS API requests."""

@@ -3,6 +3,9 @@
 import datetime
 from typing import Dict, List, Optional, Union, cast
 import pandas as pd
+import pandera as pa
+from pandera import Column, Check
+from pandera.engines.pandas_engine import DateTime
 import numpy as np
 from shallweswim.types import DataFrameSummary
 
@@ -13,10 +16,8 @@ __all__ = [
     "validate_timeseries_dataframe",
 ]
 
-# Constants
-DATETIME_INDEX_NAME = (
-    "time"  # Standard name for the datetime index in internal DataFrames
-)
+# Standard name for the datetime index in internal DataFrames
+DATETIME_INDEX_NAME = "time"
 
 # Define the standard allowed columns and their expected dtypes for timeseries data
 ALLOWED_TIMESERIES_COLUMNS: List[str] = [
@@ -201,6 +202,9 @@ def validate_timeseries_dataframe(df: pd.DataFrame) -> None:
     validate_timeseries_index(df.index)
     validate_timeseries_dataframe_columns(df)
 
+    # Will raise pandera.errors.SchemaError if anything fails
+    TIMESERIES_SCHEMA.validate(df, lazy=True)
+
 
 def validate_timeseries_index(index: pd.Index) -> None:
     """Validate the index of an internal timeseries DataFrame.
@@ -286,3 +290,57 @@ def validate_timeseries_dataframe_columns(df: pd.DataFrame) -> None:
             raise DataFrameValidationError(
                 f"Column '{col}' contains only NaN/null values."
             )
+
+
+TIMESERIES_SCHEMA = pa.DataFrameSchema(
+    columns={
+        "water_temp": Column(
+            float,
+            nullable=True,
+            checks=[Check(lambda s: not s.isna().all(), error="water_temp all NaN")],
+            required=False,
+        ),
+        "velocity": Column(
+            float,
+            nullable=True,
+            checks=[Check(lambda s: not s.isna().all(), error="velocity all NaN")],
+            required=False,
+        ),
+        "prediction": Column(
+            float,
+            nullable=True,
+            checks=[Check(lambda s: not s.isna().all(), error="prediction all NaN")],
+            required=False,
+        ),
+        "type": Column(
+            str,
+            nullable=True,
+            checks=[
+                Check.isin(["high", "low"], ignore_na=False),
+                Check(lambda s: not s.isna().all(), error="prediction all NaN"),
+            ],
+            required=False,
+        ),
+    },
+    index=pa.Index(
+        DateTime,
+        name="time",
+        nullable=False,
+        coerce=False,
+        checks=[
+            Check(lambda idx: not idx.hasnans, error="NaT in index"),
+            Check(lambda idx: idx.is_monotonic_increasing, error="Index not sorted"),
+            Check(lambda idx: idx.is_unique, error="Index values must be unique"),
+            Check(lambda idx: idx.dt.tz is None, error="Index must be timezone naive"),
+            Check(
+                lambda ts: ts.tz is None,
+                element_wise=True,
+                error="Index must be timezone naive",
+            ),
+        ],
+    ),
+    checks=[
+        Check(lambda df: not df.empty, error="DataFrame must have at least one row")
+    ],
+    strict=True,
+)

@@ -5,15 +5,16 @@ import asyncio
 import datetime
 from unittest.mock import MagicMock
 
-from tests.helpers import assert_json_serializable
-
 # Third-party imports
 import pandas as pd
 import pytest
 import pytest_asyncio
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Literal, get_args, cast
 from freezegun import freeze_time
-from typing import Literal, get_args
+from pytest_mock import MockerFixture
+
+# Local helpers
+from tests.helpers import assert_json_serializable
 
 # Local imports
 from shallweswim.data import LocationDataManager
@@ -520,90 +521,6 @@ async def test_data_ready_property(
 
 
 @pytest.mark.asyncio
-async def test_wait_until_ready(process_pool: ProcessPoolExecutor) -> None:
-    """Test the wait_until_ready method of the LocationDataManager class.
-
-    Tests different scenarios:
-    1. All feeds ready immediately
-    2. Feeds becoming ready during the wait
-    3. Timeout occurring before feeds are ready
-    """
-    # Create a LocationDataManager instance
-    config = MagicMock(spec=config_lib.LocationConfig)
-    config.code = "tst"
-    # Use the provided process_pool fixture
-    data = LocationDataManager(config, clients={}, process_pool=process_pool)
-
-    # Scenario 1: All feeds ready immediately
-    mock_feeds = []
-    for _ in range(3):
-        mock_feed = MagicMock()
-
-        # Create an async function that returns True immediately
-        async def wait_until_ready_immediate() -> bool:
-            return True
-
-        mock_feed.wait_until_ready = wait_until_ready_immediate
-        mock_feeds.append(mock_feed)
-
-    # Set the mock feeds in the _feeds dictionary
-    data._feeds = {
-        "tides": mock_feeds[0],
-        "currents": mock_feeds[1],
-        "live_temps": mock_feeds[2],
-    }
-
-    # Test wait_until_ready with feeds that are already ready
-    result = await data.wait_until_ready(timeout=1.0)
-    assert result is True
-
-    # Scenario 2: Feeds becoming ready during the wait
-    # Reset the mock feeds
-    mock_feeds = []
-    for _ in range(3):
-        mock_feed = MagicMock()
-
-        # Create an async function that returns True after a short delay
-        async def wait_until_ready_with_delay() -> bool:
-            await asyncio.sleep(0.1)  # Short delay
-            return True
-
-        mock_feed.wait_until_ready = wait_until_ready_with_delay
-        mock_feeds.append(mock_feed)
-
-    # Set the mock feeds in the _feeds dictionary
-    data._feeds = {
-        "tides": mock_feeds[0],
-        "currents": mock_feeds[1],
-        "live_temps": mock_feeds[2],
-    }
-
-    # Test wait_until_ready with feeds that become ready during the wait
-    result = await data.wait_until_ready(timeout=1.0)
-    assert result is True
-
-    # Scenario 3: Timeout occurring before feeds are ready
-    # Create a mock feed that will timeout
-    mock_feed = MagicMock()
-
-    # Create an async function that raises a TimeoutError when called with wait_for
-    async def wait_until_ready_timeout() -> bool:
-        # This will cause the asyncio.wait_for in LocationDataManager.wait_until_ready to timeout
-        await asyncio.sleep(10.0)  # Much longer than our timeout
-        return True
-
-    mock_feed.wait_until_ready = wait_until_ready_timeout
-
-    # Set the mock feed in the _feeds dictionary
-    data._feeds = {"tides": mock_feed}
-
-    # Test wait_until_ready with a feed that will cause a timeout
-    result = await data.wait_until_ready(timeout=0.1)  # Short timeout
-    assert result is False
-    # Pool shutdown is handled by the process_pool fixture
-
-
-@pytest.mark.asyncio
 async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
     """Test the status property of the LocationDataManager class.
 
@@ -656,3 +573,178 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
     # Check that the status dictionary derived from the model is JSON serializable
     assert_json_serializable(status.model_dump(mode="json"))
     # Pool shutdown is handled by the process_pool fixture
+
+
+# --- Tests for LocationDataManager.wait_until_ready ---
+
+
+@pytest.fixture
+def mock_data_manager(process_pool: ProcessPoolExecutor) -> LocationDataManager:
+    """Fixture to create a LocationDataManager with mocked internals."""
+    config = MagicMock(spec=config_lib.LocationConfig)
+    config.code = "tst-wait"
+    data = LocationDataManager(config, clients={}, process_pool=process_pool)
+    data._ready_event = MagicMock(spec=asyncio.Event)
+    data._update_task = MagicMock(spec=asyncio.Task)
+    return data
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_already_ready(
+    mock_data_manager: LocationDataManager,
+) -> None:
+    """Test case 1: Manager is already ready."""
+    mock_data_manager._ready_event.is_set.return_value = True  # type: ignore[attr-defined]
+    result = await mock_data_manager.wait_until_ready(timeout=0.1)
+    assert result is True
+    mock_data_manager._ready_event.wait.assert_not_called()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_task_not_started(
+    mock_data_manager: LocationDataManager,
+) -> None:
+    """Test case 2: Update task hasn't been started (should raise RuntimeError)."""
+    mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
+    mock_data_manager._update_task = None
+    with pytest.raises(RuntimeError, match="Update task has not been started"):
+        await mock_data_manager.wait_until_ready(timeout=0.1)
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_task_already_failed(
+    mock_data_manager: LocationDataManager,
+) -> None:
+    """Test case 3: Update task already finished with an exception."""
+    mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
+    mock_data_manager._update_task.done.return_value = True  # type: ignore[union-attr]
+    mock_data_manager._update_task.exception.return_value = ValueError("Task failed")  # type: ignore[union-attr]
+
+    with pytest.raises(ValueError, match="Task failed"):
+        await mock_data_manager.wait_until_ready(timeout=0.1)
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_task_already_done_unexpectedly(
+    mock_data_manager: LocationDataManager,
+) -> None:
+    """Test case 4: Update task already finished ok, but ready event not set."""
+    mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
+    mock_data_manager._update_task.done.return_value = True  # type: ignore[union-attr]
+    mock_data_manager._update_task.exception.return_value = None  # type: ignore[union-attr]
+
+    with pytest.raises(RuntimeError, match="finished unexpectedly"):
+        await mock_data_manager.wait_until_ready(timeout=0.1)
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_event_set_during_wait(
+    mock_data_manager: LocationDataManager,
+    mocker: MockerFixture,
+) -> None:
+    """Test case 5: Ready event is set during the wait."""
+    mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
+    mock_data_manager._update_task.done.return_value = False  # type: ignore[union-attr]
+
+    # Mock asyncio.wait to simulate ready_event completing first
+    async def mock_wait(
+        waiters: set[asyncio.Future[Any]], **_kwargs: Any
+    ) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:
+        # Assumes ready_waiter is one of the tasks in the first arg set
+        # Find the actual ready_waiter task created inside wait_until_ready
+        ready_waiter_task = next(
+            t
+            for t in waiters
+            if isinstance(t, asyncio.Task) and t.get_name().startswith("ReadyWait_")
+        )
+        mock_data_manager._ready_event.is_set.return_value = True  # type: ignore[attr-defined]
+        # Ensure ONLY ready_waiter_task is returned as done
+        done_set: set[asyncio.Future[Any]] = {ready_waiter_task}
+        pending_set = waiters - done_set
+        return done_set, pending_set
+
+    mocker.patch("asyncio.wait", new=mock_wait)
+
+    result = await mock_data_manager.wait_until_ready(timeout=1.0)
+    assert result is True
+    # Ensure the code path checking the update task's exception was not hit
+    mock_data_manager._update_task.exception.assert_not_called()  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_task_fails_during_wait(
+    mock_data_manager: LocationDataManager,
+    mocker: MockerFixture,
+) -> None:
+    """Test case 6: Update task fails during the wait."""
+    mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
+    mock_data_manager._update_task.done.return_value = False  # type: ignore[union-attr]
+
+    # Mock asyncio.wait to simulate update_task completing first with exception
+    async def mock_wait(
+        waiters: set[asyncio.Future[Any]], **_kwargs: Any
+    ) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:
+        update_task = mock_data_manager._update_task
+        mock_data_manager._update_task.exception.return_value = ValueError(  # type: ignore[union-attr]
+            "Task failed during wait"
+        )
+        # Ensure ONLY update_task is returned as done
+        done_set: set[asyncio.Future[Any]] = {cast(asyncio.Future[Any], update_task)}
+        pending_set = waiters - done_set
+        return done_set, pending_set
+
+    mocker.patch("asyncio.wait", new=mock_wait)
+
+    with pytest.raises(ValueError, match="Task failed during wait"):
+        await mock_data_manager.wait_until_ready(timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_task_done_unexpectedly_during_wait(
+    mock_data_manager: LocationDataManager,
+    mocker: MockerFixture,
+) -> None:
+    """Test case 7: Update task finishes ok during wait, but ready event not set."""
+    mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
+    mock_data_manager._update_task.done.return_value = False  # type: ignore[union-attr]
+
+    # Mock asyncio.wait to simulate update_task completing first without exception
+    async def mock_wait(
+        waiters: set[asyncio.Future[Any]], **_kwargs: Any
+    ) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:
+        update_task = mock_data_manager._update_task
+        mock_data_manager._update_task.exception.return_value = None  # type: ignore[union-attr]
+
+        # Ensure ONLY update_task is returned as done
+        done_set: set[asyncio.Future[Any]] = {cast(asyncio.Future[Any], update_task)}
+        pending_set = waiters - done_set
+        return done_set, pending_set
+
+    mocker.patch("asyncio.wait", new=mock_wait)
+
+    with pytest.raises(RuntimeError, match="finished unexpectedly"):
+        await mock_data_manager.wait_until_ready(timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_timeout(
+    mock_data_manager: LocationDataManager,
+    mocker: MockerFixture,
+) -> None:
+    """Test case 8: Timeout occurs before ready or task completion."""
+    mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
+    mock_data_manager._update_task.done.return_value = False  # type: ignore[union-attr]
+
+    # Mock asyncio.wait to simulate timeout (returns empty sets)
+    async def mock_wait(
+        waiters: set[asyncio.Future[Any]], **_kwargs: Any
+    ) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:
+        return set(), waiters  # Return empty done, all pending
+
+    mocker.patch("asyncio.wait", new=mock_wait)
+    mocker.patch.object(
+        mock_data_manager._ready_event, "wait", side_effect=asyncio.TimeoutError
+    )  # type: ignore[attr-defined, unused-ignore]
+
+    result = await mock_data_manager.wait_until_ready(timeout=0.1)
+    assert result is False

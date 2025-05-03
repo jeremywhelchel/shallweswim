@@ -162,6 +162,7 @@ class LocationDataManager(object):
 
         # Background update task
         self._update_task: Optional[asyncio.Task[None]] = None
+        self._ready_event = asyncio.Event()
 
     def _configure_live_temps_feed(self) -> Optional[feeds.Feed]:
         """Configure the live temperature feed.
@@ -353,35 +354,140 @@ class LocationDataManager(object):
         log_message = f"[{self.config.code}] {message}"
         logging.log(level, log_message)
 
-    async def wait_until_ready(self, timeout: Optional[float] = None) -> bool:
-        """Wait until all configured feeds have data available.
+    async def wait_until_ready(self, timeout: float | None = None) -> bool:
+        """Wait until the initial data update is complete and the manager is ready.
 
-        This method waits until all configured feeds have successfully fetched data and are ready to use.
-        It's useful for coordinating operations that need feed data to be available before proceeding.
+        NOTE: This method's complexity stems from the need to simultaneously monitor
+        both the `_ready_event` and the completion/exception state of the background
+        `_update_task`. This ensures that if the `_update_task` fails with an
+        exception during its initial run (before setting `_ready_event`), this
+        method raises that specific exception immediately, rather than waiting for
+        the timeout. This aligns with the project's 'fail fast' principle for
+        internal errors.
+
+        TODO: Explore potential simplifications or alternative designs for this
+        synchronization logic in the future (e.g., using a dedicated error future).
+
+        Monitors both the ready event and the background update task, failing fast
+        on any internal errors.
 
         Args:
             timeout: Maximum time to wait in seconds, or None to wait indefinitely
 
         Returns:
-            True if all feeds are ready, False if timeout occurred
+            True if the manager is ready within the timeout.
+
+        Raises:
+            Exception: If the background update task raises an exception.
+            RuntimeError: If the background update task finishes unexpectedly
+                          without setting the ready event.
         """
-        # Only consider feeds that are configured (not None)
-        configured_feeds = [feed for feed in self._feeds.values() if feed is not None]
-
-        if not configured_feeds:
-            return True  # No feeds to wait for
-
-        try:
-            # Use asyncio.wait_for to apply a timeout to the gather operation
-            await asyncio.wait_for(
-                asyncio.gather(*[feed.wait_until_ready() for feed in configured_feeds]),
-                timeout,
-            )
-            self.log("All feeds are ready", level=logging.DEBUG)
+        if self._ready_event.is_set():
+            self.log("Manager already ready.", level=logging.DEBUG)
             return True
-        except asyncio.TimeoutError:
-            self.log("Timed out waiting for feeds to be ready", level=logging.WARNING)
+
+        if self._update_task is None:
+            raise RuntimeError("Update task has not been started.")
+
+        if self._update_task.done():
+            self.log(
+                "Update task finished before ready event was set.",
+                level=logging.WARNING,
+            )
+            # Task is already done, check for exceptions
+            exc = self._update_task.exception()
+            if exc:
+                self.log(
+                    f"Update task failed with exception: {exc}", level=logging.ERROR
+                )
+                raise exc  # Re-raise the original exception
+            else:
+                # Should not happen if ready_event wasn't set, but handle defensively
+                raise RuntimeError(
+                    "Data update task finished unexpectedly before data was ready."
+                )
+
+        # Create waiters for the ready event and the update task completion
+        ready_waiter = asyncio.create_task(
+            self._ready_event.wait(), name=f"ReadyWait_{self.config.code}"
+        )
+        # We wait directly on the existing update task future
+        update_task_waiter = self._update_task
+
+        waiters = {ready_waiter, update_task_waiter}
+
+        self.log(
+            f"Waiting for ready event or update task completion (timeout={timeout}s)...",
+            level=logging.DEBUG,
+        )
+        done, pending = await asyncio.wait(
+            waiters,
+            timeout=timeout,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # --- Cleanup and Result Handling ---
+
+        # Cancel any pending waiters (if one finished, the other might still be pending)
+        for task in pending:
+            # Don't cancel the main update task, just the waiter we created
+            if task is ready_waiter:
+                self.log(
+                    f"Cancelling pending ready_waiter task: {task.get_name()}",
+                    level=logging.DEBUG,
+                )
+                task.cancel()
+                # Suppress CancelledError if cancellation is successful
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        if not done:
+            # This means timeout occurred before either task completed
+            self.log(
+                f"Timed out after {timeout}s waiting for ready signal or task completion.",
+                level=logging.WARNING,
+            )
             return False
+
+        # --- Check which task completed ---
+
+        if update_task_waiter in done:
+            # The main update task finished first. Check for exceptions.
+            self.log(
+                "Update task finished while waiting for ready signal.",
+                level=logging.WARNING,
+            )
+            exc = update_task_waiter.exception()
+            if exc:
+                self.log(
+                    f"Update task failed with exception: {exc}", level=logging.ERROR
+                )
+                raise exc  # Re-raise the original exception
+            else:
+                # Task finished without error, but ready event wasn't set.
+                raise RuntimeError(
+                    "Data update task finished unexpectedly before data was ready."
+                )
+
+        if ready_waiter in done:
+            # The ready event was set successfully
+            if self._ready_event.is_set():
+                self.log("Ready event received.", level=logging.DEBUG)
+                return True
+            else:
+                # Should not be possible if ready_waiter completed normally
+                self.log(
+                    "Ready waiter finished but event not set!", level=logging.ERROR
+                )
+                raise RuntimeError(
+                    "Internal error: Ready waiter finished but event not set."
+                )
+
+        # Should be unreachable, but handle defensively
+        self.log("Unexpected state reached in wait_until_ready.", level=logging.ERROR)
+        return False
 
     def _expired(self, dataset: str) -> bool:
         """Check if a dataset has expired and needs to be refreshed.
@@ -406,31 +512,17 @@ class LocationDataManager(object):
     async def _update_dataset(self, dataset: str) -> None:
         """Update a specific dataset if it has expired.
 
-        Uses the feed's update method to fetch fresh data.
-        Data is accessed directly from the feed's values property when needed.
-
         Args:
             dataset: The dataset to update
         """
-        # Get the feed for this dataset
-        feed = self._feeds.get(dataset)
-
-        # If there's no feed configured, we can't update the dataset
-        if feed is None:
-            self.log(f"No feed configured for {dataset}", level=logging.DEBUG)
+        # Check if the dataset is expired
+        if not self._expired(dataset):
             return
 
-        try:
-            # Update the feed to get fresh data
-            self.log(f"Fetching {dataset}")
-            await feed.update(clients=self.clients)  # Pass the clients dict
-
-            # No need to update separate data cache variables
-            # Data is accessed directly from feed.values when needed
-        except Exception as e:
-            self.log(f"Error updating {dataset}: {e}", level=logging.ERROR)
-            # Re-raise to ensure error is not silently ignored
-            raise
+        # Update the dataset
+        feed = self._feeds[dataset]
+        if feed is not None:
+            await feed.update(clients=self.clients)
 
     async def __update_loop(self) -> None:
         """Background asyncio task that continuously updates data.
@@ -521,8 +613,12 @@ class LocationDataManager(object):
                 except Exception as e:
                     # Log the exception but don't swallow it - let it propagate
                     self.log(f"Error in data update loop: {e}", level=logging.ERROR)
-                    # Re-raise to ensure error is not silently ignored
+                    # Re-raise the exception to ensure error is not silently ignored
                     raise
+
+                # Set the ready event after the first successful update
+                if not self._ready_event.is_set():
+                    self._ready_event.set()
 
                 # Sleep for 1 second before the next update check
                 await asyncio.sleep(1)

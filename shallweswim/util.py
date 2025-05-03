@@ -6,6 +6,13 @@ import pandas as pd
 import numpy as np
 from shallweswim.types import DataFrameSummary
 
+__all__ = [
+    "DataFrameSummary",
+    "DataFrameValidationError",
+    "summarize_dataframe",
+    "validate_timeseries_dataframe",
+]
+
 # Constants
 DATETIME_INDEX_NAME = (
     "time"  # Standard name for the datetime index in internal DataFrames
@@ -180,6 +187,10 @@ def validate_timeseries_dataframe(df: pd.DataFrame) -> None:
     Raises:
         DataFrameValidationError: If any validation check fails.
     """
+    # Check if DataFrame is empty first
+    if df.empty:
+        raise DataFrameValidationError("Input DataFrame cannot be empty.")
+
     validate_timeseries_index(df.index)
     validate_timeseries_dataframe_columns(df)
 
@@ -260,4 +271,11 @@ def validate_timeseries_dataframe_columns(df: pd.DataFrame) -> None:
             raise DataFrameValidationError(
                 f"Column '{col}' has incorrect dtype. Got: {actual_dtype}, "
                 f"Expected: {expected_dtype}"
+            )
+
+    # Check for all-NaN columns
+    for col in df.columns:
+        if df[col].isnull().all():
+            raise DataFrameValidationError(
+                f"Column '{col}' contains only NaN/null values."
             )

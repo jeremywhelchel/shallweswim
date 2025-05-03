@@ -274,19 +274,17 @@ def test_validate_timeseries_dataframe_wrong_dtype(valid_df: pd.DataFrame) -> No
 
 
 def test_validate_timeseries_dataframe_empty_df() -> None:
-    """Test validation with an empty DataFrame (should pass structural checks)."""
-    index = pd.to_datetime([]).rename(DATETIME_INDEX_NAME)
-    # Use columns and dtypes from util.py
-    df = pd.DataFrame(columns=util.ALLOWED_TIMESERIES_COLUMNS, index=index)
-    df = df.astype(util.ALLOWED_TIMESERIES_DTYPES)
-    # Explicitly ensure index type after potential casting
-    df.index = pd.to_datetime(df.index)
-    df.index.name = DATETIME_INDEX_NAME
+    """Test validation fails if the DataFrame is empty."""
+    # Create an empty df that would otherwise pass index/column structural checks
+    empty_df = pd.DataFrame(
+        index=pd.DatetimeIndex([], name=DATETIME_INDEX_NAME),
+        columns=util.ALLOWED_TIMESERIES_COLUMNS,
+    ).astype(util.ALLOWED_TIMESERIES_DTYPES)
 
-    try:
-        util.validate_timeseries_dataframe(df)
-    except DataFrameValidationError as e:
-        pytest.fail(f"Validation unexpectedly failed for empty DataFrame: {e}")
+    with pytest.raises(
+        util.DataFrameValidationError, match="Input DataFrame cannot be empty"
+    ):
+        util.validate_timeseries_dataframe(empty_df)
 
 
 def test_validate_timeseries_index_duplicate_index(valid_df: pd.DataFrame) -> None:
@@ -310,4 +308,18 @@ def test_validate_timeseries_index_nat_index(valid_df: pd.DataFrame) -> None:
         util.validate_timeseries_index(df.index)
 
 
-# --- Tests for validate_timeseries_dataframe_columns ---
+def test_validate_timeseries_dataframe_columns_all_nan(valid_df: pd.DataFrame) -> None:
+    """Test validation fails if a column contains only NaN values."""
+    df = valid_df.copy()
+    # Make one column all NaN
+    nan_col_name = df.columns[0]  # e.g., 'water_temp'
+    df[nan_col_name] = np.nan
+    # Ensure the dtype remains float after NaN assignment (important!)
+    df = df.astype({nan_col_name: util.ALLOWED_TIMESERIES_DTYPES[nan_col_name]})
+
+    with pytest.raises(
+        util.DataFrameValidationError,
+        match=f"Column '{re.escape(nan_col_name)}' contains only NaN/null values.",
+    ):
+        # Call the specific column validation function
+        util.validate_timeseries_dataframe_columns(df)

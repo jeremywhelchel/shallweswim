@@ -114,7 +114,7 @@ async def test_integration_live_temperature_fetch() -> None:
     assert isinstance(df, pd.DataFrame)
     assert not df.empty, "No temperature data returned"
     assert "water_temp" in df.columns
-    assert df.index.name == "timestamp"
+    assert df.index.name == "time"
 
     # Check that the temperatures are reasonable for water
     # Water shouldn't be below freezing (32°F) or above 100°F
@@ -162,7 +162,7 @@ async def test_integration_live_temperature_fetch_with_parameter_cd() -> None:
     assert isinstance(df, pd.DataFrame)
     assert not df.empty, "No temperature data returned"
     assert "water_temp" in df.columns
-    assert df.index.name == "timestamp"
+    assert df.index.name == "time"
 
     # Check that the temperatures are reasonable for water
     # Water shouldn't be below freezing (32°F) or above 100°F

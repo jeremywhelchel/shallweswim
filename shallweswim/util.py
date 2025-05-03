@@ -7,7 +7,9 @@ import numpy as np
 from shallweswim.types import DataFrameSummary
 
 # Constants
-DATETIME_INDEX_NAME = "timestamp"
+DATETIME_INDEX_NAME = (
+    "time"  # Standard name for the datetime index in internal DataFrames
+)
 
 # Define the standard allowed columns and their expected dtypes for timeseries data
 ALLOWED_TIMESERIES_COLUMNS: List[str] = [
@@ -184,7 +186,7 @@ def validate_timeseries_index(index: pd.Index) -> None:
     Checks:
         - Index is a pd.DatetimeIndex
         - Index is monotonically increasing (sorted).
-        - Index name is DATETIME_INDEX_NAME ('timestamp').
+        - Index name is DATETIME_INDEX_NAME ('time').
         - Index is timezone-naive.
 
     Args:
@@ -214,8 +216,8 @@ def validate_timeseries_dataframe_columns(df: pd.DataFrame) -> None:
     """Validate the columns and dtypes of an internal timeseries DataFrame.
 
     Checks against the predefined ALLOWED_TIMESERIES_COLUMNS and ALLOWED_TIMESERIES_DTYPES.
-        - All DataFrame columns are present in ALLOWED_TIMESERIES_COLUMNS.
-        - Each column's dtype matches the corresponding type in ALLOWED_TIMESERIES_DTYPES.
+        - All DataFrame columns *present* must be in ALLOWED_TIMESERIES_COLUMNS.
+        - Each *present* column's dtype must match the corresponding type in ALLOWED_TIMESERIES_DTYPES.
 
     Args:
         df: The pandas DataFrame to validate.
@@ -233,21 +235,12 @@ def validate_timeseries_dataframe_columns(df: pd.DataFrame) -> None:
             f"Allowed columns are: {ALLOWED_TIMESERIES_COLUMNS}"
         )
 
-    # Check if all allowed columns are present
-    missing_columns = allowed_columns_set - present_columns
-    if missing_columns:
-        raise DataFrameValidationError(
-            f"DataFrame is missing required columns: {sorted(list(missing_columns))}. "
-            f"Required columns are: {ALLOWED_TIMESERIES_COLUMNS}"
-        )
-
     # Check dtypes for present columns
     for col in df.columns:
+        # Skip check if column somehow isn't in the DTYPES dict (shouldn't happen if disallowed check passed)
         if col not in ALLOWED_TIMESERIES_DTYPES:
-            # This should ideally not happen if the disallowed check works, but defensive check.
-            raise DataFrameValidationError(
-                f"Column '{col}' not found in allowed dtypes definition."
-            )
+            continue
+
         expected_dtype = ALLOWED_TIMESERIES_DTYPES[col]
         actual_dtype = df[col].dtype
         if not pd.api.types.is_dtype_equal(actual_dtype, expected_dtype):

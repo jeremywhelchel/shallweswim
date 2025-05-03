@@ -248,12 +248,6 @@ def test_validate_timeseries_dataframe_tz_aware_index(valid_df: pd.DataFrame) ->
 
 def test_validate_timeseries_dataframe_wrong_columns(valid_df: pd.DataFrame) -> None:
     """Test validation fails for incorrect columns."""
-    # Test with missing allowed column
-    df_missing = valid_df.drop(columns=["velocity"])
-    expected_msg_missing = "DataFrame is missing required columns: ['velocity']"
-    with pytest.raises(DataFrameValidationError, match=re.escape(expected_msg_missing)):
-        util.validate_timeseries_dataframe(df_missing)
-
     # Test with extra disallowed column
     df_extra = valid_df.copy()
     df_extra["extra_col"] = 100

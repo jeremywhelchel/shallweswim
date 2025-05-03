@@ -22,7 +22,7 @@ from shallweswim.clients import coops
 from shallweswim.clients import ndbc
 from shallweswim.clients import nwis
 from shallweswim.types import DataFrameSummary, FeedStatus
-from shallweswim.util import utc_now, summarize_dataframe
+from shallweswim.util import utc_now, summarize_dataframe, validate_timeseries_dataframe
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
@@ -145,6 +145,7 @@ class Feed(BaseModel, abc.ABC):
         """
         if self._data is None:
             raise ValueError("Data not yet fetched")
+        validate_timeseries_dataframe(self._data)
         return self._data
 
     def log(self, message: str, level: int = logging.INFO) -> None:

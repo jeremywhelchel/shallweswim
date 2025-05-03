@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from typing import List, Literal, Optional, Dict
 
 # Third-party imports
-import pandera as pa
-from pandera import Column, Check
-from pandera.engines.pandas_engine import DateTime
+import pandera.pandas as pa
+import pandera.typing as pa_typing
+import pandas as pd
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -68,61 +68,65 @@ class LegacyChartInfo:
     map_title: str
 
 
-# Define a Pandera schema for internal timeseries dataframes
-TIMESERIES_SCHEMA = pa.DataFrameSchema(
-    columns={
-        "water_temp": Column(
-            float,
-            nullable=True,
-            checks=[Check(lambda s: not s.isna().all(), error="water_temp all NaN")],
-            required=False,
-        ),
-        "velocity": Column(
-            float,
-            nullable=True,
-            checks=[Check(lambda s: not s.isna().all(), error="velocity all NaN")],
-            required=False,
-        ),
-        "prediction": Column(
-            float,
-            nullable=True,
-            checks=[Check(lambda s: not s.isna().all(), error="prediction all NaN")],
-            required=False,
-        ),
-        "type": Column(
-            str,
-            nullable=True,
-            checks=[
-                Check.isin(["high", "low"], ignore_na=False),
-                Check(
-                    lambda s: not s.isna().all(), error="type all NaN"
-                ),  # Corrected error message
-            ],
-            required=False,
-        ),
-    },
-    index=pa.Index(
-        DateTime,
-        name="time",
-        nullable=False,
-        coerce=False,
-        checks=[
-            Check(lambda idx: not idx.hasnans, error="NaT in index"),
-            Check(lambda idx: idx.is_monotonic_increasing, error="Index not sorted"),
-            Check(lambda idx: idx.is_unique, error="Index values must be unique"),
-            Check(lambda idx: idx.dt.tz is None, error="Index must be timezone naive"),
-            Check(
-                lambda ts: ts.tz is None,
-                element_wise=True,
-                error="Index must be timezone naive",
-            ),
-        ],
-    ),
-    checks=[
-        Check(lambda df: not df.empty, error="DataFrame must have at least one row")
-    ],
-    strict=True,
-)
+# --- Equivalent DataFrameModel Definition ---
+class TimeSeriesDataModel(pa.DataFrameModel):
+    """Pandera DataFrameModel for internal timeseries data."""
+
+    # --- Index Definition ---
+    time: pa_typing.Index[pa.DateTime] = pa.Field(
+        nullable=False, unique=True, check_name=True
+    )
+
+    # --- Column Definitions ---
+    water_temp: Optional[pa.typing.Series[float]] = pa.Field(nullable=True)
+    velocity: Optional[pa.typing.Series[float]] = pa.Field(nullable=True)
+    prediction: Optional[pa.typing.Series[float]] = pa.Field(nullable=True)
+    type: Optional[pa.typing.Series[str]] = pa.Field(
+        nullable=True, isin=["high", "low"]
+    )
+
+    # # --- DataFrame Checks via @pa.dataframe_check ---+
+    @pa.dataframe_check(error="DataFrame must have at least one row")
+    def check_not_empty(cls, df: pd.DataFrame) -> bool:
+        """Check that the dataframe is not empty."""
+        return not df.empty
+
+    # --- Index Checks via @pa.check("time") ---+
+    @pa.check("time", error="Index not sorted")
+    def check_index_monotonic(cls, idx: pd.Index) -> bool:
+        return bool(idx.is_monotonic_increasing)
+
+    @pa.check("time", error="Index must be timezone naive")
+    def check_index_tz_naive(cls, idx: pd.Index) -> bool:
+        return idx.dt.tz is None
+
+    # --- Column Checks via @pa.check ---+
+    # Checks that optional columns are not *entirely* NaN if present
+    @pa.check("water_temp", error="water_temp all NaN")
+    def check_water_temp_not_all_nan(cls, series: pd.Series) -> bool:
+        return not series.isna().all()
+
+    @pa.check("velocity", error="velocity all NaN")
+    def check_velocity_not_all_nan(cls, series: pd.Series) -> bool:
+        return not series.isna().all()
+
+    @pa.check("prediction", error="prediction all NaN")
+    def check_prediction_not_all_nan(cls, series: pd.Series) -> bool:
+        return not series.isna().all()
+
+    # May be redundant with the isin check. But added for parity.
+    @pa.check("type", error="type all NaN")
+    def check_type_not_all_nan(cls, series: pd.Series) -> bool:
+        return not series.isna().all()
+
+    # --- Configuration ---+
+    class Config:
+        """Pandera model configuration."""
+
+        strict = True  # Disallow columns not specified in the schema
+        # IMPORTANT: Coercion is explicitly disabled for maximum strictness.
+        # Data must match the defined types exactly.
+        coerce = False
 
 
 #############################################################

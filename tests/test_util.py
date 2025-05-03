@@ -202,7 +202,7 @@ def valid_df() -> pd.DataFrame:
     dates = pd.to_datetime(["2024-01-01 10:00", "2024-01-01 11:00", "2024-01-01 12:00"])
     df = pd.DataFrame(
         {
-            # Use columns defined in TIMESERIES_SCHEMA
+            # Use columns defined in TimeSeriesDataModel
             "water_temp": [10.1, 11.2, 12.3],
             "velocity": [0.5, 0.6, 0.7],
             "prediction": [10.0, 11.0, 12.0],
@@ -316,8 +316,10 @@ def test_validate_timeseries_index_duplicate_index(valid_df: pd.DataFrame) -> No
     duplicate_row = df.iloc[0:1].copy()
     df = pd.concat([df, duplicate_row])
     df.index.name = "time"  # Ensure index name is preserved
-    # Creating duplicates this way breaks monotonicity first
-    with pytest.raises(pa.errors.SchemaError, match=r"Index not sorted"):
+    # The pa.Field(unique=True) check now catches duplicates directly.
+    with pytest.raises(
+        pa.errors.SchemaError, match=r"series 'time' contains duplicate values"
+    ):
         util.validate_timeseries_dataframe(df)
 
 

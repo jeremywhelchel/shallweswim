@@ -1,42 +1,19 @@
 """Shared utilities."""
 
 import datetime
-from typing import Dict, List, Optional, Union, cast
+from typing import Optional, cast
 import pandas as pd
 import pandera as pa
 from pandera import Column, Check
 from pandera.engines.pandas_engine import DateTime
-import numpy as np
 from shallweswim.types import DataFrameSummary
 
 __all__ = [
     "DataFrameSummary",
-    "DataFrameValidationError",
     "summarize_dataframe",
     "validate_timeseries_dataframe",
+    "TIMESERIES_SCHEMA",
 ]
-
-# Standard name for the datetime index in internal DataFrames
-DATETIME_INDEX_NAME = "time"
-
-# Define the standard allowed columns and their expected dtypes for timeseries data
-ALLOWED_TIMESERIES_COLUMNS: List[str] = [
-    "water_temp",
-    "velocity",
-    "prediction",
-    "type",
-]
-ALLOWED_TIMESERIES_DTYPES: Dict[str, Union[type, str]] = {
-    "water_temp": np.float64,
-    "velocity": np.float64,
-    "prediction": np.float64,
-    "type": object,  # Use object for strings to be more flexible
-}
-
-
-class DataFrameValidationError(ValueError):
-    """Custom exception for DataFrame validation errors."""
-
 
 # Time shift limits for current predictions (in minutes)
 MAX_SHIFT_LIMIT = 1440  # 24 hours forward
@@ -182,116 +159,6 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> DataFrameSummary:
     )
 
 
-def validate_timeseries_dataframe(df: pd.DataFrame) -> None:
-    """Validate the structure and content of an internal timeseries DataFrame.
-
-    This function orchestrates checks for both the index and columns by calling:
-        - validate_timeseries_index
-        - validate_timeseries_dataframe_columns
-
-    Args:
-        df: The pandas DataFrame to validate.
-
-    Raises:
-        DataFrameValidationError: If any validation check fails.
-    """
-    # Check if DataFrame is empty first
-    if df.empty:
-        raise DataFrameValidationError("Input DataFrame cannot be empty.")
-
-    validate_timeseries_index(df.index)
-    validate_timeseries_dataframe_columns(df)
-
-    # Will raise pandera.errors.SchemaError if anything fails
-    TIMESERIES_SCHEMA.validate(df, lazy=True)
-
-
-def validate_timeseries_index(index: pd.Index) -> None:
-    """Validate the index of an internal timeseries DataFrame.
-
-    Checks:
-        - Index is a pd.DatetimeIndex
-        - Index does not contain NaT values.
-        - Index is monotonically increasing (sorted).
-        - Index name is DATETIME_INDEX_NAME ('time').
-        - Index is timezone-naive.
-        - Index is unique.
-
-    Args:
-        index: The pandas Index to validate.
-
-    Raises:
-        DataFrameValidationError: If any validation check fails.
-    """
-    if not isinstance(index, pd.DatetimeIndex):
-        raise DataFrameValidationError("Index is not a DatetimeIndex.")
-
-    # Added Check: Index must not contain NaT values (check before monotonicity)
-    if index.hasnans:
-        raise DataFrameValidationError("Index contains NaT (Not a Time) values.")
-
-    if not index.empty and not index.is_monotonic_increasing:
-        raise DataFrameValidationError("Index is not sorted monotonically increasing.")
-
-    if not index.empty and not index.is_unique:
-        raise DataFrameValidationError("Index contains duplicate timestamps.")
-
-    if index.name != DATETIME_INDEX_NAME:
-        raise DataFrameValidationError(
-            f"Index name is '{index.name}', expected '{DATETIME_INDEX_NAME}'."
-        )
-
-    if index.tz is not None:
-        raise DataFrameValidationError(
-            f"Index is timezone-aware ({index.tz}), expected timezone-naive."
-        )
-
-
-def validate_timeseries_dataframe_columns(df: pd.DataFrame) -> None:
-    """Validate the columns and dtypes of an internal timeseries DataFrame.
-
-    Checks against the predefined ALLOWED_TIMESERIES_COLUMNS and ALLOWED_TIMESERIES_DTYPES.
-        - All DataFrame columns *present* must be in ALLOWED_TIMESERIES_COLUMNS.
-        - Each *present* column's dtype must match the corresponding type in ALLOWED_TIMESERIES_DTYPES.
-
-    Args:
-        df: The pandas DataFrame to validate.
-
-    Raises:
-        DataFrameValidationError: If any validation check fails.
-    """
-    # Check columns - ensure all present columns are allowed
-    present_columns = set(df.columns)
-    allowed_columns_set = set(ALLOWED_TIMESERIES_COLUMNS)
-    disallowed_columns = present_columns - allowed_columns_set
-    if disallowed_columns:
-        raise DataFrameValidationError(
-            f"DataFrame contains disallowed columns: {sorted(list(disallowed_columns))}. "
-            f"Allowed columns are: {ALLOWED_TIMESERIES_COLUMNS}"
-        )
-
-    # Check dtypes for present columns
-    for col in df.columns:
-        # Skip check if column somehow isn't in the DTYPES dict (shouldn't happen if disallowed check passed)
-        if col not in ALLOWED_TIMESERIES_DTYPES:
-            continue
-
-        expected_dtype = ALLOWED_TIMESERIES_DTYPES[col]
-        actual_dtype = df[col].dtype
-        if not pd.api.types.is_dtype_equal(actual_dtype, expected_dtype):
-            raise DataFrameValidationError(
-                f"Column '{col}' has incorrect dtype. Got: {actual_dtype}, "
-                f"Expected: {expected_dtype}"
-            )
-
-    # Check for all-NaN columns
-    for col in df.columns:
-        if df[col].isnull().all():
-            raise DataFrameValidationError(
-                f"Column '{col}' contains only NaN/null values."
-            )
-
-
 TIMESERIES_SCHEMA = pa.DataFrameSchema(
     columns={
         "water_temp": Column(
@@ -344,3 +211,21 @@ TIMESERIES_SCHEMA = pa.DataFrameSchema(
     ],
     strict=True,
 )
+
+
+def validate_timeseries_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Validate the structure and content of an internal timeseries DataFrame using Pandera.
+
+    Uses the TIMESERIES_SCHEMA to perform validation checks.
+
+    Args:
+        df: The pandas DataFrame to validate.
+
+    Returns:
+        The validated DataFrame.
+
+    Raises:
+        pandera.errors.SchemaError: If any validation check fails.
+    """
+    # No need for try/except, just let Pandera raise SchemaError if validation fails
+    return TIMESERIES_SCHEMA.validate(df)

@@ -3,7 +3,9 @@
 # Standard library imports
 import asyncio
 import datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
+from concurrent.futures import ProcessPoolExecutor
+from typing import Any, AsyncGenerator
 
 # Third-party imports
 import pandas as pd
@@ -23,7 +25,6 @@ from shallweswim.types import (
     FeedStatus,
 )  # Import from types module where it's defined
 from shallweswim import config as config_lib
-from concurrent.futures import ProcessPoolExecutor
 from shallweswim.feeds import Feed
 
 
@@ -642,33 +643,39 @@ async def test_wait_until_ready_event_set_during_wait(
     mock_data_manager: LocationDataManager,
     mocker: MockerFixture,
 ) -> None:
-    """Test case 5: Ready event is set during the wait."""
+    """Test case 5: Ready event is set during the wait.
+
+    Simulates the scenario where the ready event gets set *while* the
+    wait_until_ready method is waiting.
+    """
+    # Initial setup: event not set, task not done
     mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
     mock_data_manager._update_task.done.return_value = False  # type: ignore[union-attr]
 
-    # Mock asyncio.wait to simulate ready_event completing first
-    async def mock_wait(
-        waiters: set[asyncio.Future[Any]], **_kwargs: Any
-    ) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:
-        # Assumes ready_waiter is one of the tasks in the first arg set
-        # Find the actual ready_waiter task created inside wait_until_ready
-        ready_waiter_task = next(
-            t
-            for t in waiters
-            if isinstance(t, asyncio.Task) and t.get_name().startswith("ReadyWait_")
-        )
+    # Define the side effect for the event's wait() method
+    async def wait_side_effect(*_args: Any, **_kwargs: Any) -> bool:
+        # Simulate some delay during which the event might be set
+        await asyncio.sleep(0)
+        # Simulate the event being set externally
         mock_data_manager._ready_event.is_set.return_value = True  # type: ignore[attr-defined]
-        # Ensure ONLY ready_waiter_task is returned as done
-        done_set: set[asyncio.Future[Any]] = {ready_waiter_task}
-        pending_set = waiters - done_set
-        return done_set, pending_set
+        # wait() should return True when the event is set
+        return True
 
-    mocker.patch("asyncio.wait", new=mock_wait)
+    # Mock event's wait() method with the async side effect
+    mock_wait_method = mocker.patch.object(
+        mock_data_manager._ready_event,
+        "wait",
+        new_callable=AsyncMock,
+        side_effect=wait_side_effect,
+    )
 
-    result = await mock_data_manager.wait_until_ready(timeout=1.0)
+    # Call the method under test - use the real asyncio.wait
+    result = await mock_data_manager.wait_until_ready(timeout=0.1)  # Short timeout
+
+    # Assertions
     assert result is True
-    # Ensure the code path checking the update task's exception was not hit
     mock_data_manager._update_task.exception.assert_not_called()  # type: ignore[union-attr]
+    mock_wait_method.assert_awaited_once()  # Check the wait method was awaited
 
 
 @pytest.mark.asyncio
@@ -680,7 +687,6 @@ async def test_wait_until_ready_task_fails_during_wait(
     mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
     mock_data_manager._update_task.done.return_value = False  # type: ignore[union-attr]
 
-    # Mock asyncio.wait to simulate update_task completing first with exception
     async def mock_wait(
         waiters: set[asyncio.Future[Any]], **_kwargs: Any
     ) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:
@@ -688,7 +694,6 @@ async def test_wait_until_ready_task_fails_during_wait(
         mock_data_manager._update_task.exception.return_value = ValueError(  # type: ignore[union-attr]
             "Task failed during wait"
         )
-        # Ensure ONLY update_task is returned as done
         done_set: set[asyncio.Future[Any]] = {cast(asyncio.Future[Any], update_task)}
         pending_set = waiters - done_set
         return done_set, pending_set
@@ -708,14 +713,12 @@ async def test_wait_until_ready_task_done_unexpectedly_during_wait(
     mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
     mock_data_manager._update_task.done.return_value = False  # type: ignore[union-attr]
 
-    # Mock asyncio.wait to simulate update_task completing first without exception
     async def mock_wait(
         waiters: set[asyncio.Future[Any]], **_kwargs: Any
     ) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:
         update_task = mock_data_manager._update_task
         mock_data_manager._update_task.exception.return_value = None  # type: ignore[union-attr]
 
-        # Ensure ONLY update_task is returned as done
         done_set: set[asyncio.Future[Any]] = {cast(asyncio.Future[Any], update_task)}
         pending_set = waiters - done_set
         return done_set, pending_set
@@ -735,7 +738,6 @@ async def test_wait_until_ready_timeout(
     mock_data_manager._ready_event.is_set.return_value = False  # type: ignore[attr-defined]
     mock_data_manager._update_task.done.return_value = False  # type: ignore[union-attr]
 
-    # Mock asyncio.wait to simulate timeout (returns empty sets)
     async def mock_wait(
         waiters: set[asyncio.Future[Any]], **_kwargs: Any
     ) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:

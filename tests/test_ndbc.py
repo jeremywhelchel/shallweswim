@@ -275,4 +275,8 @@ def test_fix_time(ndbc_client: NdbcApi) -> None:
     ]
     # Ensure result index is naive
     assert result_df.index.tz is None
-    pd.testing.assert_index_equal(result_df.index, pd.DatetimeIndex(expected_times))
+    expected_index = pd.DatetimeIndex(expected_times, name="time")
+    pd.testing.assert_index_equal(result_df.index, expected_index)
+
+
+# Example from user about potential data issue

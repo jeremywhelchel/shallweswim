@@ -272,5 +272,5 @@ async def test_fix_time(nwis_client: NwisApi) -> None:
         pd.Timestamp("2025-04-19 10:00:00"),  # 10:00 AM EDT
         pd.Timestamp("2025-04-19 16:00:00"),  # 4:00 PM EDT
     ]
-    expected_index = pd.DatetimeIndex(expected_times, name="timestamp")
+    expected_index = pd.DatetimeIndex(expected_times, name="time")
     pd.testing.assert_index_equal(result_df.index, expected_index)

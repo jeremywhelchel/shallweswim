@@ -155,7 +155,7 @@ class NwisApi(BaseApiClient):
                           Note: Some stations may use '00011' instead
 
         Returns:
-            DataFrame with index=timestamp and columns:
+            DataFrame with index=time and columns:
                 water_temp: float - Water temperature in °F
 
         Raises:
@@ -255,7 +255,7 @@ class NwisApi(BaseApiClient):
         # Finally, make the timestamps naive again (remove timezone info)
         df.index = df.index.tz_localize(None)
 
-        # Rename the index to 'timestamp' to match our convention
-        df.index.name = "timestamp"
+        # Rename the index to 'time' to match our convention
+        df.index.name = "time"
 
         return df

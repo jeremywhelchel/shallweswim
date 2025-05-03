@@ -15,10 +15,14 @@ DATETIME_INDEX_NAME = (
 ALLOWED_TIMESERIES_COLUMNS: List[str] = [
     "water_temp",
     "velocity",
+    "prediction",
+    "type",
 ]
 ALLOWED_TIMESERIES_DTYPES: Dict[str, Union[type, str]] = {
     "water_temp": np.float64,
     "velocity": np.float64,
+    "prediction": np.float64,
+    "type": object,  # Use object for strings to be more flexible
 }
 
 

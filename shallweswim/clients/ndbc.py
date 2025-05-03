@@ -163,7 +163,7 @@ class NdbcApi(BaseApiClient):
             mode: Data mode to fetch ('stdmet' or 'ocean')
 
         Returns:
-            DataFrame with index=timestamp and columns:
+            DataFrame with index=time and columns:
                 water_temp: float - Water temperature in °F
 
         Raises:
@@ -276,4 +276,10 @@ class NdbcApi(BaseApiClient):
         # Finally, make the timestamps naive again (remove timezone info)
         df.index = df.index.tz_localize(None)
 
+        # Rename the index to 'time' to match our convention
+        df.index.name = "time"
+
         return df
+
+
+# ... rest of the code remains the same ...

@@ -197,7 +197,7 @@ class CoopsApi(BaseApiClient):
             station: NOAA station ID
 
         Returns:
-            DataFrame with index=timestamp and columns:
+            DataFrame with index=time and columns:
                 prediction: float - Water level in feet relative to MLLW
                 type: str - Either 'low' or 'high'
         """
@@ -246,7 +246,7 @@ class CoopsApi(BaseApiClient):
             interpolate: If True, interpolate between flood/slack/ebb points
 
         Returns:
-            DataFrame with index=timestamp and columns:
+            DataFrame with index=time and columns:
                 velocity: float - Current velocity in knots (positive=flood, negative=ebb)
                 depth: Optional[float] - Depth in feet (if available)
                 type: Optional[str] - Current type (flood/slack/ebb)
@@ -322,7 +322,7 @@ class CoopsApi(BaseApiClient):
             interval: Optional time interval (if None, returns 6-minute intervals)
 
         Returns:
-            DataFrame with index=timestamp and columns:
+            DataFrame with index=time and columns:
                 water_temp: Optional[float] - Water temperature in °F
                 air_temp: Optional[float] - Air temperature in °F
 

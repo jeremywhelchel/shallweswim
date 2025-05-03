@@ -199,8 +199,13 @@ def valid_df() -> pd.DataFrame:
     index = pd.to_datetime(["2024-01-01 10:00", "2024-01-01 11:00"], utc=False)
     # Use columns and dtypes defined in util.py
     df = pd.DataFrame({"water_temp": [15.5, 16.0], "velocity": [5.1, 5.5]}, index=index)
-    # Ensure correct dtypes
-    df = df.astype(util.ALLOWED_TIMESERIES_DTYPES)
+    # Only apply astype for columns present in this specific test DataFrame
+    dtypes_to_apply = {
+        col: dtype
+        for col, dtype in util.ALLOWED_TIMESERIES_DTYPES.items()
+        if col in df.columns
+    }
+    df = df.astype(dtypes_to_apply)
     df.index.name = DATETIME_INDEX_NAME
     return df
 

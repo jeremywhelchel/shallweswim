@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from typing import List, Literal, Optional, Dict
 
 # Third-party imports
+import pandera as pa
+from pandera import Column, Check
+from pandera.engines.pandas_engine import DateTime
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -63,6 +66,63 @@ class LegacyChartInfo:
     last_tide_type: TideType
     chart_filename: str
     map_title: str
+
+
+# Define a Pandera schema for internal timeseries dataframes
+TIMESERIES_SCHEMA = pa.DataFrameSchema(
+    columns={
+        "water_temp": Column(
+            float,
+            nullable=True,
+            checks=[Check(lambda s: not s.isna().all(), error="water_temp all NaN")],
+            required=False,
+        ),
+        "velocity": Column(
+            float,
+            nullable=True,
+            checks=[Check(lambda s: not s.isna().all(), error="velocity all NaN")],
+            required=False,
+        ),
+        "prediction": Column(
+            float,
+            nullable=True,
+            checks=[Check(lambda s: not s.isna().all(), error="prediction all NaN")],
+            required=False,
+        ),
+        "type": Column(
+            str,
+            nullable=True,
+            checks=[
+                Check.isin(["high", "low"], ignore_na=False),
+                Check(
+                    lambda s: not s.isna().all(), error="type all NaN"
+                ),  # Corrected error message
+            ],
+            required=False,
+        ),
+    },
+    index=pa.Index(
+        DateTime,
+        name="time",
+        nullable=False,
+        coerce=False,
+        checks=[
+            Check(lambda idx: not idx.hasnans, error="NaT in index"),
+            Check(lambda idx: idx.is_monotonic_increasing, error="Index not sorted"),
+            Check(lambda idx: idx.is_unique, error="Index values must be unique"),
+            Check(lambda idx: idx.dt.tz is None, error="Index must be timezone naive"),
+            Check(
+                lambda ts: ts.tz is None,
+                element_wise=True,
+                error="Index must be timezone naive",
+            ),
+        ],
+    ),
+    checks=[
+        Check(lambda df: not df.empty, error="DataFrame must have at least one row")
+    ],
+    strict=True,
+)
 
 
 #############################################################

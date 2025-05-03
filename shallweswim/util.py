@@ -3,16 +3,25 @@
 import datetime
 from typing import Dict, List, Optional, Union, cast
 import pandas as pd
+import numpy as np
 from shallweswim.types import DataFrameSummary
 
 # Constants
 DATETIME_INDEX_NAME = "timestamp"
 
+# Define the standard allowed columns and their expected dtypes for timeseries data
+ALLOWED_TIMESERIES_COLUMNS: List[str] = [
+    "water_temp",
+    "velocity",
+]
+ALLOWED_TIMESERIES_DTYPES: Dict[str, Union[type, str]] = {
+    "water_temp": np.float64,
+    "velocity": np.float64,
+}
+
 
 class DataFrameValidationError(ValueError):
     """Custom exception for DataFrame validation errors."""
-
-    pass
 
 
 # Time shift limits for current predictions (in minutes)
@@ -152,60 +161,94 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> DataFrameSummary:
     )
 
 
-def validate_timeseries_dataframe(
-    df: pd.DataFrame,
-    expected_columns: List[str],
-    expected_dtypes: Dict[str, Union[type, str]],
-) -> None:
+def validate_timeseries_dataframe(df: pd.DataFrame) -> None:
     """Validate the structure and content of an internal timeseries DataFrame.
 
-    Checks:
-        - Index is a pd.DatetimeIndex.
-        - Index is monotonically increasing (sorted).
-        - Index name is DATETIME_INDEX_NAME ('timestamp').
-        - Index is timezone-naive.
-        - DataFrame columns exactly match `expected_columns`.
-        - Each column's dtype matches the corresponding type in `expected_dtypes`.
+    This function orchestrates checks for both the index and columns by calling:
+        - validate_timeseries_index
+        - validate_timeseries_dataframe_columns
 
     Args:
         df: The pandas DataFrame to validate.
-        expected_columns: A list of column names that the DataFrame should have.
-        expected_dtypes: A dictionary mapping column names to their expected numpy/pandas dtype (e.g., np.float64, 'int64').
 
     Raises:
         DataFrameValidationError: If any validation check fails.
     """
-    if not isinstance(df.index, pd.DatetimeIndex):
+    validate_timeseries_index(df.index)
+    validate_timeseries_dataframe_columns(df)
+
+
+def validate_timeseries_index(index: pd.Index) -> None:
+    """Validate the index of an internal timeseries DataFrame.
+
+    Checks:
+        - Index is a pd.DatetimeIndex
+        - Index is monotonically increasing (sorted).
+        - Index name is DATETIME_INDEX_NAME ('timestamp').
+        - Index is timezone-naive.
+
+    Args:
+        index: The pandas Index to validate.
+
+    Raises:
+        DataFrameValidationError: If any validation check fails.
+    """
+    if not isinstance(index, pd.DatetimeIndex):
+        raise DataFrameValidationError("Index is not a DatetimeIndex.")
+
+    if not index.empty and not index.is_monotonic_increasing:
+        raise DataFrameValidationError("Index is not sorted monotonically increasing.")
+
+    if index.name != DATETIME_INDEX_NAME:
         raise DataFrameValidationError(
-            f"Index is not a DatetimeIndex, found: {type(df.index)}"
+            f"Index name is '{index.name}', expected '{DATETIME_INDEX_NAME}'."
         )
 
-    if not df.index.is_monotonic_increasing:
-        raise DataFrameValidationError("Index is not sorted in ascending order.")
-
-    if df.index.name != DATETIME_INDEX_NAME:
+    if index.tz is not None:
         raise DataFrameValidationError(
-            f"Index name is not '{DATETIME_INDEX_NAME}', found: '{df.index.name}'"
+            f"Index is timezone-aware ({index.tz}), expected timezone-naive."
         )
 
-    if df.index.tz is not None:
+
+def validate_timeseries_dataframe_columns(df: pd.DataFrame) -> None:
+    """Validate the columns and dtypes of an internal timeseries DataFrame.
+
+    Checks against the predefined ALLOWED_TIMESERIES_COLUMNS and ALLOWED_TIMESERIES_DTYPES.
+        - All DataFrame columns are present in ALLOWED_TIMESERIES_COLUMNS.
+        - Each column's dtype matches the corresponding type in ALLOWED_TIMESERIES_DTYPES.
+
+    Args:
+        df: The pandas DataFrame to validate.
+
+    Raises:
+        DataFrameValidationError: If any validation check fails.
+    """
+    # Check columns - ensure all present columns are allowed
+    present_columns = set(df.columns)
+    allowed_columns_set = set(ALLOWED_TIMESERIES_COLUMNS)
+    disallowed_columns = present_columns - allowed_columns_set
+    if disallowed_columns:
         raise DataFrameValidationError(
-            f"Index is timezone-aware ({df.index.tz}), expected timezone-naive."
+            f"DataFrame contains disallowed columns: {sorted(list(disallowed_columns))}. "
+            f"Allowed columns are: {ALLOWED_TIMESERIES_COLUMNS}"
         )
 
-    # Check columns - ensure exact match and order doesn't matter
-    if set(df.columns) != set(expected_columns):
+    # Check if all allowed columns are present
+    missing_columns = allowed_columns_set - present_columns
+    if missing_columns:
         raise DataFrameValidationError(
-            f"Columns do not match expected. Got: {sorted(list(df.columns))}, "
-            f"Expected: {sorted(expected_columns)}"
+            f"DataFrame is missing required columns: {sorted(list(missing_columns))}. "
+            f"Required columns are: {ALLOWED_TIMESERIES_COLUMNS}"
         )
 
-    # Check dtypes
-    for col, expected_dtype in expected_dtypes.items():
-        if col not in df.columns:
-            # This case should ideally be caught by the column check above,
-            # but added for extra safety.
-            raise DataFrameValidationError(f"Expected column '{col}' not found.")
+    # Check dtypes for present columns
+    for col in df.columns:
+        if col not in ALLOWED_TIMESERIES_DTYPES:
+            # This should ideally not happen if the disallowed check works, but defensive check.
+            raise DataFrameValidationError(
+                f"Column '{col}' not found in allowed dtypes definition."
+            )
+        expected_dtype = ALLOWED_TIMESERIES_DTYPES[col]
         actual_dtype = df[col].dtype
         if not pd.api.types.is_dtype_equal(actual_dtype, expected_dtype):
             raise DataFrameValidationError(

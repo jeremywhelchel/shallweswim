@@ -1,5 +1,6 @@
 # pylint: disable=duplicate-code
 import datetime
+import re
 from typing import Dict, Optional, Union
 
 import numpy as np
@@ -194,9 +195,12 @@ def test_summarize_dataframe(
 
 @pytest.fixture
 def valid_df() -> pd.DataFrame:
-    """Fixture for a valid timeseries DataFrame."""
+    """Fixture for a valid timeseries DataFrame using ALLOWED columns/dtypes."""
     index = pd.to_datetime(["2024-01-01 10:00", "2024-01-01 11:00"], utc=False)
-    df = pd.DataFrame({"value": [1.0, 2.0], "flag": [1, 0]}, index=index)
+    # Use columns and dtypes defined in util.py
+    df = pd.DataFrame({"water_temp": [15.5, 16.0], "velocity": [5.1, 5.5]}, index=index)
+    # Ensure correct dtypes
+    df = df.astype(util.ALLOWED_TIMESERIES_DTYPES)
     df.index.name = DATETIME_INDEX_NAME
     return df
 
@@ -204,7 +208,7 @@ def valid_df() -> pd.DataFrame:
 def test_validate_timeseries_dataframe_valid(valid_df: pd.DataFrame) -> None:
     """Test validation passes for a valid DataFrame."""
     try:
-        util.validate_timeseries_dataframe(valid_df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+        util.validate_timeseries_dataframe(valid_df)
     except DataFrameValidationError as e:
         pytest.fail(f"Validation unexpectedly failed: {e}")
 
@@ -215,65 +219,72 @@ def test_validate_timeseries_dataframe_invalid_index_type(
     """Test validation fails for non-DatetimeIndex."""
     df = valid_df.reset_index()
     with pytest.raises(DataFrameValidationError, match="Index is not a DatetimeIndex"):
-        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+        util.validate_timeseries_dataframe(df)
 
 
 def test_validate_timeseries_dataframe_unsorted_index(valid_df: pd.DataFrame) -> None:
     """Test validation fails for unsorted index."""
     df = valid_df.sort_index(ascending=False)
     with pytest.raises(DataFrameValidationError, match="Index is not sorted"):
-        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+        util.validate_timeseries_dataframe(df)
 
 
 def test_validate_timeseries_dataframe_wrong_index_name(valid_df: pd.DataFrame) -> None:
     """Test validation fails for incorrect index name."""
     df = valid_df.copy()
     df.index.name = "wrong_name"
-    with pytest.raises(DataFrameValidationError, match="Index name is not"):
-        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+    # Match the specific error message format
+    expected_msg = f"Index name is 'wrong_name', expected '{DATETIME_INDEX_NAME}'"
+    with pytest.raises(DataFrameValidationError, match=re.escape(expected_msg)):
+        util.validate_timeseries_dataframe(df)
 
 
 def test_validate_timeseries_dataframe_tz_aware_index(valid_df: pd.DataFrame) -> None:
     """Test validation fails for timezone-aware index."""
     df = valid_df.tz_localize("UTC")
     with pytest.raises(DataFrameValidationError, match="Index is timezone-aware"):
-        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+        util.validate_timeseries_dataframe(df)
 
 
 def test_validate_timeseries_dataframe_wrong_columns(valid_df: pd.DataFrame) -> None:
     """Test validation fails for incorrect columns."""
-    df_missing = valid_df.drop(columns=["flag"])
-    with pytest.raises(DataFrameValidationError, match="Columns do not match"):
-        util.validate_timeseries_dataframe(
-            df_missing, EXPECTED_COLUMNS, EXPECTED_DTYPES
-        )
+    # Test with missing allowed column
+    df_missing = valid_df.drop(columns=["velocity"])
+    expected_msg_missing = "DataFrame is missing required columns: ['velocity']"
+    with pytest.raises(DataFrameValidationError, match=re.escape(expected_msg_missing)):
+        util.validate_timeseries_dataframe(df_missing)
 
+    # Test with extra disallowed column
     df_extra = valid_df.copy()
     df_extra["extra_col"] = 100
-    with pytest.raises(DataFrameValidationError, match="Columns do not match"):
-        util.validate_timeseries_dataframe(df_extra, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+    expected_msg_extra = "DataFrame contains disallowed columns: ['extra_col']"
+    with pytest.raises(DataFrameValidationError, match=re.escape(expected_msg_extra)):
+        util.validate_timeseries_dataframe(df_extra)
 
 
 def test_validate_timeseries_dataframe_wrong_dtype(valid_df: pd.DataFrame) -> None:
     """Test validation fails for incorrect column dtype."""
+    # Change 'water_temp' to string
     df = valid_df.copy()
-    df["value"] = df["value"].astype(str)
-    with pytest.raises(
-        DataFrameValidationError, match="Column 'value' has incorrect dtype"
-    ):
-        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+    df["water_temp"] = df["water_temp"].astype(str)
+    expected_dtype = util.ALLOWED_TIMESERIES_DTYPES["water_temp"]
+    # Match the specific error message format including actual and expected types
+    expected_msg = f"Column 'water_temp' has incorrect dtype. Got: object, Expected: {expected_dtype}"
+    with pytest.raises(DataFrameValidationError, match=re.escape(expected_msg)):
+        util.validate_timeseries_dataframe(df)
 
 
 def test_validate_timeseries_dataframe_empty_df() -> None:
     """Test validation with an empty DataFrame (should pass structural checks)."""
     index = pd.to_datetime([]).rename(DATETIME_INDEX_NAME)
-    df = pd.DataFrame(columns=EXPECTED_COLUMNS, index=index)
-    df = df.astype(EXPECTED_DTYPES)
+    # Use columns and dtypes from util.py
+    df = pd.DataFrame(columns=util.ALLOWED_TIMESERIES_COLUMNS, index=index)
+    df = df.astype(util.ALLOWED_TIMESERIES_DTYPES)
     # Explicitly ensure index type after potential casting
     df.index = pd.to_datetime(df.index)
     df.index.name = DATETIME_INDEX_NAME
 
     try:
-        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+        util.validate_timeseries_dataframe(df)
     except DataFrameValidationError as e:
         pytest.fail(f"Validation unexpectedly failed for empty DataFrame: {e}")

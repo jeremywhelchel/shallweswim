@@ -189,9 +189,11 @@ def validate_timeseries_index(index: pd.Index) -> None:
 
     Checks:
         - Index is a pd.DatetimeIndex
+        - Index does not contain NaT values.
         - Index is monotonically increasing (sorted).
         - Index name is DATETIME_INDEX_NAME ('time').
         - Index is timezone-naive.
+        - Index is unique.
 
     Args:
         index: The pandas Index to validate.
@@ -202,8 +204,15 @@ def validate_timeseries_index(index: pd.Index) -> None:
     if not isinstance(index, pd.DatetimeIndex):
         raise DataFrameValidationError("Index is not a DatetimeIndex.")
 
+    # Added Check: Index must not contain NaT values (check before monotonicity)
+    if index.hasnans:
+        raise DataFrameValidationError("Index contains NaT (Not a Time) values.")
+
     if not index.empty and not index.is_monotonic_increasing:
         raise DataFrameValidationError("Index is not sorted monotonically increasing.")
+
+    if not index.empty and not index.is_unique:
+        raise DataFrameValidationError("Index contains duplicate timestamps.")
 
     if index.name != DATETIME_INDEX_NAME:
         raise DataFrameValidationError(

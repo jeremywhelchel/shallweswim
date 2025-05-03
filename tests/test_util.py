@@ -287,3 +287,27 @@ def test_validate_timeseries_dataframe_empty_df() -> None:
         util.validate_timeseries_dataframe(df)
     except DataFrameValidationError as e:
         pytest.fail(f"Validation unexpectedly failed for empty DataFrame: {e}")
+
+
+def test_validate_timeseries_index_duplicate_index(valid_df: pd.DataFrame) -> None:
+    """Test validation fails for an index with duplicate timestamps."""
+    # Create duplicate index entries
+    df = valid_df.copy()
+    duplicate_row = df.iloc[0:1].copy()
+    df = pd.concat([df, duplicate_row]).sort_index()  # Ensures duplicates are adjacent
+    with pytest.raises(util.DataFrameValidationError, match="duplicate timestamps"):
+        util.validate_timeseries_index(df.index)
+
+
+def test_validate_timeseries_index_nat_index(valid_df: pd.DataFrame) -> None:
+    """Test validation fails for an index with NaT values."""
+    df = valid_df.copy()
+    # Manually create an index with NaT
+    index_list = df.index.to_list()
+    index_list[0] = pd.NaT
+    df.index = pd.DatetimeIndex(index_list)
+    with pytest.raises(util.DataFrameValidationError, match="NaT .* values"):
+        util.validate_timeseries_index(df.index)
+
+
+# --- Tests for validate_timeseries_dataframe_columns ---

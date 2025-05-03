@@ -14,6 +14,7 @@ from typing import List, Literal, Optional, Dict
 # Third-party imports
 from pydantic import BaseModel, Field, ConfigDict
 
+
 #############################################################
 # INTERNAL TYPES - Used for internal data processing         #
 #############################################################
@@ -180,8 +181,8 @@ class FeedStatus(BaseModel):
 
     name: str = Field(..., description="Class name of the Feed")
     location: str = Field(..., description="Location code associated with the feed")
-    timestamp: Optional[datetime.datetime] = Field(
-        None, description="Timestamp of the last successful data fetch"
+    fetch_timestamp: Optional[datetime.datetime] = Field(
+        None, description="Timestamp of the last successful data fetch (naive UTC)"
     )
     age_seconds: Optional[float] = Field(
         None, description="Data age in seconds at the time of status check"

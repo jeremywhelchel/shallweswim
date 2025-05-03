@@ -55,7 +55,7 @@ def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
             "tides": FeedStatus(
                 name="NoaaTidesFeed",
                 location="nyc",
-                timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+                fetch_timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
                 age_seconds=3600,
                 is_expired=False,
                 is_healthy=True,
@@ -66,7 +66,7 @@ def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
             "currents": FeedStatus(
                 name="MultiStationCurrentsFeed",
                 location="nyc",
-                timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+                fetch_timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
                 age_seconds=3600,
                 is_expired=False,
                 is_healthy=True,
@@ -84,7 +84,7 @@ def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
             "tides": FeedStatus(
                 name="NoaaTidesFeed",
                 location="sf",
-                timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+                fetch_timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
                 age_seconds=3600,
                 is_expired=False,
                 is_healthy=True,

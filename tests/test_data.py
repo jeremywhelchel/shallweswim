@@ -624,7 +624,7 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
         mock_feed.status = FeedStatus(
             name=f"MockFeed{i}",
             location="nyc",
-            timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+            fetch_timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
             age_seconds=3600,
             is_expired=False,
             expiration_seconds=3600,

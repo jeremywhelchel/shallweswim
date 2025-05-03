@@ -253,7 +253,7 @@ class TestFeedBase:
     @pytest.mark.asyncio
     async def test_is_expired_with_no_interval(self, concrete_feed: Feed) -> None:
         """Test that a feed with no expiration interval is not expired."""
-        concrete_feed._timestamp = util.utc_now()
+        concrete_feed._fetch_timestamp = util.utc_now()
         concrete_feed.expiration_interval = None
         assert concrete_feed.is_expired is False
 
@@ -261,7 +261,7 @@ class TestFeedBase:
     async def test_is_expired_with_recent_timestamp(self, concrete_feed: Feed) -> None:
         """Test that a feed with a recent timestamp is not expired."""
         # Set a recent timestamp
-        concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=5)
+        concrete_feed._fetch_timestamp = util.utc_now() - datetime.timedelta(minutes=5)
         concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
         assert concrete_feed.is_expired is False
 
@@ -269,7 +269,7 @@ class TestFeedBase:
     async def test_is_expired_with_old_timestamp(self, concrete_feed: Feed) -> None:
         """Test that a feed with an old timestamp is expired."""
         # Set an old timestamp
-        concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=11)
+        concrete_feed._fetch_timestamp = util.utc_now() - datetime.timedelta(minutes=11)
         concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
         assert concrete_feed.is_expired is True
 
@@ -281,7 +281,7 @@ class TestFeedBase:
     @pytest.mark.asyncio
     async def test_is_healthy_with_no_interval(self, concrete_feed: Feed) -> None:
         """Test that a feed with no expiration interval is always healthy."""
-        concrete_feed._timestamp = util.utc_now()
+        concrete_feed._fetch_timestamp = util.utc_now()
         concrete_feed.expiration_interval = None
         assert concrete_feed.is_healthy is True
 
@@ -290,7 +290,7 @@ class TestFeedBase:
         """Test that a feed with a timestamp within the health buffer is healthy."""
         # Set a timestamp within the health buffer
         # Interval 10 min, Buffer 15 min -> Healthy up to 25 min old
-        concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=20)
+        concrete_feed._fetch_timestamp = util.utc_now() - datetime.timedelta(minutes=20)
         concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
         assert concrete_feed.is_healthy is True
 
@@ -299,7 +299,7 @@ class TestFeedBase:
         """Test that a feed with a timestamp outside the health buffer is not healthy."""
         # Set an old timestamp (older than interval + buffer)
         # Interval 10 min, Buffer 15 min -> Unhealthy if > 25 min old
-        concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=30)
+        concrete_feed._fetch_timestamp = util.utc_now() - datetime.timedelta(minutes=30)
         concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
         assert concrete_feed.is_healthy is False
 
@@ -342,7 +342,7 @@ class TestFeedBase:
             # Check that _fetch was called and data was updated
             assert fetch_called is True
             assert concrete_feed._data is not None
-            assert concrete_feed._timestamp is not None
+            assert concrete_feed._fetch_timestamp is not None
 
     def test_validate_frame_with_valid_dataframe(
         self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
@@ -521,7 +521,7 @@ class TestFeedBase:
     def test_age_with_no_timestamp(self, concrete_feed: Feed) -> None:
         """Test that age returns None when no timestamp is available."""
         # Ensure the feed has no timestamp
-        concrete_feed._timestamp = None
+        concrete_feed._fetch_timestamp = None
 
         # Check that age returns None
         assert concrete_feed.age is None
@@ -530,7 +530,7 @@ class TestFeedBase:
         """Test that age returns the correct age as a timedelta."""
         # Set a timestamp 10 seconds in the past (using naive datetime)
         now = util.utc_now()
-        concrete_feed._timestamp = now - datetime.timedelta(seconds=10)
+        concrete_feed._fetch_timestamp = now - datetime.timedelta(seconds=10)
 
         # Check that age returns approximately 10 seconds as a timedelta
         age = concrete_feed.age
@@ -541,7 +541,7 @@ class TestFeedBase:
         """Test that status property returns correct information when no data is available."""
         # Ensure the feed has no data or timestamp
         concrete_feed._data = None
-        concrete_feed._timestamp = None
+        concrete_feed._fetch_timestamp = None
 
         # Get the status dictionary
         status = concrete_feed.status
@@ -549,7 +549,7 @@ class TestFeedBase:
         # Check the status dictionary contents
         assert status.name == "ConcreteFeed"
         assert status.location == concrete_feed.location_config.code
-        assert status.timestamp is None
+        assert status.fetch_timestamp is None
         assert status.data_summary is None
         assert status.age_seconds is None
         assert status.is_expired is True
@@ -561,7 +561,7 @@ class TestFeedBase:
         """Test that status property returns correct information when data is available."""
         # Set data and timestamp (using naive datetime)
         concrete_feed._data = valid_temp_dataframe
-        concrete_feed._timestamp = util.utc_now()
+        concrete_feed._fetch_timestamp = util.utc_now()
         concrete_feed._ready_event.set()
 
         # Get the status dictionary
@@ -570,7 +570,7 @@ class TestFeedBase:
         # Check the status dictionary contents
         assert status.name == "ConcreteFeed"
         assert status.location == concrete_feed.location_config.code
-        assert status.timestamp is not None
+        assert status.fetch_timestamp is not None
         assert isinstance(
             status.data_summary, DataFrameSummary
         )  # Check it's the Pydantic model
@@ -594,7 +594,7 @@ class TestFeedBase:
         """Test that status property returns a JSON serializable dictionary."""
         # Set data and timestamp
         concrete_feed._data = valid_temp_dataframe
-        concrete_feed._timestamp = util.utc_now()
+        concrete_feed._fetch_timestamp = util.utc_now()
         concrete_feed._ready_event.set()
 
         # Get the status object

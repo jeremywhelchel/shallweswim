@@ -47,7 +47,7 @@ class Feed(BaseModel, abc.ABC):
     expiration_interval: Optional[datetime.timedelta]
 
     # Private fields - not included in serialization but still validated
-    _timestamp: Optional[datetime.datetime] = None
+    _fetch_timestamp: Optional[datetime.datetime] = None
     _data: Optional[pd.DataFrame] = None
     # Event used to signal when data is ready
     _ready_event: asyncio.Event = asyncio.Event()
@@ -81,12 +81,12 @@ class Feed(BaseModel, abc.ABC):
         Returns:
             Age as a timedelta, or None if data has not been fetched yet
         """
-        if not self._timestamp:
+        if not self._fetch_timestamp:
             return None
 
         # All datetimes should be naive
         now = utc_now()
-        return now - self._timestamp
+        return now - self._fetch_timestamp
 
     @property
     def is_expired(self) -> bool:
@@ -95,14 +95,14 @@ class Feed(BaseModel, abc.ABC):
         Returns:
             True if data is expired or not yet fetched, False otherwise
         """
-        if not self._timestamp:
+        if not self._fetch_timestamp:
             return True
         if not self.expiration_interval:
             return False
 
         # Use age to calculate the age
         age_td = self.age
-        # age will never return None here because we already checked self._timestamp
+        # age will never return None here because we already checked self._fetch_timestamp
         assert age_td is not None
 
         # Check age directly against the configured interval
@@ -120,7 +120,7 @@ class Feed(BaseModel, abc.ABC):
             bool: True if the data is considered healthy, False otherwise.
         """
         # No data yet, definitely not healthy
-        if self._timestamp is None:
+        if self._fetch_timestamp is None:
             return False
 
         # No interval means it's always considered healthy (as it doesn't expire)
@@ -186,7 +186,7 @@ class Feed(BaseModel, abc.ABC):
         status_obj = FeedStatus(
             name=self.__class__.__name__,
             location=self.location_config.code,
-            timestamp=self._timestamp,  # Pass datetime object directly
+            fetch_timestamp=self._fetch_timestamp,  # Pass datetime object directly
             age_seconds=age_sec,
             is_expired=self.is_expired,
             is_healthy=self.is_healthy,
@@ -244,7 +244,7 @@ class Feed(BaseModel, abc.ABC):
             df = self._remove_outliers(df)
 
             self._data = df
-            self._timestamp = utc_now()
+            self._fetch_timestamp = utc_now()
             # Set the ready event to signal that data is available
             self._ready_event.set()
             self.log(f"Successfully updated {self.__class__.__name__}")

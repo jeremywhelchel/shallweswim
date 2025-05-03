@@ -100,6 +100,10 @@ class DataFrameSummary(BaseModel):
         ...,
         description="Dictionary mapping column names to the count of missing (NaN) values.",
     )
+    index_frequency: Optional[str] = Field(
+        None,
+        description="Inferred frequency of the DataFrame index (e.g., 'H', 'D', 'T'). None if irregular.",
+    )
 
 
 class TemperatureInfo(BaseModel):

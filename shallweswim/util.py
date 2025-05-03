@@ -139,6 +139,7 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> DataFrameSummary:
     if df is None or df.empty:
         return DataFrameSummary(
             length=0,
+            index_frequency=None,
             width=0,
             column_names=[],
             index_oldest=None,
@@ -149,6 +150,11 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> DataFrameSummary:
     length = len(df)
     width = len(df.columns)
     column_names = df.columns.tolist()
+
+    # Infer index frequency
+    index_frequency: Optional[str] = None
+    if isinstance(df.index, pd.DatetimeIndex) and not df.index.empty:
+        index_frequency = pd.infer_freq(df.index)
 
     # Calculate missing values (convert Series result to dict)
     missing_values = df.isnull().sum().astype(int).to_dict()
@@ -166,6 +172,7 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> DataFrameSummary:
 
     return DataFrameSummary(
         length=length,
+        index_frequency=index_frequency,
         width=width,
         column_names=column_names,
         index_oldest=index_oldest,

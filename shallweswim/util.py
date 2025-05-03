@@ -1,9 +1,18 @@
 """Shared utilities."""
 
 import datetime
-from typing import Optional, cast
+from typing import Dict, List, Optional, Union, cast
 import pandas as pd
 from shallweswim.types import DataFrameSummary
+
+# Constants
+DATETIME_INDEX_NAME = "timestamp"
+
+
+class DataFrameValidationError(ValueError):
+    """Custom exception for DataFrame validation errors."""
+
+    pass
 
 
 # Time shift limits for current predictions (in minutes)
@@ -141,3 +150,65 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> DataFrameSummary:
         index_newest=index_newest,
         missing_values=missing_values,
     )
+
+
+def validate_timeseries_dataframe(
+    df: pd.DataFrame,
+    expected_columns: List[str],
+    expected_dtypes: Dict[str, Union[type, str]],
+) -> None:
+    """Validate the structure and content of an internal timeseries DataFrame.
+
+    Checks:
+        - Index is a pd.DatetimeIndex.
+        - Index is monotonically increasing (sorted).
+        - Index name is DATETIME_INDEX_NAME ('timestamp').
+        - Index is timezone-naive.
+        - DataFrame columns exactly match `expected_columns`.
+        - Each column's dtype matches the corresponding type in `expected_dtypes`.
+
+    Args:
+        df: The pandas DataFrame to validate.
+        expected_columns: A list of column names that the DataFrame should have.
+        expected_dtypes: A dictionary mapping column names to their expected numpy/pandas dtype (e.g., np.float64, 'int64').
+
+    Raises:
+        DataFrameValidationError: If any validation check fails.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise DataFrameValidationError(
+            f"Index is not a DatetimeIndex, found: {type(df.index)}"
+        )
+
+    if not df.index.is_monotonic_increasing:
+        raise DataFrameValidationError("Index is not sorted in ascending order.")
+
+    if df.index.name != DATETIME_INDEX_NAME:
+        raise DataFrameValidationError(
+            f"Index name is not '{DATETIME_INDEX_NAME}', found: '{df.index.name}'"
+        )
+
+    if df.index.tz is not None:
+        raise DataFrameValidationError(
+            f"Index is timezone-aware ({df.index.tz}), expected timezone-naive."
+        )
+
+    # Check columns - ensure exact match and order doesn't matter
+    if set(df.columns) != set(expected_columns):
+        raise DataFrameValidationError(
+            f"Columns do not match expected. Got: {sorted(list(df.columns))}, "
+            f"Expected: {sorted(expected_columns)}"
+        )
+
+    # Check dtypes
+    for col, expected_dtype in expected_dtypes.items():
+        if col not in df.columns:
+            # This case should ideally be caught by the column check above,
+            # but added for extra safety.
+            raise DataFrameValidationError(f"Expected column '{col}' not found.")
+        actual_dtype = df[col].dtype
+        if not pd.api.types.is_dtype_equal(actual_dtype, expected_dtype):
+            raise DataFrameValidationError(
+                f"Column '{col}' has incorrect dtype. Got: {actual_dtype}, "
+                f"Expected: {expected_dtype}"
+            )

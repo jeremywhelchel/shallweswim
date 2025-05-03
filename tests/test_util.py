@@ -1,6 +1,6 @@
 # pylint: disable=duplicate-code
 import datetime
-from typing import Optional
+from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -9,6 +9,14 @@ from freezegun import freeze_time
 
 from shallweswim import util
 from shallweswim.types import DataFrameSummary
+from shallweswim.util import DATETIME_INDEX_NAME, DataFrameValidationError
+
+# Constants
+EXPECTED_COLUMNS = ["value", "flag"]
+EXPECTED_DTYPES: Dict[str, Union[type, str]] = {
+    "value": np.float64,
+    "flag": "int64",
+}
 
 
 def test_now() -> None:
@@ -179,3 +187,93 @@ def test_summarize_dataframe(
     """Test summarize_dataframe with various inputs using parametrization."""
     summary = util.summarize_dataframe(df_input)
     assert summary == expected_summary
+
+
+# --- Tests for validate_timeseries_dataframe ---
+
+
+@pytest.fixture
+def valid_df() -> pd.DataFrame:
+    """Fixture for a valid timeseries DataFrame."""
+    index = pd.to_datetime(["2024-01-01 10:00", "2024-01-01 11:00"], utc=False)
+    df = pd.DataFrame({"value": [1.0, 2.0], "flag": [1, 0]}, index=index)
+    df.index.name = DATETIME_INDEX_NAME
+    return df
+
+
+def test_validate_timeseries_dataframe_valid(valid_df: pd.DataFrame) -> None:
+    """Test validation passes for a valid DataFrame."""
+    try:
+        util.validate_timeseries_dataframe(valid_df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+    except DataFrameValidationError as e:
+        pytest.fail(f"Validation unexpectedly failed: {e}")
+
+
+def test_validate_timeseries_dataframe_invalid_index_type(
+    valid_df: pd.DataFrame,
+) -> None:
+    """Test validation fails for non-DatetimeIndex."""
+    df = valid_df.reset_index()
+    with pytest.raises(DataFrameValidationError, match="Index is not a DatetimeIndex"):
+        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+
+
+def test_validate_timeseries_dataframe_unsorted_index(valid_df: pd.DataFrame) -> None:
+    """Test validation fails for unsorted index."""
+    df = valid_df.sort_index(ascending=False)
+    with pytest.raises(DataFrameValidationError, match="Index is not sorted"):
+        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+
+
+def test_validate_timeseries_dataframe_wrong_index_name(valid_df: pd.DataFrame) -> None:
+    """Test validation fails for incorrect index name."""
+    df = valid_df.copy()
+    df.index.name = "wrong_name"
+    with pytest.raises(DataFrameValidationError, match="Index name is not"):
+        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+
+
+def test_validate_timeseries_dataframe_tz_aware_index(valid_df: pd.DataFrame) -> None:
+    """Test validation fails for timezone-aware index."""
+    df = valid_df.tz_localize("UTC")
+    with pytest.raises(DataFrameValidationError, match="Index is timezone-aware"):
+        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+
+
+def test_validate_timeseries_dataframe_wrong_columns(valid_df: pd.DataFrame) -> None:
+    """Test validation fails for incorrect columns."""
+    df_missing = valid_df.drop(columns=["flag"])
+    with pytest.raises(DataFrameValidationError, match="Columns do not match"):
+        util.validate_timeseries_dataframe(
+            df_missing, EXPECTED_COLUMNS, EXPECTED_DTYPES
+        )
+
+    df_extra = valid_df.copy()
+    df_extra["extra_col"] = 100
+    with pytest.raises(DataFrameValidationError, match="Columns do not match"):
+        util.validate_timeseries_dataframe(df_extra, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+
+
+def test_validate_timeseries_dataframe_wrong_dtype(valid_df: pd.DataFrame) -> None:
+    """Test validation fails for incorrect column dtype."""
+    df = valid_df.copy()
+    df["value"] = df["value"].astype(str)
+    with pytest.raises(
+        DataFrameValidationError, match="Column 'value' has incorrect dtype"
+    ):
+        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+
+
+def test_validate_timeseries_dataframe_empty_df() -> None:
+    """Test validation with an empty DataFrame (should pass structural checks)."""
+    index = pd.to_datetime([]).rename(DATETIME_INDEX_NAME)
+    df = pd.DataFrame(columns=EXPECTED_COLUMNS, index=index)
+    df = df.astype(EXPECTED_DTYPES)
+    # Explicitly ensure index type after potential casting
+    df.index = pd.to_datetime(df.index)
+    df.index.name = DATETIME_INDEX_NAME
+
+    try:
+        util.validate_timeseries_dataframe(df, EXPECTED_COLUMNS, EXPECTED_DTYPES)
+    except DataFrameValidationError as e:
+        pytest.fail(f"Validation unexpectedly failed for empty DataFrame: {e}")

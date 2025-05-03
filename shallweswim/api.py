@@ -300,7 +300,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             # Check if location data is ready
             unhealthy_feeds_in_location = []
             for feed_name, feed in loc_data._feeds.items():
-                if feed is not None and feed.is_unhealthy:
+                if feed is not None and not feed.is_healthy:
                     unhealthy_feeds_in_location.append(
                         feed.status.model_dump(mode="json")
                     )

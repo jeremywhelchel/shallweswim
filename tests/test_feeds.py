@@ -274,34 +274,34 @@ class TestFeedBase:
         assert concrete_feed.is_expired is True
 
     @pytest.mark.asyncio
-    async def test_is_unhealthy_with_no_timestamp(self, concrete_feed: Feed) -> None:
-        """Test that a feed with no timestamp is considered unhealthy."""
-        assert concrete_feed.is_unhealthy is True
+    async def test_is_healthy_with_no_timestamp(self, concrete_feed: Feed) -> None:
+        """Test that a feed with no timestamp is considered not healthy."""
+        assert concrete_feed.is_healthy is False
 
     @pytest.mark.asyncio
-    async def test_is_unhealthy_with_no_interval(self, concrete_feed: Feed) -> None:
-        """Test that a feed with no expiration interval is not unhealthy."""
+    async def test_is_healthy_with_no_interval(self, concrete_feed: Feed) -> None:
+        """Test that a feed with no expiration interval is always healthy."""
         concrete_feed._timestamp = util.utc_now()
         concrete_feed.expiration_interval = None
-        assert concrete_feed.is_unhealthy is False
+        assert concrete_feed.is_healthy is True
 
     @pytest.mark.asyncio
-    async def test_is_unhealthy_with_recent_timestamp(
-        self, concrete_feed: Feed
-    ) -> None:
-        """Test that a feed with a recent timestamp is not unhealthy."""
-        # Set a recent timestamp
+    async def test_is_healthy_with_recent_timestamp(self, concrete_feed: Feed) -> None:
+        """Test that a feed with a timestamp within the health buffer is healthy."""
+        # Set a timestamp within the health buffer
+        # Interval 10 min, Buffer 15 min -> Healthy up to 25 min old
         concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=20)
         concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
-        assert concrete_feed.is_unhealthy is False
+        assert concrete_feed.is_healthy is True
 
     @pytest.mark.asyncio
-    async def test_is_unhealthy_with_old_timestamp(self, concrete_feed: Feed) -> None:
-        """Test that a feed with an old timestamp is unhealthy."""
-        # Set an old timestamp
+    async def test_is_healthy_with_old_timestamp(self, concrete_feed: Feed) -> None:
+        """Test that a feed with a timestamp outside the health buffer is not healthy."""
+        # Set an old timestamp (older than interval + buffer)
+        # Interval 10 min, Buffer 15 min -> Unhealthy if > 25 min old
         concrete_feed._timestamp = util.utc_now() - datetime.timedelta(minutes=30)
         concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
-        assert concrete_feed.is_unhealthy is True
+        assert concrete_feed.is_healthy is False
 
     @pytest.mark.asyncio
     async def test_values_property_with_no_data(self, concrete_feed: Feed) -> None:
@@ -553,7 +553,7 @@ class TestFeedBase:
         assert status.data_summary is None
         assert status.age_seconds is None
         assert status.is_expired is True
-        assert status.is_unhealthy is True
+        assert status.is_healthy is False  # Not healthy if never fetched
 
     def test_status_property_with_data(
         self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
@@ -586,7 +586,7 @@ class TestFeedBase:
 
         assert status.age_seconds is not None
         assert status.is_expired is False
-        assert status.is_unhealthy is False
+        assert status.is_healthy is True  # Healthy if within buffer
 
     def test_status_property_json_serializable(
         self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame

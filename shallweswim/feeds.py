@@ -106,25 +106,32 @@ class Feed(BaseModel, abc.ABC):
         assert age_td is not None
 
         # Check age directly against the configured interval
+        assert self.expiration_interval is not None  # Help mypy
         return age_td > self.expiration_interval
 
     @property
-    def is_unhealthy(self) -> bool:
-        """Check if the feed data is old enough to be considered unhealthy for service status."""
-        if not self._timestamp:
-            # If data was never fetched successfully, it's unhealthy
-            return True
-        if not self.expiration_interval:
-            # If there's no expiration configured, it cannot become unhealthy due to age
+    def is_healthy(self) -> bool:
+        """Check if the feed data is recent enough to be considered healthy for service status.
+
+        This uses a longer buffer (HEALTH_CHECK_BUFFER) than is_expired to avoid flapping
+        the service health status due to minor delays in data fetching.
+
+        Returns:
+            bool: True if the data is considered healthy, False otherwise.
+        """
+        # No data yet, definitely not healthy
+        if self._timestamp is None:
             return False
 
-        # Ensure age is calculated correctly
-        age_td = self.age
-        if age_td is None:  # Should not happen if _timestamp exists, but safety check
+        # No interval means it's always considered healthy (as it doesn't expire)
+        if self.expiration_interval is None:
             return True
 
-        # Check against the longer health check buffer
-        return age_td > (self.expiration_interval + HEALTH_CHECK_BUFFER)
+        age_td = self.age
+        # Healthy if age is within the expiration interval plus the health check buffer
+        assert self.expiration_interval is not None  # Help mypy
+        assert age_td is not None  # Help mypy
+        return age_td <= (self.expiration_interval + HEALTH_CHECK_BUFFER)
 
     @property
     def values(self) -> pd.DataFrame:
@@ -182,7 +189,7 @@ class Feed(BaseModel, abc.ABC):
             timestamp=self._timestamp,  # Pass datetime object directly
             age_seconds=age_sec,
             is_expired=self.is_expired,
-            is_unhealthy=self.is_unhealthy,
+            is_healthy=self.is_healthy,
             expiration_seconds=expiration_sec,
             data_summary=data_summary,  # Pass the summary object directly
             error=str(self._last_error) if self._last_error else None,

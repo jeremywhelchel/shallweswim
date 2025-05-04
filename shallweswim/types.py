@@ -20,27 +20,29 @@ from pydantic import BaseModel, Field, ConfigDict
 # INTERNAL TYPES - Used for internal data processing         #
 #############################################################
 
-# Common type literals used across the application
 
-
-# Define allowed categories for current direction using an Enum
 class CurrentDirection(enum.Enum):
     FLOODING = "flooding"
     EBBING = "ebbing"
 
 
-# Define allowed categories for tide type using an Enum
 class TideCategory(enum.Enum):
     LOW = "low"
     HIGH = "high"
 
 
-# Define allowed categories for current system type using an Enum
 class CurrentSystemType(enum.Enum):
     """Type of current system (reversing tidal or unidirectional river)."""
 
     TIDAL = "tidal"
     RIVER = "river"
+
+
+class DataSourceType(enum.Enum):
+    """Indicates whether data is based on a prediction or an observation."""
+
+    PREDICTION = "prediction"
+    OBSERVATION = "observation"
 
 
 # Derive list for Pandera compatibility
@@ -69,7 +71,10 @@ class TideInfo:
 
 @dataclass
 class CurrentInfo:
-    """Structured information about water current prediction (internal)."""
+    """Structured information about the current water conditions (prediction or observation)."""
+
+    # Indicates if the data is from a prediction or observation
+    source_type: DataSourceType
 
     # Current direction (e.g., flooding, ebbing) or None for unidirectional systems
     direction: Optional[CurrentDirection]

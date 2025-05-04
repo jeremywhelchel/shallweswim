@@ -32,6 +32,7 @@ from shallweswim.types import (
     TideEntry,
     TideInfo,
     TIDE_TYPE_CATEGORIES,
+    DataSourceType,  # Added import
 )
 from shallweswim.util import utc_now
 
@@ -982,6 +983,7 @@ class LocationDataManager(object):
 
         # Return a structured object with current information
         return CurrentInfo(
+            source_type=DataSourceType.PREDICTION,  # Added source type
             direction=CurrentDirection(direction_str),
             magnitude=magnitude,
             magnitude_pct=row["local_mag_pct"],

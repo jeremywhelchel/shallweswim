@@ -24,6 +24,7 @@ from shallweswim.types import (
     CurrentInfo,
     FeedStatus,
     CurrentDirection,  # Import CurrentDirection Enum
+    DataSourceType,  # Import DataSourceType
 )  # Import from types module where it's defined
 from shallweswim import config as config_lib
 from shallweswim.feeds import Feed
@@ -346,6 +347,7 @@ async def test_current_info_representation() -> None:
     """Test the representation of CurrentInfo objects."""
     # Test with flooding current
     flood_info = CurrentInfo(
+        source_type=DataSourceType.PREDICTION,
         direction=CurrentDirection.FLOODING,  # Use Enum member
         magnitude=1.5,
         magnitude_pct=0.8,
@@ -363,6 +365,7 @@ async def test_current_info_representation() -> None:
 
     # Test with ebbing current
     ebb_info = CurrentInfo(
+        source_type=DataSourceType.PREDICTION,
         direction=CurrentDirection.EBBING,  # Use Enum member
         magnitude=1.2,
         magnitude_pct=0.6,

@@ -688,8 +688,8 @@ class LocationDataManager(object):
 
         Returns:
             A TideInfo object containing:
-                - past_tides: List of TideEntry objects with the most recent tide information
-                - next_tides: List of TideEntry objects with the next two upcoming tides
+                - past: List of TideEntry objects with the most recent tide information
+                - next: List of TideEntry objects with the next two upcoming tides
         """
         # Get tides data from the feed
         tides_feed = self._feeds.get("tides")
@@ -791,7 +791,7 @@ class LocationDataManager(object):
                 )
             )
 
-        return TideInfo(past_tides=past_tides, next_tides=next_tides)
+        return TideInfo(past=past_tides, next=next_tides)
 
     def legacy_chart_info(
         self, t: Optional[datetime.datetime] = None

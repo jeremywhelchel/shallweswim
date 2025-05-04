@@ -205,7 +205,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     type=tide.type,
                     prediction=tide.prediction,
                 )
-                for tide in tide_info.past_tides
+                for tide in tide_info.past
             ]
 
             next_tides = [
@@ -214,7 +214,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     type=tide.type,
                     prediction=tide.prediction,
                 )
-                for tide in tide_info.next_tides
+                for tide in tide_info.next
             ]
 
             tides_info = TidesInfo(past=past_tides, next=next_tides)

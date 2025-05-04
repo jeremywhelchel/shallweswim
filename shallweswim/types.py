@@ -57,10 +57,10 @@ class TideEntry:
 
 @dataclass
 class TideInfo:
-    """Structured information about previous and next tides (internal)."""
+    """Structured information about past and future tides."""
 
-    past_tides: List[TideEntry]  # The most recent tide
-    next_tides: List[TideEntry]  # The next two upcoming tides
+    past: List[TideEntry]  # The most recent tide
+    next: List[TideEntry]  # The next two upcoming tides
 
 
 @dataclass

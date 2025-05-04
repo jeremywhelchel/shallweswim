@@ -88,7 +88,7 @@ class TideEntry(BaseModel):
     prediction: float = Field(..., description="Height of tide in feet")
 
 
-class TidesInfo(BaseModel):
+class TideInfo(BaseModel):
     """Collection of tide information for API responses."""
 
     model_config = ConfigDict(extra="forbid")
@@ -122,7 +122,7 @@ class CurrentPredictionInfo(BaseModel):
     )
 
 
-class LegacyChartDetails(BaseModel):
+class LegacyChartInfo(BaseModel):
     """Information about legacy tide charts for API responses."""
 
     model_config = ConfigDict(extra="forbid")
@@ -189,7 +189,7 @@ class CurrentsResponse(BaseModel):
         description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
     )
     current: CurrentPredictionInfo
-    legacy_chart: LegacyChartDetails
+    legacy_chart: LegacyChartInfo
     current_chart_filename: str = Field(
         ..., description="Filename of the current chart image"
     )
@@ -212,6 +212,6 @@ class LocationConditions(BaseModel):
     temperature: Optional[TemperatureInfo] = Field(
         None, description="Water temperature information (if available)"
     )
-    tides: Optional[TidesInfo] = Field(
+    tides: Optional[TideInfo] = Field(
         None, description="Tide information (if available)"
     )

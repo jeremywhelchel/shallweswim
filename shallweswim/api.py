@@ -25,12 +25,12 @@ from shallweswim.api_types import (
     TideEntry,
     CurrentPredictionInfo,
     CurrentsResponse,
-    LegacyChartDetails,
+    LegacyChartInfo,
     LocationConditions,
     LocationInfo,
     LocationStatus,
     TemperatureInfo,
-    TidesInfo,
+    TideInfo,
 )
 
 
@@ -217,7 +217,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 for tide in tide_info.next
             ]
 
-            tides_info = TidesInfo(past=past_tides, next=next_tides)
+            tides_info = TideInfo(past=past_tides, next=next_tides)
 
         # Return structured response using Pydantic models
         return LocationConditions(
@@ -461,7 +461,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         )
 
         # Format legacy chart data for the API response
-        legacy_chart = LegacyChartDetails(
+        legacy_chart = LegacyChartInfo(
             hours_since_last_tide=round(chart_info.hours_since_last_tide, 1),
             last_tide_type=chart_info.last_tide_type,
             chart_filename=chart_info.chart_filename,

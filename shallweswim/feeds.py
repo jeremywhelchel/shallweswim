@@ -852,12 +852,12 @@ class HistoricalTempsFeed(CompositeFeed):
                 end_date = datetime.datetime(year, 12, 31, 23, 59, 59)
 
             # Set expiration based on whether it's historical or current data
-            # Historical data won't change, so use a longer expiration
-            # Current year data might be updated, so use the default expiration
+            # Historical data won't change, so set expiration to None (never expire)
+            # Current year data should use the configured interval for the historical feed
             expiration_interval = (
-                datetime.timedelta(days=7)
+                None  # Never expire for past years
                 if year < current_date.year
-                else self.expiration_interval
+                else self.expiration_interval  # Use configured interval for current year
             )
 
             # Create the appropriate feed using the factory function

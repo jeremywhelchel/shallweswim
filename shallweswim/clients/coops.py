@@ -18,6 +18,9 @@ from shallweswim.clients.base import (
     BaseClientError,
     RetryableClientError,
 )
+from shallweswim.types import (
+    TIDE_TYPE_CATEGORIES,
+)
 
 # Type definitions for NOAA CO-OPS API client
 ProductType = Literal[
@@ -227,7 +230,8 @@ class CoopsApi(BaseApiClient):
         df = (
             raw_df.pipe(self._FixTime)
             .rename(columns={" Prediction": "prediction", " Type": "type"})
-            .assign(type=lambda x: x["type"].map({"L": "low", "H": "high"}))[
+            .assign(type=lambda x: x["type"].map({"L": "low", "H": "high"}))
+            .astype({"type": pd.CategoricalDtype(TIDE_TYPE_CATEGORIES)})[
                 ["prediction", "type"]
             ]
         )

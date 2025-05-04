@@ -27,6 +27,9 @@ DatasetName = Literal["tides", "currents", "live_temps", "historic_temps"]
 TideType = Literal["high", "low", "unknown"]
 CurrentDirection = Literal["flooding", "ebbing"]
 
+# Define allowed categories for tide type
+TIDE_TYPE_CATEGORIES = ["low", "high"]
+
 
 @dataclass
 class TideEntry:
@@ -78,14 +81,15 @@ class TimeSeriesDataModel(pa.DataFrameModel):
     )
 
     # --- Column Definitions ---
-    water_temp: Optional[pa.typing.Series[float]] = pa.Field(nullable=True)
-    velocity: Optional[pa.typing.Series[float]] = pa.Field(nullable=True)
-    prediction: Optional[pa.typing.Series[float]] = pa.Field(nullable=True)
-    type: Optional[pa.typing.Series[str]] = pa.Field(
-        nullable=True, isin=["high", "low"]
+    water_temp: Optional[pa_typing.Series[float]] = pa.Field(nullable=True)
+    velocity: Optional[pa_typing.Series[float]] = pa.Field(nullable=True)
+    prediction: Optional[pa_typing.Series[float]] = pa.Field(nullable=True)
+    type: Optional[pd.CategoricalDtype] = pa.Field(
+        nullable=True,
+        dtype_kwargs={"categories": TIDE_TYPE_CATEGORIES, "ordered": False},
     )
 
-    # # --- DataFrame Checks via @pa.dataframe_check ---+
+    # --- DataFrame Checks via @pa.dataframe_check ---+
     @pa.dataframe_check(error="DataFrame must have at least one row")
     def check_not_empty(cls, df: pd.DataFrame) -> bool:
         """Check that the dataframe is not empty."""

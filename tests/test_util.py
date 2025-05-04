@@ -10,7 +10,7 @@ import pandera as pa
 from freezegun import freeze_time
 
 from shallweswim import util
-from shallweswim.types import DataFrameSummary
+from shallweswim.types import DataFrameSummary, TIDE_TYPE_CATEGORIES
 
 # Constants
 EXPECTED_COLUMNS = ["value", "flag"]
@@ -215,13 +215,13 @@ def valid_df() -> pd.DataFrame:
         },
         index=pd.DatetimeIndex(dates, name="time"),
     )
-    # Ensure dtypes match schema expectations (float for numeric, str/object for type)
+    # Ensure dtypes match schema expectations
     df = df.astype(
         {
             "water_temp": np.float64,
             "velocity": np.float64,
             "prediction": np.float64,
-            "type": str,
+            "type": pd.CategoricalDtype(TIDE_TYPE_CATEGORIES),
         }
     )
     return df
@@ -357,14 +357,20 @@ def test_validate_timeseries_dataframe_columns_all_nan(valid_df: pd.DataFrame) -
         util.validate_timeseries_dataframe(df)
 
 
-# Added test for invalid 'type' value
-def test_validate_timeseries_dataframe_invalid_type_value(
+def test_validate_timeseries_dataframe_invalid_type_assignment(
     valid_df: pd.DataFrame,
 ) -> None:
-    """Test validation fails if 'type' column has invalid values."""
+    """Test that assigning an invalid category raises TypeError directly."""
     df = valid_df.copy()
-    df.loc[df.index[0], "type"] = "medium"  # Invalid value
 
-    # Match the specific error message format from pandera for isin check failures
-    with pytest.raises(pa.errors.SchemaError, match=r"isin.*failure cases: medium"):
-        util.validate_timeseries_dataframe(df)
+    # Expect TypeError from pandas when setting invalid category directly
+    # The new Pandera definition should still result in a categorical column
+    with pytest.raises(
+        TypeError,
+        match=r"Cannot setitem on a Categorical with a new category.*medium",
+    ):
+        # This assignment should fail because 'medium' is not in ['low', 'high']
+        df.loc[df.index[0], "type"] = "medium"
+
+
+# --- Tests for get_next_peak_data ---

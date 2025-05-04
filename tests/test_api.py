@@ -16,10 +16,7 @@ from fastapi.testclient import TestClient
 from shallweswim.api import register_routes
 from shallweswim import config as config_lib
 from shallweswim.data import LocationDataManager
-from shallweswim.types import (
-    LocationStatus,
-    FeedStatus,
-)
+from shallweswim.api_types import LocationStatus, FeedStatus
 from shallweswim.dataframe_models import WaterTempDataModel
 from tests.helpers import assert_json_serializable
 import pandas as pd

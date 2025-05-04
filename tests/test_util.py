@@ -7,7 +7,7 @@ from typing import Dict, Optional, Union
 from freezegun import freeze_time
 
 from shallweswim import util
-from shallweswim.types import DataFrameSummary
+from shallweswim.api_types import DataFrameSummary
 
 
 # Constants

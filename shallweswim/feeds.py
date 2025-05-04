@@ -24,10 +24,7 @@ from shallweswim.clients import ndbc
 from shallweswim.clients import nwis
 from shallweswim import dataframe_models as df_models
 from shallweswim.util import utc_now, summarize_dataframe, fps_to_knots
-from shallweswim.types import (
-    FeedStatus,
-    DataFrameSummary,
-)
+from shallweswim.api_types import FeedStatus, DataFrameSummary
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired

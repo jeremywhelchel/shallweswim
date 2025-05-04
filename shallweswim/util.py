@@ -8,7 +8,7 @@ from typing import Optional, cast
 import pandas as pd
 
 # Local application imports
-from shallweswim import types
+from shallweswim import api_types
 
 # Time shift limits for current predictions (in minutes)
 MAX_SHIFT_LIMIT = 1440  # 24 hours forward
@@ -106,7 +106,7 @@ def latest_time_value(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]
     return cast(datetime.datetime, dt)
 
 
-def summarize_dataframe(df: Optional[pd.DataFrame]) -> types.DataFrameSummary:
+def summarize_dataframe(df: Optional[pd.DataFrame]) -> api_types.DataFrameSummary:
     """Generates a summary object for a given pandas DataFrame.
 
     Args:
@@ -116,7 +116,7 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> types.DataFrameSummary:
         A DataFrameSummary object containing statistics about the DataFrame.
     """
     if df is None or df.empty:
-        return types.DataFrameSummary(
+        return api_types.DataFrameSummary(
             length=0,
             index_frequency=None,
             width=0,
@@ -153,7 +153,7 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> types.DataFrameSummary:
     # Calculate memory usage (deep=True for accurate object dtype size)
     memory_usage_bytes = int(df.memory_usage(deep=True).sum())
 
-    return types.DataFrameSummary(
+    return api_types.DataFrameSummary(
         length=length,
         index_frequency=index_frequency,
         width=width,

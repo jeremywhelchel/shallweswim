@@ -38,7 +38,7 @@ from shallweswim.dataframe_models import (
     WaterTempDataModel,
     CurrentDataModel,
 )
-from shallweswim.types import DataFrameSummary
+from shallweswim.api_types import DataFrameSummary
 
 
 # Define a reusable simple model for test fixtures

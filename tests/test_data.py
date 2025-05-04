@@ -22,10 +22,10 @@ from tests.helpers import assert_json_serializable
 from shallweswim.data import LocationDataManager
 from shallweswim.types import (
     CurrentInfo,
-    FeedStatus,
     CurrentDirection,  # Import CurrentDirection Enum
     DataSourceType,  # Import DataSourceType
 )  # Import from types module where it's defined
+from shallweswim.api_types import FeedStatus
 from shallweswim import config as config_lib
 from shallweswim.feeds import Feed
 

@@ -25,15 +25,14 @@ from shallweswim.clients.base import BaseApiClient
 from shallweswim.types import (
     CurrentInfo,
     CurrentDirection,
-    FeedStatus,
     LegacyChartInfo,
-    LocationStatus,
     TideCategory,
     TideEntry,
     TideInfo,
     TIDE_TYPE_CATEGORIES,
-    DataSourceType,  # Added import
+    DataSourceType,
 )
+from shallweswim.api_types import FeedStatus, LocationStatus
 from shallweswim.util import utc_now
 
 # Constants

@@ -21,7 +21,7 @@ from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.clients.ndbc import NdbcApi
-from shallweswim.types import (
+from shallweswim.api_types import (
     ApiTideEntry,
     CurrentPredictionInfo,
     CurrentsResponse,

@@ -34,27 +34,39 @@ from shallweswim import types
 from shallweswim import util
 
 
-class TempSource(BaseModel, abc.ABC, frozen=True):
-    """Base configuration for temperature data source.
-
-    Abstract base class for all temperature data sources.
-    """
+class BaseSource(BaseModel, abc.ABC, frozen=True):
+    """Base configuration for any data source (temperature, tide, current)."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: Annotated[
         Optional[str],
         Field(
-            description="Human-readable name of the temperature source (e.g., 'The Battery, NY')"
+            description="Human-readable name of the data source (e.g., station name, site name)"
         ),
     ] = None
 
     outliers: Annotated[
         List[str],
         Field(
-            description="List of timestamps (YYYY-MM-DD HH:MM:SS format) with erroneous temperature data to remove"
+            description="List of timestamps (YYYY-MM-DD HH:MM:SS format) with potentially erroneous data to flag or remove"
         ),
     ] = []
+
+    @property
+    @abc.abstractmethod
+    def citation(self) -> str:
+        """Return an HTML snippet with source citation information."""
+        pass
+
+
+class TempSource(BaseSource, abc.ABC, frozen=True):
+    """Base configuration for temperature data source.
+
+    Abstract base class for all temperature data sources.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     live_enabled: Annotated[
         bool,
@@ -127,7 +139,7 @@ class CoopsTempSource(TempSource, frozen=True):
         return f"Water temperature data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.name or 'Unknown'})"
 
 
-class CoopsTideSource(BaseModel, frozen=True):
+class CoopsTideSource(BaseSource, frozen=True):
     """Configuration for tide data source.
 
     Defines the NOAA CO-OPS station for fetching tide predictions.
@@ -144,13 +156,6 @@ class CoopsTideSource(BaseModel, frozen=True):
         ),
     ]
 
-    station_name: Annotated[
-        Optional[str],
-        Field(
-            description="Human-readable name of the tide station (e.g., 'Coney Island, NY')"
-        ),
-    ] = None
-
     @property
     def citation(self) -> str:
         """Return an HTML snippet with NOAA CO-OPS tide citation information.
@@ -161,10 +166,10 @@ class CoopsTideSource(BaseModel, frozen=True):
         station_url = (
             f"https://tidesandcurrents.noaa.gov/stationhome.html?id={self.station}"
         )
-        return f"Tide data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.station_name or 'Unknown'})"
+        return f"Tide data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.name or 'Unknown'})"
 
 
-class CurrentsSourceConfigBase(BaseModel, abc.ABC, frozen=True):
+class CurrentsSourceConfigBase(BaseSource, abc.ABC, frozen=True):
     """Base configuration for currents data sources.
 
     Abstract base class for all currents data sources.
@@ -178,12 +183,6 @@ class CurrentsSourceConfigBase(BaseModel, abc.ABC, frozen=True):
             description="Type of current system (tidal with reversals or unidirectional river)"
         ),
     ] = types.CurrentSystemType.TIDAL
-
-    @property
-    @abc.abstractmethod
-    def citation(self) -> str:
-        """Return an HTML snippet with source citation information."""
-        pass
 
 
 class CoopsCurrentsSource(CurrentsSourceConfigBase, frozen=True):
@@ -445,7 +444,7 @@ _CONFIG_LIST = [
         ),
         tide_source=CoopsTideSource(
             station=8517741,
-            station_name="Coney Island, NY",
+            name="Coney Island, NY",
         ),
         currents_source=CoopsCurrentsSource(
             stations=[
@@ -469,7 +468,7 @@ _CONFIG_LIST = [
         ),
         tide_source=CoopsTideSource(
             station=9410230,
-            station_name="La Jolla, CA",
+            name="La Jolla, CA",
         ),
         description="La Jolla Cove open water swimming conditions",
     ),
@@ -525,7 +524,7 @@ _CONFIG_LIST = [
         ),
         tide_source=CoopsTideSource(
             station=9414305,
-            station_name="North Point Pier",
+            name="North Point Pier",
         ),
         description="San Francisco Aquatic Park open water swimming conditions",
         # webcam https://dolphinclub.org/weather/ (code in page JS source...)
@@ -583,7 +582,7 @@ _CONFIG_LIST = [
         ),
         tide_source=CoopsTideSource(
             station=8443970,
-            station_name="Boston, MA",
+            name="Boston, MA",
         ),
         description="Boston, MA open water swimming conditions",
     ),
@@ -601,7 +600,7 @@ _CONFIG_LIST = [
         ),
         tide_source=CoopsTideSource(
             station=9447130,
-            station_name="Seattle, WA",
+            name="Seattle, WA",
         ),
         description="Seattle, WA open water swimming conditions",
     ),

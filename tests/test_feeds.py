@@ -78,7 +78,7 @@ def tide_config() -> config_lib.CoopsTideSource:
     """Create a tide source config fixture."""
     return config_lib.CoopsTideSource(
         station=8517741,  # Using a valid 7-digit station ID
-        station_name="Coney Island, NY",
+        name="Coney Island, NY",
     )
 
 

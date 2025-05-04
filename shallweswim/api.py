@@ -445,9 +445,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Get current chart filename
         current_chart_filename = plot.get_current_chart_filename(
-            current_info.direction,
+            current_info.direction.value,
             plot.bin_magnitude(current_info.magnitude_pct),
-            location,
+            location_code=location,
         )
 
         # Format current_info data for the API response

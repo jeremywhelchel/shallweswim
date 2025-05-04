@@ -10,7 +10,7 @@ two main categories:
 import datetime
 import enum
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Dict
+from typing import List, Optional, Dict
 
 # Third-party imports
 from pydantic import BaseModel, Field, ConfigDict
@@ -21,8 +21,12 @@ from pydantic import BaseModel, Field, ConfigDict
 #############################################################
 
 # Common type literals used across the application
-DatasetName = Literal["tides", "currents", "live_temps", "historic_temps"]
-CurrentDirection = Literal["flooding", "ebbing"]
+
+
+# Define allowed categories for current direction using an Enum
+class CurrentDirection(enum.Enum):
+    FLOODING = "flooding"
+    EBBING = "ebbing"
 
 
 # Define allowed categories for tide type using an Enum
@@ -59,7 +63,9 @@ class TideInfo:
 class CurrentInfo:
     """Structured information about water current prediction (internal)."""
 
-    direction: CurrentDirection  # 'flooding' or 'ebbing'
+    direction: (
+        CurrentDirection  # Enum: CurrentDirection.FLOODING or CurrentDirection.EBBING
+    )
     magnitude: float  # Current strength in knots
     magnitude_pct: float  # Relative magnitude percentage (0.0-1.0)
     state_description: str  # Human-readable description of current state
@@ -168,7 +174,7 @@ class CurrentPredictionInfo(BaseModel):
         description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
     )
     direction: str = Field(
-        ..., description="Direction of current ('flooding' or 'ebbing')"
+        ..., description="Direction of current (Enum: CurrentDirection)"
     )
     magnitude: float = Field(..., description="Current strength in knots")
     magnitude_pct: float = Field(

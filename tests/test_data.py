@@ -23,6 +23,7 @@ from shallweswim.data import LocationDataManager
 from shallweswim.types import (
     CurrentInfo,
     FeedStatus,
+    CurrentDirection,  # Import CurrentDirection Enum
 )  # Import from types module where it's defined
 from shallweswim import config as config_lib
 from shallweswim.feeds import Feed
@@ -121,7 +122,7 @@ async def test_current_prediction_at_flood_peak(
     result = mock_data_with_currents.current_prediction(t)
 
     # Check the result
-    assert result.direction == "flooding"
+    assert result.direction == CurrentDirection.FLOODING  # Use Enum member
     assert pytest.approx(result.magnitude, 0.1) == 1.5
     assert "at its strongest" in result.state_description
 
@@ -186,7 +187,7 @@ async def test_current_prediction_at_ebb_peak(
     result = data.current_prediction(t)
 
     # Check the result
-    assert result.direction == "ebbing"
+    assert result.direction == CurrentDirection.EBBING  # Use Enum member
     assert pytest.approx(result.magnitude, 0.1) == 1.5  # Magnitude is positive
     assert "at its strongest" in result.state_description
     # Pool shutdown is handled by the process_pool fixture
@@ -240,7 +241,7 @@ async def test_current_prediction_strengthening() -> None:
         result = data.current_prediction(t)
 
         # Check the result
-        assert result.direction == "flooding"
+        assert result.direction == CurrentDirection.FLOODING  # Use Enum member
         assert "getting stronger" in result.state_description
     finally:
         # Clean up the process pool
@@ -281,7 +282,7 @@ async def test_current_prediction_weakening() -> None:
         result = data.current_prediction(t)
 
         # Check the result
-        assert result.direction == "flooding"
+        assert result.direction == CurrentDirection.FLOODING  # Use Enum member
         assert "getting weaker" in result.state_description
     finally:
         # Clean up the process pool
@@ -325,7 +326,7 @@ async def test_process_peaks_function() -> None:
         result = data.current_prediction(peak_time)
 
         # The peak should be detected and described correctly
-        assert result.direction == "flooding"
+        assert result.direction == CurrentDirection.FLOODING  # Use Enum member
         assert pytest.approx(result.magnitude, abs=0.1) == 1.5
 
         # Check if it's marked as a strong current
@@ -345,12 +346,12 @@ async def test_current_info_representation() -> None:
     """Test the representation of CurrentInfo objects."""
     # Test with flooding current
     flood_info = CurrentInfo(
-        direction="flooding",
+        direction=CurrentDirection.FLOODING,  # Use Enum member
         magnitude=1.5,
         magnitude_pct=0.8,
         state_description="getting stronger",
     )
-    assert flood_info.direction == "flooding"
+    assert flood_info.direction == CurrentDirection.FLOODING  # Use Enum member
     assert flood_info.magnitude == 1.5
     assert flood_info.magnitude_pct == 0.8
     assert flood_info.state_description == "getting stronger"
@@ -362,12 +363,12 @@ async def test_current_info_representation() -> None:
 
     # Test with ebbing current
     ebb_info = CurrentInfo(
-        direction="ebbing",
+        direction=CurrentDirection.EBBING,  # Use Enum member
         magnitude=1.2,
         magnitude_pct=0.6,
         state_description="getting weaker",
     )
-    assert ebb_info.direction == "ebbing"
+    assert ebb_info.direction == CurrentDirection.EBBING  # Use Enum member
     assert ebb_info.magnitude == 1.2
     assert ebb_info.magnitude_pct == 0.6
     assert ebb_info.state_description == "getting weaker"

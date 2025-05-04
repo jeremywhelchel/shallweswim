@@ -24,6 +24,7 @@ from shallweswim import util
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.types import (
     CurrentInfo,
+    CurrentDirection,
     FeedStatus,
     LegacyChartInfo,
     LocationStatus,
@@ -67,7 +68,7 @@ def _process_local_magnitude_pct(
     Args:
         df: Main DataFrame containing all current data
         current_df: DataFrame containing current data for one direction
-        direction_type: String identifier ("flooding" or "ebbing")
+        direction_type: String identifier (CurrentDirection.FLOODING.value or CurrentDirection.EBBING.value)
         invert: Whether to invert values for finding peaks (for ebb currents)
 
     Returns:
@@ -87,13 +88,15 @@ def _process_local_magnitude_pct(
     # Find peaks with optimized parameters
     # For flooding, peaks are maxima; for ebbing, peaks are minima
     # Since find_peaks finds maxima, we negate values for ebbing to find minima
-    search_values = -values if direction_type == "ebbing" else values
+    search_values = (
+        -values if direction_type == CurrentDirection.EBBING.value else values
+    )
     peaks, _ = find_peaks(search_values, prominence=0.1, distance=3)
 
     # No peaks found - use global approach as fallback
     if len(peaks) == 0:
         # Set global percentage for all points of this direction
-        for idx in result_df.index[result_df["ef"] == direction_type]:
+        for idx in result_df.index[result_df["direction"] == direction_type]:
             result_df.at[idx, "local_mag_pct"] = result_df.at[idx, "mag_pct"]
         return result_df
 
@@ -102,7 +105,7 @@ def _process_local_magnitude_pct(
     peak_values = [current_df.at[pt, "magnitude"] for pt in peak_times]
 
     # For each time point, find the nearest peak and calculate percentage relative to it
-    for idx in result_df.index[result_df["ef"] == direction_type]:
+    for idx in result_df.index[result_df["direction"] == direction_type]:
         # Find closest peak in time
         time_diffs = [
             (idx - peak_time).total_seconds() / 3600 for peak_time in peak_times
@@ -914,11 +917,12 @@ class LocationDataManager(object):
         df["slope"] = np.select(conditions, choices, default=0)
 
         # Mark direction as flood or ebb
-        conditions = [df["v"] > 0, df["v"] < 0]
-        choices = ["flooding", "ebbing"]
-        df["ef"] = pd.Series(
-            np.select(conditions, choices, default="unknown"), index=df.index
-        )
+        conditions = [
+            (df["v"] > 0),  # flooding
+            (df["v"] < 0),  # ebbing
+        ]
+        choices = [CurrentDirection.FLOODING.value, CurrentDirection.EBBING.value]
+        df["direction"] = np.select(conditions, choices, default="")
 
         # Initialize column for local magnitude percentage
         df["local_mag_pct"] = 0.0  # Default to 0% of local peak
@@ -928,12 +932,14 @@ class LocationDataManager(object):
         ebb_df = df[df["v"] < 0].copy()
 
         # Calculate mag_pct for global magnitude ranking (needed for fallback)
-        df["mag_pct"] = df.groupby("ef")["magnitude"].rank(pct=True)
+        df["mag_pct"] = df.groupby("direction")["magnitude"].rank(pct=True)
 
         # Now calculate magnitude percentages relative to local peaks
         # Process both directions sequentially, passing the result of one to the next
-        df = _process_local_magnitude_pct(df, flood_df, "flooding")
-        df = _process_local_magnitude_pct(df, ebb_df, "ebbing", invert=True)
+        df = _process_local_magnitude_pct(df, flood_df, CurrentDirection.FLOODING.value)
+        df = _process_local_magnitude_pct(
+            df, ebb_df, CurrentDirection.EBBING.value, invert=True
+        )
 
         # Ensure we're using a naive datetime for DataFrame slicing
         # All datetimes must be naive in the appropriate timezone
@@ -971,13 +977,13 @@ class LocationDataManager(object):
         else:
             msg = "stable"
 
-        ef = row["ef"]
+        direction_str = row["direction"]
 
         # Return a structured object with current information
         return CurrentInfo(
-            direction=ef,
+            direction=CurrentDirection(direction_str),
             magnitude=magnitude,
-            magnitude_pct=row["mag_pct"],
+            magnitude_pct=row["local_mag_pct"],
             state_description=msg,
         )
 

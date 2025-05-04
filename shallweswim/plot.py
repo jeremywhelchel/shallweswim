@@ -34,7 +34,6 @@ from shallweswim import config as config_lib
 from shallweswim import types
 from shallweswim import util
 
-
 # Set default Seaborn theme settings for consistent plot appearance
 sns.set_theme()
 sns.axes_style("darkgrid")
@@ -754,7 +753,7 @@ def get_current_chart_filename(
     """Generate a filename for a current chart.
 
     Args:
-        ef: Current direction (flooding or ebbing)
+        ef: Current direction (CurrentDirection.FLOODING.value or CurrentDirection.EBBING.value)
         magnitude_bin: Binned magnitude value (from bin_magnitude)
         location_code: The 3-letter location code (e.g., 'nyc')
 
@@ -775,7 +774,7 @@ def create_current_chart(ef: str, magnitude_bin: int, _: str = "") -> Figure:
     over a base map of the area. Arrow size and width are proportional to current strength.
 
     Args:
-        ef: Current direction (flooding or ebbing)
+        ef: Current direction value
         magnitude_bin: Magnitude bin value (0-100)
         location_code: The 3-letter location code (e.g., 'nyc')
 
@@ -820,10 +819,10 @@ def create_current_chart(ef: str, magnitude_bin: int, _: str = "") -> Figure:
     length = 80 + 80 * magnitude_pct
     width = 4 + 12 * magnitude_pct
 
-    if ef == "flooding":
+    if ef == types.CurrentDirection.FLOODING.value:
         flip = 0
         color = CURRENT_FLOOD_COLOR
-    elif ef == "ebbing":
+    elif ef == types.CurrentDirection.EBBING.value:
         flip = 180
         color = CURRENT_EBB_COLOR
     else:
@@ -851,7 +850,7 @@ def generate_and_save_current_chart(
     """Generate and save a current chart showing water movement over a map.
 
     Args:
-        ef: Current direction (flooding or ebbing)
+        ef: Current direction value
         magnitude_bin: Magnitude bin value (0-100)
         location_code: The 3-letter location code (e.g., 'nyc')
 

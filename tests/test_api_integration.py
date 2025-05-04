@@ -23,6 +23,7 @@ from concurrent.futures import ProcessPoolExecutor
 # Local imports
 import fastapi
 from shallweswim import config, api
+from shallweswim.types import CurrentDirection
 
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
@@ -345,9 +346,8 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
     assert "magnitude_pct" in current, "Missing current magnitude percentage"
     assert "state_description" in current, "Missing current state description"
     assert current["direction"] in [
-        "flooding",
-        "ebbing",
-        "slack",
+        CurrentDirection.FLOODING.value,
+        CurrentDirection.EBBING.value,
     ], f"Invalid current direction: {current['direction']}"
     assert isinstance(
         current["magnitude"], (int, float)

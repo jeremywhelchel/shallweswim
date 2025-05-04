@@ -7,11 +7,13 @@ This module contains FastAPI route handlers for the API endpoints and data manag
 import asyncio
 import io
 import logging
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 # Third-party imports
 import aiohttp
 import fastapi
+import pandera.typing as pa_typing
+import pandas as pd
 from fastapi import HTTPException
 
 # Local imports
@@ -30,6 +32,7 @@ from shallweswim.types import (
     LocationStatus,
     TemperatureInfo,
     TidesInfo,
+    TimeSeriesDataModel,
 )
 
 
@@ -469,3 +472,60 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 "plot_url": f"/api/{location}/current_tide_plot?shift={shift}",
             },
         )
+
+    @app.get(
+        "/api/{loc}/data/{feed_name}",
+        response_model=pa_typing.DataFrame[TimeSeriesDataModel],
+    )
+    async def get_feed_data(loc: str, feed_name: str) -> pd.DataFrame:
+        """Retrieve the timeseries data for a specific *feed* at a given *location*.
+
+        Args:
+            loc: The location code (e.g., 'nyc').
+            feed_name: The data feed name (e.g., 'tides', 'live_temps', 'wind').
+
+        Returns:
+            A DataFrame representing the validated timeseries data for the feed.
+
+        Raises:
+            HTTPException(404): If the location or feed is not found or data is unavailable.
+        """
+        logging.info(f"Received request for feed '{feed_name}' at location '{loc}'")
+        try:
+            # Check if location exists
+            if loc not in app.state.data_managers:
+                logging.warning(
+                    f"Location '{loc}' not found for feed '{feed_name}' request."
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Location '{loc}' not found or data not loaded",
+                )
+            location_data_manager = app.state.data_managers[loc]
+
+            # Check if feed exists for the location
+            if feed_name not in location_data_manager._feeds:
+                logging.warning(f"Feed '{feed_name}' not found for location '{loc}'.")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Feed '{feed_name}' not found for location '{loc}'.",
+                )
+            feed = location_data_manager._feeds[feed_name]
+
+            # Attempt to access feed data, catching other potential errors
+            df = feed.values
+            logging.info(
+                f"Successfully retrieved and validated feed '{feed_name}' for location '{loc}'."
+            )
+            return df
+
+        except HTTPException:  # Re-raise HTTPExceptions directly
+            raise
+        except Exception as e:  # Catch other unexpected errors
+            logging.exception(
+                f"Error retrieving feed '{feed_name}' for location '{loc}': {e}"
+            )
+            # Catch potential errors during data fetching/processing
+            raise HTTPException(
+                status_code=500, detail="Internal server error retrieving feed data"
+            )

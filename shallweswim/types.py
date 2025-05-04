@@ -127,6 +127,9 @@ class TimeSeriesDataModel(pa.DataFrameModel):
         # IMPORTANT: Coercion is explicitly disabled for maximum strictness.
         # Data must match the defined types exactly.
         coerce = False
+        # Controls how the DataFrame is serialized to JSON for FastAPI output.
+        to_format = "dict"
+        to_format_kwargs = {"orient": "index"}
 
 
 #############################################################

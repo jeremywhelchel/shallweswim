@@ -16,8 +16,11 @@ from fastapi.testclient import TestClient
 from shallweswim.api import register_routes
 from shallweswim import config as config_lib
 from shallweswim.data import LocationDataManager
-from shallweswim.types import LocationStatus, FeedStatus
+from shallweswim.types import LocationStatus, FeedStatus, TimeSeriesDataModel
 from tests.helpers import assert_json_serializable
+import pandas as pd
+import pandera as pa
+from fastapi import status
 
 
 @pytest.fixture
@@ -50,6 +53,7 @@ def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
 
     # Create mock data managers
     nyc_data = MagicMock(spec=LocationDataManager)
+    nyc_data._feeds = {}  # Initialize _feeds attribute
     nyc_data.status = LocationStatus(
         feeds={
             "tides": FeedStatus(
@@ -103,7 +107,8 @@ def mock_data_managers(app: FastAPI) -> Generator[None, None, None]:
             "sf": sf_config,
         }.get(code)
 
-        # Add data managers to the app state
+        # Initialize and add data managers to the app state
+        app.state.data_managers = {}  # Ensure the dictionary exists
         app.state.data_managers["nyc"] = nyc_data
         app.state.data_managers["sf"] = sf_data
 
@@ -176,3 +181,109 @@ def test_all_locations_status_endpoint(
     assert "tides" in status_data["sf"]["feeds"]
     assert status_data["sf"]["feeds"]["tides"]["name"] == "NoaaTidesFeed"
     assert status_data["sf"]["feeds"]["tides"]["location"] == "sf"
+
+
+# --- Feed Data Endpoint Tests (Synchronous using TestClient) ---
+
+
+@pytest.mark.filterwarnings(
+    # Broaden message match for the specific UserWarning from pydantic.type_adapter
+    "ignore:Pydantic serializer warnings.*:UserWarning:pydantic.type_adapter"
+)
+def test_get_feed_data_success(
+    test_client: TestClient, mock_data_managers: None
+) -> None:
+    """Test successfully retrieving data for a valid feed."""
+    # Mock the specific feed data expected
+    # Create a sample TimeSeriesData DataFrame with only valid columns
+    mock_time = pd.to_datetime("2025-05-04 12:00:00")
+    mock_df = pd.DataFrame(
+        {
+            "water_temp": [15.0, 15.1],
+        },
+        index=pd.DatetimeIndex(
+            [mock_time, mock_time + pd.Timedelta(hours=1)], name="time"
+        ),
+    )
+
+    # Ensure the mock DataFrame is valid according to the model
+    try:
+        TimeSeriesDataModel.validate(mock_df)
+    except pa.errors.SchemaError as e:
+        pytest.fail(f"Mock DataFrame is invalid: {e}")
+
+    # Mock the specific feed within the data manager
+    mock_feed = MagicMock()
+    mock_feed.values = mock_df
+    assert isinstance(test_client.app, FastAPI)  # Help mypy
+    mock_data_managers_dict = test_client.app.state.data_managers
+    # Ensure _feeds exists; create if necessary (it might not exist in the simple mock)
+    if (
+        not hasattr(mock_data_managers_dict["nyc"], "_feeds")
+        or mock_data_managers_dict["nyc"]._feeds is None
+    ):
+        mock_data_managers_dict["nyc"]._feeds = {}
+    mock_data_managers_dict["nyc"]._feeds[
+        "live_temps"
+    ] = mock_feed  # Use 'live_temps' as the example feed
+
+    response = test_client.get("/api/nyc/data/live_temps")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.headers["content-type"] == "application/json"
+    data = response.json()
+
+    # Expect dict with timestamps as keys due to orient='index'
+    assert isinstance(data, dict)
+    if not data:
+        pytest.fail("Mocked data resulted in empty response, expected data.")
+
+    # Reconstruct and validate DataFrame
+    try:
+        # Reconstruct from index-oriented dict
+        df = pd.DataFrame.from_dict(data, orient="index")
+
+        # Convert index back to datetime (FastAPI TestClient might return strings)
+        df.index = pd.to_datetime(df.index)
+        df.index.name = "time"  # Restore index name
+
+        # Ensure necessary columns are present based on mock_df
+        present_cols = set(mock_df.columns)
+        assert present_cols == set(df.columns)  # Check for exact match now
+
+        # Validate the reconstructed DataFrame
+        TimeSeriesDataModel.validate(df, lazy=True)  # Use lazy for better errors
+
+    except (ValueError, pa.errors.SchemaError, KeyError, TypeError) as e:
+        pytest.fail(f"Response data failed validation or parsing: {e}\nData: {data}")
+
+
+def test_get_feed_data_location_not_found(
+    test_client: TestClient, mock_data_managers: None
+) -> None:
+    """Test requesting data for a non-existent location."""
+    response = test_client.get("/api/nonexistent/data/tides")
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json() == {
+        "detail": "Location 'nonexistent' not found or data not loaded"
+    }
+
+
+def test_get_feed_data_feed_not_found(
+    test_client: TestClient, mock_data_managers: None
+) -> None:
+    """Test requesting a non-existent feed for a valid location."""
+    # Ensure the mock setup for 'nyc' doesn't accidentally include 'badfeed'
+    assert isinstance(test_client.app, FastAPI)  # Help mypy
+    mock_data_managers_dict = test_client.app.state.data_managers
+    if (
+        hasattr(mock_data_managers_dict["nyc"], "_feeds")
+        and "badfeed" in mock_data_managers_dict["nyc"]._feeds
+    ):
+        del mock_data_managers_dict["nyc"]._feeds["badfeed"]
+
+    response = test_client.get("/api/nyc/data/badfeed")
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    # Check detail message (could vary slightly based on implementation)
+    assert "detail" in response.json()
+    assert "badfeed" in response.json()["detail"]
+    assert "nyc" in response.json()["detail"]

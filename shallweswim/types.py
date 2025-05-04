@@ -8,10 +8,7 @@ API-related types are defined in api_types.py.
 import datetime
 import enum
 from typing import List, Optional
-
-# Third-party imports
-from pydantic import BaseModel
-
+from dataclasses import dataclass
 
 #############################################################
 # INTERNAL TYPES - Used for internal data processing         #
@@ -46,7 +43,8 @@ class DataSourceType(enum.Enum):
 TIDE_TYPE_CATEGORIES = [member.value for member in TideCategory]
 
 
-class TideEntry(BaseModel):
+@dataclass
+class TideEntry:
     """Information about a single tide event (internal representation)."""
 
     time: (
@@ -57,14 +55,16 @@ class TideEntry(BaseModel):
     # Additional fields from the NOAA API can be added as needed
 
 
-class TideInfo(BaseModel):
+@dataclass
+class TideInfo:
     """Structured information about previous and next tides (internal)."""
 
     past_tides: List[TideEntry]  # The most recent tide
     next_tides: List[TideEntry]  # The next two upcoming tides
 
 
-class CurrentInfo(BaseModel):
+@dataclass
+class CurrentInfo:
     """Structured information about the current water conditions (prediction or observation)."""
 
     # Indicates if the data is from a prediction or observation
@@ -82,7 +82,8 @@ class CurrentInfo(BaseModel):
     )
 
 
-class LegacyChartInfo(BaseModel):
+@dataclass
+class LegacyChartInfo:
     """Structured information about a tide chart (internal)."""
 
     hours_since_last_tide: float

@@ -23,12 +23,14 @@ from shallweswim import plot
 from shallweswim import util
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.types import (
+    CurrentInfo,
     FeedStatus,
     LegacyChartInfo,
     LocationStatus,
+    TideCategory,
     TideEntry,
     TideInfo,
-    CurrentInfo,
+    TIDE_TYPE_CATEGORIES,
 )
 from shallweswim.util import utc_now
 
@@ -700,7 +702,9 @@ class LocationDataManager(object):
                 datetime.date.today(), datetime.time(0)
             )
             placeholder_entry = TideEntry(
-                time=placeholder_time, type="unknown", prediction=0.0
+                time=placeholder_time,
+                type=TideCategory.LOW,  # Use LOW as placeholder
+                prediction=0.0,
             )
             past_tides = [placeholder_entry]
             next_tides = [placeholder_entry, placeholder_entry]
@@ -742,10 +746,23 @@ class LocationDataManager(object):
                     # Already naive, assume it's in the correct timezone
                     local_time = tide_time
 
+                # Get type string from record
+                tide_type_str = record.get("type")
+
+                # Check for None explicitly first
+                if tide_type_str is None:
+                    raise AssertionError(f"Missing tide type for record: {record}")
+
+                # Assert that the (now non-None) type string is a valid category
+                assert (
+                    tide_type_str in TIDE_TYPE_CATEGORIES
+                ), f"Invalid tide type '{tide_type_str}' for record: {record}"
+
+                # String is non-None and valid ('low' or 'high'), safe to create TideEntry
                 past_tides.append(
                     TideEntry(
                         time=local_time,
-                        type=record.get("type", "unknown"),
+                        type=TideCategory(tide_type_str),
                         prediction=record.get("prediction", 0.0),
                     )
                 )
@@ -764,10 +781,23 @@ class LocationDataManager(object):
                     # Already naive, assume it's in the correct timezone
                     local_time = tide_time
 
+                # Get type string from record
+                tide_type_str = record.get("type")
+
+                # Check for None explicitly first
+                if tide_type_str is None:
+                    raise AssertionError(f"Missing tide type for record: {record}")
+
+                # Assert that the (now non-None) type string is a valid category
+                assert (
+                    tide_type_str in TIDE_TYPE_CATEGORIES
+                ), f"Invalid tide type '{tide_type_str}' for record: {record}"
+
+                # String is non-None and valid ('low' or 'high'), safe to create TideEntry
                 next_tides.append(
                     TideEntry(
                         time=local_time,
-                        type=record.get("type", "unknown"),
+                        type=TideCategory(tide_type_str),
                         prediction=record.get("prediction", 0.0),
                     )
                 )

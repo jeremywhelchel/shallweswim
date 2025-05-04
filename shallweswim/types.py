@@ -8,6 +8,7 @@ two main categories:
 
 # Standard library imports
 import datetime
+import enum
 from dataclasses import dataclass
 from typing import List, Literal, Optional, Dict
 
@@ -24,11 +25,17 @@ from pydantic import BaseModel, Field, ConfigDict
 
 # Common type literals used across the application
 DatasetName = Literal["tides", "currents", "live_temps", "historic_temps"]
-TideType = Literal["high", "low", "unknown"]
 CurrentDirection = Literal["flooding", "ebbing"]
 
-# Define allowed categories for tide type
-TIDE_TYPE_CATEGORIES = ["low", "high"]
+
+# Define allowed categories for tide type using an Enum
+class TideCategory(enum.Enum):
+    LOW = "low"
+    HIGH = "high"
+
+
+# Derive list for Pandera compatibility
+TIDE_TYPE_CATEGORIES = [member.value for member in TideCategory]
 
 
 @dataclass
@@ -38,7 +45,7 @@ class TideEntry:
     time: (
         datetime.datetime
     )  # Time of the tide (timezone-aware, in location's local timezone)
-    type: TideType  # 'high' or 'low'
+    type: TideCategory  # TideCategory.LOW or TideCategory.HIGH
     prediction: float  # Height of the tide in feet
     # Additional fields from the NOAA API can be added as needed
 
@@ -66,7 +73,7 @@ class LegacyChartInfo:
     """Structured information about a tide chart (internal)."""
 
     hours_since_last_tide: float
-    last_tide_type: TideType
+    last_tide_type: Optional[TideCategory]
     chart_filename: str
     map_title: str
 

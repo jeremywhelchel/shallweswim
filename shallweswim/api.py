@@ -457,6 +457,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             magnitude=round(current_info.magnitude, 1),
             magnitude_pct=current_info.magnitude_pct,
             state_description=current_info.state_description,
+            source_type=current_info.source_type,
         )
 
         # Format legacy chart data for the API response

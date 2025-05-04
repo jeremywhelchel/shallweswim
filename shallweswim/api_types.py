@@ -12,7 +12,7 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel, Field, ConfigDict
 
 # Local imports
-from shallweswim.types import TideCategory
+from shallweswim.types import TideCategory, DataSourceType, CurrentDirection
 
 #############################################################
 # API TYPES - Used for external API request/response models  #
@@ -106,7 +106,7 @@ class CurrentPredictionInfo(BaseModel):
         ...,
         description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
     )
-    direction: str = Field(
+    direction: CurrentDirection = Field(
         ..., description="Direction of current (Enum: CurrentDirection)"
     )
     magnitude: float = Field(..., description="Current strength in knots")
@@ -115,6 +115,10 @@ class CurrentPredictionInfo(BaseModel):
     )
     state_description: str = Field(
         ..., description="Human-readable description of current state"
+    )
+    source_type: DataSourceType = Field(
+        ...,
+        description="Indicates if data is prediction or observation (Enum: DataSourceType)",
     )
 
 
@@ -126,7 +130,9 @@ class LegacyChartDetails(BaseModel):
     hours_since_last_tide: float = Field(
         ..., description="Hours since the last tide event"
     )
-    last_tide_type: str = Field(..., description="Type of last tide ('high' or 'low')")
+    last_tide_type: TideCategory = Field(
+        ..., description="Type of last tide (Enum: TideCategory)"
+    )
     chart_filename: str = Field(..., description="Filename of the legacy chart")
     map_title: str = Field(..., description="Title for the legacy map")
 

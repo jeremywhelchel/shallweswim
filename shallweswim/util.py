@@ -118,6 +118,7 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> types.DataFrameSummary:
             index_oldest=None,
             index_newest=None,
             missing_values={},
+            memory_usage_bytes=0,
         )
 
     length = len(df)
@@ -143,6 +144,9 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> types.DataFrameSummary:
         index_oldest = min_ts.to_pydatetime() if pd.notna(min_ts) else None
         index_newest = max_ts.to_pydatetime() if pd.notna(max_ts) else None
 
+    # Calculate memory usage (deep=True for accurate object dtype size)
+    memory_usage_bytes = int(df.memory_usage(deep=True).sum())
+
     return types.DataFrameSummary(
         length=length,
         index_frequency=index_frequency,
@@ -151,6 +155,7 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> types.DataFrameSummary:
         index_oldest=index_oldest,
         index_newest=index_newest,
         missing_values=missing_values,
+        memory_usage_bytes=memory_usage_bytes,
     )
 
 

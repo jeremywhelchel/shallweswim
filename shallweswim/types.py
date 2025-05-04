@@ -154,22 +154,26 @@ class DataFrameSummary(BaseModel):
 
     length: int = Field(..., description="Number of rows in the DataFrame.")
     width: int = Field(..., description="Number of columns in the DataFrame.")
-    column_names: List[str] = Field(
-        ..., description="List of column names in the DataFrame."
-    )
+    column_names: List[str] = Field(..., description="List of column names.")
     index_oldest: Optional[datetime.datetime] = Field(
-        None, description="Timestamp of the oldest entry in the DataFrame index."
+        None,
+        description="Oldest timestamp in the DataFrame index (timezone-naive). None if empty/non-datetime index.",
     )
     index_newest: Optional[datetime.datetime] = Field(
-        None, description="Timestamp of the newest entry in the DataFrame index."
+        None,
+        description="Newest timestamp in the DataFrame index (timezone-naive). None if empty/non-datetime index.",
     )
     missing_values: Dict[str, int] = Field(
         ...,
-        description="Dictionary mapping column names to the count of missing (NaN) values.",
+        description="Dictionary mapping column names to the count of missing values.",
     )
     index_frequency: Optional[str] = Field(
         None,
         description="Inferred frequency of the DataFrame index (e.g., 'H', 'D', 'T'). None if irregular.",
+    )
+    memory_usage_bytes: int = Field(
+        ...,
+        description="Total memory usage of the DataFrame in bytes (including index, deep=True).",
     )
 
 

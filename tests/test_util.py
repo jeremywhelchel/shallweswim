@@ -127,6 +127,7 @@ summarize_test_cases = [
             index_newest=datetime.datetime(2024, 1, 1, 12, 0),
             missing_values={"temp": 0, "humidity": 0},
             index_frequency="h",  # Hourly frequency (lowercase from pandas)
+            memory_usage_bytes=72,
         ),
         id="basic_datetime_index",
     ),
@@ -140,6 +141,7 @@ summarize_test_cases = [
             index_newest=datetime.datetime(2024, 1, 1, 12, 0),
             missing_values={"temp": 1, "humidity": 2},
             index_frequency="h",  # Hourly frequency (lowercase from pandas)
+            memory_usage_bytes=72,
         ),
         id="with_nan",
     ),
@@ -153,6 +155,7 @@ summarize_test_cases = [
             index_newest=None,
             missing_values={},
             index_frequency=None,
+            memory_usage_bytes=0,
         ),
         id="empty_dataframe",
     ),
@@ -166,6 +169,7 @@ summarize_test_cases = [
             index_newest=None,
             missing_values={},
             index_frequency=None,
+            memory_usage_bytes=0,
         ),
         id="none_input",
     ),
@@ -179,6 +183,7 @@ summarize_test_cases = [
             index_newest=None,
             missing_values={"temp": 0, "humidity": 0},
             index_frequency=None,  # Not a DatetimeIndex
+            memory_usage_bytes=180,
         ),
         id="non_datetime_index",
     ),

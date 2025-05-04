@@ -35,6 +35,14 @@ class TideCategory(enum.Enum):
     HIGH = "high"
 
 
+# Define allowed categories for current system type using an Enum
+class CurrentSystemType(enum.Enum):
+    """Type of current system (reversing tidal or unidirectional river)."""
+
+    TIDAL = "tidal"
+    RIVER = "river"
+
+
 # Derive list for Pandera compatibility
 TIDE_TYPE_CATEGORIES = [member.value for member in TideCategory]
 
@@ -63,12 +71,16 @@ class TideInfo:
 class CurrentInfo:
     """Structured information about water current prediction (internal)."""
 
-    direction: (
-        CurrentDirection  # Enum: CurrentDirection.FLOODING or CurrentDirection.EBBING
-    )
-    magnitude: float  # Current strength in knots
+    # Current direction (e.g., flooding, ebbing) or None for unidirectional systems
+    direction: Optional[CurrentDirection]
+
+    # Magnitude of the current in knots (adjusted for direction)
+    magnitude: float
     magnitude_pct: float  # Relative magnitude percentage (0.0-1.0)
     state_description: str  # Human-readable description of current state
+    timestamp: Optional[datetime.datetime] = (
+        None  # Naive datetime for which the prediction was made
+    )
 
 
 @dataclass

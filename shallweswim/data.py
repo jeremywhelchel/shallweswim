@@ -300,6 +300,8 @@ class LocationDataManager(object):
 
         # Use the factory function to create the appropriate feed
         try:
+            # Type check above ensures currents_config is CoopsCurrentsSource here
+            # REMOVED type check comment, factory handles it now.
             return feeds.create_current_feed(
                 location_config=self.config,
                 current_config=currents_config,
@@ -871,7 +873,10 @@ class LocationDataManager(object):
         )
 
     def current_prediction(self, t: Optional[datetime.datetime] = None) -> CurrentInfo:
-        """Predict current conditions for a specific time.
+        """Predict TIDAL current conditions for a specific time.
+
+        NOTE: This method is currently specific to TIDAL current systems.
+        River current predictions will require a separate implementation.
 
         Args:
             t: Time to predict current for, defaults to current time
@@ -883,6 +888,7 @@ class LocationDataManager(object):
                 - magnitude_pct: Relative magnitude percentage (0.0-1.0)
                 - state_description: Text description of current state
         """
+        # This method is only for TIDAL currents
         if not t:
             t = self.config.local_now()
 
@@ -991,8 +997,10 @@ class LocationDataManager(object):
         """Get the most recent water temperature reading.
 
         Returns:
-            A tuple containing (timestamp, temperature in °F)
-            If no data is available, returns default values
+            A tuple containing the timestamp and temperature value.
+
+        Raises:
+            ValueError: If no temperature data is available.
         """
         # Get live temperature data from the feed
         live_temps_feed = self._feeds.get("live_temps")
@@ -1001,7 +1009,7 @@ class LocationDataManager(object):
         )
 
         if live_temps_data is None:
-            return datetime.time(0), 0.0
+            raise ValueError("No live temperature data available")
 
         ((time, temp),) = live_temps_data.tail(1)["water_temp"].items()
         # Round temperature to 1 decimal place to avoid excessive precision

@@ -30,6 +30,7 @@ import pytz
 from pydantic import BaseModel, Field, ConfigDict
 
 # Local imports
+from shallweswim import types
 from shallweswim import util
 
 
@@ -163,7 +164,29 @@ class CoopsTideSource(BaseModel, frozen=True):
         return f"Tide data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.station_name or 'Unknown'})"
 
 
-class CoopsCurrentsSource(BaseModel, frozen=True):
+class CurrentsSourceConfigBase(BaseModel, abc.ABC, frozen=True):
+    """Base configuration for currents data sources.
+
+    Abstract base class for all currents data sources.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    system_type: Annotated[
+        types.CurrentSystemType,
+        Field(
+            description="Type of current system (tidal with reversals or unidirectional river)"
+        ),
+    ] = types.CurrentSystemType.TIDAL
+
+    @property
+    @abc.abstractmethod
+    def citation(self) -> str:
+        """Return an HTML snippet with source citation information."""
+        pass
+
+
+class CoopsCurrentsSource(CurrentsSourceConfigBase, frozen=True):
     """Configuration for currents data source.
 
     Defines the NOAA CO-OPS stations for fetching current predictions.
@@ -351,7 +374,7 @@ class LocationConfig(BaseModel, frozen=True):
     ] = None
 
     currents_source: Annotated[
-        Optional[CoopsCurrentsSource],
+        Optional[CurrentsSourceConfigBase],
         Field(description="Configuration for currents data source"),
     ] = None
 

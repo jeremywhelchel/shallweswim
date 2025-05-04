@@ -430,8 +430,11 @@ def register_routes(app: fastapi.FastAPI) -> None:
         # Calculate effective time with shift relative to the location's timezone
         ts = util.effective_time(cfg.timezone, shift_minutes=shift)
 
-        # Get current prediction information
-        current_info = app.state.data_managers[location].current_prediction(ts)
+        try:
+            # Get current prediction information
+            current_info = app.state.data_managers[location].current_prediction(ts)
+        except ValueError as e:
+            raise HTTPException(status_code=503, detail=str(e))
 
         # Get legacy chart information
         chart_info = app.state.data_managers[location].legacy_chart_info(ts)

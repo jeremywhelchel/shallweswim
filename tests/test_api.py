@@ -19,8 +19,8 @@ from shallweswim.data import LocationDataManager
 from shallweswim.types import (
     LocationStatus,
     FeedStatus,
-    WaterTempDataModel,
 )
+from shallweswim.dataframe_models import WaterTempDataModel
 from tests.helpers import assert_json_serializable
 import pandas as pd
 import pandera as pa

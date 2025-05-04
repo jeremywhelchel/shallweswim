@@ -34,11 +34,11 @@ from shallweswim.feeds import (
     MultiStationCurrentsFeed,
     HistoricalTempsFeed,
 )
-from shallweswim.types import (
-    DataFrameSummary,
+from shallweswim.dataframe_models import (
     WaterTempDataModel,
     CurrentDataModel,
 )
+from shallweswim.types import DataFrameSummary
 
 
 # Define a reusable simple model for test fixtures

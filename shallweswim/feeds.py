@@ -22,14 +22,12 @@ from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients import coops
 from shallweswim.clients import ndbc
 from shallweswim.clients import nwis
-from shallweswim.types import (
-    DataFrameSummary,
-    FeedStatus,
-    WaterTempDataModel,
-    TidePredictionDataModel,
-    CurrentDataModel,
-)
+from shallweswim import dataframe_models as df_models
 from shallweswim.util import utc_now, summarize_dataframe
+from shallweswim.types import (
+    FeedStatus,
+    DataFrameSummary,
+)
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
@@ -279,10 +277,7 @@ class Feed(BaseModel, abc.ABC):
 
     @abc.abstractproperty
     def data_model(self) -> Type[pa.DataFrameModel]:
-        """The Pandera data model class used to validate the fetched data.
-
-        This MUST be implemented by subclasses.
-        """
+        """The Pandera data model class used to validate the fetched data."""
         ...
 
     def _validate_frame(self, df: pd.DataFrame) -> None:
@@ -379,7 +374,7 @@ class CoopsTempFeed(TempFeed):
     @property
     def data_model(self) -> Type[pa.DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
-        return WaterTempDataModel  # type: ignore[return-value]
+        return df_models.WaterTempDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA CO-OPS API.
@@ -431,7 +426,7 @@ class NdbcTempFeed(TempFeed):
     @property
     def data_model(self) -> Type[pa.DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
-        return WaterTempDataModel  # type: ignore[return-value]
+        return df_models.WaterTempDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA NDBC API.
@@ -487,7 +482,7 @@ class NwisTempFeed(TempFeed):
     @property
     def data_model(self) -> Type[pa.DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
-        return WaterTempDataModel  # type: ignore[return-value]
+        return df_models.WaterTempDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from USGS NWIS API.
@@ -544,7 +539,7 @@ class CoopsTidesFeed(Feed):
     @property
     def data_model(self) -> Type[pa.DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
-        return TidePredictionDataModel  # type: ignore[return-value]
+        return df_models.TidePredictionDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch tide predictions from NOAA CO-OPS API.
@@ -599,7 +594,7 @@ class CoopsCurrentsFeed(Feed):
     @property
     def data_model(self) -> Type[pa.DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
-        return CurrentDataModel  # type: ignore[return-value]
+        return df_models.CurrentDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch current predictions from NOAA CO-OPS API.
@@ -698,7 +693,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
     @property
     def data_model(self) -> Type[pa.DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
-        return CurrentDataModel  # type: ignore[return-value]
+        return df_models.CurrentDataModel  # type: ignore[return-value]
 
     def _get_feeds(self) -> List[Feed]:
         """Create a CoopsCurrentsFeed for each station in the config.
@@ -860,7 +855,7 @@ class HistoricalTempsFeed(CompositeFeed):
     @property
     def data_model(self) -> Type[pa.DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
-        return WaterTempDataModel  # type: ignore[return-value]
+        return df_models.WaterTempDataModel  # type: ignore[return-value]
 
     def _get_feeds(self) -> List[Feed]:
         """Create temperature feeds for each year in the range.

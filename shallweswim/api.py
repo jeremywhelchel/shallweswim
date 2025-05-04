@@ -7,6 +7,7 @@ This module contains FastAPI route handlers for the API endpoints and data manag
 import asyncio
 import io
 import logging
+import warnings
 from typing import Dict, Optional
 
 # Third-party imports
@@ -37,6 +38,17 @@ from shallweswim.types import (
 
 
 # Data store for location data will be stored in app.state.data_managers
+
+
+# Filter the specific Pydantic serialization warning globally for production
+# Note: Tests might handle this separately (e.g., via pytest markers/config)
+warnings.filterwarnings(
+    "ignore",
+    message=r"Pydantic serializer warnings:.*",
+    category=UserWarning,
+    # Optionally target the specific module if needed, but keeping broad for now
+    # module="pydantic.type_adapter"
+)
 
 
 async def initialize_location_data(

@@ -305,7 +305,6 @@ class LocationDataManager(object):
             return feeds.create_current_feed(
                 location_config=self.config,
                 current_config=currents_config,
-                interpolate=True,  # Always interpolate for better visualization
                 expiration_interval=EXPIRATION_PERIODS["currents"],
             )
         except TypeError as e:

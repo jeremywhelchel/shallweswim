@@ -699,9 +699,6 @@ class MultiStationCurrentsFeed(CompositeFeed):
 
     config: config_lib.CoopsCurrentsSource
 
-    # Whether to interpolate between flood/slack/ebb points
-    interpolate: bool = True
-
     @property
     def data_model(self) -> Type[pa.DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
@@ -719,7 +716,6 @@ class MultiStationCurrentsFeed(CompositeFeed):
                 location_config=self.location_config,
                 current_config=self.config,
                 station=station,
-                interpolate=self.interpolate,
                 expiration_interval=self.expiration_interval,
             )
             feeds.append(feed)
@@ -854,7 +850,6 @@ def create_current_feed(
     location_config: config_lib.LocationConfig,
     current_config: config_lib.CurrentsSourceConfigBase,
     station: Optional[str] = None,
-    interpolate: bool = True,
     expiration_interval: Optional[datetime.timedelta] = None,
 ) -> Feed:
     """Create a current feed based on the configuration type.
@@ -866,7 +861,6 @@ def create_current_feed(
         location_config: Location configuration
         current_config: Currents source configuration (subclass of CurrentsSourceConfigBase)
         station: Station ID to use (optional, for multi-station CO-OPS configs)
-        interpolate: Whether to interpolate current data (default: True)
         expiration_interval: Custom expiration interval (optional)
 
     Returns:
@@ -883,7 +877,6 @@ def create_current_feed(
             return MultiStationCurrentsFeed(
                 location_config=location_config,
                 config=current_config,
-                interpolate=interpolate,
                 expiration_interval=expiration_interval,
             )
         # For single station or when a specific station is provided
@@ -892,7 +885,6 @@ def create_current_feed(
                 location_config=location_config,
                 config=current_config,
                 station=station,
-                interpolate=interpolate,
                 expiration_interval=expiration_interval,
             )
     # Add elif branches here for other types like RiverFlowSource when needed

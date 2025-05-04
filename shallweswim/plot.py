@@ -31,6 +31,7 @@ from scipy.signal import find_peaks
 
 # Local imports
 from shallweswim import config as config_lib
+from shallweswim import types
 from shallweswim import util
 
 
@@ -480,12 +481,20 @@ def create_tide_current_plot(
     start_time = location_config.local_now() - datetime.timedelta(hours=3)
     end_time = location_config.local_now() + datetime.timedelta(hours=21)
 
-    # Interpolate the tide data for smoother plots
-    tides = tides.resample("60s").interpolate("polynomial", order=2)
+    # Interpolate only the numeric 'prediction' column for a smoother plot line.
+    # Do this *before* filtering to the window to allow interpolation to use
+    # data outside the window edges for better accuracy.
+    tides_interpolated = (
+        tides[["prediction"]].resample("60s").interpolate("polynomial", order=2)
+    )
 
-    # Filter the DataFrames to only include data within our time window
+    # Filter all relevant DataFrames to the desired plot window
     tides = tides[(tides.index >= start_time) & (tides.index <= end_time)]
     currents = currents[(currents.index >= start_time) & (currents.index <= end_time)]
+    tides_interpolated_filtered = tides_interpolated[
+        (tides_interpolated.index >= start_time)
+        & (tides_interpolated.index <= end_time)
+    ]
 
     fig = create_standard_figure()
 
@@ -612,8 +621,8 @@ def create_tide_current_plot(
 
     # Plot the tide
     ax2.plot(
-        tides.index,
-        tides.prediction,
+        tides_interpolated_filtered.index,  # Use interpolated index
+        tides_interpolated_filtered.prediction,  # Use interpolated prediction values
         color=TIDE_COLOR,
         label="Tide height",
         linewidth=2,
@@ -623,7 +632,9 @@ def create_tide_current_plot(
     ax2.axhline(0, color=TIDE_COLOR, linestyle=":", alpha=0.8)
 
     # Add markers for extreme tides (smaller size)
-    extreme_tides = tides[tides.type.isin(["high", "low"])].copy()
+    extreme_tides = tides[
+        tides["type"].isin(types.TIDE_TYPE_CATEGORIES)
+    ].copy()  # Use original filtered tides DF
     ax2.scatter(
         extreme_tides.index,
         extreme_tides.prediction,
@@ -636,10 +647,13 @@ def create_tide_current_plot(
         ax2.annotate(
             f"{row.prediction:.1f}ft {row.type}",
             xy=(row.name, row.prediction),
-            xytext=(0, 8 if row.type == "high" else -15),  # Reduced offset
+            xytext=(
+                0,
+                8 if row.type == types.TideCategory.HIGH else -15,
+            ),  # Reduced offset
             textcoords="offset points",
             ha="center",
-            va="center" if row.type == "high" else "top",
+            va="center" if row.type == types.TideCategory.HIGH else "top",
             fontsize=ANNOTATION_FONT_SIZE - 2,  # Smaller font size
             fontweight="bold",
             color=TIDE_COLOR,

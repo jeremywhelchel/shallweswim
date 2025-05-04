@@ -11,6 +11,8 @@ from typing import List, Optional, Dict
 # Third-party imports
 from pydantic import BaseModel, Field, ConfigDict
 
+# Local imports
+from shallweswim.types import TideCategory
 
 #############################################################
 # API TYPES - Used for external API request/response models  #
@@ -73,7 +75,7 @@ class TemperatureInfo(BaseModel):
     )
 
 
-class ApiTideEntry(BaseModel):
+class TideEntry(BaseModel):
     """Individual tide information for API responses."""
 
     model_config = ConfigDict(extra="forbid")
@@ -82,7 +84,7 @@ class ApiTideEntry(BaseModel):
         ...,
         description="ISO 8601 formatted timestamp of the tide event (in location's local timezone)",
     )
-    type: str = Field(..., description="Type of tide ('high', 'low', or 'unknown')")
+    type: TideCategory = Field(..., description="Type of tide (Enum: TideCategory)")
     prediction: float = Field(..., description="Height of tide in feet")
 
 
@@ -91,8 +93,8 @@ class TidesInfo(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    past: List[ApiTideEntry] = Field(..., description="Recently occurred tides")
-    next: List[ApiTideEntry] = Field(..., description="Upcoming tides")
+    past: List[TideEntry] = Field(..., description="Recently occurred tides")
+    next: List[TideEntry] = Field(..., description="Upcoming tides")
 
 
 class CurrentPredictionInfo(BaseModel):

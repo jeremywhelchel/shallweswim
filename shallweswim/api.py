@@ -22,7 +22,7 @@ from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.api_types import (
-    ApiTideEntry,
+    TideEntry,
     CurrentPredictionInfo,
     CurrentsResponse,
     LegacyChartDetails,
@@ -200,7 +200,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
             # Create Pydantic model instances
             past_tides = [
-                ApiTideEntry(
+                TideEntry(
                     time=tide.time.isoformat(),
                     type=tide.type,
                     prediction=tide.prediction,
@@ -209,7 +209,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             ]
 
             next_tides = [
-                ApiTideEntry(
+                TideEntry(
                     time=tide.time.isoformat(),
                     type=tide.type,
                     prediction=tide.prediction,

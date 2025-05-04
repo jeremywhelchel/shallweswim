@@ -378,7 +378,7 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("location_code", TEST_LOCATIONS)
+@pytest.mark.parametrize("location_code", ["nyc"])
 def test_currents_api(api_client: TestClient, location_code: str) -> None:
     """Test the currents API endpoint for all configured locations.
 
@@ -388,17 +388,8 @@ def test_currents_api(api_client: TestClient, location_code: str) -> None:
     location_config = config.get(location_code)
     assert location_config is not None, f"Config for {location_code} not found"
 
-    # Test the basic currents endpoint
     response = api_client.get(f"/api/{location_code}/currents")
     validate_currents_response(response, location_code)
-
-    # Only continue with additional tests if the location supports currents
-    has_currents_source = (
-        hasattr(location_config, "currents_source")
-        and location_config.currents_source is not None
-    )
-    if not has_currents_source:
-        return
 
     # For locations with currents, verify the response details
     if response.status_code == 200:

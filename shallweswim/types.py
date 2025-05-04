@@ -9,7 +9,6 @@ two main categories:
 # Standard library imports
 import datetime
 import enum
-from dataclasses import dataclass
 from typing import List, Optional, Dict
 
 # Third-party imports
@@ -49,8 +48,7 @@ class DataSourceType(enum.Enum):
 TIDE_TYPE_CATEGORIES = [member.value for member in TideCategory]
 
 
-@dataclass
-class TideEntry:
+class TideEntry(BaseModel):
     """Information about a single tide event (internal representation)."""
 
     time: (
@@ -61,16 +59,14 @@ class TideEntry:
     # Additional fields from the NOAA API can be added as needed
 
 
-@dataclass
-class TideInfo:
+class TideInfo(BaseModel):
     """Structured information about previous and next tides (internal)."""
 
     past_tides: List[TideEntry]  # The most recent tide
     next_tides: List[TideEntry]  # The next two upcoming tides
 
 
-@dataclass
-class CurrentInfo:
+class CurrentInfo(BaseModel):
     """Structured information about the current water conditions (prediction or observation)."""
 
     # Indicates if the data is from a prediction or observation
@@ -88,8 +84,7 @@ class CurrentInfo:
     )
 
 
-@dataclass
-class LegacyChartInfo:
+class LegacyChartInfo(BaseModel):
     """Structured information about a tide chart (internal)."""
 
     hours_since_last_tide: float

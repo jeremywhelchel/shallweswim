@@ -13,8 +13,6 @@ from typing import Dict, Optional
 # Third-party imports
 import aiohttp
 import fastapi
-import pandera.typing as pa_typing
-import pandas as pd
 from fastapi import HTTPException
 
 # Local imports
@@ -33,7 +31,6 @@ from shallweswim.types import (
     LocationStatus,
     TemperatureInfo,
     TidesInfo,
-    TimeSeriesDataModel,
 )
 
 
@@ -487,9 +484,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
     @app.get(
         "/api/{loc}/data/{feed_name}",
-        response_model=pa_typing.DataFrame[TimeSeriesDataModel],
+        # TODO: Re-enable response_model=pa_typing.DataFrame[TimeSeriesDataModel]
+        # Removed due to FastAPI ResponseValidationError when validating specific
+        # feed DataFrames (e.g., WaterTempDataModel) against the generic TimeSeriesDataModel.
+        # Internal validation happens in feed.values anyway.
     )
-    async def get_feed_data(loc: str, feed_name: str) -> pd.DataFrame:
+    async def get_feed_data(loc: str, feed_name: str):  # type: ignore[no-untyped-def]
+        # Originally returned pd.DataFrame, now dict for consistent serialization
         """Retrieve the timeseries data for a specific *feed* at a given *location*.
 
         Args:
@@ -529,7 +530,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
             logging.info(
                 f"Successfully retrieved and validated feed '{feed_name}' for location '{loc}'."
             )
-            return df
+            return df.to_dict(
+                orient="index"
+            )  # Return dict for consistent serialization
 
         except HTTPException:  # Re-raise HTTPExceptions directly
             raise

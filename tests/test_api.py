@@ -16,7 +16,11 @@ from fastapi.testclient import TestClient
 from shallweswim.api import register_routes
 from shallweswim import config as config_lib
 from shallweswim.data import LocationDataManager
-from shallweswim.types import LocationStatus, FeedStatus, TimeSeriesDataModel
+from shallweswim.types import (
+    LocationStatus,
+    FeedStatus,
+    WaterTempDataModel,
+)
 from tests.helpers import assert_json_serializable
 import pandas as pd
 import pandera as pa
@@ -208,7 +212,7 @@ def test_get_feed_data_success(
 
     # Ensure the mock DataFrame is valid according to the model
     try:
-        TimeSeriesDataModel.validate(mock_df)
+        WaterTempDataModel.validate(mock_df)
     except pa.errors.SchemaError as e:
         pytest.fail(f"Mock DataFrame is invalid: {e}")
 
@@ -251,7 +255,7 @@ def test_get_feed_data_success(
         assert present_cols == set(df.columns)  # Check for exact match now
 
         # Validate the reconstructed DataFrame
-        TimeSeriesDataModel.validate(df, lazy=True)  # Use lazy for better errors
+        WaterTempDataModel.validate(df, lazy=True)  # Use lazy for better errors
 
     except (ValueError, pa.errors.SchemaError, KeyError, TypeError) as e:
         pytest.fail(f"Response data failed validation or parsing: {e}\nData: {data}")

@@ -4,11 +4,14 @@
 import asyncio
 import datetime
 from tests.helpers import assert_json_serializable
-from typing import Dict, cast, Any, List
+from typing import Dict, cast, Any, List, Type
 from unittest.mock import patch, MagicMock, AsyncMock
 
 # Third-party imports
 import pandas as pd
+import pandera as pa
+import pandera.typing as pat
+import pandera.errors
 import pytest
 import pytz
 from pydantic import BaseModel
@@ -31,7 +34,20 @@ from shallweswim.feeds import (
     MultiStationCurrentsFeed,
     HistoricalTempsFeed,
 )
-from shallweswim.types import DataFrameSummary
+from shallweswim.types import (
+    DataFrameSummary,
+    WaterTempDataModel,
+    CurrentDataModel,
+)
+
+
+# Define a reusable simple model for test fixtures
+class TestDataModel(pa.DataFrameModel):
+    """Simple Pandera model for test fixtures."""
+
+    __test__ = False  # Prevent pytest from collecting this model class
+    value: pat.Series[int]
+    index: pat.Index[datetime.datetime] = pa.Field(nullable=False)
 
 
 @pytest.fixture
@@ -136,7 +152,7 @@ def valid_temp_dataframe() -> pd.DataFrame:
 
 @pytest.fixture
 def mock_clients() -> Dict[str, BaseApiClient]:
-    """Provides a mock dictionary of API clients."""
+    """Provides a mock dictionary of specific API clients."""
     return {
         "coops": MagicMock(spec=CoopsApi),
         "ndbc": MagicMock(spec=NdbcApi),
@@ -146,7 +162,7 @@ def mock_clients() -> Dict[str, BaseApiClient]:
 
 @pytest.fixture
 def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
-    """Create a concrete implementation of the abstract Feed class."""
+    """Create a concrete implementation of the abstract Feed class with a simple model."""
 
     class TestConfig:
         """Test configuration class for ConcreteFeed."""
@@ -164,6 +180,11 @@ def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
                 freq="h",
             )
             return pd.DataFrame({"value": range(len(index))}, index=index)
+
+        @property
+        def data_model(self) -> Type[pa.DataFrameModel]:
+            """Return the Pandera model associated with this test feed."""
+            return TestDataModel
 
         @property
         def values(self) -> pd.DataFrame:
@@ -190,6 +211,11 @@ def simple_composite_feed(location_config: config_lib.LocationConfig) -> Composi
     class SimpleCompositeFeed(CompositeFeed):
         # Configuration for the feed
         config: TestConfig = TestConfig()
+
+        @property
+        def data_model(self) -> Type[pa.DataFrameModel]:
+            """Return the Pandera model for combined data (using test model here)."""
+            return TestDataModel
 
         def _get_feeds(self) -> List[Feed]:
             """Get test feeds - this will be mocked in tests."""
@@ -344,12 +370,14 @@ class TestFeedBase:
             assert concrete_feed._data is not None
             assert concrete_feed._fetch_timestamp is not None
 
-    def test_validate_frame_with_valid_dataframe(
-        self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
-    ) -> None:
+    def test_validate_frame_with_valid_dataframe(self, concrete_feed: Feed) -> None:
         """Test that _validate_frame accepts a valid DataFrame."""
-        # This should not raise an exception
-        concrete_feed._validate_frame(valid_temp_dataframe)
+        index = pd.date_range(start="2023-01-01", periods=3, freq="h")
+        valid_df = pd.DataFrame({"value": [1, 2, 3]}, index=index)
+        try:
+            concrete_feed._validate_frame(valid_df)
+        except pandera.errors.SchemaError as e:
+            pytest.fail(f"_validate_frame raised SchemaError unexpectedly: {e}")
 
     def test_validate_frame_with_none_dataframe(self, concrete_feed: Feed) -> None:
         """Test that _validate_frame rejects a None DataFrame."""
@@ -357,29 +385,29 @@ class TestFeedBase:
             concrete_feed._validate_frame(None)
 
     def test_validate_frame_with_empty_dataframe(self, concrete_feed: Feed) -> None:
-        """Test that _validate_frame rejects an empty DataFrame."""
-        with pytest.raises(ValueError, match="Received empty dataframe"):
+        """Test that _validate_frame fails validation for an empty DataFrame."""
+        # Pandera validation fails because the empty frame lacks expected columns.
+        with pytest.raises(pandera.errors.SchemaErrors):
             concrete_feed._validate_frame(pd.DataFrame())
 
     def test_validate_frame_with_non_datetime_index(self, concrete_feed: Feed) -> None:
         """Test that _validate_frame rejects a DataFrame with a non-DatetimeIndex."""
-        df = pd.DataFrame({"value": [1, 2, 3]})
-        with pytest.raises(ValueError, match="DataFrame index is not a DatetimeIndex"):
+        df = pd.DataFrame({"value": [1, 2]}, index=[0, 1])
+        # TestDataModel expects datetime index, so this should fail
+        with pytest.raises(pandera.errors.SchemaErrors):
             concrete_feed._validate_frame(df)
 
     def test_validate_frame_with_timezone_aware_index(
         self, concrete_feed: Feed
     ) -> None:
         """Test that _validate_frame rejects a DataFrame with a timezone-aware index."""
-        # Create a DataFrame with timezone-aware index
+        # Create a timezone-aware index
         index = pd.date_range(
-            start=datetime.datetime(2025, 4, 22, 0, 0, 0, tzinfo=datetime.timezone.utc),
-            end=datetime.datetime(2025, 4, 22, 23, 0, 0, tzinfo=datetime.timezone.utc),
-            freq="h",
+            start=datetime.datetime(2025, 4, 22, 0, 0, 0), periods=3, freq="h", tz="UTC"
         )
-        df = pd.DataFrame({"value": range(len(index))}, index=index)
-
-        with pytest.raises(ValueError, match="DataFrame index contains timezone info"):
+        df = pd.DataFrame({"value": [1, 2, 3]}, index=index)
+        # TestDataModel expects naive datetime index, so this should fail
+        with pytest.raises(pandera.errors.SchemaErrors):
             concrete_feed._validate_frame(df)
 
     @pytest.mark.asyncio
@@ -1015,6 +1043,10 @@ class TestCompositeFeed:
 
         # Create test feeds that return the valid_temp_dataframe
         class TestFeed(Feed):
+            @property
+            def data_model(self) -> Type[pa.DataFrameModel]:
+                return TestDataModel
+
             async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 return valid_temp_dataframe
 
@@ -1178,11 +1210,19 @@ class TestMultiStationCurrentsFeed:
 
         # Create a test feed that raises an exception
         class ErrorFeed(Feed):
+            @property
+            def data_model(self) -> Type[pa.DataFrameModel]:
+                return CurrentDataModel  # type: ignore[return-value]
+
             async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 raise ValueError("Test station error")
 
         # Create a test feed that returns valid data
         class TestFeed(Feed):
+            @property
+            def data_model(self) -> Type[pa.DataFrameModel]:
+                return CurrentDataModel  # type: ignore[return-value]
+
             async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 return valid_currents_dataframe
 
@@ -1323,11 +1363,19 @@ class TestHistoricalTempsFeed:
 
         # Create a test feed that raises an exception
         class ErrorFeed(Feed):
+            @property
+            def data_model(self) -> Type[pa.DataFrameModel]:
+                return WaterTempDataModel  # type: ignore[return-value]
+
             async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 raise ValueError("Test year error")
 
         # Create a test feed that returns valid data
         class TestFeed(Feed):
+            @property
+            def data_model(self) -> Type[pa.DataFrameModel]:
+                return WaterTempDataModel  # type: ignore[return-value]
+
             async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
                 return valid_temp_dataframe
 

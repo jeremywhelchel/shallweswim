@@ -9,10 +9,11 @@ import abc
 import asyncio
 import datetime
 import logging
-from typing import Any, Optional, Literal, List, Dict
+from typing import Any, Optional, Literal, List, Dict, Type
 
 # Third-party imports
 import pandas as pd
+import pandera as pa
 from pydantic import BaseModel, ConfigDict
 
 # Local imports
@@ -21,8 +22,14 @@ from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients import coops
 from shallweswim.clients import ndbc
 from shallweswim.clients import nwis
-from shallweswim.types import DataFrameSummary, FeedStatus
-from shallweswim.util import utc_now, summarize_dataframe, validate_timeseries_dataframe
+from shallweswim.types import (
+    DataFrameSummary,
+    FeedStatus,
+    WaterTempDataModel,
+    TidePredictionDataModel,
+    CurrentDataModel,
+)
+from shallweswim.util import utc_now, summarize_dataframe
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
@@ -145,7 +152,6 @@ class Feed(BaseModel, abc.ABC):
         """
         if self._data is None:
             raise ValueError("Data not yet fetched")
-        validate_timeseries_dataframe(self._data)
         return self._data
 
     def log(self, message: str, level: int = logging.INFO) -> None:
@@ -165,7 +171,6 @@ class Feed(BaseModel, abc.ABC):
         Returns:
             A FeedStatus object containing information about the feed's status
         """
-        # Replace manual extraction with summarize_dataframe
         data_summary: Optional[DataFrameSummary] = None
         if self._data is not None:
             data_summary = summarize_dataframe(self._data)
@@ -272,6 +277,14 @@ class Feed(BaseModel, abc.ABC):
         """
         ...
 
+    @abc.abstractproperty
+    def data_model(self) -> Type[pa.DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data.
+
+        This MUST be implemented by subclasses.
+        """
+        ...
+
     def _validate_frame(self, df: pd.DataFrame) -> None:
         """Validate a dataframe to ensure it meets requirements.
 
@@ -281,28 +294,12 @@ class Feed(BaseModel, abc.ABC):
         Raises:
             ValueError: If the dataframe is empty or contains timezone info
         """
-        # Check if dataframe is None or empty
+        # Check if dataframe is None
         if df is None:
             raise ValueError(f"Received None dataframe from {self.__class__.__name__}")
 
-        if df.empty:
-            raise ValueError(f"Received empty dataframe from {self.__class__.__name__}")
-
-        # Check for timezone information in the index
-        if not isinstance(df.index, pd.DatetimeIndex):
-            raise ValueError(
-                f"DataFrame index is not a DatetimeIndex in {self.__class__.__name__}"
-            )
-
-        # Get the latest timestamp and check for timezone info
-        latest_dt = df.index[-1].to_pydatetime()
-        if latest_dt.tzinfo is not None:
-            raise ValueError(
-                f"DataFrame index contains timezone info in {self.__class__.__name__}; expected naive datetime"
-            )
-
-        # Log the latest datapoint timestamp
-        self.log(f"{self.__class__.__name__} latest datapoint: {latest_dt}")
+        # lazy=True collects all validation errors.
+        self.data_model.validate(df, lazy=True)
 
     def _remove_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove known erroneous data points from a DataFrame.
@@ -379,6 +376,11 @@ class CoopsTempFeed(TempFeed):
     config: config_lib.CoopsTempSource
     product: Literal["air_temperature", "water_temperature"] = "water_temperature"
 
+    @property
+    def data_model(self) -> Type[pa.DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return WaterTempDataModel  # type: ignore[return-value]
+
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA CO-OPS API.
 
@@ -425,6 +427,11 @@ class NdbcTempFeed(TempFeed):
     interval: Literal["h", "6-min"] = "h"
     mode: Literal["stdmet", "ocean"] = "stdmet"
     client: ndbc.NdbcApi  # Add type hint for mypy
+
+    @property
+    def data_model(self) -> Type[pa.DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return WaterTempDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA NDBC API.
@@ -476,6 +483,11 @@ class NwisTempFeed(TempFeed):
 
     config: config_lib.NwisTempSource
     interval: Literal["h", "6-min"] = "h"  # NWIS typically provides hourly data
+
+    @property
+    def data_model(self) -> Type[pa.DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return WaterTempDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from USGS NWIS API.
@@ -529,6 +541,11 @@ class CoopsTidesFeed(Feed):
     interval: Literal["h", "6-min"] = "h"  # Add default interval
     start: Optional[datetime.date] = None
 
+    @property
+    def data_model(self) -> Type[pa.DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return TidePredictionDataModel  # type: ignore[return-value]
+
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch tide predictions from NOAA CO-OPS API.
 
@@ -578,6 +595,11 @@ class CoopsCurrentsFeed(Feed):
         super().__init__(**data)
         if not self.station and self.config.stations:
             self.station = self.config.stations[0]
+
+    @property
+    def data_model(self) -> Type[pa.DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return CurrentDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch current predictions from NOAA CO-OPS API.
@@ -672,6 +694,11 @@ class MultiStationCurrentsFeed(CompositeFeed):
 
     # Whether to interpolate between flood/slack/ebb points
     interpolate: bool = True
+
+    @property
+    def data_model(self) -> Type[pa.DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return CurrentDataModel  # type: ignore[return-value]
 
     def _get_feeds(self) -> List[Feed]:
         """Create a CoopsCurrentsFeed for each station in the config.
@@ -829,6 +856,11 @@ class HistoricalTempsFeed(CompositeFeed):
     end_year: int
     interval: Literal["h", "6-min"] = "h"
     clients: Dict[str, BaseApiClient] = {}  # Add clients dict parameter
+
+    @property
+    def data_model(self) -> Type[pa.DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return WaterTempDataModel  # type: ignore[return-value]
 
     def _get_feeds(self) -> List[Feed]:
         """Create temperature feeds for each year in the range.

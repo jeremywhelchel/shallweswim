@@ -157,21 +157,3 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> types.DataFrameSummary:
         missing_values=missing_values,
         memory_usage_bytes=memory_usage_bytes,
     )
-
-
-def validate_timeseries_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Validate the structure and content of an internal timeseries DataFrame using Pandera.
-
-    Uses the TimeSeriesDataModel to perform validation checks.
-
-    Args:
-        df: The pandas DataFrame to validate.
-
-    Returns:
-        The validated DataFrame.
-
-    Raises:
-        pandera.errors.SchemaError: If any validation check fails.
-    """
-    # No need for try/except, just let Pandera raise SchemaError if validation fails
-    return types.TimeSeriesDataModel.validate(df)

@@ -222,6 +222,43 @@ class CoopsCurrentsSource(CurrentsSourceConfigBase, frozen=True):
             return f"Current data provided by NOAA CO-OPS Stations: {', '.join(station_links)}"
 
 
+class NwisCurrentSource(CurrentsSourceConfigBase, frozen=True):
+    """USGS NWIS specific currents data source configuration.
+
+    Defines the USGS National Water Information System (NWIS) site for fetching
+    current data (velocity, direction) from rivers, lakes, etc.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    site_no: Annotated[
+        str,
+        Field(
+            pattern=r"^\d+$",  # Ensure site_no contains only digits
+            description="USGS NWIS site identifier (e.g., '01646500' for Potomac River at DC)",
+        ),
+    ]
+
+    parameter_cd: Annotated[
+        str,
+        Field(
+            pattern=r"^\d+(?:--\d+)*$",  # Allows digits, or digits--digits, etc.
+            description="USGS parameter code for current velocity/direction (e.g., '72255--612188643')",
+        ),
+    ]
+
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with USGS NWIS citation information.
+
+        Returns:
+            HTML string with citation information for USGS NWIS data
+        """
+        site_url = f"https://waterdata.usgs.gov/monitoring-location/{self.site_no}/"
+        source_name = self.name or f"USGS Site {self.site_no}"
+        return f'Currents data provided by <a href="{site_url}" target="_blank">{source_name}</a> via USGS NWIS.'
+
+
 class NdbcTempSource(TempSource, frozen=True):
     """NDBC specific temperature data source configuration.
 
@@ -545,6 +582,12 @@ _CONFIG_LIST = [
             name="Ohio River at Water Tower",
             # It appears that this source may only provide ~120 days worth of data.
             start_year=2025,
+        ),
+        currents_source=NwisCurrentSource(
+            site_no="03292494",
+            parameter_cd="72255--612188643",
+            name="Ohio River at Water Tower",
+            system_type=types.CurrentSystemType.RIVER,
         ),
         description="Louisville Kentucky open water swimming conditions",
         # TODO:

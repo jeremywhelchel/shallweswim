@@ -236,6 +236,37 @@ class NwisApi(BaseApiClient):
             raise NwisDataError(error_msg) from e
         # --- Post-processing ends ---
 
+    async def currents(
+        self,
+        site_no: str,
+        parameter_cd: str,
+        timezone: str,  # pylint: disable=unused-argument
+        location_code: str = "unknown",
+    ) -> pd.DataFrame:
+        """Fetch current velocity/direction data from USGS NWIS station.
+
+        Args:
+            site_no: USGS site number.
+            parameter_cd: USGS parameter code(s) for velocity/direction.
+            timezone: Timezone to potentially convert timestamps to.
+            location_code: Optional location code for logging.
+
+        Returns:
+            DataFrame with current data (EMPTY PLACEHOLDER).
+
+        Raises:
+            NotImplementedError: Placeholder implementation.
+        """
+        # TODO: Implement actual NWIS current data fetching
+        # - Call self.request_with_retry using self._execute_request
+        # - Need appropriate start/end dates (likely recent timespan for 'iv' service)
+        # - Process the returned DataFrame (rename columns, handle units, etc.)
+        self.log(
+            f"NWIS currents fetch called for site {site_no}, params {parameter_cd} (placeholder)",
+            location_code=location_code,
+        )
+        return pd.DataFrame()
+
     def _fix_time(self, df: pd.DataFrame, timezone: str) -> pd.DataFrame:
         """Convert timestamps to local timezone.
 

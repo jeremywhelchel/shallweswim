@@ -306,6 +306,7 @@ class LocationDataManager(object):
                 location_config=self.config,
                 current_config=currents_config,
                 expiration_interval=EXPIRATION_PERIODS["currents"],
+                clients=self.clients,
             )
         except TypeError as e:
             # Re-raise with more context about what we were trying to do

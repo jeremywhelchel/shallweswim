@@ -217,7 +217,7 @@ def simple_composite_feed(location_config: config_lib.LocationConfig) -> Composi
             """Return the Pandera model for combined data (using test model here)."""
             return TestDataModel
 
-        def _get_feeds(self) -> List[Feed]:
+        def _get_feeds(self, clients: Dict[str, BaseApiClient]) -> List[Feed]:
             """Get test feeds - this will be mocked in tests."""
             return []
 
@@ -226,7 +226,7 @@ def simple_composite_feed(location_config: config_lib.LocationConfig) -> Composi
             return pd.DataFrame()
 
         async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
-            feeds = self._get_feeds()
+            feeds = self._get_feeds(clients=clients)
             tasks = [feed._fetch(clients=clients) for feed in feeds]
             results = await asyncio.gather(*tasks)
             return self._combine_feeds(results)
@@ -1107,11 +1107,13 @@ class TestMultiStationCurrentsFeed:
     """Tests for the MultiStationCurrentsFeed class."""
 
     def test_get_feeds_creates_correct_feeds(
-        self, multi_station_currents_feed: MultiStationCurrentsFeed
+        self,
+        multi_station_currents_feed: MultiStationCurrentsFeed,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _get_feeds creates the correct number of CoopsCurrentsFeed instances."""
         # Get the feeds
-        feeds = multi_station_currents_feed._get_feeds()
+        feeds = multi_station_currents_feed._get_feeds(clients=mock_clients)
 
         # Check that we have the correct number of feeds
         assert len(feeds) == len(multi_station_currents_feed.config.stations)
@@ -1250,11 +1252,13 @@ class TestHistoricalTempsFeed:
     """Tests for the HistoricalTempsFeed class."""
 
     def test_get_feeds_creates_correct_feeds(
-        self, historical_temps_feed: HistoricalTempsFeed
+        self,
+        historical_temps_feed: HistoricalTempsFeed,
+        mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _get_feeds creates the correct number of CoopsTempFeed instances."""
         # Get the feeds
-        feeds = historical_temps_feed._get_feeds()
+        feeds = historical_temps_feed._get_feeds(clients=mock_clients)
 
         # Check that we have the correct number of feeds
         assert len(feeds) == 2

@@ -13,7 +13,7 @@ from typing import Any, Optional, Literal, List, Dict, Type
 
 # Third-party imports
 import pandas as pd
-import pandera as pa
+from pandera import DataFrameModel
 from pydantic import BaseModel, ConfigDict
 
 # Local imports
@@ -276,7 +276,7 @@ class Feed(BaseModel, abc.ABC):
         ...
 
     @abc.abstractproperty
-    def data_model(self) -> Type[pa.DataFrameModel]:
+    def data_model(self) -> Type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         ...
 
@@ -373,7 +373,7 @@ class CurrentsFeed(Feed, abc.ABC):
     config: config_lib.CurrentsSourceConfigBase
 
     @property
-    def data_model(self) -> Type[pa.DataFrameModel]:
+    def data_model(self) -> Type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         # All current feeds should conform to the CurrentDataModel
         return df_models.CurrentDataModel  # type: ignore[return-value]
@@ -389,7 +389,7 @@ class CoopsTempFeed(TempFeed):
     product: Literal["air_temperature", "water_temperature"] = "water_temperature"
 
     @property
-    def data_model(self) -> Type[pa.DataFrameModel]:
+    def data_model(self) -> Type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
@@ -441,7 +441,7 @@ class NdbcTempFeed(TempFeed):
     client: ndbc.NdbcApi  # Add type hint for mypy
 
     @property
-    def data_model(self) -> Type[pa.DataFrameModel]:
+    def data_model(self) -> Type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
@@ -497,7 +497,7 @@ class NwisTempFeed(TempFeed):
     interval: Literal["h", "6-min"] = "h"  # NWIS typically provides hourly data
 
     @property
-    def data_model(self) -> Type[pa.DataFrameModel]:
+    def data_model(self) -> Type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
@@ -554,7 +554,7 @@ class CoopsTidesFeed(Feed):
     start: Optional[datetime.date] = None
 
     @property
-    def data_model(self) -> Type[pa.DataFrameModel]:
+    def data_model(self) -> Type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.TidePredictionDataModel  # type: ignore[return-value]
 
@@ -658,7 +658,7 @@ class CompositeFeed(Feed, abc.ABC):
             Exception: If fetching fails
         """
         # Get all the underlying feeds
-        feeds = self._get_feeds()
+        feeds = self._get_feeds(clients=clients)
 
         # Fetch data from all feeds concurrently
         tasks = [feed._fetch(clients=clients) for feed in feeds]
@@ -668,7 +668,7 @@ class CompositeFeed(Feed, abc.ABC):
         return self._combine_feeds(results)
 
     @abc.abstractmethod
-    def _get_feeds(self) -> List[Feed]:
+    def _get_feeds(self, clients: Dict[str, BaseApiClient]) -> List[Feed]:
         """Get the list of feeds to combine.
 
         Returns:
@@ -700,11 +700,11 @@ class MultiStationCurrentsFeed(CompositeFeed):
     config: config_lib.CoopsCurrentsSource
 
     @property
-    def data_model(self) -> Type[pa.DataFrameModel]:
+    def data_model(self) -> Type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.CurrentDataModel  # type: ignore[return-value]
 
-    def _get_feeds(self) -> List[Feed]:
+    def _get_feeds(self, clients: Dict[str, BaseApiClient]) -> List[Feed]:
         """Create a CoopsCurrentsFeed for each station in the config.
 
         Returns:
@@ -717,6 +717,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
                 current_config=self.config,
                 station=station,
                 expiration_interval=self.expiration_interval,
+                clients=clients,
             )
             feeds.append(feed)
         return feeds
@@ -851,6 +852,7 @@ def create_current_feed(
     current_config: config_lib.CurrentsSourceConfigBase,
     station: Optional[str] = None,
     expiration_interval: Optional[datetime.timedelta] = None,
+    clients: Optional[Dict[str, BaseApiClient]] = None,  # Add clients param
 ) -> Feed:
     """Create a current feed based on the configuration type.
 
@@ -862,6 +864,7 @@ def create_current_feed(
         current_config: Currents source configuration (subclass of CurrentsSourceConfigBase)
         station: Station ID to use (optional, for multi-station CO-OPS configs)
         expiration_interval: Custom expiration interval (optional)
+        clients: Dict of clients to use for fetching data (optional)
 
     Returns:
         Configured current feed
@@ -872,6 +875,9 @@ def create_current_feed(
     """
     # --- Dispatch based on config type ---
     if isinstance(current_config, config_lib.CoopsCurrentsSource):
+        # Add check for coops client
+        if clients is None or "coops" not in clients:
+            raise ValueError("CO-OPS client required for CO-OPS current feeds")
         # For multi-station configs without a specific station, create a composite feed
         if hasattr(current_config, "stations") and not station:
             return MultiStationCurrentsFeed(
@@ -887,9 +893,14 @@ def create_current_feed(
                 station=station,
                 expiration_interval=expiration_interval,
             )
-    # Add elif branches here for other types like RiverFlowSource when needed
-    # elif isinstance(current_config, config_lib.RiverFlowSource):
-    #     raise NotImplementedError("River flow feeds are not yet implemented.")
+    elif isinstance(current_config, config_lib.NwisCurrentSource):
+        if clients is None or "nwis" not in clients:
+            raise ValueError("NWIS client required for NwisCurrentFeed")
+        return NwisCurrentFeed(
+            location_config=location_config,
+            config=current_config,
+            expiration_interval=expiration_interval,
+        )
 
     else:
         # Unsupported config type
@@ -924,6 +935,65 @@ def create_tide_feed(
     )
 
 
+class NwisCurrentFeed(CurrentsFeed):
+    """Feed for fetching current data from USGS NWIS.
+
+    Uses the NwisClient to retrieve current velocity/discharge data based on
+    site number and parameter code specified in the configuration.
+    """
+
+    config: config_lib.NwisCurrentSource
+
+    @property
+    def data_model(self) -> Type[DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return df_models.CurrentDataModel  # type: ignore[return-value]
+
+    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+        """Fetch currents data from NWIS.
+
+        Returns:
+            DataFrame with currents data
+
+        Raises:
+            Exception: If fetching fails
+        """
+        self.log("Fetching NWIS current data")
+
+        nwis_client = clients.get("nwis")
+        if not isinstance(nwis_client, nwis.NwisApi):  # Use correct class name NwisApi
+            raise TypeError("NWIS client not configured or is incorrect type")
+
+        # Check for site configuration *after* verifying client
+        if not self.config.site_no:
+            raise ValueError("NWIS site number not configured for currents feed")
+
+        # Fetch raw data using site_no and parameter_cd
+        # Call the new 'currents' method on the client
+        df = await nwis_client.currents(
+            site_no=self.config.site_no,
+            parameter_cd=self.config.parameter_cd,
+            timezone=str(
+                self.location_config.timezone
+            ),  # Use str() for timezone string
+            location_code=self.location_config.code,
+        )
+
+        # --- Placeholder for DataFrame Processing --- #
+        # TODO: Implement processing for NWIS current data:
+        # 1. Inspect the raw DataFrame columns and structure.
+        # 2. Rename columns (e.g., USGS param code -> 'velocity').
+        # 3. Handle units (NWIS often uses ft/s, may need conversion to knots).
+        # 4. Add 'direction' column if available or calculable (might not be typical for river discharge).
+        # 5. Ensure timezone is correctly handled (NWIS client should return UTC).
+        # 6. Validate against the specific Pandera data model (once defined).
+        self.log(f"Fetched {len(df)} rows of raw NWIS current data. Processing needed.")
+        # --- End Placeholder --- #
+
+        # Return raw dataframe for now
+        return df
+
+
 class HistoricalTempsFeed(CompositeFeed):
     """Feed for historical temperature data across multiple years.
 
@@ -939,11 +1009,11 @@ class HistoricalTempsFeed(CompositeFeed):
     clients: Dict[str, BaseApiClient] = {}  # Add clients dict parameter
 
     @property
-    def data_model(self) -> Type[pa.DataFrameModel]:
+    def data_model(self) -> Type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
-    def _get_feeds(self) -> List[Feed]:
+    def _get_feeds(self, clients: Dict[str, BaseApiClient]) -> List[Feed]:
         """Create temperature feeds for each year in the range.
 
         For the current year, caps the end date to today to avoid requesting future dates
@@ -981,7 +1051,7 @@ class HistoricalTempsFeed(CompositeFeed):
                 end=end_date,
                 interval="h",  # Use hourly data for historical feeds
                 expiration_interval=expiration_interval,
-                clients=self.clients,
+                clients=clients,
             )
             feeds.append(feed)
         return feeds

@@ -196,3 +196,15 @@ def test_summarize_dataframe(
     """Test summarize_dataframe with various inputs using parametrization."""
     summary = util.summarize_dataframe(df_input)
     assert summary == expected_summary
+
+
+def test_fps_to_knots() -> None:
+    """Test conversion from feet per second to knots."""
+    # Test zero
+    assert util.fps_to_knots(0.0) == pytest.approx(0.0)
+
+    # Test base conversion factor
+    assert util.fps_to_knots(1.68781) == pytest.approx(1.0)
+
+    # Test another value
+    assert util.fps_to_knots(5.0) == pytest.approx(5.0 / 1.68781)

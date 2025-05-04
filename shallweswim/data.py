@@ -295,13 +295,8 @@ class LocationDataManager(object):
             return None
 
         currents_config = self.config.currents_source
-        if not hasattr(currents_config, "stations") or not currents_config.stations:
-            return None
 
-        # Use the factory function to create the appropriate feed
         try:
-            # Type check above ensures currents_config is CoopsCurrentsSource here
-            # REMOVED type check comment, factory handles it now.
             return feeds.create_current_feed(
                 location_config=self.config,
                 current_config=currents_config,

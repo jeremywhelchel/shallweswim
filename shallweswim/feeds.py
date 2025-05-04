@@ -23,7 +23,7 @@ from shallweswim.clients import coops
 from shallweswim.clients import ndbc
 from shallweswim.clients import nwis
 from shallweswim import dataframe_models as df_models
-from shallweswim.util import utc_now, summarize_dataframe
+from shallweswim.util import utc_now, summarize_dataframe, fps_to_knots
 from shallweswim.types import (
     FeedStatus,
     DataFrameSummary,
@@ -740,7 +740,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
         if not dataframes:
             raise ValueError("No dataframes provided to combine")
 
-        # For a single dataframe, we need special handling because we need to select
+        # If there's only one dataframe, we need special handling because we need to select
         # only the velocity column, which is different from the concat+groupby approach
         if len(dataframes) == 1:
             # If there's only one dataframe, just select the velocity column
@@ -979,19 +979,27 @@ class NwisCurrentFeed(CurrentsFeed):
             location_code=self.location_config.code,
         )
 
-        # --- Placeholder for DataFrame Processing --- #
-        # TODO: Implement processing for NWIS current data:
-        # 1. Inspect the raw DataFrame columns and structure.
-        # 2. Rename columns (e.g., USGS param code -> 'velocity').
-        # 3. Handle units (NWIS often uses ft/s, may need conversion to knots).
-        # 4. Add 'direction' column if available or calculable (might not be typical for river discharge).
-        # 5. Ensure timezone is correctly handled (NWIS client should return UTC).
-        # 6. Validate against the specific Pandera data model (once defined).
-        self.log(f"Fetched {len(df)} rows of raw NWIS current data. Processing needed.")
-        # --- End Placeholder --- #
+        # --- DataFrame Processing --- #
+        if df is None or df.empty:
+            raise ValueError(
+                "NWIS client returned no current data for the requested site/parameter."
+            )
 
-        # Return raw dataframe for now
-        return df
+        # Guard clause: Check if the expected column is missing
+        if "velocity_fps" not in df.columns:
+            error_msg = f"Expected 'velocity_fps' column not found in NWIS data. Columns: {df.columns.tolist()}"
+            self.log(error_msg, level=logging.ERROR)
+            raise ValueError(error_msg)
+
+        # Convert fps to knots and assign to 'velocity' column
+        df["velocity"] = df["velocity_fps"].apply(fps_to_knots)
+        processed_df = df[["velocity"]]
+
+        self.log(
+            f"Successfully processed {len(processed_df)} rows of NWIS current data."
+        )
+        return processed_df
+        # --- End Processing --- #
 
 
 class HistoricalTempsFeed(CompositeFeed):

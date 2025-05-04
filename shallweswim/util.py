@@ -65,6 +65,12 @@ def c_to_f(temp: float) -> float:
     return (9.0 / 5.0) * temp + 32
 
 
+def fps_to_knots(speed_fps: float) -> float:
+    """Convert speed from feet per second (fps) to knots."""
+    # 1 knot = 1.68781 feet per second
+    return speed_fps / 1.68781
+
+
 def pivot_year(df: pd.DataFrame) -> pd.DataFrame:
     """Move year dimension to columns."""
     df = df.assign(year=df.index.year)

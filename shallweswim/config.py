@@ -585,7 +585,7 @@ _CONFIG_LIST = [
         ),
         currents_source=NwisCurrentSource(
             site_no="03292494",
-            parameter_cd="72255--612188643",
+            parameter_cd="72255",  # --612188643",
             name="Ohio River at Water Tower",
             system_type=types.CurrentSystemType.RIVER,
         ),

@@ -49,7 +49,9 @@ class WaterTempDataModel(TimeSeriesDataModel):
 
 
 class CurrentDataModel(TimeSeriesDataModel):
-    velocity: pa_typing.Series[float] = pa.Field(nullable=True)
+    velocity: pa_typing.Series[float] = pa.Field(
+        nullable=True, description="Velocity in knots"
+    )
 
     @pa.check("velocity", error="velocity all NaN")
     def check_velocity_not_all_nan(cls, series: pd.Series) -> bool:

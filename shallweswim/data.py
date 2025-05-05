@@ -680,6 +680,23 @@ class LocationDataManager(object):
                 # Optionally re-raise depending on desired shutdown behavior
                 # raise
 
+    def _get_feed_data(self, feed_name: str) -> pd.DataFrame:
+        """Get data from a feed and assert that it's available.
+
+        Args:
+            feed_name: The name of the feed to get data from
+
+        Returns:
+            The feed data as a pandas DataFrame
+
+        Raises:
+            AssertionError: If the feed data is not available
+        """
+        feed = self._feeds.get(feed_name)
+        data = feed.values if feed is not None else None
+        assert data is not None
+        return data
+
     def _record_to_tide_entry(self, record: dict[str, Any]) -> TideEntry:
         """Convert a record dictionary to a TideEntry object."""
         return TideEntry(
@@ -704,13 +721,7 @@ class LocationDataManager(object):
             ValueError: If no temperature data is available or the feed is not configured
         """
         # Get live temperature data from the feed
-        live_temps_feed = self._feeds.get("live_temps")
-        live_temps_data = (
-            live_temps_feed.values if live_temps_feed is not None else None
-        )
-
-        if live_temps_data is None:
-            raise ValueError("No live temperature data available")
+        live_temps_data = self._get_feed_data("live_temps")
 
         ((time, temp),) = live_temps_data.tail(1)["water_temp"].items()
         # Round temperature to 1 decimal place to avoid excessive precision
@@ -734,13 +745,7 @@ class LocationDataManager(object):
             AssertionError: If tide data feed is missing or not properly configured
         """
         # Get tides data from the feed
-        tides_feed = self._feeds.get("tides")
-        tides_data = tides_feed.values if tides_feed is not None else None
-
-        # Assert that tide data is available
-        assert (
-            tides_data is not None
-        ), "Tide data feed is missing when calling prev_next_tide"
+        tides_data = self._get_feed_data("tides")
 
         # Get current time in the location's timezone as a naive datetime and convert to pandas Timestamp for slicing
         now_ts = pd.Timestamp(self.config.local_now())
@@ -786,9 +791,7 @@ class LocationDataManager(object):
             t = self.config.local_now()
 
         # Get tides data from the feed
-        tides_feed = self._feeds.get("tides")
-        tides_data = tides_feed.values if tides_feed is not None else None
-        assert tides_data is not None, "Tide data is required for legacy chart info"
+        tides_data = self._get_feed_data("tides")
 
         # Handle the timezone compatibility for DataFrame index lookup
         # Check if the DataFrame has a timezone-naive index
@@ -853,9 +856,7 @@ class LocationDataManager(object):
         """
 
         # Get currents data from the feed
-        currents_feed = self._feeds.get("currents")
-        currents_data = currents_feed.values if currents_feed is not None else None
-        assert currents_data is not None, "Current data must be loaded first"
+        currents_data = self._get_feed_data("currents")
 
         latest_reading = currents_data.iloc[-1]
         latest_timestamp = latest_reading.name  # Assuming timestamp is in the index
@@ -898,9 +899,7 @@ class LocationDataManager(object):
             t = self.config.local_now()
 
         # Get currents data from the feed
-        currents_feed = self._feeds.get("currents")
-        currents_data = currents_feed.values if currents_feed is not None else None
-        assert currents_data is not None, "Current data must be loaded first"
+        currents_data = self._get_feed_data("currents")
 
         # Create a working copy of the current data for analysis
         df = currents_data.copy()

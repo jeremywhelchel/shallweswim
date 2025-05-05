@@ -9,6 +9,7 @@
 const debugState = {
   logs: [],
   browserInfo: {
+    // Basic browser info
     userAgent: navigator.userAgent,
     language: navigator.language,
     cookiesEnabled: navigator.cookieEnabled,
@@ -23,6 +24,10 @@ const debugState = {
   errors: [],
 };
 
+// Store original console functions
+const originalConsoleError = console.error;
+const originalConsoleLog = console.log;
+
 // Add a log entry with timestamp
 function logDebug(category, message, data = null) {
   const entry = {
@@ -32,7 +37,11 @@ function logDebug(category, message, data = null) {
     data: data ? JSON.stringify(data).substring(0, 500) : null, // Truncate large data
   };
   debugState.logs.push(entry);
-  console.log(`[DEBUG:${category}] ${message}`, data || "");
+  // Use original console.log to avoid recursion if console.log is also patched
+  originalConsoleLog.apply(console, [
+    `[DEBUG:${category}] ${message}`,
+    data || "",
+  ]);
 
   // Update UI if the debug panel is visible
   updateDebugPanel();
@@ -48,7 +57,8 @@ function logError(message, error) {
     stack: error?.stack,
   };
   debugState.errors.push(entry);
-  console.error(`[ERROR] ${message}`, error);
+  // Use original console.error to prevent recursion
+  originalConsoleError.apply(console, [`[ERROR] ${message}`, error]);
 
   // Update UI if the debug panel is visible
   updateDebugPanel();
@@ -282,7 +292,7 @@ function addDebugButton() {
 // Monkey patch the fetch API to track calls
 const originalFetch = window.fetch;
 window.fetch = function (...args) {
-  const url = args[0];
+  const url = args[0] instanceof Request ? args[0].url : args[0];
   logDebug("FETCH", `Making fetch request to: ${url}`);
 
   return originalFetch
@@ -319,7 +329,6 @@ window.fetch = function (...args) {
 };
 
 // Monkey patch console.error to catch JS errors
-const originalConsoleError = console.error;
 console.error = function (...args) {
   // Check if this is an error object
   const errorObjects = args.filter((arg) => arg instanceof Error);

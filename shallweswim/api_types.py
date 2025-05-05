@@ -106,15 +106,17 @@ class CurrentInfo(BaseModel):
         ...,
         description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
     )
-    direction: CurrentDirection = Field(
-        ..., description="Direction of current (Enum: CurrentDirection)"
+    direction: Optional[CurrentDirection] = Field(
+        None,
+        description="Direction of current (Enum: CurrentDirection, null if non-tidal)",
     )
     magnitude: float = Field(..., description="Current strength in knots")
-    magnitude_pct: float = Field(
-        ..., description="Relative magnitude percentage (0.0-1.0)"
+    magnitude_pct: Optional[float] = Field(
+        None, description="Relative magnitude percentage (0.0-1.0, null if non-tidal)"
     )
-    state_description: str = Field(
-        ..., description="Human-readable description of current state"
+    state_description: Optional[str] = Field(
+        None,
+        description="Human-readable description of current state (null if non-tidal)",
     )
     source_type: DataSourceType = Field(
         ...,

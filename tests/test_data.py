@@ -361,7 +361,9 @@ async def test_process_peaks_function() -> None:
 async def test_current_info_representation() -> None:
     """Test the representation of CurrentInfo objects."""
     # Test with flooding current
+    test_timestamp = datetime.datetime(2025, 4, 22, 15, 0, 0)
     flood_info = CurrentInfo(
+        timestamp=test_timestamp,
         source_type=DataSourceType.PREDICTION,
         direction=CurrentDirection.FLOODING,  # Use Enum member
         magnitude=1.5,
@@ -380,6 +382,7 @@ async def test_current_info_representation() -> None:
 
     # Test with ebbing current
     ebb_info = CurrentInfo(
+        timestamp=test_timestamp,
         source_type=DataSourceType.PREDICTION,
         direction=CurrentDirection.EBBING,  # Use Enum member
         magnitude=1.2,

@@ -16,7 +16,7 @@ import fastapi
 from fastapi import HTTPException
 
 # Local imports
-from shallweswim import config as config_lib, data as data_lib, plot, util
+from shallweswim import config as config_lib, data as data_lib, plot, util, types
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.nwis import NwisApi
@@ -228,16 +228,28 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Fetch Current Data (if configured)
         if cfg.currents_source:
-            current_info_internal = data_manager.get_current_flow_info()
-            if current_info_internal:
-                current_info = CurrentInfo(
-                    timestamp=current_info_internal.timestamp.isoformat(),
-                    direction=current_info_internal.direction,
-                    magnitude=current_info_internal.magnitude,
-                    magnitude_pct=current_info_internal.magnitude_pct,
-                    state_description=current_info_internal.state_description,
-                    source_type=current_info_internal.source_type,
-                )
+            # Use the source_type to determine which method to call
+            match cfg.currents_source.source_type:
+                case types.DataSourceType.PREDICTION:
+                    # For prediction sources (like NOAA CO-OPS), use predict_flow_at_time
+                    current_info_internal = data_manager.predict_flow_at_time()
+                case types.DataSourceType.OBSERVATION:
+                    # For observation sources (like USGS NWIS), use get_current_flow_info
+                    current_info_internal = data_manager.get_current_flow_info()
+                case _:
+                    # If source_type is not recognized, raise an error
+                    raise ValueError(
+                        f"Unknown current source type: {cfg.currents_source.source_type}"
+                    )
+
+            current_info = CurrentInfo(
+                timestamp=current_info_internal.timestamp.isoformat(),
+                direction=current_info_internal.direction,
+                magnitude=current_info_internal.magnitude,
+                magnitude_pct=current_info_internal.magnitude_pct,
+                state_description=current_info_internal.state_description,
+                source_type=current_info_internal.source_type,
+            )
 
         # Return structured response using Pydantic models
         return LocationConditions(

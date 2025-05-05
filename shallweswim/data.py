@@ -1006,6 +1006,7 @@ class LocationDataManager(object):
 
         # Return a structured object with current information
         return CurrentInfo(
+            timestamp=t,  # Include the timestamp parameter
             source_type=DataSourceType.PREDICTION,  # Added source type
             direction=CurrentDirection(direction_str),
             magnitude=magnitude,

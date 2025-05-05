@@ -77,6 +77,9 @@ class TideInfo:
 class CurrentInfo:
     """Structured information about the current water conditions (prediction or observation)."""
 
+    # Naive datetime for which the prediction was made or observation was recorded.
+    timestamp: datetime.datetime
+
     # Indicates if the data is from a prediction or observation
     source_type: DataSourceType
 
@@ -88,9 +91,6 @@ class CurrentInfo:
 
     magnitude_pct: Optional[float] = None
     state_description: Optional[str] = None
-    timestamp: Optional[datetime.datetime] = (
-        None  # Naive datetime for which the prediction was made
-    )
 
 
 @dataclass

@@ -270,6 +270,8 @@ def test_get_location_conditions(
     )
     # Mock the return value for get_current_flow_info method
     mock_manager.get_current_flow_info.return_value = mock_current_info
+    # Mock the return value for predict_flow_at_time method
+    mock_manager.predict_flow_at_time.return_value = mock_current_info
     # Mock the return value for get_current_tide_info method
     mock_manager.get_current_tide_info.return_value = mock_tide_info
 
@@ -345,43 +347,22 @@ def test_get_location_conditions(
 def test_get_location_conditions_missing_data(
     test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
 ) -> None:
-    """Test conditions endpoint when some data sources are missing or return errors."""
+    """Test conditions endpoint when data sources are missing or return errors.
+
+    NYC has all data sources configured, so if any source is unavailable,
+    the API should fail immediately (fail fast and loud).
+    """
     assert isinstance(test_client.app, FastAPI)  # Help mypy
     mock_manager = test_client.app.state.data_managers["nyc"]
 
-    # --- Setup: Mock specific data retrieval methods to raise errors/return None ---
-    # Mock get_current_temperature to return None, which should cause a ValueError in the API
-    mock_manager.get_current_temperature.side_effect = ValueError(
-        "No temperature data"
-    )  # Simulate missing data
-    # Example: Mock get_current_flow_info to return None
-    mock_manager.get_current_flow_info.return_value = None
-    # Example: Mock get_current_tide_info to return None (or a TideInfo with empty lists)
-    mock_manager.get_current_tide_info.return_value = sw_types.TideInfo(
-        past=[], next=[]
-    )
+    # --- Setup: Mock temperature data to raise an error ---
+    # This simulates a case where temperature data is unavailable
+    mock_manager.get_current_temperature.side_effect = ValueError("No temperature data")
 
-    # --- Call API and Assert Exception --- #
-    # Expect a ValueError because the API can't get temperature data
+    # --- Call API and Assert Exception ---
+    # Expect a ValueError because the API should fail fast when data is missing
     with pytest.raises(ValueError):
         test_client.get("/api/nyc/conditions")
-
-    # --- Optionally, verify other data sources *would* have been None/empty --- #
-    # Reset the temp mock to avoid ValueError and call again to check others
-    # Note: This makes the test slightly more complex but verifies the other None cases
-    # If this seems too complex, we can skip this part.
-    mock_manager.get_current_temperature.side_effect = None
-    mock_manager.get_current_temperature.return_value = sw_types.TemperatureReading(
-        timestamp=datetime.datetime(2025, 5, 4, 12, 0, 0), temperature=70.0
-    )  # Provide valid dummy data
-    response = test_client.get("/api/nyc/conditions")
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    LocationConditions.model_validate(data)  # Check structure
-    assert data["temperature"] is not None  # Should have data now
-    assert data["current"] is None  # Still mocked to None
-    assert data["tides"]["past"] == []  # Still mocked to empty
-    assert data["tides"]["next"] == []  # Still mocked to empty
 
 
 def test_get_feed_data_success(

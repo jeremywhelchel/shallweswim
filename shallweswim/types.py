@@ -44,6 +44,16 @@ TIDE_TYPE_CATEGORIES = [member.value for member in TideCategory]
 
 
 @dataclass
+class TemperatureReading:
+    """Structured information about a water temperature reading."""
+
+    timestamp: (
+        datetime.datetime
+    )  # Time of the reading (timezone-naive, in location's local timezone)
+    temperature: float  # Water temperature in degrees Celsius
+
+
+@dataclass
 class TideEntry:
     """Information about a single tide event (internal representation)."""
 

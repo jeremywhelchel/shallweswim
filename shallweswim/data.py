@@ -8,7 +8,7 @@ and provides the necessary data for plotting and presentation.
 import asyncio
 import datetime
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 from concurrent.futures import ProcessPoolExecutor
 
 # Third-party imports
@@ -29,6 +29,7 @@ from shallweswim.types import (
     TideCategory,
     TideEntry,
     TideInfo,
+    TemperatureReading,
     DataSourceType,
 )
 from shallweswim import api_types
@@ -687,16 +688,17 @@ class LocationDataManager(object):
             prediction=record["prediction"],
         )
 
-    def get_current_temperature(self) -> Tuple[pd.Timestamp, float]:
+    def get_current_temperature(self) -> TemperatureReading:
         """Get the most recent water temperature reading.
 
         Retrieves the latest temperature data from the configured temperature source.
         The temperature is rounded to 1 decimal place for consistency.
 
         Returns:
-            A tuple containing (timestamp, temperature_value) where:
-                - timestamp: pd.Timestamp of when the reading was taken
-                - temperature_value: float representing the water temperature in degrees Celsius
+            A TemperatureReading object containing:
+                - timestamp: datetime of when the reading was taken
+                - temperature: float representing the water temperature in degrees Celsius
+                - source: optional string identifying the data source
 
         Raises:
             ValueError: If no temperature data is available or the feed is not configured
@@ -713,7 +715,8 @@ class LocationDataManager(object):
         ((time, temp),) = live_temps_data.tail(1)["water_temp"].items()
         # Round temperature to 1 decimal place to avoid excessive precision
         rounded_temp = round(temp, 1)
-        return time, rounded_temp
+
+        return TemperatureReading(timestamp=time, temperature=rounded_temp)
 
     def get_current_tide_info(self) -> TideInfo:
         """Get the previous tide and upcoming tides relative to current time.

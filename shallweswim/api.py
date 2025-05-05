@@ -184,17 +184,15 @@ def register_routes(app: fastapi.FastAPI) -> None:
             and hasattr(cfg.temp_source, "live_enabled")
             and cfg.temp_source.live_enabled
         ):
-            # Directly attempt to get and unpack the reading. If it fails (returns None or incorrect tuple),
-            # it will raise a TypeError or ValueError, aligning with fail-fast.
-            current_time, current_temp = app.state.data_managers[
-                location
-            ].get_current_temperature()
+            # Directly attempt to get the temperature reading. If it fails (returns None),
+            # it will raise a ValueError, aligning with fail-fast.
+            temp_reading = app.state.data_managers[location].get_current_temperature()
 
             # cfg.temp_source is guaranteed to exist and have a name due to the outer check.
             # If not, it's an internal error and AttributeError is appropriate.
             temperature_info = TemperatureInfo(
-                timestamp=current_time.isoformat(),
-                water_temp=current_temp,
+                timestamp=temp_reading.timestamp.isoformat(),
+                water_temp=temp_reading.temperature,
                 units="F",
                 station_name=cfg.temp_source.name,
             )

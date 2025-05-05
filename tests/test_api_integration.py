@@ -246,8 +246,10 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
         ), "Direction is not str or None"
         if current_data.get("direction") is not None:
             # Check if it's a valid enum value if not None
+            # We need to compare string values since the API returns strings
+            valid_directions = [direction.value for direction in CurrentDirection]
             assert (
-                current_data["direction"] in CurrentDirection.__members__.values()
+                current_data["direction"] in valid_directions
             ), f"Invalid current direction: {current_data['direction']}"
         assert isinstance(
             current_data.get("magnitude_pct"), (int, float, type(None))

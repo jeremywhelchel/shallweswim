@@ -73,37 +73,45 @@ def fps_to_knots(speed_fps: float) -> float:
 
 def pivot_year(df: pd.DataFrame) -> pd.DataFrame:
     """Move year dimension to columns."""
-    df = df.assign(year=df.index.year)
+    # Access year from DatetimeIndex in a way compatible with pandas 2.x
+    assert isinstance(
+        df.index, pd.DatetimeIndex
+    ), "DataFrame index must be a DatetimeIndex"
+    df = df.assign(year=df.index.to_series().dt.year)
     df.index = pd.to_datetime(
         # Use 2020-indexing because it's a leap year
-        df.index.strftime("2020-%m-%d %H:%M:%S")
+        df.index.to_series().dt.strftime("2020-%m-%d %H:%M:%S")
     )
-    return df.set_index("year", append=True).unstack("year")
+    result = df.set_index("year", append=True).unstack("year")
+    return cast(pd.DataFrame, result)
 
 
-def latest_time_value(df: Optional[pd.DataFrame]) -> Optional[datetime.datetime]:
-    """Extract the timestamp of the most recent data point from a DataFrame.
+def latest_time_value(df: pd.DataFrame | pd.Series) -> datetime.datetime:
+    """Extract the timestamp of the most recent data point from a DataFrame or Series.
 
     Args:
-        df: DataFrame with DatetimeIndex, or None
+        df: DataFrame or Series with DatetimeIndex
 
     Returns:
-        Timezone-naive datetime object of the last index value,
-        or None if DataFrame is None
+        Timezone-naive datetime object of the last index value
 
     Raises:
-        ValueError: If the DataFrame index contains timezone information
+        ValueError: If the index contains timezone information
+        TypeError: If the index is not a DatetimeIndex
     """
-    if df is None:
-        return None
-    # Get the datetime from the DataFrame index
-    dt = df.index[-1].to_pydatetime()
+    # Check if the index is a DatetimeIndex
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise TypeError("Index must be a DatetimeIndex")
+
+    # Get the last timestamp directly from the index
+    # Use cast to tell the type checker to treat it as a datetime
+    ts = df.index[-1]  # pandas.Timestamp
+    dt = cast(datetime.datetime, ts)  # tell Pyright "treat this as datetime"
+
     # Assert that the datetime is already naive
     if dt.tzinfo is not None:
-        raise ValueError(
-            "DataFrame index contains timezone info; expected naive datetime"
-        )
-    return cast(datetime.datetime, dt)
+        raise ValueError("Index contains timezone info; expected naive datetime")
+    return dt
 
 
 def summarize_dataframe(df: Optional[pd.DataFrame]) -> api_types.DataFrameSummary:
@@ -143,12 +151,15 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> api_types.DataFrameSummar
     index_oldest: Optional[datetime.datetime] = None
     index_newest: Optional[datetime.datetime] = None
     if isinstance(df.index, pd.DatetimeIndex) and not df.index.empty:
-        # Ensure pandas Timestamps are converted to standard Python datetimes
-        # Use .to_pydatetime() which handles potential NaT values gracefully (returns None)
+        # Get min and max timestamps from the index
         min_ts = df.index.min()
         max_ts = df.index.max()
-        index_oldest = min_ts.to_pydatetime() if pd.notna(min_ts) else None
-        index_newest = max_ts.to_pydatetime() if pd.notna(max_ts) else None
+
+        # Use cast to tell the type checker to treat pandas Timestamps as datetime objects
+        # Handle NaT (Not a Time) values by checking if they're valid
+        # pd.NaT is treated as False in boolean context
+        index_oldest = cast(datetime.datetime, min_ts) if min_ts is not pd.NaT else None
+        index_newest = cast(datetime.datetime, max_ts) if max_ts is not pd.NaT else None
 
     # Calculate memory usage (deep=True for accurate object dtype size)
     memory_usage_bytes = int(df.memory_usage(deep=True).sum())

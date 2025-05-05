@@ -83,8 +83,7 @@ def test_pivot_year() -> None:
 
 def test_latest_time_value() -> None:
     """Test that latest_time_value correctly extracts the timestamp from a DataFrame."""
-    # Test with None input
-    assert util.latest_time_value(None) is None
+    # No longer testing None input as the function now requires a non-None input
 
     # Test with a DataFrame with naive datetime index
     dates = pd.date_range("2025-01-01", "2025-01-10", freq="D")
@@ -97,7 +96,7 @@ def test_latest_time_value() -> None:
     tz = datetime.timezone(datetime.timedelta(hours=-5))  # EST
     dates_tz = pd.date_range("2025-01-01", "2025-01-10", freq="D", tz=tz)
     df_tz = pd.DataFrame({"value": range(len(dates_tz))}, index=dates_tz)
-    with pytest.raises(ValueError, match="DataFrame index contains timezone info"):
+    with pytest.raises(ValueError, match="Index contains timezone info"):
         util.latest_time_value(df_tz)
 
 

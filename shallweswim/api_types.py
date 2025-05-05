@@ -97,8 +97,8 @@ class TideInfo(BaseModel):
     next: List[TideEntry] = Field(..., description="Upcoming tides")
 
 
-class CurrentPredictionInfo(BaseModel):
-    """Current prediction information for API responses."""
+class CurrentInfo(BaseModel):
+    """Current prediction/observation information for API responses."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -188,7 +188,7 @@ class CurrentsResponse(BaseModel):
         ...,
         description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
     )
-    current: CurrentPredictionInfo
+    current: CurrentInfo
     legacy_chart: LegacyChartInfo
     current_chart_filename: str = Field(
         ..., description="Filename of the current chart image"

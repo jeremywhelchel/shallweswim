@@ -23,7 +23,7 @@ from shallweswim.clients.nwis import NwisApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.api_types import (
     TideEntry,
-    CurrentPredictionInfo,
+    CurrentInfo,
     CurrentsResponse,
     LegacyChartInfo,
     LocationConditions,
@@ -451,7 +451,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         )
 
         # Format current_info data for the API response
-        current_prediction = CurrentPredictionInfo(
+        current_prediction = CurrentInfo(
             timestamp=ts.isoformat(),
             direction=current_info.direction,
             magnitude=round(current_info.magnitude, 1),

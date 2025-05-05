@@ -793,27 +793,13 @@ class LocationDataManager(object):
         # Get tides data from the feed
         tides_data = self._get_feed_data("tides")
 
-        # Handle the timezone compatibility for DataFrame index lookup
-        # Check if the DataFrame has a timezone-naive index
-        if tides_data.index.tz is None:
-            # If index is naive, we need a naive datetime for slicing
-            t_for_lookup = t.replace(tzinfo=None) if t.tzinfo is not None else t
-        else:
-            # If index has timezone info, ensure it's in the same timezone
-            t_for_lookup = t
-
-        row = tides_data.loc[tides_data.index.asof(t_for_lookup)]
+        # All times should be assumed to be naive
+        row = tides_data.loc[tides_data.index.asof(t)]
         # TODO: Break this into a function
         tide_type = row["type"]
 
-        # Ensure row.name has the same timezone awareness as t before subtraction
+        # All times should be assumed to be naive
         row_time = row.name
-        if t.tzinfo is not None and row_time.tzinfo is None:
-            # If t is timezone-aware but row_time is naive, add the same timezone to row_time
-            row_time = row_time.replace(tzinfo=t.tzinfo)
-        elif t.tzinfo is None and row_time.tzinfo is not None:
-            # If t is naive but row_time is timezone-aware, make t timezone-aware
-            t = t.replace(tzinfo=row_time.tzinfo)
 
         offset = t - row_time
         offset_hrs = offset.seconds / (60 * 60)

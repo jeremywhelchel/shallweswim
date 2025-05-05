@@ -125,7 +125,10 @@ async def test_current_prediction_at_flood_peak(
     # Check the result
     assert result.direction == CurrentDirection.FLOODING  # Use Enum member
     assert pytest.approx(result.magnitude, 0.1) == 1.5
-    assert "at its strongest" in result.state_description
+    assert (
+        result.state_description is not None
+        and "at its strongest" in result.state_description
+    )
 
 
 @pytest.mark.asyncio
@@ -190,7 +193,10 @@ async def test_current_prediction_at_ebb_peak(
     # Check the result
     assert result.direction == CurrentDirection.EBBING  # Use Enum member
     assert pytest.approx(result.magnitude, 0.1) == 1.5  # Magnitude is positive
-    assert "at its strongest" in result.state_description
+    assert (
+        result.state_description is not None
+        and "at its strongest" in result.state_description
+    )
     # Pool shutdown is handled by the process_pool fixture
 
 
@@ -205,7 +211,10 @@ async def test_current_prediction_at_slack(
 
     # Check the result
     assert result.magnitude < 0.2
-    assert "at its weakest (slack)" in result.state_description
+    assert (
+        result.state_description is not None
+        and "at its weakest (slack)" in result.state_description
+    )
 
 
 @pytest.mark.asyncio
@@ -243,7 +252,10 @@ async def test_current_prediction_strengthening() -> None:
 
         # Check the result
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
-        assert "getting stronger" in result.state_description
+        assert (
+            result.state_description is not None
+            and "getting stronger" in result.state_description
+        )
     finally:
         # Clean up the process pool
         pool.shutdown(wait=False)  # Don't wait in tests
@@ -284,7 +296,10 @@ async def test_current_prediction_weakening() -> None:
 
         # Check the result
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
-        assert "getting weaker" in result.state_description
+        assert (
+            result.state_description is not None
+            and "getting weaker" in result.state_description
+        )
     finally:
         # Clean up the process pool
         pool.shutdown(wait=False)  # Don't wait in tests
@@ -332,7 +347,7 @@ async def test_process_peaks_function() -> None:
 
         # Check if it's marked as a strong current
         # We're looking for either "at its strongest" or "getting stronger/weaker"
-        assert (
+        assert result.state_description is not None and (
             "at its strongest" in result.state_description
             or "getting stronger" in result.state_description
             or "getting weaker" in result.state_description

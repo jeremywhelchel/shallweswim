@@ -176,6 +176,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         # Initialize temperature and tides as None
         temperature_info = None
         tides_info = None
+        current_info = None
 
         # Add temperature data if the location has a temperature source with live_enabled=True
         if (
@@ -219,9 +220,25 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
             tides_info = TideInfo(past=past_tides, next=next_tides)
 
+        # Fetch Current Data (if configured)
+        if cfg.currents_source:
+            current_info_internal = app.state.data_managers[location].current_info()
+            if current_info_internal:
+                current_info = CurrentInfo(
+                    timestamp=current_info_internal.timestamp.isoformat(),
+                    direction=current_info_internal.direction,
+                    magnitude=current_info_internal.magnitude,
+                    magnitude_pct=current_info_internal.magnitude_pct,
+                    state_description=current_info_internal.state_description,
+                    source_type=current_info_internal.source_type,
+                )
+
         # Return structured response using Pydantic models
         return LocationConditions(
-            location=location_info, temperature=temperature_info, tides=tides_info
+            location=location_info,
+            temperature=temperature_info,
+            tides=tides_info,
+            current=current_info,
         )
 
     @app.get("/api/{location}/current_tide_plot")

@@ -70,13 +70,14 @@ class CurrentInfo:
     # Indicates if the data is from a prediction or observation
     source_type: DataSourceType
 
-    # Current direction (e.g., flooding, ebbing) or None for unidirectional systems
-    direction: Optional[CurrentDirection]
-
     # Magnitude of the current in knots (adjusted for direction)
     magnitude: float
-    magnitude_pct: float  # Relative magnitude percentage (0.0-1.0)
-    state_description: str  # Human-readable description of current state
+
+    # Current direction (e.g., flooding, ebbing) or None for unidirectional systems
+    direction: Optional[CurrentDirection] = None
+
+    magnitude_pct: Optional[float] = None
+    state_description: Optional[str] = None
     timestamp: Optional[datetime.datetime] = (
         None  # Naive datetime for which the prediction was made
     )

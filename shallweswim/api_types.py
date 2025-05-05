@@ -206,6 +206,7 @@ class LocationConditions(BaseModel):
     Fields are conditionally included based on the location's configuration:
     - temperature: Only included if the location has a temperature source with live_enabled=True
     - tides: Only included if the location has a tide source
+    - current: Only included if the location has a current source
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -216,4 +217,7 @@ class LocationConditions(BaseModel):
     )
     tides: Optional[TideInfo] = Field(
         None, description="Tide information (if available)"
+    )
+    current: Optional[CurrentInfo] = Field(
+        None, description="Current information (if available)"
     )

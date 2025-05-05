@@ -32,7 +32,7 @@ from shallweswim.types import (
     TIDE_TYPE_CATEGORIES,
     DataSourceType,
 )
-from shallweswim.api_types import FeedStatus, LocationStatus
+from shallweswim import api_types
 from shallweswim.util import utc_now
 
 # Constants
@@ -330,21 +330,21 @@ class LocationDataManager(object):
         return True
 
     @property
-    def status(self) -> LocationStatus:
+    def status(self) -> api_types.LocationStatus:
         """Get a Pydantic model with the status of all configured feeds.
 
         Returns:
             A LocationStatus object containing a dictionary mapping feed names
             to their FeedStatus objects.
         """
-        status_dict: Dict[str, FeedStatus] = {}
+        status_dict: Dict[str, api_types.FeedStatus] = {}
 
         # Add status for each configured feed
         for name, feed in self._feeds.items():
             if feed is not None:
                 status_dict[name] = feed.status
 
-        return LocationStatus(feeds=status_dict)
+        return api_types.LocationStatus(feeds=status_dict)
 
     def log(self, message: str, level: int = logging.INFO) -> None:
         """Log a message with standardized formatting including location code.
@@ -865,6 +865,23 @@ class LocationDataManager(object):
             last_tide_type=tide_type,
             chart_filename=filename,
             map_title=legacy_map_title,
+        )
+
+    def current_info(self) -> CurrentInfo:
+        """Fetch the latest current information if available."""
+
+        # Get currents data from the feed
+        currents_feed = self._feeds.get("currents")
+        currents_data = currents_feed.values if currents_feed is not None else None
+        assert currents_data is not None, "Current data must be loaded first"
+
+        latest_reading = currents_data.iloc[-1]
+        latest_timestamp = latest_reading.name  # Assuming timestamp is in the index
+
+        return CurrentInfo(
+            timestamp=latest_timestamp,
+            source_type=DataSourceType.OBSERVATION,
+            magnitude=latest_reading["velocity"],
         )
 
     def current_prediction(self, t: Optional[datetime.datetime] = None) -> CurrentInfo:

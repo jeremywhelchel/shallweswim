@@ -95,6 +95,9 @@ async def initialize_location_data(
         else:
             data_dict = {}
 
+    # Ensure data_dict is not None before using it
+    assert data_dict is not None, "data_dict must be a dictionary, not None"
+
     # If we have an app but no data_managers attribute yet, initialize it
     if not hasattr(app.state, "data_managers"):
         app.state.data_managers = data_dict
@@ -283,13 +286,11 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Generate the tide/current plot
         try:
-            # Get data from feeds
-            tides_feed = app.state.data_managers[location]._feeds.get("tides")
-            currents_feed = app.state.data_managers[location]._feeds.get("currents")
-
-            # Get values from feeds
-            tides_data = tides_feed.values if tides_feed is not None else None
-            currents_data = currents_feed.values if currents_feed is not None else None
+            # Get data directly from feeds - will raise AttributeError if feed is None
+            # which will be caught by the try-except block
+            data_manager = app.state.data_managers[location]
+            tides_data = data_manager._feeds.get("tides").values
+            currents_data = data_manager._feeds.get("currents").values
 
             # Offload plotting to the process pool
             pool = app.state.process_pool

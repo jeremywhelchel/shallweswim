@@ -206,26 +206,36 @@ function updatePageWithConditions(data) {
   }
 
   // Update past tide information
-  if (data.tides.past.length > 0) {
-    const pastTide = data.tides.past[data.tides.past.length - 1];
+  const tidesSection = document.getElementById("tides-section");
+  // Only process tides if the section exists AND data.tides is not null
+  if (tidesSection && data.tides) {
+    // --- Process Past Tide ---
+    if (data.tides.past && data.tides.past.length > 0) {
+      const pastTide = data.tides.past[data.tides.past.length - 1];
 
-    // Update past tide type
-    const pastTideTypeElement = document.getElementById("past-tide-type");
-    if (pastTideTypeElement) {
-      pastTideTypeElement.textContent = pastTide.type;
+      // Update past tide type
+      const pastTideTypeElement = document.getElementById("past-tide-type");
+      if (pastTideTypeElement) {
+        pastTideTypeElement.textContent = pastTide.type;
+      }
+
+      // Update past tide time
+      const pastTideTimeElement = document.getElementById("past-tide-time");
+      if (pastTideTimeElement) {
+        const formattedTime = formatDateTime(pastTide.time);
+        pastTideTimeElement.textContent = formattedTime;
+      }
+    } else {
+      // Optional: Clear past tide elements if no data
+      const pastTideTypeElement = document.getElementById("past-tide-type");
+      if (pastTideTypeElement) pastTideTypeElement.textContent = "";
+      const pastTideTimeElement = document.getElementById("past-tide-time");
+      if (pastTideTimeElement) pastTideTimeElement.textContent = "";
     }
 
-    // Update past tide time
-    const pastTideTimeElement = document.getElementById("past-tide-time");
-    if (pastTideTimeElement) {
-      pastTideTimeElement.textContent = formatDateTime(pastTide.time);
-    }
-  }
-
-  // Update next tides information
-  if (data.tides.next.length > 0) {
-    // Update first next tide
-    if (data.tides.next.length >= 1) {
+    // --- Process Next Tides ---
+    if (data.tides.next && data.tides.next.length > 0) {
+      // Update first next tide
       const nextTide0TypeElement = document.getElementById("next-tide-0-type");
       if (nextTide0TypeElement) {
         nextTide0TypeElement.textContent = data.tides.next[0].type;
@@ -233,26 +243,68 @@ function updatePageWithConditions(data) {
 
       const nextTide0TimeElement = document.getElementById("next-tide-0-time");
       if (nextTide0TimeElement) {
-        nextTide0TimeElement.textContent = formatDateTime(
-          data.tides.next[0].time,
-        );
+        const formattedTime = formatDateTime(data.tides.next[0].time);
+        nextTide0TimeElement.textContent = formattedTime;
       }
-    }
 
-    // Update second next tide
-    if (data.tides.next.length >= 2) {
+      // Update second next tide (if it exists)
       const nextTide1TypeElement = document.getElementById("next-tide-1-type");
-      if (nextTide1TypeElement) {
-        nextTide1TypeElement.textContent = data.tides.next[1].type;
-      }
-
       const nextTide1TimeElement = document.getElementById("next-tide-1-time");
-      if (nextTide1TimeElement) {
-        nextTide1TimeElement.textContent = formatDateTime(
-          data.tides.next[1].time,
-        );
+
+      if (data.tides.next.length >= 2) {
+        if (nextTide1TypeElement) {
+          nextTide1TypeElement.textContent = data.tides.next[1].type;
+        }
+        if (nextTide1TimeElement) {
+          const formattedTime = formatDateTime(data.tides.next[1].time);
+          nextTide1TimeElement.textContent = formattedTime;
+        }
+      } else {
+        // Optional: Clear second tide elements if only one next tide
+        if (nextTide1TypeElement) nextTide1TypeElement.textContent = "";
+        if (nextTide1TimeElement) nextTide1TimeElement.textContent = "";
       }
+    } else {
+      // Optional: Clear next tide elements if no data
+      const nextTide0TypeElement = document.getElementById("next-tide-0-type");
+      if (nextTide0TypeElement) nextTide0TypeElement.textContent = "";
+      const nextTide0TimeElement = document.getElementById("next-tide-0-time");
+      if (nextTide0TimeElement) nextTide0TimeElement.textContent = "";
+      const nextTide1TypeElement = document.getElementById("next-tide-1-type");
+      if (nextTide1TypeElement) nextTide1TypeElement.textContent = "";
+      const nextTide1TimeElement = document.getElementById("next-tide-1-time");
+      if (nextTide1TimeElement) nextTide1TimeElement.textContent = "";
     }
+  } else if (tidesSection) {
+    // If the section exists but data.tides is null, maybe hide it or show N/A?
+    // For now, let's just log it. The HTML conditional rendering should handle hiding.
+    console.log(
+      "Tides section found, but data.tides is null. No tide data to display.",
+    );
+  }
+
+  // --- Update Current ---
+  console.log("Attempting to update current magnitude...");
+  const currentMagnitudeElement = document.getElementById("current-magnitude");
+  console.log("Found element:", currentMagnitudeElement ? "Yes" : "No"); // Log if element is found
+
+  if (currentMagnitudeElement && data.current) {
+    console.log("Current data found in API response."); // Simplified log
+    try {
+      // Round magnitude to one decimal place
+      const magnitude = parseFloat(data.current.magnitude).toFixed(1);
+      console.log(`Calculated magnitude: ${magnitude}`); // Simplified log
+      currentMagnitudeElement.textContent = magnitude;
+      console.log("Updated element textContent."); // Confirm update
+    } catch (error) {
+      console.error(`Error processing current magnitude: ${error.message}`); // Log only error message
+      currentMagnitudeElement.textContent = "Error"; // Show error in UI
+    }
+  } else if (currentMagnitudeElement) {
+    console.warn("Current element found, but data.current is missing or null."); // Use warn
+    currentMagnitudeElement.textContent = "N/A";
+  } else {
+    console.log("Current magnitude element not found in DOM."); // Log if element not found
   }
 
   // Log the update time in console for debugging

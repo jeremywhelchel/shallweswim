@@ -51,6 +51,9 @@ h6 {
   .tides {
     font-size: 15px;
   }
+  .currents-info {
+    font-size: 15px; /* Match tide size */
+  }
 }
 
 /* Large screens */
@@ -63,6 +66,9 @@ h6 {
   }
   .tides {
     font-size: 24px;
+  }
+  .currents-info {
+    font-size: 24px; /* Match tide size */
   }
 }
 

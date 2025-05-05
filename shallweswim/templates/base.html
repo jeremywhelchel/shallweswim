@@ -62,7 +62,7 @@
       </div>
       <div class="note" id="temp-station-info">at the Battery.</div>
       {% endif %} {% if config.tide_source %}
-      <div class="tides">
+      <div class="tides" id="tides-section">
         <p>
           Last <strong id="past-tide-type">...</strong> tide was at
           <strong id="past-tide-time">loading</strong>
@@ -74,6 +74,13 @@
         <p>
           Following <strong id="next-tide-1-type">...</strong> tide is at
           <strong id="next-tide-1-time">loading</strong>
+        </p>
+      </div>
+      {% endif %} {% if config.currents_source %}
+      <div class="currents-info">
+        <p>
+          The current is estimated to be flowing at
+          <strong id="current-magnitude">Loading...</strong> knots.
         </p>
       </div>
       {% endif %}

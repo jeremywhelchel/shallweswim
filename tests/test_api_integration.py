@@ -224,9 +224,41 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
             set(all_tide_times)
         ), "Tide times are not unique"
 
-    # Get location config for additional checks
-    location_config = config.get(location_code)
-    assert location_config is not None, f"Config for {location_code} not found"
+    # === Validate current data ===
+    has_current_source = (
+        hasattr(location_config, "currents_source")
+        and location_config.currents_source is not None
+    )
+    assert "current" in data, "Missing current data key"
+    if has_current_source:
+        current_data = data["current"]
+        assert current_data is not None, "Current data should be present"
+        # Validate CurrentInfo structure
+        assert "timestamp" in current_data
+        assert "magnitude" in current_data
+        assert "source_type" in current_data
+        assert isinstance(current_data["timestamp"], str)
+        assert isinstance(current_data["magnitude"], (int, float))
+        assert isinstance(current_data["source_type"], str)
+        # Optional fields can be None or the expected type
+        assert isinstance(
+            current_data.get("direction"), (str, type(None))
+        ), "Direction is not str or None"
+        if current_data.get("direction") is not None:
+            # Check if it's a valid enum value if not None
+            assert (
+                current_data["direction"] in CurrentDirection.__members__.values()
+            ), f"Invalid current direction: {current_data['direction']}"
+        assert isinstance(
+            current_data.get("magnitude_pct"), (int, float, type(None))
+        ), "Magnitude pct is not number or None"
+        assert isinstance(
+            current_data.get("state_description"), (str, type(None))
+        ), "State description is not str or None"
+    else:
+        assert data["current"] is None, "Current data should be null when no source"
+
+    # TODO: Add validation for other fields if needed
 
 
 @pytest.mark.integration

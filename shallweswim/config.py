@@ -169,7 +169,7 @@ class CoopsTideSource(BaseSource, frozen=True):
         return f"Tide data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.name or 'Unknown'})"
 
 
-class CurrentsSourceConfigBase(BaseSource, abc.ABC, frozen=True):
+class CurrentsSource(BaseSource, abc.ABC, frozen=True):
     """Base configuration for currents data sources.
 
     Abstract base class for all currents data sources.
@@ -184,8 +184,18 @@ class CurrentsSourceConfigBase(BaseSource, abc.ABC, frozen=True):
         ),
     ] = types.CurrentSystemType.TIDAL
 
+    @property
+    @abc.abstractmethod
+    def source_type(self) -> types.DataSourceType:
+        """Return the type of data source (prediction or observation).
 
-class CoopsCurrentsSource(CurrentsSourceConfigBase, frozen=True):
+        Returns:
+            DataSourceType indicating whether this is a prediction or observation source
+        """
+        pass
+
+
+class CoopsCurrentsSource(CurrentsSource, frozen=True):
     """Configuration for currents data source.
 
     Defines the NOAA CO-OPS stations for fetching current predictions.
@@ -199,6 +209,15 @@ class CoopsCurrentsSource(CurrentsSourceConfigBase, frozen=True):
             description="Current stations for water current speed and direction (strings like 'ACT3876', unlike temp/tide stations)"
         ),
     ]
+
+    @property
+    def source_type(self) -> types.DataSourceType:
+        """Return the type of data source (prediction or observation).
+
+        Returns:
+            DataSourceType.PREDICTION as NOAA CO-OPS provides predictions
+        """
+        return types.DataSourceType.PREDICTION
 
     @property
     def citation(self) -> str:
@@ -222,7 +241,7 @@ class CoopsCurrentsSource(CurrentsSourceConfigBase, frozen=True):
             return f"Current data provided by NOAA CO-OPS Stations: {', '.join(station_links)}"
 
 
-class NwisCurrentSource(CurrentsSourceConfigBase, frozen=True):
+class NwisCurrentSource(CurrentsSource, frozen=True):
     """USGS NWIS specific currents data source configuration.
 
     Defines the USGS National Water Information System (NWIS) site for fetching
@@ -230,6 +249,15 @@ class NwisCurrentSource(CurrentsSourceConfigBase, frozen=True):
     """
 
     model_config = ConfigDict(extra="forbid")
+
+    @property
+    def source_type(self) -> types.DataSourceType:
+        """Return the type of data source (prediction or observation).
+
+        Returns:
+            DataSourceType.OBSERVATION as USGS NWIS provides real-time observations
+        """
+        return types.DataSourceType.OBSERVATION
 
     site_no: Annotated[
         str,
@@ -410,7 +438,7 @@ class LocationConfig(BaseModel, frozen=True):
     ] = None
 
     currents_source: Annotated[
-        Optional[CurrentsSourceConfigBase],
+        Optional[CurrentsSource],
         Field(description="Configuration for currents data source"),
     ] = None
 

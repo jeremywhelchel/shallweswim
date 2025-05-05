@@ -367,7 +367,7 @@ class CurrentsFeed(Feed, abc.ABC):
     """
 
     # Configuration specific to currents sources
-    config: config_lib.CurrentsSourceConfigBase
+    config: config_lib.CurrentsSource
 
     @property
     def data_model(self) -> Type[DataFrameModel]:
@@ -846,7 +846,7 @@ def create_temp_feed(
 
 def create_current_feed(
     location_config: config_lib.LocationConfig,
-    current_config: config_lib.CurrentsSourceConfigBase,
+    current_config: config_lib.CurrentsSource,
     station: Optional[str] = None,
     expiration_interval: Optional[datetime.timedelta] = None,
     clients: Optional[Dict[str, BaseApiClient]] = None,  # Add clients param
@@ -854,11 +854,11 @@ def create_current_feed(
     """Create a current feed based on the configuration type.
 
     This factory function creates the appropriate current feed based on the
-    type of the current source configuration provided.
+    configuration type, handling the specific initialization requirements for each.
 
     Args:
         location_config: Location configuration
-        current_config: Currents source configuration (subclass of CurrentsSourceConfigBase)
+        current_config: Currents source configuration (subclass of CurrentsSource)
         station: Station ID to use (optional, for multi-station CO-OPS configs)
         expiration_interval: Custom expiration interval (optional)
         clients: Dict of clients to use for fetching data (optional)

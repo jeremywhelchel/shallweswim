@@ -73,6 +73,9 @@ output-format = "colorized"
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "module"
 
+[tool.basedpyright]
+pythonVersion = "3.12"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

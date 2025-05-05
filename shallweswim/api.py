@@ -184,23 +184,20 @@ def register_routes(app: fastapi.FastAPI) -> None:
             and hasattr(cfg.temp_source, "live_enabled")
             and cfg.temp_source.live_enabled
         ):
-            temp_reading = app.state.data_managers[location].live_temp_reading()
-            if temp_reading is not None:
-                current_time, current_temp = temp_reading
+            # Directly attempt to get and unpack the reading. If it fails (returns None or incorrect tuple),
+            # it will raise a TypeError or ValueError, aligning with fail-fast.
+            current_time, current_temp = app.state.data_managers[
+                location
+            ].live_temp_reading()
 
-                if current_time is not None and current_temp is not None:
-                    # Ensure temp_source exists and has a name before accessing
-                    station_name = (
-                        cfg.temp_source.name if cfg.temp_source else "Unknown Station"
-                    )
-                    temperature_info = TemperatureInfo(
-                        timestamp=current_time.isoformat(),
-                        water_temp=current_temp,
-                        units="F",
-                        station_name=station_name,
-                    )
-                else:
-                    logging.warning(f"[{location}] Live temp reading returned None.")
+            # cfg.temp_source is guaranteed to exist and have a name due to the outer check.
+            # If not, it's an internal error and AttributeError is appropriate.
+            temperature_info = TemperatureInfo(
+                timestamp=current_time.isoformat(),
+                water_temp=current_temp,
+                units="F",
+                station_name=cfg.temp_source.name,
+            )
 
         # Add tide data only if the location has a tide source
         if cfg.tide_source:

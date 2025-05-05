@@ -687,16 +687,48 @@ class LocationDataManager(object):
             prediction=record["prediction"],
         )
 
-    def prev_next_tide(self) -> TideInfo:
-        """Return the previous tide and next two tides.
+    def get_current_temperature(self) -> Tuple[pd.Timestamp, float]:
+        """Get the most recent water temperature reading.
+
+        Retrieves the latest temperature data from the configured temperature source.
+        The temperature is rounded to 1 decimal place for consistency.
+
+        Returns:
+            A tuple containing (timestamp, temperature_value) where:
+                - timestamp: pd.Timestamp of when the reading was taken
+                - temperature_value: float representing the water temperature in degrees Celsius
+
+        Raises:
+            ValueError: If no temperature data is available or the feed is not configured
+        """
+        # Get live temperature data from the feed
+        live_temps_feed = self._feeds.get("live_temps")
+        live_temps_data = (
+            live_temps_feed.values if live_temps_feed is not None else None
+        )
+
+        if live_temps_data is None:
+            raise ValueError("No live temperature data available")
+
+        ((time, temp),) = live_temps_data.tail(1)["water_temp"].items()
+        # Round temperature to 1 decimal place to avoid excessive precision
+        rounded_temp = round(temp, 1)
+        return time, rounded_temp
+
+    def get_current_tide_info(self) -> TideInfo:
+        """Get the previous tide and upcoming tides relative to current time.
 
         Retrieves the most recent tide before current time and the next two
-        upcoming tides from the tide predictions data.
+        upcoming tides from the tide predictions data. All times are naive datetimes
+        in the location's timezone.
 
         Returns:
             A TideInfo object containing:
                 - past: List of TideEntry objects with the most recent tide information
                 - next: List of TideEntry objects with the next two upcoming tides
+
+        Raises:
+            AssertionError: If tide data feed is missing or not properly configured
         """
         # Get tides data from the feed
         tides_feed = self._feeds.get("tides")
@@ -727,20 +759,22 @@ class LocationDataManager(object):
 
         return TideInfo(past=past_tides, next=next_tides)
 
-    def legacy_chart_info(
-        self, t: Optional[datetime.datetime] = None
-    ) -> LegacyChartInfo:
-        """Generate legacy chart information based on tide data.
+    def get_chart_info(self, t: Optional[datetime.datetime] = None) -> LegacyChartInfo:
+        """Generate chart information based on tide data for the specified time.
+
+        Calculates the time since the last tide event and generates appropriate
+        chart information including filenames and titles. This supports the legacy
+        chart display system.
 
         Args:
-            t: The time to generate chart info for, defaults to current time
+            t: The time to generate chart info for, defaults to current time in location's timezone
 
         Returns:
             A LegacyChartInfo object containing:
                 - hours_since_last_tide: Number of hours since last tide
-                - last_tide_type: Type of last tide (high/low)
+                - last_tide_type: Type of last tide ("high" or "low")
                 - chart_filename: Filename for the chart image
-                - map_title: Title for the legacy map
+                - map_title: Formatted title for the map display
 
         Raises:
             AssertionError: If tide data is not available
@@ -801,8 +835,19 @@ class LocationDataManager(object):
             map_title=legacy_map_title,
         )
 
-    def current_info(self) -> CurrentInfo:
-        """Fetch the latest current information if available."""
+    def get_current_flow_info(self) -> CurrentInfo:
+        """Get the latest observed current information.
+
+        Retrieves the most recent current observation from the configured current source.
+        This returns actual observed data, not predictions.
+
+        Returns:
+            A CurrentInfo object containing the timestamp, magnitude, and source type
+            of the most recent current observation
+
+        Raises:
+            AssertionError: If current data is not available or not properly loaded
+        """
 
         # Get currents data from the feed
         currents_feed = self._feeds.get("currents")
@@ -818,21 +863,32 @@ class LocationDataManager(object):
             magnitude=latest_reading["velocity"],
         )
 
-    def current_prediction(self, t: Optional[datetime.datetime] = None) -> CurrentInfo:
-        """Predict TIDAL current conditions for a specific time.
+    def predict_flow_at_time(
+        self, t: Optional[datetime.datetime] = None
+    ) -> CurrentInfo:
+        """Predict tidal current conditions for a specific time.
+
+        Analyzes current prediction data to determine the state, direction, and magnitude
+        of the tidal current at the specified time. Includes contextual information about
+        whether the current is strengthening, weakening, or at peak/slack.
 
         NOTE: This method is currently specific to TIDAL current systems.
         River current predictions will require a separate implementation.
 
         Args:
-            t: Time to predict current for, defaults to current time
+            t: Time to predict current for, defaults to current time in location's timezone.
+               Must be a naive datetime in the location's timezone.
 
         Returns:
             A CurrentInfo object containing:
-                - direction: Direction of current ("flooding" or "ebbing")
+                - direction: Direction of current (FLOODING or EBBING)
                 - magnitude: Magnitude of current in knots
-                - magnitude_pct: Relative magnitude percentage (0.0-1.0)
-                - state_description: Text description of current state
+                - magnitude_pct: Relative magnitude percentage (0.0-1.0) compared to local peaks
+                - state_description: Text description of current state (e.g., "getting stronger", "at its weakest")
+                - source_type: Always PREDICTION for this method
+
+        Raises:
+            AssertionError: If current data is not available or input datetime has timezone info
         """
         # This method is only for TIDAL currents
         if not t:
@@ -939,29 +995,6 @@ class LocationDataManager(object):
             magnitude_pct=row["local_mag_pct"],
             state_description=msg,
         )
-
-    def live_temp_reading(self) -> Tuple[pd.Timestamp, float]:
-        """Get the most recent water temperature reading.
-
-        Returns:
-            A tuple containing the timestamp and temperature value.
-
-        Raises:
-            ValueError: If no temperature data is available.
-        """
-        # Get live temperature data from the feed
-        live_temps_feed = self._feeds.get("live_temps")
-        live_temps_data = (
-            live_temps_feed.values if live_temps_feed is not None else None
-        )
-
-        if live_temps_data is None:
-            raise ValueError("No live temperature data available")
-
-        ((time, temp),) = live_temps_data.tail(1)["water_temp"].items()
-        # Round temperature to 1 decimal place to avoid excessive precision
-        rounded_temp = round(temp, 1)
-        return time, rounded_temp
 
     def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
         """Handle exceptions from asyncio tasks to prevent them from being silently ignored.

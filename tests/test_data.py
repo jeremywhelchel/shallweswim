@@ -120,7 +120,7 @@ async def test_current_prediction_at_flood_peak(
     """Test current prediction at a flood peak."""
     # Test at 3:00 PM (15:00) which is a flood peak at 1.5 knots
     t = datetime.datetime(2025, 4, 22, 15, 0, 0)
-    result = mock_data_with_currents.current_prediction(t)
+    result = mock_data_with_currents.predict_flow_at_time(t)
 
     # Check the result
     assert result.direction == CurrentDirection.FLOODING  # Use Enum member
@@ -188,7 +188,7 @@ async def test_current_prediction_at_ebb_peak(
 
     # Test at 9:00 PM (21:00) which is an ebb peak at -1.5 knots
     t = datetime.datetime(2025, 4, 22, 21, 0, 0)
-    result = data.current_prediction(t)
+    result = data.predict_flow_at_time(t)
 
     # Check the result
     assert result.direction == CurrentDirection.EBBING  # Use Enum member
@@ -207,7 +207,7 @@ async def test_current_prediction_at_slack(
     """Test current prediction at slack water."""
     # Test at 4:00 AM (4:00) which is near zero (0.1 knots)
     t = datetime.datetime(2025, 4, 22, 4, 0, 0)
-    result = mock_data_with_currents.current_prediction(t)
+    result = mock_data_with_currents.predict_flow_at_time(t)
 
     # Check the result
     assert result.magnitude < 0.2
@@ -248,7 +248,7 @@ async def test_current_prediction_strengthening() -> None:
 
         # Test at the middle point where slope is positive
         t = datetime.datetime(2025, 4, 22, 13, 0, 0)
-        result = data.current_prediction(t)
+        result = data.predict_flow_at_time(t)
 
         # Check the result
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
@@ -292,7 +292,7 @@ async def test_current_prediction_weakening() -> None:
 
         # Test at the middle point where slope is negative
         t = datetime.datetime(2025, 4, 22, 16, 0, 0)
-        result = data.current_prediction(t)
+        result = data.predict_flow_at_time(t)
 
         # Check the result
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
@@ -339,7 +339,7 @@ async def test_process_peaks_function() -> None:
 
         # Use a time point that's exactly at the peak
         peak_time = index[1]
-        result = data.current_prediction(peak_time)
+        result = data.predict_flow_at_time(peak_time)
 
         # The peak should be detected and described correctly
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
@@ -794,7 +794,7 @@ def test_current_info_retrieval(mock_data_manager: LocationDataManager) -> None:
     mock_data_manager._feeds["currents"] = mock_currents_feed
 
     # 3. Call the method on the fixture's manager
-    result = mock_data_manager.current_info()
+    result = mock_data_manager.get_current_flow_info()
 
     # 4. Assert results (same assertions as before)
     assert isinstance(result, CurrentInfo)

@@ -188,7 +188,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             # it will raise a TypeError or ValueError, aligning with fail-fast.
             current_time, current_temp = app.state.data_managers[
                 location
-            ].live_temp_reading()
+            ].get_current_temperature()
 
             # cfg.temp_source is guaranteed to exist and have a name due to the outer check.
             # If not, it's an internal error and AttributeError is appropriate.
@@ -202,7 +202,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         # Add tide data only if the location has a tide source
         if cfg.tide_source:
             # Get tide information
-            tide_info = app.state.data_managers[location].prev_next_tide()
+            tide_info = app.state.data_managers[location].get_current_tide_info()
 
             # Create Pydantic model instances
             past_tides = [
@@ -227,7 +227,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Fetch Current Data (if configured)
         if cfg.currents_source:
-            current_info_internal = app.state.data_managers[location].current_info()
+            current_info_internal = app.state.data_managers[
+                location
+            ].get_current_flow_info()
             if current_info_internal:
                 current_info = CurrentInfo(
                     timestamp=current_info_internal.timestamp.isoformat(),
@@ -454,12 +456,12 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         try:
             # Get current prediction information
-            current_info = app.state.data_managers[location].current_prediction(ts)
+            current_info = app.state.data_managers[location].predict_flow_at_time(ts)
         except ValueError as e:
             raise HTTPException(status_code=503, detail=str(e))
 
         # Get legacy chart information
-        chart_info = app.state.data_managers[location].legacy_chart_info(ts)
+        chart_info = app.state.data_managers[location].get_chart_info(ts)
 
         # Get fwd/back shift values for navigation
         fwd = min(shift + 60, util.MAX_SHIFT_LIMIT)

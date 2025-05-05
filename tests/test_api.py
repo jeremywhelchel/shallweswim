@@ -232,7 +232,9 @@ def test_get_location_conditions(
 
     # --- 1. Define Mock Data ---
     mock_dt = datetime.datetime(2025, 5, 4, 12, 0, 0)
-    mock_ts = pd.Timestamp(mock_dt)  # Use pd.Timestamp like live_temp_reading returns
+    mock_ts = pd.Timestamp(
+        mock_dt
+    )  # Use pd.Timestamp like get_current_temperature returns
     mock_temp_value = 18.5
     # Correct mock_tide_info structure
     mock_past_tide_entry = sw_types.TideEntry(
@@ -264,12 +266,12 @@ def test_get_location_conditions(
     )
 
     # --- 2. Mock Manager Methods and Attributes ---
-    # Mock the return value for live_temp_reading method
-    mock_manager.live_temp_reading.return_value = (mock_ts, mock_temp_value)
-    # Mock the return value for current_info method
-    mock_manager.current_info.return_value = mock_current_info
-    # Mock the return value for prev_next_tide method
-    mock_manager.prev_next_tide.return_value = mock_tide_info
+    # Mock the return value for get_current_temperature method
+    mock_manager.get_current_temperature.return_value = (mock_ts, mock_temp_value)
+    # Mock the return value for get_current_flow_info method
+    mock_manager.get_current_flow_info.return_value = mock_current_info
+    # Mock the return value for get_current_tide_info method
+    mock_manager.get_current_tide_info.return_value = mock_tide_info
 
     # --- 3. Call API Endpoint ---
     response = test_client.get("/api/nyc/conditions")
@@ -348,15 +350,17 @@ def test_get_location_conditions_missing_data(
     mock_manager = test_client.app.state.data_managers["nyc"]
 
     # --- Setup: Mock specific data retrieval methods to raise errors/return None ---
-    # Mock live_temp_reading to return None, which should cause a TypeError in the API
-    mock_manager.live_temp_reading.return_value = None  # Simulate missing data
-    # Example: Mock current_info to return None
-    mock_manager.current_info.return_value = None
-    # Example: Mock prev_next_tide to return None (or a TideInfo with empty lists)
-    mock_manager.prev_next_tide.return_value = sw_types.TideInfo(past=[], next=[])
+    # Mock get_current_temperature to return None, which should cause a TypeError in the API
+    mock_manager.get_current_temperature.return_value = None  # Simulate missing data
+    # Example: Mock get_current_flow_info to return None
+    mock_manager.get_current_flow_info.return_value = None
+    # Example: Mock get_current_tide_info to return None (or a TideInfo with empty lists)
+    mock_manager.get_current_tide_info.return_value = sw_types.TideInfo(
+        past=[], next=[]
+    )
 
     # --- Call API and Assert Exception --- #
-    # Expect a TypeError because the API tries to unpack None from live_temp_reading
+    # Expect a TypeError because the API tries to unpack None from get_current_temperature
     with pytest.raises(TypeError):
         test_client.get("/api/nyc/conditions")
 
@@ -364,7 +368,7 @@ def test_get_location_conditions_missing_data(
     # Reset the temp mock to avoid TypeError and call again to check others
     # Note: This makes the test slightly more complex but verifies the other None cases
     # If this seems too complex, we can skip this part.
-    mock_manager.live_temp_reading.return_value = (
+    mock_manager.get_current_temperature.return_value = (
         datetime.datetime(2025, 5, 4, 12, 0, 0),  # Use a fixed, naive datetime
         70.0,
     )  # Provide valid dummy data

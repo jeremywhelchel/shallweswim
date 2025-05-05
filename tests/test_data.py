@@ -769,3 +769,40 @@ async def test_wait_until_ready_timeout(
 
     result = await mock_data_manager.wait_until_ready(timeout=0.1)
     assert result is False
+
+
+def test_current_info_retrieval(mock_data_manager: LocationDataManager) -> None:
+    """Test retrieving the latest current observation using the fixture."""
+    # mock_data_manager fixture handles config and basic setup.
+    # Ensure currents_source is configured in the fixture or mock it if needed.
+    # Assuming the fixture sets up a config with currents_source.
+
+    # 1. Create Mock Feed Data
+    timestamps = [
+        datetime.datetime(2025, 5, 4, 10, 0, 0),
+        datetime.datetime(2025, 5, 4, 10, 10, 0),
+    ]
+    velocities = [1.1, 1.3]  # Latest velocity
+    mock_df = pd.DataFrame({"velocity": velocities}, index=pd.DatetimeIndex(timestamps))
+
+    mock_currents_feed = MagicMock()
+    mock_currents_feed.values = mock_df
+    mock_currents_feed.is_expired = False  # Ensure feed is considered valid
+
+    # 2. Manually inject the mock feed into the fixture's manager
+    # The fixture should have already handled the _configure_currents_feed part.
+    mock_data_manager._feeds["currents"] = mock_currents_feed
+
+    # 3. Call the method on the fixture's manager
+    result = mock_data_manager.current_info()
+
+    # 4. Assert results (same assertions as before)
+    assert isinstance(result, CurrentInfo)
+    assert result.timestamp == timestamps[-1]
+    assert result.magnitude == velocities[-1]
+    assert result.source_type == DataSourceType.OBSERVATION
+
+    # 5. Assert optional fields are None for observations
+    assert result.direction is None
+    assert result.magnitude_pct is None
+    assert result.state_description is None

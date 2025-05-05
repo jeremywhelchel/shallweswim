@@ -29,7 +29,6 @@ from shallweswim.types import (
     TideCategory,
     TideEntry,
     TideInfo,
-    TIDE_TYPE_CATEGORIES,
     DataSourceType,
 )
 from shallweswim import api_types
@@ -680,6 +679,14 @@ class LocationDataManager(object):
                 # Optionally re-raise depending on desired shutdown behavior
                 # raise
 
+    def _record_to_tide_entry(self, record: dict[str, Any]) -> TideEntry:
+        """Convert a record dictionary to a TideEntry object."""
+        return TideEntry(
+            time=record["time"],
+            type=TideCategory(record["type"]),
+            prediction=record["prediction"],
+        )
+
     def prev_next_tide(self) -> TideInfo:
         """Return the previous tide and next two tides.
 
@@ -700,16 +707,13 @@ class LocationDataManager(object):
             tides_data is not None
         ), "Tide data feed is missing when calling prev_next_tide"
 
-        # Convert the DataFrame records to TideEntry objects
-        # Get current time in the location's timezone as a naive datetime
-        now = self.config.local_now()
+        # Get current time in the location's timezone as a naive datetime and convert to pandas Timestamp for slicing
+        now_ts = pd.Timestamp(self.config.local_now())
 
         # Ensure DataFrame has no timezone info for consistent comparison
         assert tides_data.index.tz is None, "Tide DataFrame should use naive datetimes"
 
         # When we reset_index, the DatetimeIndex becomes a column named 'time'
-        # Convert to pandas Timestamp for proper slicing (to satisfy type checking)
-        now_ts = pd.Timestamp(now)
         past_tide_dicts = (
             tides_data[:now_ts].tail(1).reset_index().to_dict(orient="records")
         )
@@ -717,79 +721,9 @@ class LocationDataManager(object):
             tides_data[now_ts:].head(2).reset_index().to_dict(orient="records")
         )
 
-        # Get the location's timezone for converting times
-        location_tz = self.config.timezone
-
-        # Convert DataFrame records directly to TideEntry objects with timezone conversion
-        past_tides = []
-        for record in past_tide_dicts:
-            # Get the time from the record
-            tide_time = record.get("time", utc_now())
-
-            # If it has timezone info, we need to convert to local time and remove timezone
-            # All times must be naive datetimes in their appropriate timezone
-            if tide_time.tzinfo is not None:
-                # Convert to location timezone
-                local_time = tide_time.astimezone(location_tz).replace(tzinfo=None)
-            else:
-                # Already naive, assume it's in the correct timezone
-                local_time = tide_time
-
-            # Get type string from record
-            tide_type_str = record.get("type")
-
-            # Check for None explicitly first
-            if tide_type_str is None:
-                raise AssertionError(f"Missing tide type for record: {record}")
-
-            # Assert that the (now non-None) type string is a valid category
-            assert (
-                tide_type_str in TIDE_TYPE_CATEGORIES
-            ), f"Invalid tide type '{tide_type_str}' for record: {record}"
-
-            # String is non-None and valid ('low' or 'high'), safe to create TideEntry
-            past_tides.append(
-                TideEntry(
-                    time=local_time,
-                    type=TideCategory(tide_type_str),
-                    prediction=record.get("prediction", 0.0),
-                )
-            )
-
-        next_tides = []
-        for record in next_tide_dicts:
-            # Get the time from the record
-            tide_time = record.get("time", utc_now())
-
-            # If it has timezone info, we need to convert to local time and remove timezone
-            # All times must be naive datetimes in their appropriate timezone
-            if tide_time.tzinfo is not None:
-                # Convert to location timezone
-                local_time = tide_time.astimezone(location_tz).replace(tzinfo=None)
-            else:
-                # Already naive, assume it's in the correct timezone
-                local_time = tide_time
-
-            # Get type string from record
-            tide_type_str = record.get("type")
-
-            # Check for None explicitly first
-            if tide_type_str is None:
-                raise AssertionError(f"Missing tide type for record: {record}")
-
-            # Assert that the (now non-None) type string is a valid category
-            assert (
-                tide_type_str in TIDE_TYPE_CATEGORIES
-            ), f"Invalid tide type '{tide_type_str}' for record: {record}"
-
-            # String is non-None and valid ('low' or 'high'), safe to create TideEntry
-            next_tides.append(
-                TideEntry(
-                    time=local_time,
-                    type=TideCategory(tide_type_str),
-                    prediction=record.get("prediction", 0.0),
-                )
-            )
+        # Convert DataFrame records to TideEntry objects using the helper method
+        past_tides = [self._record_to_tide_entry(record) for record in past_tide_dicts]
+        next_tides = [self._record_to_tide_entry(record) for record in next_tide_dicts]
 
         return TideInfo(past=past_tides, next=next_tides)
 

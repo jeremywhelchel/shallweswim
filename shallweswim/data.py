@@ -697,6 +697,30 @@ class LocationDataManager(object):
         assert data is not None
         return data
 
+    def _get_latest_row(self, df: pd.DataFrame) -> pd.Series:
+        """Get the latest row from a DataFrame.
+
+        Args:
+            df: DataFrame with a DatetimeIndex
+
+        Returns:
+            The latest row as a pandas Series
+        """
+        return df.iloc[-1]
+
+    def _get_row_at_time(self, df: pd.DataFrame, t: datetime.datetime) -> pd.Series:
+        """Get the row closest to the specified time.
+
+        Args:
+            df: DataFrame with a DatetimeIndex
+            t: Time to find the closest row for
+
+        Returns:
+            The row closest to the specified time as a pandas Series
+        """
+        # All times should be assumed to be naive
+        return df.loc[df.index.asof(t)]
+
     def _record_to_tide_entry(self, record: dict[str, Any]) -> TideEntry:
         """Convert a record dictionary to a TideEntry object."""
         return TideEntry(
@@ -723,7 +747,11 @@ class LocationDataManager(object):
         # Get live temperature data from the feed
         live_temps_data = self._get_feed_data("live_temps")
 
-        ((time, temp),) = live_temps_data.tail(1)["water_temp"].items()
+        # Get the latest temperature reading
+        latest_row = self._get_latest_row(live_temps_data)
+        time = latest_row.name
+        temp = latest_row["water_temp"]
+
         # Round temperature to 1 decimal place to avoid excessive precision
         rounded_temp = round(temp, 1)
 
@@ -748,18 +776,19 @@ class LocationDataManager(object):
         tides_data = self._get_feed_data("tides")
 
         # Get current time in the location's timezone as a naive datetime and convert to pandas Timestamp for slicing
-        now_ts = pd.Timestamp(self.config.local_now())
+        now = self.config.local_now()
+        now_ts = pd.Timestamp(now)
 
         # Ensure DataFrame has no timezone info for consistent comparison
         assert tides_data.index.tz is None, "Tide DataFrame should use naive datetimes"
 
-        # When we reset_index, the DatetimeIndex becomes a column named 'time'
-        past_tide_dicts = (
-            tides_data[:now_ts].tail(1).reset_index().to_dict(orient="records")
-        )
-        next_tide_dicts = (
-            tides_data[now_ts:].head(2).reset_index().to_dict(orient="records")
-        )
+        # Extract past and future tide data
+        past_tides_df = tides_data[:now_ts].tail(1)
+        next_tides_df = tides_data[now_ts:].head(2)
+
+        # Convert DataFrames to dictionaries for processing
+        past_tide_dicts = past_tides_df.reset_index().to_dict(orient="records")
+        next_tide_dicts = next_tides_df.reset_index().to_dict(orient="records")
 
         # Convert DataFrame records to TideEntry objects using the helper method
         past_tides = [self._record_to_tide_entry(record) for record in past_tide_dicts]
@@ -793,12 +822,12 @@ class LocationDataManager(object):
         # Get tides data from the feed
         tides_data = self._get_feed_data("tides")
 
-        # All times should be assumed to be naive
-        row = tides_data.loc[tides_data.index.asof(t)]
+        # Get the row closest to the specified time
+        row = self._get_row_at_time(tides_data, t)
         # TODO: Break this into a function
         tide_type = row["type"]
 
-        # All times should be assumed to be naive
+        # Get the timestamp from the row
         row_time = row.name
 
         offset = t - row_time
@@ -844,8 +873,9 @@ class LocationDataManager(object):
         # Get currents data from the feed
         currents_data = self._get_feed_data("currents")
 
-        latest_reading = currents_data.iloc[-1]
-        latest_timestamp = latest_reading.name  # Assuming timestamp is in the index
+        # Get the latest current reading
+        latest_reading = self._get_latest_row(currents_data)
+        latest_timestamp = latest_reading.name  # Timestamp is in the index
 
         return CurrentInfo(
             timestamp=latest_timestamp,
@@ -944,9 +974,8 @@ class LocationDataManager(object):
         # Ensure DataFrame has no timezone info for consistent comparison
         assert df.index.tz is None, "DataFrame should use naive datetimes"
 
-        # Convert to pandas Timestamp for proper slicing (to satisfy type checking)
-        t_ts = pd.Timestamp(t)
-        row = df[t_ts:].iloc[0]
+        # Get the row at or after the specified time
+        row = self._get_row_at_time(df, t)
 
         # Constants for determining current state based on local magnitude percentage
         STRONG_THRESHOLD = 0.85  # 85% of local peak is considered "strong"

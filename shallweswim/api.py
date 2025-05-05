@@ -173,6 +173,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
             code=location, name=cfg.name, swim_location=cfg.swim_location
         )
 
+        # Get the data manager for this location
+        data_manager = app.state.data_managers[location]
+
         # Initialize temperature and tides as None
         temperature_info = None
         tides_info = None
@@ -186,7 +189,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         ):
             # Directly attempt to get the temperature reading. If it fails (returns None),
             # it will raise a ValueError, aligning with fail-fast.
-            temp_reading = app.state.data_managers[location].get_current_temperature()
+            temp_reading = data_manager.get_current_temperature()
 
             # cfg.temp_source is guaranteed to exist and have a name due to the outer check.
             # If not, it's an internal error and AttributeError is appropriate.
@@ -200,7 +203,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         # Add tide data only if the location has a tide source
         if cfg.tide_source:
             # Get tide information
-            tide_info = app.state.data_managers[location].get_current_tide_info()
+            tide_info = data_manager.get_current_tide_info()
 
             # Create Pydantic model instances
             past_tides = [
@@ -225,9 +228,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Fetch Current Data (if configured)
         if cfg.currents_source:
-            current_info_internal = app.state.data_managers[
-                location
-            ].get_current_flow_info()
+            current_info_internal = data_manager.get_current_flow_info()
             if current_info_internal:
                 current_info = CurrentInfo(
                     timestamp=current_info_internal.timestamp.isoformat(),

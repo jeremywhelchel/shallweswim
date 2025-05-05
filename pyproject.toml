@@ -75,6 +75,11 @@ asyncio_default_fixture_loop_scope = "module"
 
 [tool.basedpyright]
 pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+
+[virtualenvs]
+in-project = true
 
 [build-system]
 requires = ["poetry-core"]

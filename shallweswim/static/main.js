@@ -284,27 +284,83 @@ function updatePageWithConditions(data) {
   }
 
   // --- Update Current ---
-  console.log("Attempting to update current magnitude...");
+  console.log("Attempting to update current information...");
   const currentMagnitudeElement = document.getElementById("current-magnitude");
-  console.log("Found element:", currentMagnitudeElement ? "Yes" : "No"); // Log if element is found
+  const currentDirectionElement = document.getElementById("current-direction");
+  const currentDirectionTextElement = document.getElementById(
+    "current-direction-text",
+  );
+  const currentStateMsgElement = document.getElementById("current-state-msg");
+  const currentStateMsgPrefix = document.getElementById(
+    "current-state-msg-prefix",
+  );
+  const currentStateMsgContainer = document.getElementById(
+    "current-state-msg-container",
+  );
 
-  if (currentMagnitudeElement && data.current) {
-    console.log("Current data found in API response."); // Simplified log
+  if (data.current) {
+    console.log("Current data found in API response.");
     try {
-      // Round magnitude to one decimal place
-      const magnitude = parseFloat(data.current.magnitude).toFixed(1);
-      console.log(`Calculated magnitude: ${magnitude}`); // Simplified log
-      currentMagnitudeElement.textContent = magnitude;
-      console.log("Updated element textContent."); // Confirm update
+      // Update magnitude
+      if (currentMagnitudeElement) {
+        // Round magnitude to one decimal place
+        const magnitude = parseFloat(data.current.magnitude).toFixed(1);
+        currentMagnitudeElement.textContent = magnitude;
+      }
+
+      // Handle tidal vs. non-tidal systems
+      if (data.current.direction) {
+        // This is a tidal system with direction (ebb/flood)
+        if (currentDirectionTextElement) {
+          currentDirectionTextElement.textContent = ""; // Remove "flowing"
+        }
+        if (currentDirectionElement) {
+          currentDirectionElement.textContent =
+            data.current.direction.toLowerCase();
+        }
+      } else {
+        // This is a non-tidal system (just flowing)
+        if (currentDirectionTextElement) {
+          currentDirectionTextElement.textContent = "flowing";
+        }
+        if (currentDirectionElement) {
+          currentDirectionElement.textContent = "";
+        }
+      }
+
+      // Update state message if available
+      if (
+        currentStateMsgElement &&
+        currentStateMsgPrefix &&
+        currentStateMsgContainer
+      ) {
+        if (data.current.state_description) {
+          currentStateMsgPrefix.textContent = " and ";
+          currentStateMsgElement.textContent = data.current.state_description;
+          currentStateMsgContainer.style.display = "";
+        } else {
+          // No state description, hide the container
+          currentStateMsgContainer.style.display = "none";
+        }
+      }
     } catch (error) {
-      console.error(`Error processing current magnitude: ${error.message}`); // Log only error message
-      currentMagnitudeElement.textContent = "Error"; // Show error in UI
+      console.error(`Error processing current data: ${error.message}`);
+      if (currentMagnitudeElement)
+        currentMagnitudeElement.textContent = "Error";
+      if (currentDirectionElement) currentDirectionElement.textContent = "";
+      if (currentDirectionTextElement)
+        currentDirectionTextElement.textContent = "flowing";
+      if (currentStateMsgContainer)
+        currentStateMsgContainer.style.display = "none";
     }
-  } else if (currentMagnitudeElement) {
-    console.warn("Current element found, but data.current is missing or null."); // Use warn
-    currentMagnitudeElement.textContent = "N/A";
   } else {
-    console.log("Current magnitude element not found in DOM."); // Log if element not found
+    console.warn("Current data is missing or null.");
+    if (currentMagnitudeElement) currentMagnitudeElement.textContent = "N/A";
+    if (currentDirectionElement) currentDirectionElement.textContent = "";
+    if (currentDirectionTextElement)
+      currentDirectionTextElement.textContent = "flowing";
+    if (currentStateMsgContainer)
+      currentStateMsgContainer.style.display = "none";
   }
 
   // Log the update time in console for debugging

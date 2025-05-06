@@ -309,12 +309,8 @@ class Feed(BaseModel, abc.ABC):
         Returns:
             DataFrame with outliers removed
         """
-        # Check if we have a feed_config attribute
-        if not hasattr(self, "feed_config"):
-            return df
-
-        # Check if feed_config has outliers attribute and it's not empty
-        if not hasattr(self.feed_config, "outliers") or not self.feed_config.outliers:
+        # Check if feed_config has outliers and they're not empty
+        if not self.feed_config.outliers:
             return df
 
         result_df = df
@@ -879,7 +875,7 @@ def create_current_feed(
         if clients is None or "coops" not in clients:
             raise ValueError("CO-OPS client required for CO-OPS current feeds")
         # For multi-station configs without a specific station, create a composite feed
-        if hasattr(current_config, "stations") and not station:
+        if current_config.stations and not station:
             return MultiStationCurrentsFeed(
                 location_config=location_config,
                 feed_config=current_config,

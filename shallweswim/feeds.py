@@ -343,7 +343,7 @@ class TempFeed(Feed, abc.ABC):
     """
 
     # Feed configuration
-    feed_config: config_lib.TempFeedConfig
+    feed_config: config_lib.TempFeedConfig  # type: ignore[assignment]
 
     # Data resolution ("h" for hourly, "6-min" for 6-minute intervals)
     interval: Literal["h", "6-min"]  # XXX 6-min is noaa specific. Make a type
@@ -370,7 +370,7 @@ class CurrentsFeed(Feed, abc.ABC):
     """
 
     # Feed configuration
-    feed_config: config_lib.CurrentsFeedConfig
+    feed_config: config_lib.CurrentsFeedConfig  # type: ignore[assignment]
 
     @property
     def data_model(self) -> Type[DataFrameModel]:
@@ -385,7 +385,7 @@ class CoopsTempFeed(TempFeed):
     Fetches temperature data from NOAA CO-OPS stations using the CO-OPS API.
     """
 
-    feed_config: config_lib.CoopsTempFeedConfig
+    feed_config: config_lib.CoopsTempFeedConfig  # type: ignore[assignment]
     product: Literal["air_temperature", "water_temperature"] = "water_temperature"
 
     @property
@@ -435,7 +435,7 @@ class NdbcTempFeed(TempFeed):
     using the ndbc module.
     """
 
-    feed_config: config_lib.NdbcTempFeedConfig
+    feed_config: config_lib.NdbcTempFeedConfig  # type: ignore[assignment]
     interval: Literal["h", "6-min"] = "h"
     mode: Literal["stdmet", "ocean"] = "stdmet"
     client: ndbc.NdbcApi  # Add type hint for mypy
@@ -493,7 +493,7 @@ class NwisTempFeed(TempFeed):
     using the nwis module.
     """
 
-    feed_config: config_lib.NwisTempFeedConfig
+    feed_config: config_lib.NwisTempFeedConfig  # type: ignore[assignment]
     interval: Literal["h", "6-min"] = "h"  # NWIS typically provides hourly data
 
     @property
@@ -549,7 +549,7 @@ class CoopsTidesFeed(Feed):
     Tide predictions include high and low tide times and heights.
     """
 
-    feed_config: config_lib.CoopsTideFeedConfig
+    feed_config: config_lib.CoopsTideFeedConfig  # type: ignore[assignment]
     interval: Literal["h", "6-min"] = "h"  # Add default interval
     start: Optional[datetime.date] = None
 
@@ -592,7 +592,7 @@ class CoopsCurrentsFeed(CurrentsFeed):
     Current predictions include velocity, direction, and type (flood/ebb/slack).
     """
 
-    feed_config: config_lib.CoopsCurrentsFeedConfig
+    feed_config: config_lib.CoopsCurrentsFeedConfig  # type: ignore[assignment]
     interval: Literal["h", "6-min"] = "h"  # Add default interval
     start: Optional[datetime.date] = None
 
@@ -697,7 +697,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
     complementary data about water conditions in the area.
     """
 
-    feed_config: config_lib.CoopsCurrentsFeedConfig
+    feed_config: config_lib.CoopsCurrentsFeedConfig  # type: ignore[assignment]
 
     @property
     def data_model(self) -> Type[DataFrameModel]:
@@ -744,7 +744,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
         # only the velocity column, which is different from the concat+groupby approach
         if len(dataframes) == 1:
             # If there's only one dataframe, just select the velocity column
-            return dataframes[0][["velocity"]]
+            return dataframes[0][["velocity"]]  # type: ignore[return-value]
 
         # Combine all dataframes, select only the velocity column, and average by timestamp
         # This exactly matches the legacy implementation: pd.concat(currents)[["velocity"]].groupby(level=0).mean()
@@ -755,7 +755,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
         # 2. Handle categorical columns like 'type' (flood/ebb/slack) by using the most common value
         # 3. Ensure the result is properly sorted by timestamp
 
-        return result_df
+        return result_df  # type: ignore[return-value]
 
 
 def create_temp_feed(
@@ -942,7 +942,7 @@ class NwisCurrentFeed(CurrentsFeed):
     site number and parameter code specified in the configuration.
     """
 
-    feed_config: config_lib.NwisCurrentFeedConfig
+    feed_config: config_lib.NwisCurrentFeedConfig  # type: ignore[assignment]
 
     @property
     def data_model(self) -> Type[DataFrameModel]:
@@ -998,7 +998,7 @@ class NwisCurrentFeed(CurrentsFeed):
         self.log(
             f"Successfully processed {len(processed_df)} rows of NWIS current data."
         )
-        return processed_df
+        return processed_df  # type: ignore[return-value]
         # --- End Processing --- #
 
 
@@ -1010,7 +1010,7 @@ class HistoricalTempsFeed(CompositeFeed):
     typical temperatures for a given date based on historical records.
     """
 
-    feed_config: config_lib.TempFeedConfig
+    feed_config: config_lib.TempFeedConfig  # type: ignore[assignment]
     start_year: int
     end_year: int
     interval: Literal["h", "6-min"] = "h"

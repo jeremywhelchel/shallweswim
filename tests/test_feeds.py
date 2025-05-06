@@ -66,26 +66,26 @@ def location_config() -> config_lib.LocationConfig:
 
 
 @pytest.fixture
-def coops_temp_config_fixture() -> config_lib.CoopsTempSource:
+def coops_temp_config_fixture() -> config_lib.CoopsTempFeedConfig:
     """Create a temperature source config fixture."""
-    return config_lib.CoopsTempSource(
+    return config_lib.CoopsTempFeedConfig(
         station=8518750, name="Test Station"  # Using a valid 7-digit station ID
     )
 
 
 @pytest.fixture
-def tide_config() -> config_lib.CoopsTideSource:
+def tide_config() -> config_lib.CoopsTideFeedConfig:
     """Create a tide source config fixture."""
-    return config_lib.CoopsTideSource(
+    return config_lib.CoopsTideFeedConfig(
         station=8517741,  # Using a valid 7-digit station ID
         name="Coney Island, NY",
     )
 
 
 @pytest.fixture
-def currents_config() -> config_lib.CoopsCurrentsSource:
+def currents_config() -> config_lib.CoopsCurrentsFeedConfig:
     """Create a currents source config fixture."""
-    return config_lib.CoopsCurrentsSource(
+    return config_lib.CoopsCurrentsFeedConfig(
         stations=["ACT3876", "NYH1905"],  # Using valid station IDs
     )
 
@@ -240,7 +240,7 @@ def simple_composite_feed(location_config: config_lib.LocationConfig) -> Composi
 @pytest.fixture
 def multi_station_currents_feed(
     location_config: config_lib.LocationConfig,
-    currents_config: config_lib.CoopsCurrentsSource,
+    currents_config: config_lib.CoopsCurrentsFeedConfig,
 ) -> MultiStationCurrentsFeed:
     """Provides an instance of MultiStationCurrentsFeed for testing."""
     return MultiStationCurrentsFeed(
@@ -253,7 +253,7 @@ def multi_station_currents_feed(
 @pytest.fixture
 def historical_temps_feed(
     location_config: config_lib.LocationConfig,
-    coops_temp_config_fixture: config_lib.CoopsTempSource,
+    coops_temp_config_fixture: config_lib.CoopsTempFeedConfig,
 ) -> HistoricalTempsFeed:
     """Provides an instance of HistoricalTempsFeed for testing."""
     # Assuming start_year and end_year are needed, or default behavior is okay
@@ -642,7 +642,7 @@ class TestCoopsTidesFeed:
     async def test_fetch_calls_noaa_client(
         self,
         location_config: config_lib.LocationConfig,
-        tide_config: config_lib.CoopsTideSource,
+        tide_config: config_lib.CoopsTideFeedConfig,
         mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
@@ -687,7 +687,7 @@ class TestCoopsTidesFeed:
     async def test_fetch_handles_api_error(
         self,
         location_config: config_lib.LocationConfig,
-        tide_config: config_lib.CoopsTideSource,
+        tide_config: config_lib.CoopsTideFeedConfig,
         mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch raises an exception if the API call fails."""
@@ -718,7 +718,7 @@ class TestCoopsCurrentsFeed:
     async def test_fetch_calls_noaa_client(
         self,
         location_config: config_lib.LocationConfig,
-        currents_config: config_lib.CoopsCurrentsSource,
+        currents_config: config_lib.CoopsCurrentsFeedConfig,
         mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
@@ -765,7 +765,7 @@ class TestCoopsCurrentsFeed:
     ) -> None:
         """Test that _fetch works with a valid station specified directly."""
         # Create a config with a valid station
-        config = config_lib.CoopsCurrentsSource(
+        config = config_lib.CoopsCurrentsFeedConfig(
             stations=["ACT3876", "NYH1905"],  # Using valid station IDs
         )
 
@@ -802,7 +802,7 @@ class TestCoopsCurrentsFeed:
     async def test_fetch_handles_api_error(
         self,
         location_config: config_lib.LocationConfig,
-        currents_config: config_lib.CoopsCurrentsSource,
+        currents_config: config_lib.CoopsCurrentsFeedConfig,
         mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch handles API errors correctly."""
@@ -834,7 +834,7 @@ class TestCoopsTempFeed:
     async def test_fetch_calls_noaa_client(
         self,
         location_config: config_lib.LocationConfig,
-        coops_temp_config_fixture: config_lib.CoopsTempSource,
+        coops_temp_config_fixture: config_lib.CoopsTempFeedConfig,
         mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
@@ -879,7 +879,7 @@ class TestCoopsTempFeed:
     async def test_fetch_with_date_range(
         self,
         location_config: config_lib.LocationConfig,
-        coops_temp_config_fixture: config_lib.CoopsTempSource,
+        coops_temp_config_fixture: config_lib.CoopsTempFeedConfig,
         mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch passes date range to COOPS API when provided."""
@@ -931,7 +931,7 @@ class TestCoopsTempFeed:
     async def test_fetch_with_default_date_range(
         self,
         location_config: config_lib.LocationConfig,
-        coops_temp_config_fixture: config_lib.CoopsTempSource,
+        coops_temp_config_fixture: config_lib.CoopsTempFeedConfig,
         mock_clients: Dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch uses default date range when not provided."""

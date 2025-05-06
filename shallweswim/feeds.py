@@ -340,7 +340,7 @@ class TempFeed(Feed, abc.ABC):
     """
 
     # Temperature source configuration
-    config: config_lib.TempSource
+    config: config_lib.TempFeedConfig
 
     # Data resolution ("h" for hourly, "6-min" for 6-minute intervals)
     interval: Literal["h", "6-min"]  # XXX 6-min is noaa specific. Make a type
@@ -367,7 +367,7 @@ class CurrentsFeed(Feed, abc.ABC):
     """
 
     # Configuration specific to currents sources
-    config: config_lib.CurrentsSource
+    config: config_lib.CurrentsFeedConfig
 
     @property
     def data_model(self) -> Type[DataFrameModel]:
@@ -382,7 +382,7 @@ class CoopsTempFeed(TempFeed):
     Fetches temperature data from NOAA CO-OPS stations using the CO-OPS API.
     """
 
-    config: config_lib.CoopsTempSource
+    config: config_lib.CoopsTempFeedConfig
     product: Literal["air_temperature", "water_temperature"] = "water_temperature"
 
     @property
@@ -432,7 +432,7 @@ class NdbcTempFeed(TempFeed):
     using the ndbc module.
     """
 
-    config: config_lib.NdbcTempSource
+    config: config_lib.NdbcTempFeedConfig
     interval: Literal["h", "6-min"] = "h"
     mode: Literal["stdmet", "ocean"] = "stdmet"
     client: ndbc.NdbcApi  # Add type hint for mypy
@@ -490,7 +490,7 @@ class NwisTempFeed(TempFeed):
     using the nwis module.
     """
 
-    config: config_lib.NwisTempSource
+    config: config_lib.NwisTempFeedConfig
     interval: Literal["h", "6-min"] = "h"  # NWIS typically provides hourly data
 
     @property
@@ -546,7 +546,7 @@ class CoopsTidesFeed(Feed):
     Tide predictions include high and low tide times and heights.
     """
 
-    config: config_lib.CoopsTideSource
+    config: config_lib.CoopsTideFeedConfig
     interval: Literal["h", "6-min"] = "h"  # Add default interval
     start: Optional[datetime.date] = None
 
@@ -589,7 +589,7 @@ class CoopsCurrentsFeed(CurrentsFeed):
     Current predictions include velocity, direction, and type (flood/ebb/slack).
     """
 
-    config: config_lib.CoopsCurrentsSource
+    config: config_lib.CoopsCurrentsFeedConfig
     interval: Literal["h", "6-min"] = "h"  # Add default interval
     start: Optional[datetime.date] = None
 
@@ -694,7 +694,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
     complementary data about water conditions in the area.
     """
 
-    config: config_lib.CoopsCurrentsSource
+    config: config_lib.CoopsCurrentsFeedConfig
 
     @property
     def data_model(self) -> Type[DataFrameModel]:
@@ -757,7 +757,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
 
 def create_temp_feed(
     location_config: config_lib.LocationConfig,
-    temp_config: config_lib.TempSource,
+    temp_config: config_lib.TempFeedConfig,
     start: Optional[datetime.datetime] = None,
     end: Optional[datetime.datetime] = None,
     interval: Literal["h", "6-min"] = "h",
@@ -787,7 +787,7 @@ def create_temp_feed(
         TypeError: If an unsupported temperature source type is provided
     """
     # Create the appropriate feed based on the config type
-    if isinstance(temp_config, config_lib.CoopsTempSource):
+    if isinstance(temp_config, config_lib.CoopsTempFeedConfig):
         return CoopsTempFeed(
             location_config=location_config,
             config=temp_config,
@@ -796,7 +796,7 @@ def create_temp_feed(
             interval=interval,
             expiration_interval=expiration_interval,
         )
-    elif isinstance(temp_config, config_lib.NdbcTempSource):
+    elif isinstance(temp_config, config_lib.NdbcTempFeedConfig):
         ndbc_client = clients.get("ndbc")
         if not isinstance(ndbc_client, ndbc.NdbcApi):
             raise TypeError(
@@ -815,7 +815,7 @@ def create_temp_feed(
             client=ndbc_client,  # Pass the client instance
             expiration_interval=expiration_interval,
         )
-    elif isinstance(temp_config, config_lib.NwisTempSource):
+    elif isinstance(temp_config, config_lib.NwisTempFeedConfig):
         # Get the parameter_cd if provided
         parameter_cd = kwargs.get("parameter_cd", None)
         feed_kwargs = {}
@@ -846,7 +846,7 @@ def create_temp_feed(
 
 def create_current_feed(
     location_config: config_lib.LocationConfig,
-    current_config: config_lib.CurrentsSource,
+    current_config: config_lib.CurrentsFeedConfig,
     station: Optional[str] = None,
     expiration_interval: Optional[datetime.timedelta] = None,
     clients: Optional[Dict[str, BaseApiClient]] = None,  # Add clients param
@@ -858,7 +858,7 @@ def create_current_feed(
 
     Args:
         location_config: Location configuration
-        current_config: Currents source configuration (subclass of CurrentsSource)
+        current_config: Currents source configuration (subclass of CurrentsFeedConfig)
         station: Station ID to use (optional, for multi-station CO-OPS configs)
         expiration_interval: Custom expiration interval (optional)
         clients: Dict of clients to use for fetching data (optional)
@@ -871,7 +871,7 @@ def create_current_feed(
         NotImplementedError: If the current_config type is recognized but not yet implemented.
     """
     # --- Dispatch based on config type ---
-    if isinstance(current_config, config_lib.CoopsCurrentsSource):
+    if isinstance(current_config, config_lib.CoopsCurrentsFeedConfig):
         # Add check for coops client
         if clients is None or "coops" not in clients:
             raise ValueError("CO-OPS client required for CO-OPS current feeds")
@@ -890,7 +890,7 @@ def create_current_feed(
                 station=station,
                 expiration_interval=expiration_interval,
             )
-    elif isinstance(current_config, config_lib.NwisCurrentSource):
+    elif isinstance(current_config, config_lib.NwisCurrentFeedConfig):
         if clients is None or "nwis" not in clients:
             raise ValueError("NWIS client required for NwisCurrentFeed")
         return NwisCurrentFeed(
@@ -908,7 +908,7 @@ def create_current_feed(
 
 def create_tide_feed(
     location_config: config_lib.LocationConfig,
-    tide_config: config_lib.CoopsTideSource,
+    tide_config: config_lib.CoopsTideFeedConfig,
     expiration_interval: Optional[datetime.timedelta] = None,
 ) -> Feed:
     """Create a tide feed based on the configuration type.
@@ -939,7 +939,7 @@ class NwisCurrentFeed(CurrentsFeed):
     site number and parameter code specified in the configuration.
     """
 
-    config: config_lib.NwisCurrentSource
+    config: config_lib.NwisCurrentFeedConfig
 
     @property
     def data_model(self) -> Type[DataFrameModel]:
@@ -1007,7 +1007,7 @@ class HistoricalTempsFeed(CompositeFeed):
     typical temperatures for a given date based on historical records.
     """
 
-    config: config_lib.TempSource
+    config: config_lib.TempFeedConfig
     start_year: int
     end_year: int
     interval: Literal["h", "6-min"] = "h"

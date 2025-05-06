@@ -18,9 +18,9 @@ from shallweswim import types as sw_types
 from shallweswim.api_types import LocationStatus, FeedStatus, LocationConditions
 from shallweswim.config import (
     LocationConfig,
-    CoopsTempSource,
-    CoopsTideSource,
-    CoopsCurrentsSource,
+    CoopsTempFeedConfig,
+    CoopsTideFeedConfig,
+    CoopsCurrentsFeedConfig,
 )
 from shallweswim.data import LocationDataManager
 from tests.helpers import assert_json_serializable
@@ -60,11 +60,13 @@ def mock_data_managers(
         latitude=40.7128,
         longitude=-74.0060,
         timezone=pytz.timezone("US/Eastern"),
-        temp_source=CoopsTempSource(
+        temp_source=CoopsTempFeedConfig(
             station=8518750, name="The Battery", live_enabled=True
         ),
-        tide_source=CoopsTideSource(station=8518750, name="The Battery"),
-        currents_source=CoopsCurrentsSource(stations=["NYH1914"], name="Narrows North"),
+        tide_source=CoopsTideFeedConfig(station=8518750, name="The Battery"),
+        currents_source=CoopsCurrentsFeedConfig(
+            stations=["NYH1914"], name="Narrows North"
+        ),
         enabled=True,
     )
 
@@ -77,7 +79,7 @@ def mock_data_managers(
         latitude=37.7749,
         longitude=-122.4194,
         timezone=pytz.timezone("US/Pacific"),
-        tide_source=CoopsTideSource(
+        tide_source=CoopsTideFeedConfig(
             station=9414290, name="San Francisco"
         ),  # Example tide source
         enabled=True,

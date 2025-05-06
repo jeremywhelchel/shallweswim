@@ -11,7 +11,7 @@ relevant information about swimming locations. The most important elements inclu
 3. NOAA CO-OPS Data Sources: Station IDs for fetching tides, temperature, and currents data
 4. Timezone: For correct time-based display of conditions
 
-The configuration uses specialized Pydantic models (TempSource/CoopsTempSource, CoopsTideSource, CoopsCurrentsSource)
+The configuration uses specialized Pydantic models (TempFeedConfig/CoopsTempFeedConfig, CoopsTideFeedConfig, CoopsCurrentsFeedConfig)
 to define data sources for each type of measurement, providing more flexibility and abstraction.
 
 Configurations for all supported locations are stored internally and can be
@@ -34,7 +34,7 @@ from shallweswim import types
 from shallweswim import util
 
 
-class BaseSource(BaseModel, abc.ABC, frozen=True):
+class BaseFeedConfig(BaseModel, abc.ABC, frozen=True):
     """Base configuration for any data source (temperature, tide, current)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -60,7 +60,7 @@ class BaseSource(BaseModel, abc.ABC, frozen=True):
         pass
 
 
-class TempSource(BaseSource, abc.ABC, frozen=True):
+class TempFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
     """Base configuration for temperature data source.
 
     Abstract base class for all temperature data sources.
@@ -109,7 +109,7 @@ class TempSource(BaseSource, abc.ABC, frozen=True):
         pass
 
 
-class CoopsTempSource(TempSource, frozen=True):
+class CoopsTempFeedConfig(TempFeedConfig, frozen=True):
     """NOAA CO-OPS specific temperature data source configuration.
 
     Defines the NOAA CO-OPS station for fetching water/air temperature data.
@@ -139,7 +139,7 @@ class CoopsTempSource(TempSource, frozen=True):
         return f"Water temperature data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.name or 'Unknown'})"
 
 
-class CoopsTideSource(BaseSource, frozen=True):
+class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
     """Configuration for tide data source.
 
     Defines the NOAA CO-OPS station for fetching tide predictions.
@@ -169,7 +169,7 @@ class CoopsTideSource(BaseSource, frozen=True):
         return f"Tide data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.name or 'Unknown'})"
 
 
-class CurrentsSource(BaseSource, abc.ABC, frozen=True):
+class CurrentsFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
     """Base configuration for currents data sources.
 
     Abstract base class for all currents data sources.
@@ -195,7 +195,7 @@ class CurrentsSource(BaseSource, abc.ABC, frozen=True):
         pass
 
 
-class CoopsCurrentsSource(CurrentsSource, frozen=True):
+class CoopsCurrentsFeedConfig(CurrentsFeedConfig, frozen=True):
     """Configuration for currents data source.
 
     Defines the NOAA CO-OPS stations for fetching current predictions.
@@ -241,7 +241,7 @@ class CoopsCurrentsSource(CurrentsSource, frozen=True):
             return f"Current data provided by NOAA CO-OPS Stations: {', '.join(station_links)}"
 
 
-class NwisCurrentSource(CurrentsSource, frozen=True):
+class NwisCurrentFeedConfig(CurrentsFeedConfig, frozen=True):
     """USGS NWIS specific currents data source configuration.
 
     Defines the USGS National Water Information System (NWIS) site for fetching
@@ -287,7 +287,7 @@ class NwisCurrentSource(CurrentsSource, frozen=True):
         return f'Currents data provided by <a href="{site_url}" target="_blank">{source_name}</a> via USGS NWIS.'
 
 
-class NdbcTempSource(TempSource, frozen=True):
+class NdbcTempFeedConfig(TempFeedConfig, frozen=True):
     """NDBC specific temperature data source configuration.
 
     Defines the NDBC buoy or station for fetching sea temperature and
@@ -318,7 +318,7 @@ class NdbcTempSource(TempSource, frozen=True):
         return f"Water temperature data provided by <a href=\"{station_url}\" target=\"_blank\">NDBC Station {self.station}</a> ({self.name or 'Unknown'})"
 
 
-class NwisTempSource(TempSource, frozen=True):
+class NwisTempFeedConfig(TempFeedConfig, frozen=True):
     """USGS NWIS specific temperature data source configuration.
 
     Defines the USGS National Water Information System (NWIS) site for fetching
@@ -428,17 +428,17 @@ class LocationConfig(BaseModel, frozen=True):
 
     # Data source configurations
     temp_source: Annotated[
-        Optional[TempSource],
+        Optional[TempFeedConfig],
         Field(description="Configuration for temperature data source"),
     ] = None
 
     tide_source: Annotated[
-        Optional[CoopsTideSource],
+        Optional[CoopsTideFeedConfig],
         Field(description="Configuration for tide data source"),
     ] = None
 
     currents_source: Annotated[
-        Optional[CurrentsSource],
+        Optional[CurrentsFeedConfig],
         Field(description="Configuration for currents data source"),
     ] = None
 
@@ -503,15 +503,15 @@ _CONFIG_LIST = [
         latitude=40.573,
         longitude=-73.954,
         timezone=pytz.timezone("US/Eastern"),
-        temp_source=CoopsTempSource(
+        temp_source=CoopsTempFeedConfig(
             station=8518750,
             name="The Battery, NY",
         ),
-        tide_source=CoopsTideSource(
+        tide_source=CoopsTideFeedConfig(
             station=8517741,
             name="Coney Island, NY",
         ),
-        currents_source=CoopsCurrentsSource(
+        currents_source=CoopsCurrentsFeedConfig(
             stations=[
                 "ACT3876",  # Coney Island Channel
                 "NYH1905",  # Rockaway Inslet
@@ -527,11 +527,11 @@ _CONFIG_LIST = [
         latitude=32.850,
         longitude=-117.272,
         timezone=pytz.timezone("US/Pacific"),
-        temp_source=CoopsTempSource(
+        temp_source=CoopsTempFeedConfig(
             station=9410230,
             name="La Jolla, CA",
         ),
-        tide_source=CoopsTideSource(
+        tide_source=CoopsTideFeedConfig(
             station=9410230,
             name="La Jolla, CA",
         ),
@@ -545,7 +545,7 @@ _CONFIG_LIST = [
         latitude=41.894,
         longitude=-87.613,
         timezone=pytz.timezone("US/Central"),
-        temp_source=NdbcTempSource(
+        temp_source=NdbcTempFeedConfig(
             station="45198",
             name="Chicago Buoy",
             # Currently the only data is available for this range.
@@ -553,12 +553,12 @@ _CONFIG_LIST = [
             start_year=2021,
             end_year=2024,
         ),
-        # temp_source=NdbcTempSource(
+        # temp_source=NdbcTempFeedConfig(
         #    station="45198",
         #    name="Ohio Street Beach",
         #    live_enabled=False,
         # ),
-        # temp_source=NdbcTempSource(
+        # temp_source=NdbcTempFeedConfig(
         #     station="45007",
         #     name="South Michigan",
         # ),
@@ -576,18 +576,18 @@ _CONFIG_LIST = [
         timezone=pytz.timezone("US/Pacific"),
         # The San Francisco, CA - Station ID: 9414290 is not currently available.
         # Disabled - 2025-01-17 02:01:00, Suspect Data - Data failed to meet QC standards - under review.
-        # temp_source=CoopsTempSource(
+        # temp_source=CoopsTempFeedConfig(
         #     station=9414290,
         #     name="San Francisco, CA",
         #     live_enabled=False,
         # ),
         # Alternative buoy that's further away. Note that this could be as much
         # as 5 degrees off the Bay location!
-        temp_source=NdbcTempSource(
+        temp_source=NdbcTempFeedConfig(
             station="46237",
             name="San Francisco Bar Buoy",
         ),
-        tide_source=CoopsTideSource(
+        tide_source=CoopsTideFeedConfig(
             station=9414305,
             name="North Point Pier",
         ),
@@ -604,14 +604,14 @@ _CONFIG_LIST = [
         timezone=pytz.timezone("US/Eastern"),
         # Ohio River Water Tower
         # https://waterdata.usgs.gov/monitoring-location/03292494/#dataTypeId=continuous-00011-0&period=P365D
-        temp_source=NwisTempSource(
+        temp_source=NwisTempFeedConfig(
             site_no="03292494",
             parameter_cd="00011",  # Water temperature
             name="Ohio River at Water Tower",
             # It appears that this source may only provide ~120 days worth of data.
             start_year=2025,
         ),
-        currents_source=NwisCurrentSource(
+        currents_source=NwisCurrentFeedConfig(
             site_no="03292494",
             parameter_cd="72255",  # --612188643",
             name="Ohio River at Water Tower",
@@ -632,7 +632,7 @@ _CONFIG_LIST = [
         latitude=30.2639,
         longitude=-97.77,
         timezone=pytz.timezone("US/Central"),
-        temp_source=NwisTempSource(
+        temp_source=NwisTempFeedConfig(
             site_no="08155500",
             parameter_cd="00010",
             name="Barton Springs",
@@ -647,11 +647,11 @@ _CONFIG_LIST = [
         latitude=42.329,
         longitude=-71.036,
         timezone=pytz.timezone("US/Eastern"),
-        temp_source=NdbcTempSource(
+        temp_source=NdbcTempFeedConfig(
             station="44013",
             name="Boston Approach Lighted Buoy (16 NM East)",
         ),
-        tide_source=CoopsTideSource(
+        tide_source=CoopsTideFeedConfig(
             station=8443970,
             name="Boston, MA",
         ),
@@ -665,11 +665,11 @@ _CONFIG_LIST = [
         latitude=47.580,
         longitude=-122.410,
         timezone=pytz.timezone("US/Pacific"),
-        temp_source=CoopsTempSource(
+        temp_source=CoopsTempFeedConfig(
             station=9446484,
             name="Station TCNW1 - Tacoma, WA",
         ),
-        tide_source=CoopsTideSource(
+        tide_source=CoopsTideFeedConfig(
             station=9447130,
             name="Seattle, WA",
         ),
@@ -685,7 +685,7 @@ _CONFIG_LIST = [
         longitude=-89.7,
         timezone=pytz.timezone("US/Central"),
         # https://www.ndbc.noaa.gov/station_page.php?station=42001
-        temp_source=NdbcTempSource(
+        temp_source=NdbcTempFeedConfig(
             station="42001",  # 44025",
             name="180 nm South of Southwest Pass, LA",
         ),

@@ -243,7 +243,7 @@ class LocationDataManager(object):
             # Use HistoricalTempsFeed which internally uses our factory function
             return feeds.HistoricalTempsFeed(
                 location_config=self.config,
-                config=temp_config,
+                feed_config=temp_config,
                 # Use the start year we determined
                 start_year=start_year,
                 # Use the end year we determined

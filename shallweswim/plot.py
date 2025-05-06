@@ -366,7 +366,7 @@ def create_historic_yearly_plot(
         .rolling(24, center=True)
         .mean()
         # Kludge to prevent seaborn from connecting over nan gaps
-        .fillna(np.inf)
+        .fillna(np.inf)  # type: ignore[attr-defined] # pyright thinks mean() returns ndarray, but it's a pandas Series
         # Some years may have 0 data at this filtering level. All-NA columns
         # will cause plotting errors, so we remove them here.
         .dropna(axis=1, how="all")
@@ -375,7 +375,7 @@ def create_historic_yearly_plot(
     # Create the yearly plot
     fig = create_standard_figure()
     ax = multi_year_plot(
-        df,
+        df,  # type: ignore[arg-type] # pyright thinks df might be a Series, but it's a DataFrame
         fig,
         f"{station_name} Water Temperature" if station_name else "Water Temperature",
         "all years, 24-hour mean",
@@ -488,8 +488,8 @@ def create_tide_current_plot(
     )
 
     # Filter all relevant DataFrames to the desired plot window
-    tides = tides[(tides.index >= start_time) & (tides.index <= end_time)]
-    currents = currents[(currents.index >= start_time) & (currents.index <= end_time)]
+    tides = tides[(tides.index >= start_time) & (tides.index <= end_time)]  # type: ignore[operator] # pyright confused about index type
+    currents = currents[(currents.index >= start_time) & (currents.index <= end_time)]  # type: ignore[operator] # pyright confused about index type
     tides_interpolated_filtered = tides_interpolated[
         (tides_interpolated.index >= start_time)
         & (tides_interpolated.index <= end_time)
@@ -645,7 +645,7 @@ def create_tide_current_plot(
     for _, row in extreme_tides.iterrows():
         ax2.annotate(
             f"{row.prediction:.1f}ft {row.type}",
-            xy=(row.name, row.prediction),
+            xy=(row.name, row.prediction),  # type: ignore[arg-type] # pyright expects Sequence[float] but row.name is a pandas timestamp
             xytext=(
                 0,
                 8 if row.type == types.TideCategory.HIGH else -15,

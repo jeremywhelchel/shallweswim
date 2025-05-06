@@ -43,6 +43,7 @@ pytest-mock = "^3.14.0"
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
+warn_unused_ignores = false
 
 [tool.pylint.master]
 jobs = 4

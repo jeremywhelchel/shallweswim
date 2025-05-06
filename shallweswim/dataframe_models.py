@@ -25,9 +25,9 @@ class TimeSeriesDataModel(pa.DataFrameModel):
 
     @pa.check("time", error="Index must be timezone naive")
     def check_index_tz_naive(cls, idx: pd.Index) -> bool:
-        return idx.dt.tz is None
+        return idx.dt.tz is None  # type: ignore[attr-defined]
 
-    class Config:
+    class Config:  # type: ignore[misc]
         """Pandera model configuration."""
 
         strict = True  # Disallow columns not specified in the schema

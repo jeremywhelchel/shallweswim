@@ -83,13 +83,13 @@ def _process_local_magnitude_pct(
     # Get magnitude values, invert for ebb
     values = current_df["magnitude"].values
     if invert:
-        values = -values
+        values = -values  # type: ignore[operator]
 
     # Find peaks with optimized parameters
     # For flooding, peaks are maxima; for ebbing, peaks are minima
     # Since find_peaks finds maxima, we negate values for ebbing to find minima
     search_values = (
-        -values if direction_type == CurrentDirection.EBBING.value else values
+        -values if direction_type == CurrentDirection.EBBING.value else values  # type: ignore[operator]
     )
     peaks, _ = find_peaks(search_values, prominence=0.1, distance=3)
 
@@ -753,9 +753,9 @@ class LocationDataManager(object):
         temp = latest_row["water_temp"]
 
         # Round temperature to 1 decimal place to avoid excessive precision
-        rounded_temp = round(temp, 1)
+        rounded_temp = round(temp, 1)  # type: ignore[call-overload]
 
-        return TemperatureReading(timestamp=time, temperature=rounded_temp)
+        return TemperatureReading(timestamp=time, temperature=rounded_temp)  # type: ignore[arg-type]
 
     def get_current_tide_info(self) -> TideInfo:
         """Get the previous tide and upcoming tides relative to current time.
@@ -780,7 +780,7 @@ class LocationDataManager(object):
         now_ts = pd.Timestamp(now)
 
         # Ensure DataFrame has no timezone info for consistent comparison
-        assert tides_data.index.tz is None, "Tide DataFrame should use naive datetimes"
+        assert tides_data.index.tz is None, "Tide DataFrame should use naive datetimes"  # type: ignore[attr-defined]
 
         # Extract past and future tide data
         past_tides_df = tides_data[:now_ts].tail(1)
@@ -830,18 +830,18 @@ class LocationDataManager(object):
         # Get the timestamp from the row
         row_time = row.name
 
-        offset = t - row_time
+        offset = t - row_time  # type: ignore[operator]
         offset_hrs = offset.seconds / (60 * 60)
         if offset_hrs > 5.5:
             chart_num = 0
             INVERT = {"high": "low", "low": "high"}
-            chart_type = INVERT[tide_type]
+            chart_type = INVERT[tide_type]  # type: ignore[index]
             # TODO: last tide type will be wrong here in the chart
         else:
             chart_num = round(offset_hrs)
             chart_type = tide_type
 
-        legacy_map_title = "%s Water at New York" % chart_type.capitalize()
+        legacy_map_title = "%s Water at New York" % chart_type.capitalize()  # type: ignore[attr-defined]
         if chart_num:
             legacy_map_title = (
                 "%i Hour%s after " % (chart_num, "s" if chart_num > 1 else "")
@@ -851,7 +851,7 @@ class LocationDataManager(object):
 
         return LegacyChartInfo(
             hours_since_last_tide=offset_hrs,
-            last_tide_type=tide_type,
+            last_tide_type=tide_type,  # type: ignore[arg-type]
             chart_filename=filename,
             map_title=legacy_map_title,
         )
@@ -878,9 +878,9 @@ class LocationDataManager(object):
         latest_timestamp = latest_reading.name  # Timestamp is in the index
 
         return CurrentInfo(
-            timestamp=latest_timestamp,
+            timestamp=latest_timestamp,  # type: ignore[arg-type]
             source_type=DataSourceType.OBSERVATION,
-            magnitude=latest_reading["velocity"],
+            magnitude=latest_reading["velocity"],  # type: ignore[arg-type]
         )
 
     def predict_flow_at_time(
@@ -962,9 +962,9 @@ class LocationDataManager(object):
 
         # Now calculate magnitude percentages relative to local peaks
         # Process both directions sequentially, passing the result of one to the next
-        df = _process_local_magnitude_pct(df, flood_df, CurrentDirection.FLOODING.value)
+        df = _process_local_magnitude_pct(df, flood_df, CurrentDirection.FLOODING.value)  # type: ignore[arg-type]
         df = _process_local_magnitude_pct(
-            df, ebb_df, CurrentDirection.EBBING.value, invert=True
+            df, ebb_df, CurrentDirection.EBBING.value, invert=True  # type: ignore[arg-type]
         )
 
         # Ensure we're using a naive datetime for DataFrame slicing
@@ -972,7 +972,7 @@ class LocationDataManager(object):
         assert t.tzinfo is None, "Input datetime must be naive"
 
         # Ensure DataFrame has no timezone info for consistent comparison
-        assert df.index.tz is None, "DataFrame should use naive datetimes"
+        assert df.index.tz is None, "DataFrame should use naive datetimes"  # type: ignore[attr-defined]
 
         # Get the row at or after the specified time
         row = self._get_row_at_time(df, t)
@@ -1009,8 +1009,8 @@ class LocationDataManager(object):
             timestamp=t,  # Include the timestamp parameter
             source_type=DataSourceType.PREDICTION,  # Added source type
             direction=CurrentDirection(direction_str),
-            magnitude=magnitude,
-            magnitude_pct=row["local_mag_pct"],
+            magnitude=magnitude,  # type: ignore[arg-type]
+            magnitude_pct=row["local_mag_pct"],  # type: ignore[arg-type]
             state_description=msg,
         )
 

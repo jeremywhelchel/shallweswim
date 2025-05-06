@@ -51,7 +51,6 @@ warnings.filterwarnings(
 async def initialize_location_data(
     location_codes: list[str],
     app: fastapi.FastAPI,
-    data_dict: Optional[dict[str, data_lib.LocationDataManager]] = None,
     wait_for_data: bool = False,
     timeout: Optional[float] = 30.0,
 ) -> dict[str, data_lib.LocationDataManager]:
@@ -88,19 +87,10 @@ async def initialize_location_data(
         "ndbc": NdbcApi(session=session),
     }
 
-    # Use the provided data dictionary, app.state.data_managers, or create a new one
-    if data_dict is None:
-        if hasattr(app.state, "data_managers"):
-            data_dict = app.state.data_managers
-        else:
-            data_dict = {}
-
-    # Ensure data_dict is not None before using it
-    assert data_dict is not None, "data_dict must be a dictionary, not None"
-
-    # If we have an app but no data_managers attribute yet, initialize it
+    # Initialize app.state.data_managers if it doesn't exist yet
     if not hasattr(app.state, "data_managers"):
-        app.state.data_managers = data_dict
+        # Create an empty dictionary that will be populated with LocationDataManager objects
+        app.state.data_managers = {}
 
     # Initialize each location
     for code in location_codes:
@@ -109,35 +99,29 @@ async def initialize_location_data(
         assert cfg is not None, f"Config for location '{code}' not found"
 
         # Initialize data for this location, passing clients and process pool
-        data_dict[code] = data_lib.LocationDataManager(
+        app.state.data_managers[code] = data_lib.LocationDataManager(
             cfg, clients=api_clients, process_pool=process_pool
         )
-        data_dict[code].start()
+        app.state.data_managers[code].start()
 
     # Optionally wait for data to be fully loaded
     if wait_for_data:
+        logging.info(f"Waiting for data to be loaded (timeout: {timeout}s)")
+
         # Create tasks for waiting on each location's data
         wait_tasks = []
         for code in location_codes:
-            print(f"Waiting for {code} data to load...")
-            wait_tasks.append(data_dict[code].wait_until_ready(timeout=timeout))
+            logging.info(f"Waiting for {code} data to load...")
+            loc_data = app.state.data_managers[code]
+            wait_tasks.append(loc_data.wait_until_ready(timeout=timeout))
 
         # Wait for all locations to be ready concurrently
-        results = await asyncio.gather(*wait_tasks)
+        # This will raise an exception immediately if any task fails
+        await asyncio.gather(*wait_tasks)
 
-        # Check if any locations failed to load data
-        failed_locations = [
-            code for code, success in zip(location_codes, results) if not success
-        ]
-
-        # If any locations failed, raise an error with all failed locations
-        if failed_locations:
-            failed_list = ", ".join(failed_locations)
-            raise RuntimeError(
-                f"Failed to load data for the following locations within the timeout period: {failed_list}"
-            )
-
-    return data_dict
+    # Create a properly typed dictionary to return
+    result: Dict[str, data_lib.LocationDataManager] = app.state.data_managers
+    return result
 
 
 def register_routes(app: fastapi.FastAPI) -> None:
@@ -184,12 +168,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
         tides_info = None
         current_info = None
 
-        # Add temperature data if the location has a temperature source with live_enabled=True
-        if (
-            cfg.temp_source
-            and hasattr(cfg.temp_source, "live_enabled")
-            and cfg.temp_source.live_enabled
-        ):
+        # Prepare temperature information if available
+        if cfg.temp_source is not None and cfg.temp_source.live_enabled:
             # Directly attempt to get the temperature reading. If it fails (returns None),
             # it will raise a ValueError, aligning with fail-fast.
             temp_reading = data_manager.get_current_temperature()
@@ -326,13 +306,14 @@ def register_routes(app: fastapi.FastAPI) -> None:
         """
         logging.info("[api] Processing ready status request")
 
-        # If no locations are configured, we're not ready
-        if not hasattr(app.state, "data_managers") or not app.state.data_managers:
+        # Check if data managers exist and are initialized
+        # This will raise AttributeError if app.state.data_managers doesn't exist
+        # which is appropriate for a service that's not properly initialized
+        if not app.state.data_managers:
             logging.warning("[api] No locations configured")
             raise HTTPException(
                 status_code=503, detail="Service not ready - no locations configured"
             )
-
         any_location_not_ready = False  # Flag to track overall readiness
 
         # Check each location
@@ -388,12 +369,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
         """
         logging.info("[api] Processing all locations status request")
 
-        # If no locations are configured, return an error
-        if not hasattr(app.state, "data_managers") or not app.state.data_managers:
+        # Check if data managers exist and are initialized
+        # This will raise AttributeError if app.state.data_managers doesn't exist
+        if not app.state.data_managers:
             logging.warning("[api] No locations configured")
             raise HTTPException(status_code=404, detail="No locations configured")
 
-        # Construct status dictionary
+        # Return status for each location
         status_dict = {
             code: manager.status for code, manager in app.state.data_managers.items()
         }

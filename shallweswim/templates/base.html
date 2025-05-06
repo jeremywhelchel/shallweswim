@@ -11,27 +11,34 @@
     />
 
     {% block stylesheets %}
-    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="/static/style.css?v={{ server_timestamp }}"
+    />
     {% endblock %}
 
     <link
       rel="apple-touch-icon"
       sizes="180x180"
-      href="/static/apple-touch-icon.png"
+      href="/static/apple-touch-icon.png?v={{ server_timestamp }}"
     />
     <link
       rel="icon"
       type="image/png"
       sizes="32x32"
-      href="/static/favicon-32x32.png"
+      href="/static/favicon-32x32.png?v={{ server_timestamp }}"
     />
     <link
       rel="icon"
       type="image/png"
       sizes="16x16"
-      href="/static/favicon-16x16.png"
+      href="/static/favicon-16x16.png?v={{ server_timestamp }}"
     />
-    <link rel="manifest" href="/static/manifest.json" />
+    <link
+      rel="manifest"
+      href="/static/manifest.json?v={{ server_timestamp }}"
+    />
 
     {% block fonts %}
     <!-- Lato font -->
@@ -48,9 +55,9 @@
         locationCode: "{{ config.code }}",
       };
     </script>
-    <script src="/static/main.js" defer></script>
+    <script src="/static/main.js?v={{ server_timestamp }}" defer></script>
     <!-- Debug tool - helps diagnose browser compatibility issues -->
-    <script src="/static/debug.js" defer></script>
+    <script src="/static/debug.js?v={{ server_timestamp }}" defer></script>
     {% endblock %} {% block head_extra %}{% endblock %}
   </head>
   <body {% block body_attributes %}{% endblock %}>

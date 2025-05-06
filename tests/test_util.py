@@ -77,8 +77,11 @@ def test_pivot_year() -> None:
     pd.testing.assert_index_equal(
         pd.MultiIndex.from_product([cols, years], names=[None, "year"]), got.columns
     )
-    assert got["air_temp"].isin([60, np.nan]).all().all()
-    assert got["water_temp"].isin([50, np.nan]).all().all()
+    # Check that all values in air_temp are either 60 or NaN
+    for year in range(2011, 2023 + 1):
+        # Use bool() to explicitly convert the result to a boolean to satisfy the type checker
+        assert bool(got[("air_temp", year)].isin([60, np.nan]).all())
+        assert bool(got[("water_temp", year)].isin([50, np.nan]).all())
 
 
 def test_latest_time_value() -> None:

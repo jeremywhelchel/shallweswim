@@ -37,7 +37,7 @@ def validate_tide_data(df: pd.DataFrame) -> None:
     assert not df.empty
     assert "prediction" in df.columns
     assert "type" in df.columns
-    assert df["type"].isin(["high", "low"]).all()
+    assert bool(df["type"].isin(["high", "low"]).all())
     assert pd.api.types.is_float_dtype(df["prediction"])
 
 

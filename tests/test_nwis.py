@@ -24,11 +24,14 @@ def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:
     Args:
         parameter_cd: Parameter code for water temperature ('00010' or '00011')
     """
-    # Create timezone-aware timestamps for the index (UTC)
-    timestamps = [
-        pd.Timestamp("2025-04-19 14:00:00", tz="UTC"),
-        pd.Timestamp("2025-04-19 15:00:00", tz="UTC"),
-    ]
+    # Create timezone-aware DatetimeIndex for the index (UTC)
+    timestamps = pd.DatetimeIndex(
+        [
+            "2025-04-19 14:00:00",
+            "2025-04-19 15:00:00",
+        ],
+        tz="UTC",
+    )
 
     # Create a column name that includes the parameter code
     # Format similar to what the NWIS API returns: 'USGS:SITE_NO:00010:00000_00003'
@@ -218,6 +221,7 @@ async def test_data_error(nwis_client: NwisApi) -> None:
 @pytest.mark.asyncio
 async def test_missing_temp_column(nwis_client: NwisApi) -> None:
     # Create DataFrame without temperature column
+    # Create DataFrame with proper DatetimeIndex
     df = pd.DataFrame(
         {
             "USGS:03292494:00060:00000_00003": [
@@ -225,10 +229,12 @@ async def test_missing_temp_column(nwis_client: NwisApi) -> None:
                 21.2,
             ],  # Discharge instead of temperature
         },
-        index=[
-            pd.Timestamp("2025-04-19 10:00"),
-            pd.Timestamp("2025-04-19 16:00"),
-        ],
+        index=pd.DatetimeIndex(
+            [
+                "2025-04-19 10:00",
+                "2025-04-19 16:00",
+            ]
+        ),
     )
 
     # Mock request_with_retry to return the DataFrame *without* the temperature column

@@ -129,12 +129,22 @@ async def test_integration_live_temperature_fetch() -> None:
     # Allow a buffer of one day on each end
     buffer_begin = pd.Timestamp(begin_date) - pd.Timedelta(days=1)
     buffer_end = pd.Timestamp(end_date) + pd.Timedelta(days=1)
-    assert (
-        df.index.min() >= buffer_begin
-    ), f"Earliest timestamp {df.index.min()} before requested begin date {begin_date}"
-    assert (
-        df.index.max() <= buffer_end
-    ), f"Latest timestamp {df.index.max()} after requested end date {end_date}"
+
+    # Get the min and max timestamps from the DataFrame index
+    # Use pandas' built-in comparison methods which handle type compatibility
+    assert not df.empty, "DataFrame is empty, cannot check timestamp range"
+
+    # Convert to strings for the assertion message to avoid type issues
+    min_ts_str = str(df.index.min())
+    max_ts_str = str(df.index.max())
+
+    # Use pandas' built-in comparison which handles type compatibility
+    assert all(
+        df.index >= buffer_begin
+    ), f"Earliest timestamp {min_ts_str} before requested begin date {begin_date}"
+    assert all(
+        df.index <= buffer_end
+    ), f"Latest timestamp {max_ts_str} after requested end date {end_date}"
 
 
 @pytest.mark.integration

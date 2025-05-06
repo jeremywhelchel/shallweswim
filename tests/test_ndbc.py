@@ -274,6 +274,8 @@ def test_fix_time(ndbc_client: NdbcApi) -> None:
         pd.Timestamp("2025-04-19 16:00:00"),  # Expected 4:00 PM EDT (naive)
     ]
     # Ensure result index is naive
+    # Use isinstance to check if it's a DatetimeIndex before accessing tz
+    assert isinstance(result_df.index, pd.DatetimeIndex)
     assert result_df.index.tz is None
     expected_index = pd.DatetimeIndex(expected_times, name="time")
     pd.testing.assert_index_equal(result_df.index, expected_index)

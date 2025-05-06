@@ -194,6 +194,10 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
         # Get location config for timezone-aware comparisons
         assert location_config is not None, f"Config for {location_code} not found"
 
+        # Assign tides variable again to ensure it's bound in this scope
+        tides = data["tides"]
+        assert tides is not None, "Tides data is None"
+
         # Get the current time in the location's timezone as a naive datetime
         # This matches how the NOAA API data is structured (local time, naive datetime)
         local_now = location_config.local_now()

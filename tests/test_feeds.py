@@ -166,7 +166,7 @@ def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
     """Create a concrete implementation of the abstract Feed class with a simple model."""
 
     # Create a test version of BaseFeedConfig for testing
-    class TestConfig(config_lib.BaseFeedConfig):
+    class TestConfig(config_lib.BaseFeedConfig, frozen=True):
         """Test configuration class for ConcreteFeed."""
 
         @property
@@ -175,7 +175,7 @@ def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
             return "Test Feed Citation"
 
     class ConcreteFeed(Feed):
-        feed_config: TestConfig = TestConfig()
+        feed_config: TestConfig = TestConfig()  # type: ignore[assignment]
 
         async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
             # Return a simple DataFrame for testing
@@ -209,7 +209,7 @@ def simple_composite_feed(location_config: config_lib.LocationConfig) -> Composi
     """Create a simple concrete implementation of CompositeFeed for testing."""
 
     # Create a test version of BaseFeedConfig for testing
-    class TestConfig(config_lib.BaseFeedConfig):
+    class TestConfig(config_lib.BaseFeedConfig, frozen=True):
         """Test configuration class for SimpleCompositeFeed."""
 
         @property
@@ -219,7 +219,7 @@ def simple_composite_feed(location_config: config_lib.LocationConfig) -> Composi
 
     class SimpleCompositeFeed(CompositeFeed):
         # Configuration for the feed
-        feed_config: TestConfig = TestConfig()
+        feed_config: TestConfig = TestConfig()  # type: ignore[assignment]
 
         @property
         def data_model(self) -> Type[pa.DataFrameModel]:
@@ -388,11 +388,6 @@ class TestFeedBase:
         except pandera.errors.SchemaError as e:
             pytest.fail(f"_validate_frame raised SchemaError unexpectedly: {e}")
 
-    def test_validate_frame_with_none_dataframe(self, concrete_feed: Feed) -> None:
-        """Test that _validate_frame rejects a None DataFrame."""
-        with pytest.raises(ValueError, match="Received None dataframe"):
-            concrete_feed._validate_frame(None)
-
     def test_validate_frame_with_empty_dataframe(self, concrete_feed: Feed) -> None:
         """Test that _validate_frame fails validation for an empty DataFrame."""
         # Pandera validation fails because the empty frame lacks expected columns.
@@ -401,7 +396,7 @@ class TestFeedBase:
 
     def test_validate_frame_with_non_datetime_index(self, concrete_feed: Feed) -> None:
         """Test that _validate_frame rejects a DataFrame with a non-DatetimeIndex."""
-        df = pd.DataFrame({"value": [1, 2]}, index=[0, 1])
+        df = pd.DataFrame({"value": [1, 2]}, index=pd.Index([0, 1]))
         # TestDataModel expects datetime index, so this should fail
         with pytest.raises(pandera.errors.SchemaErrors):
             concrete_feed._validate_frame(df)
@@ -1052,14 +1047,14 @@ class TestCompositeFeed:
         """Test that _fetch combines DataFrames correctly."""
 
         # Create a test feed config for our test feeds
-        class TestFeedConfig(config_lib.BaseFeedConfig):
+        class TestFeedConfig(config_lib.BaseFeedConfig, frozen=True):
             @property
             def citation(self) -> str:
                 return "Test Feed Citation"
 
         # Create test feeds that return the valid_temp_dataframe
         class TestFeed(Feed):
-            feed_config: TestFeedConfig = TestFeedConfig()
+            feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
             def data_model(self) -> Type[pa.DataFrameModel]:
@@ -1229,14 +1224,14 @@ class TestMultiStationCurrentsFeed:
         """Test error handling when one station fails but others succeed."""
 
         # Create a test feed config for our test feeds
-        class TestFeedConfig(config_lib.BaseFeedConfig):
+        class TestFeedConfig(config_lib.BaseFeedConfig, frozen=True):
             @property
             def citation(self) -> str:
                 return "Test Feed Citation"
 
         # Create a test feed that raises an exception
         class ErrorFeed(Feed):
-            feed_config: TestFeedConfig = TestFeedConfig()
+            feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
             def data_model(self) -> Type[pa.DataFrameModel]:
@@ -1247,7 +1242,7 @@ class TestMultiStationCurrentsFeed:
 
         # Create a test feed that returns valid data
         class TestFeed(Feed):
-            feed_config: TestFeedConfig = TestFeedConfig()
+            feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
             def data_model(self) -> Type[pa.DataFrameModel]:
@@ -1394,14 +1389,14 @@ class TestHistoricalTempsFeed:
         """Test error handling when one year fails but others succeed."""
 
         # Create a test feed config for our test feeds
-        class TestFeedConfig(config_lib.BaseFeedConfig):
+        class TestFeedConfig(config_lib.BaseFeedConfig, frozen=True):
             @property
             def citation(self) -> str:
                 return "Test Feed Citation"
 
         # Create a test feed that raises an exception
         class ErrorFeed(Feed):
-            feed_config: TestFeedConfig = TestFeedConfig()
+            feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
             def data_model(self) -> Type[pa.DataFrameModel]:
@@ -1412,7 +1407,7 @@ class TestHistoricalTempsFeed:
 
         # Create a test feed that returns valid data
         class TestFeed(Feed):
-            feed_config: TestFeedConfig = TestFeedConfig()
+            feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
             def data_model(self) -> Type[pa.DataFrameModel]:

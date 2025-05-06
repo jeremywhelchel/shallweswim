@@ -178,7 +178,7 @@ class LocationDataManager(object):
         Raises:
             TypeError: If an unsupported temperature source type is provided
         """
-        if not hasattr(self.config, "temp_source") or not self.config.temp_source:
+        if not self.config.temp_source:
             return None
 
         temp_config = self.config.temp_source
@@ -216,7 +216,7 @@ class LocationDataManager(object):
         Raises:
             TypeError: If an unsupported temperature source type is provided
         """
-        if not hasattr(self.config, "temp_source") or not self.config.temp_source:
+        if not self.config.temp_source:
             return None
 
         temp_config = self.config.temp_source
@@ -231,12 +231,12 @@ class LocationDataManager(object):
 
         # Get the start year from config or use default
         start_year = DEFAULT_HISTORIC_TEMPS_START_YEAR
-        if hasattr(temp_config, "start_year") and temp_config.start_year:
+        if temp_config.start_year:
             start_year = temp_config.start_year
 
         # Get the end year from config or use current year
         end_year = utc_now().year
-        if hasattr(temp_config, "end_year") and temp_config.end_year:
+        if temp_config.end_year:
             end_year = temp_config.end_year
 
         try:
@@ -264,11 +264,11 @@ class LocationDataManager(object):
         Returns:
             Configured feed or None if configuration is not available
         """
-        if not hasattr(self.config, "tide_source") or not self.config.tide_source:
+        if not self.config.tide_source:
             return None
 
         tide_config = self.config.tide_source
-        if not hasattr(tide_config, "station") or not tide_config.station:
+        if not tide_config.station:
             return None
 
         # Use the factory function to create the appropriate feed
@@ -288,10 +288,7 @@ class LocationDataManager(object):
         Returns:
             Configured feed or None if configuration is not available
         """
-        if (
-            not hasattr(self.config, "currents_source")
-            or not self.config.currents_source
-        ):
+        if not self.config.currents_source or not self.config.currents_source:
             return None
 
         currents_config = self.config.currents_source
@@ -661,13 +658,12 @@ class LocationDataManager(object):
         It's important to call this method when the LocationDataManager
         is no longer needed to prevent task leaks.
         """
-        update_task = getattr(self, "_update_task", None)
-        if update_task and not update_task.done():
+        if self._update_task and not self._update_task.done():
             self.log("Stopping data fetch task")
-            update_task.cancel()
+            self._update_task.cancel()
             try:
                 # Wait for the task to actually finish cancelling
-                await update_task
+                await self._update_task
             except asyncio.CancelledError:
                 # This is expected, signifies successful cancellation
                 self.log("Data fetch task successfully cancelled")

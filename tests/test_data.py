@@ -3,41 +3,77 @@
 # Standard library imports
 import asyncio
 import datetime
-from unittest.mock import MagicMock, AsyncMock
 from concurrent.futures import ProcessPoolExecutor
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Mapping, cast
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Third-party imports
 import pandas as pd
 import pytest
 import pytest_asyncio
-from typing import Any, AsyncGenerator, cast
+import pytz
 from freezegun import freeze_time
 from pytest_mock import MockerFixture
+
+# Import API client classes
+from shallweswim.clients.base import BaseApiClient
+from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.ndbc import NdbcApi
+from shallweswim.clients.nwis import NwisApi
+
+# Local imports
+from shallweswim import config as config_lib
+from shallweswim import feeds
+from shallweswim.data import LocationDataManager
+from shallweswim.types import CurrentInfo, CurrentDirection, DataSourceType
+from shallweswim.api_types import FeedStatus
+from shallweswim.feeds import Feed
 
 # Local helpers
 from tests.helpers import assert_json_serializable
 
-# Local imports
-from shallweswim.data import LocationDataManager
-from shallweswim.types import (
-    CurrentInfo,
-    CurrentDirection,  # Import CurrentDirection Enum
-    DataSourceType,  # Import DataSourceType
-)  # Import from types module where it's defined
-from shallweswim.api_types import FeedStatus
-from shallweswim import config as config_lib
-from shallweswim.feeds import Feed
+
+# Helper function to create a LocationConfig for tests
+def create_test_location_config(
+    code: str = "tst",
+    live_temps_enabled: bool = True,
+    historic_temps_enabled: bool = True,
+) -> config_lib.LocationConfig:
+    """Create a LocationConfig object with all necessary attributes for testing.
+
+    Args:
+        code: The location code (must be exactly 3 characters)
+        live_temps_enabled: Whether live temperature feeds are enabled
+        historic_temps_enabled: Whether historic temperature feeds are enabled
+    """
+    return config_lib.LocationConfig(
+        code=code,
+        name="Test Location",
+        description="Test location for tests",
+        latitude=40.7128,
+        longitude=-74.0060,
+        timezone=pytz.timezone("America/New_York"),
+        swim_location="Test Beach",
+        swim_location_link="https://example.com/test-beach",
+        # Add empty config objects for the data sources
+        tide_source=config_lib.CoopsTideFeedConfig(station=8518750, name="The Battery"),
+        currents_source=config_lib.CoopsCurrentsFeedConfig(
+            stations=["NYH1905"],
+        ),
+        temp_source=config_lib.CoopsTempFeedConfig(
+            station=8518750,
+            name="The Battery",
+            live_enabled=live_temps_enabled,
+            historic_enabled=historic_temps_enabled,
+        ),
+    )
 
 
 @pytest.fixture
-def mock_config() -> Any:
-    """Mock location config fixture."""
-    config = MagicMock(spec=config_lib.LocationConfig)
-    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    config.code = "nyc"
-    config.StationName = "New York City"
-    return config
+def mock_config() -> config_lib.LocationConfig:
+    """Location config fixture with all required attributes."""
+    # Use the helper function with a specific code for NYC
+    return create_test_location_config(code="nyc")
 
 
 @pytest.fixture
@@ -92,23 +128,42 @@ async def process_pool() -> AsyncGenerator[ProcessPoolExecutor, None]:
     pool.shutdown(wait=False)  # Ensure pool is shut down after test
 
 
+@pytest.fixture
+def mock_clients() -> Mapping[str, BaseApiClient]:
+    """Provide mock API clients for testing."""
+    return {
+        "coops": MagicMock(spec=CoopsApi),
+        "ndbc": MagicMock(spec=NdbcApi),
+        "nwis": MagicMock(spec=NwisApi),
+    }  # type: ignore[return-value]
+
+
 @pytest_asyncio.fixture
 async def mock_data_with_currents(
-    mock_config: Any, mock_current_data: pd.DataFrame, process_pool: ProcessPoolExecutor
+    mock_config: config_lib.LocationConfig,
+    mock_current_data: pd.DataFrame,
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
 ) -> AsyncGenerator[LocationDataManager, None]:
     """Create a LocationDataManager instance with mock current data."""
-    # Use the provided process_pool fixture
-    data = LocationDataManager(mock_config, clients={}, process_pool=process_pool)
+    # Patch the local_now method to return a fixed time for testing
+    with patch.object(
+        config_lib.LocationConfig,
+        "local_now",
+        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
+    ):
+        # Use the provided process_pool fixture with mock clients
+        data = LocationDataManager(mock_config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]
 
-    # Create a mock currents feed
-    mock_currents_feed = MagicMock()
-    mock_currents_feed.values = mock_current_data
-    mock_currents_feed.is_expired = False
+        # Create a mock currents feed
+        mock_currents_feed = MagicMock()
+        mock_currents_feed.values = mock_current_data
+        mock_currents_feed.is_expired = False
 
-    # Set the mock feed in the _feeds dictionary
-    data._feeds["currents"] = mock_currents_feed
+        # Set the mock feed in the _feeds dictionary
+        data._feeds["currents"] = mock_currents_feed
 
-    yield data
+        yield data
 
     # Pool shutdown is handled by the process_pool fixture
 
@@ -136,12 +191,23 @@ async def test_current_prediction_at_ebb_peak(
     process_pool: ProcessPoolExecutor,
 ) -> None:
     """Test current prediction at an ebb peak."""
-    # Create a custom test instance
-    config = MagicMock(spec=config_lib.LocationConfig)
-    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
-    config.code = "tst"
-    # Use the provided process_pool fixture
-    data = LocationDataManager(config, clients={}, process_pool=process_pool)
+    # Create a proper LocationConfig object
+    config = create_test_location_config()
+
+    # Create mock clients
+    mock_clients = {
+        "coops": MagicMock(spec=CoopsApi),
+        "ndbc": MagicMock(spec=NdbcApi),
+        "nwis": MagicMock(spec=NwisApi),
+    }
+
+    # Use the provided process_pool fixture with proper config and mock clients
+    with patch.object(
+        config_lib.LocationConfig,
+        "local_now",
+        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
+    ):
+        data = LocationDataManager(config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]
 
     # Create a more comprehensive dataset for testing ebb currents
     # Create a single day with a complete cycle
@@ -220,13 +286,26 @@ async def test_current_prediction_at_slack(
 @pytest.mark.asyncio
 async def test_current_prediction_strengthening() -> None:
     """Test current prediction when current is strengthening."""
-    # Create a custom test instance with clear strengthening pattern
-    config = MagicMock(spec=config_lib.LocationConfig)
-    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+    # Create a proper LocationConfig object
+    config = create_test_location_config()
 
-    # Provide an empty clients dict and a process pool for the test
+    # Create mock clients
+    mock_clients = {
+        "coops": MagicMock(spec=CoopsApi),
+        "ndbc": MagicMock(spec=NdbcApi),
+        "nwis": MagicMock(spec=NwisApi),
+    }  # type: ignore[assignment]
+
+    # Provide a process pool for the test
     pool = ProcessPoolExecutor()
-    data = LocationDataManager(config, clients={}, process_pool=pool)
+
+    # Use the proper config and mock clients with patched local_now
+    with patch.object(
+        config_lib.LocationConfig,
+        "local_now",
+        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
+    ):
+        data = LocationDataManager(config, clients=mock_clients, process_pool=pool)  # type: ignore[arg-type]
 
     try:
         # Create data with a clear strengthening pattern
@@ -264,13 +343,26 @@ async def test_current_prediction_strengthening() -> None:
 @pytest.mark.asyncio
 async def test_current_prediction_weakening() -> None:
     """Test current prediction when current is weakening."""
-    # Create a custom test instance with clear weakening pattern
-    config = MagicMock(spec=config_lib.LocationConfig)
-    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+    # Create a proper LocationConfig object
+    config = create_test_location_config()
 
-    # Provide an empty clients dict and a process pool for the test
+    # Create mock clients
+    mock_clients = {
+        "coops": MagicMock(spec=CoopsApi),
+        "ndbc": MagicMock(spec=NdbcApi),
+        "nwis": MagicMock(spec=NwisApi),
+    }  # type: ignore[assignment]
+
+    # Provide a process pool for the test
     pool = ProcessPoolExecutor()
-    data = LocationDataManager(config, clients={}, process_pool=pool)
+
+    # Use the proper config and mock clients with patched local_now
+    with patch.object(
+        config_lib.LocationConfig,
+        "local_now",
+        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
+    ):
+        data = LocationDataManager(config, clients=mock_clients, process_pool=pool)  # type: ignore[arg-type]
 
     try:
         # Create data with a clear weakening pattern
@@ -308,13 +400,26 @@ async def test_current_prediction_weakening() -> None:
 @pytest.mark.asyncio
 async def test_process_peaks_function() -> None:
     """Test that peaks are identified properly in the CurrentPrediction method."""
-    # Create a custom data instance with a clear flood peak pattern
-    config = MagicMock(spec=config_lib.LocationConfig)
-    config.local_now.return_value = datetime.datetime(2025, 4, 22, 12, 0, 0)
+    # Create a proper LocationConfig object
+    config = create_test_location_config()
 
-    # Provide an empty clients dict and a process pool for the test
+    # Create mock clients
+    mock_clients = {
+        "coops": MagicMock(spec=CoopsApi),
+        "ndbc": MagicMock(spec=NdbcApi),
+        "nwis": MagicMock(spec=NwisApi),
+    }  # type: ignore[assignment]
+
+    # Provide a process pool for the test
     pool = ProcessPoolExecutor()
-    data = LocationDataManager(config, clients={}, process_pool=pool)
+
+    # Use the proper config and mock clients with patched local_now
+    with patch.object(
+        config_lib.LocationConfig,
+        "local_now",
+        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
+    ):
+        data = LocationDataManager(config, clients=mock_clients, process_pool=pool)  # type: ignore[arg-type]
 
     try:
         # Create a very distinct peak pattern
@@ -479,60 +584,88 @@ async def test_current_info_representation() -> None:
 @freeze_time("2025-04-27 12:00:00")  # Freeze time for consistent expiration checks
 # pylint: disable=unused-argument
 async def test_data_ready_property(
-    mock_config: Any,
     tides_timestamp: datetime.datetime | None,
     live_temps_timestamp: datetime.datetime | None,
     historic_temps_timestamp: datetime.datetime | None,
     expected_ready: bool,
     configured_feeds: bool,  # True if live temps feed is configured
     process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
 ) -> None:
     """Test the ready property of the Data class.
 
     Tests different combinations of dataset states to verify the ready property
     accurately represents if all data has been loaded and is not expired.
     """
-    # Use the provided process_pool fixture
-    data = LocationDataManager(mock_config, clients={}, process_pool=process_pool)
+    # Use the helper function to create a LocationConfig with the appropriate configuration
+    config = create_test_location_config(
+        code="tst",
+        live_temps_enabled=configured_feeds,  # Set based on the test parameter
+        historic_temps_enabled=True,  # Always enable historic temps
+    )
+
+    # Use the provided process_pool fixture and mock clients
+    data = LocationDataManager(config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]  # type: ignore[arg-type]
 
     # --- Mock Feed Setup ---
-    # Start with base feeds
-    feeds_to_configure = ["tides", "historic_temps"]
-    if configured_feeds:
-        feeds_to_configure.append("live_temps")  # Now compatible
-
-    # Configure feeds based on the 'configured_feeds' parameter
-    mock_config.feeds = feeds_to_configure
-
-    # Define expiration times (adjust as needed for your feeds)
+    # Define expiration times for feeds
     expiration_map = {
         "tides": datetime.timedelta(hours=1),  # Example: 1 hour expiry
         "live_temps": datetime.timedelta(hours=1),  # Example: 1 hour expiry
         "historic_temps": datetime.timedelta(days=7),  # Example: 7 day expiry
     }
 
-    # Initialize the dictionary; type is inferred or handled by mock/class def
-    data._feeds = {}
-    for feed_name in feeds_to_configure:
-        mock_feed = MagicMock()
-        timestamp = locals().get(f"{feed_name}_timestamp")
+    # Create mock feeds for each data type
+    tides_feed = None
+    live_temps_feed = None
+    historic_temps_feed = None
 
-        if timestamp is not None:
-            mock_feed.timestamp = timestamp
-            mock_feed.expiration_seconds = expiration_map[feed_name].total_seconds()
-            # Let the actual is_expired logic (using frozen time) work
-            mock_feed.is_expired = (
-                datetime.datetime(2025, 4, 27, 12, 0, 0) - timestamp
-            ) > expiration_map[feed_name]
-            mock_feed.values = pd.DataFrame({feed_name: [1]})  # Needs some data
-        else:
-            # Feed is configured but has no data yet
-            mock_feed.timestamp = None
-            mock_feed.is_expired = True  # Treat as expired if no timestamp
-            mock_feed.values = None
+    # Create the tides feed if timestamp is provided
+    if tides_timestamp is not None:
+        tides_feed = MagicMock(spec=feeds.CoopsTidesFeed)
+        tides_feed._fetch_timestamp = tides_timestamp
+        tides_feed.expiration_interval = expiration_map["tides"]
+        # Set is_expired based on the timestamp
+        frozen_time = datetime.datetime(
+            2025, 4, 27, 12, 0, 0
+        )  # From the freeze_time decorator
+        tides_feed.is_expired = (frozen_time - tides_timestamp) > expiration_map[
+            "tides"
+        ]
 
-        data._feeds[feed_name] = mock_feed
+    # Create the live temps feed if configured and timestamp is provided
+    if configured_feeds and live_temps_timestamp is not None:
+        live_temps_feed = MagicMock(spec=feeds.CoopsTempFeed)
+        live_temps_feed._fetch_timestamp = live_temps_timestamp
+        live_temps_feed.expiration_interval = expiration_map["live_temps"]
+        # Set is_expired based on the timestamp
+        frozen_time = datetime.datetime(
+            2025, 4, 27, 12, 0, 0
+        )  # From the freeze_time decorator
+        live_temps_feed.is_expired = (
+            frozen_time - live_temps_timestamp
+        ) > expiration_map["live_temps"]
 
+    # Create the historic temps feed if timestamp is provided
+    if historic_temps_timestamp is not None:
+        historic_temps_feed = MagicMock(spec=feeds.HistoricalTempsFeed)
+        historic_temps_feed._fetch_timestamp = historic_temps_timestamp
+        historic_temps_feed.expiration_interval = expiration_map["historic_temps"]
+        # Set is_expired based on the timestamp
+        frozen_time = datetime.datetime(
+            2025, 4, 27, 12, 0, 0
+        )  # From the freeze_time decorator
+        historic_temps_feed.is_expired = (
+            frozen_time - historic_temps_timestamp
+        ) > expiration_map["historic_temps"]
+
+    # Directly set the feeds in the data manager
+    data._feeds = {
+        "tides": tides_feed,
+        "live_temps": live_temps_feed,
+        "historic_temps": historic_temps_feed,
+        "currents": None,  # Not used in this test
+    }
     # Ensure other potentially configured feeds are None if not in this test case
     # Use a hardcoded list of all possible feed names
     # Note: This used to use FeedName from typing.Literal, but we've simplified it
@@ -553,11 +686,18 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
     Verifies that the status property returns a dictionary mapping feed names to their status dictionaries,
     and that the dictionary is JSON serializable.
     """
-    # Create a LocationDataManager instance
-    config = MagicMock(spec=config_lib.LocationConfig)
-    config.code = "nyc"
-    # Use the provided process_pool fixture
-    data = LocationDataManager(config, clients={}, process_pool=process_pool)
+    # Create a proper LocationConfig object
+    config = create_test_location_config(code="nyc")
+
+    # Create mock clients
+    mock_clients = {
+        "coops": MagicMock(spec=CoopsApi),
+        "ndbc": MagicMock(spec=NdbcApi),
+        "nwis": MagicMock(spec=NwisApi),
+    }  # type: ignore[assignment]
+
+    # Use the provided process_pool fixture with proper config and mock clients
+    data = LocationDataManager(config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]
 
     # Create mock feeds with status dictionaries
     mock_feeds = []
@@ -605,11 +745,17 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
 
 
 @pytest.fixture
-def mock_data_manager(process_pool: ProcessPoolExecutor) -> LocationDataManager:
+def mock_data_manager(
+    process_pool: ProcessPoolExecutor, mock_clients: Mapping[str, BaseApiClient]
+) -> LocationDataManager:
     """Fixture to create a LocationDataManager with mocked internals."""
-    config = MagicMock(spec=config_lib.LocationConfig)
-    config.code = "tst-wait"
-    data = LocationDataManager(config, clients={}, process_pool=process_pool)
+    # Use the helper function to create a LocationConfig
+    config = create_test_location_config(code="tst")
+
+    # Create the data manager with real config and mock clients
+    data = LocationDataManager(config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]
+
+    # Mock the event and task for testing
     data._ready_event = MagicMock(spec=asyncio.Event)
     data._update_task = MagicMock(spec=asyncio.Task)
     return data

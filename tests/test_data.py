@@ -5,9 +5,10 @@ import asyncio
 import datetime
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any, AsyncGenerator, Mapping, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 # Third-party imports
+from freezegun import freeze_time
 import pandas as pd
 import pytest
 import pytest_asyncio
@@ -146,12 +147,8 @@ async def mock_data_with_currents(
     mock_clients: Mapping[str, BaseApiClient],
 ) -> AsyncGenerator[LocationDataManager, None]:
     """Create a LocationDataManager instance with mock current data."""
-    # Patch the local_now method to return a fixed time for testing
-    with patch.object(
-        config_lib.LocationConfig,
-        "local_now",
-        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
-    ):
+    # Use freezegun to set a fixed time for testing
+    with freeze_time("2025-04-22 12:00:00"):
         # Use the provided process_pool fixture with mock clients
         data = LocationDataManager(mock_config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]
 
@@ -201,12 +198,8 @@ async def test_current_prediction_at_ebb_peak(
         "nwis": MagicMock(spec=NwisApi),
     }
 
-    # Use the provided process_pool fixture with proper config and mock clients
-    with patch.object(
-        config_lib.LocationConfig,
-        "local_now",
-        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
-    ):
+    # Use freezegun to set a fixed time for testing
+    with freeze_time("2025-04-22 12:00:00"):
         data = LocationDataManager(config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]
 
     # Create a more comprehensive dataset for testing ebb currents
@@ -299,12 +292,8 @@ async def test_current_prediction_strengthening() -> None:
     # Provide a process pool for the test
     pool = ProcessPoolExecutor()
 
-    # Use the proper config and mock clients with patched local_now
-    with patch.object(
-        config_lib.LocationConfig,
-        "local_now",
-        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
-    ):
+    # Use freezegun to set a fixed time for testing
+    with freeze_time("2025-04-22 12:00:00"):
         data = LocationDataManager(config, clients=mock_clients, process_pool=pool)  # type: ignore[arg-type]
 
     try:
@@ -356,12 +345,8 @@ async def test_current_prediction_weakening() -> None:
     # Provide a process pool for the test
     pool = ProcessPoolExecutor()
 
-    # Use the proper config and mock clients with patched local_now
-    with patch.object(
-        config_lib.LocationConfig,
-        "local_now",
-        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
-    ):
+    # Use freezegun to set a fixed time for testing
+    with freeze_time("2025-04-22 12:00:00"):
         data = LocationDataManager(config, clients=mock_clients, process_pool=pool)  # type: ignore[arg-type]
 
     try:
@@ -413,12 +398,8 @@ async def test_process_peaks_function() -> None:
     # Provide a process pool for the test
     pool = ProcessPoolExecutor()
 
-    # Use the proper config and mock clients with patched local_now
-    with patch.object(
-        config_lib.LocationConfig,
-        "local_now",
-        return_value=datetime.datetime(2025, 4, 22, 12, 0, 0),
-    ):
+    # Use freezegun to set a fixed time for testing
+    with freeze_time("2025-04-22 12:00:00"):
         data = LocationDataManager(config, clients=mock_clients, process_pool=pool)  # type: ignore[arg-type]
 
     try:
@@ -466,6 +447,7 @@ async def test_process_peaks_function() -> None:
 
 
 @pytest.mark.asyncio
+@freeze_time("2025-04-22 15:00:00")
 async def test_current_info_representation() -> None:
     """Test the representation of CurrentInfo objects."""
     # Test with flooding current
@@ -680,6 +662,7 @@ async def test_data_ready_property(
 
 
 @pytest.mark.asyncio
+@freeze_time("2025-04-27 12:00:00")
 async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
     """Test the status property of the LocationDataManager class.
 
@@ -923,6 +906,7 @@ async def test_wait_until_ready_timeout(
     assert result is False
 
 
+@freeze_time("2025-05-04 10:15:00")
 def test_current_info_retrieval(mock_data_manager: LocationDataManager) -> None:
     """Test retrieving the latest current observation using the fixture."""
     # mock_data_manager fixture handles config and basic setup.

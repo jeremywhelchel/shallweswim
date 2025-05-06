@@ -189,20 +189,28 @@ function updatePageWithConditions(data) {
   }
 
   // Update temperature station info
-  const tempStationElement = document.getElementById("temp-station-info");
-  if (tempStationElement) {
-    const timestamp = new Date(data.temperature.timestamp);
-    const options = {
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true,
-    };
-    const formattedTime = timestamp.toLocaleDateString("en-US", options);
+  const tempStationNameElement = document.getElementById("temp-station-name");
+  if (tempStationNameElement) {
     // Use the temperature station name from the API if available, otherwise fallback to location name
     const stationName = data.temperature.station_name || data.location.name;
-    tempStationElement.textContent = `at ${stationName} as of ${formattedTime}.`;
+    tempStationNameElement.textContent = stationName;
+  }
+
+  // Update the timestamp for the temperature reading
+  const timestamp = new Date(data.temperature.timestamp);
+  const options = {
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: true,
+  };
+  const formattedTime = timestamp.toLocaleDateString("en-US", options);
+
+  // Add the timestamp to the station info element
+  const tempStationElement = document.getElementById("temp-station-info");
+  if (tempStationElement) {
+    tempStationElement.innerHTML = `at <span id="temp-station-name">${data.temperature.station_name || data.location.name}</span> as of ${formattedTime}.`;
   }
 
   // Update past tide information
@@ -219,16 +227,19 @@ function updatePageWithConditions(data) {
         pastTideTypeElement.textContent = pastTide.type;
       }
 
-      // Update past tide time
+      // Update past tide date and time
+      const pastTideDateElement = document.getElementById("past-tide-date");
       const pastTideTimeElement = document.getElementById("past-tide-time");
-      if (pastTideTimeElement) {
-        const formattedTime = formatDateTime(pastTide.time);
-        pastTideTimeElement.textContent = formattedTime;
+      if (pastTideDateElement && pastTideTimeElement) {
+        pastTideDateElement.textContent = formatDate(pastTide.time);
+        pastTideTimeElement.textContent = formatTime(pastTide.time);
       }
     } else {
       // Optional: Clear past tide elements if no data
       const pastTideTypeElement = document.getElementById("past-tide-type");
       if (pastTideTypeElement) pastTideTypeElement.textContent = "";
+      const pastTideDateElement = document.getElementById("past-tide-date");
+      if (pastTideDateElement) pastTideDateElement.textContent = "";
       const pastTideTimeElement = document.getElementById("past-tide-time");
       if (pastTideTimeElement) pastTideTimeElement.textContent = "";
     }
@@ -241,37 +252,49 @@ function updatePageWithConditions(data) {
         nextTide0TypeElement.textContent = data.tides.next[0].type;
       }
 
+      // Update next tide 0 date and time
+      const nextTide0DateElement = document.getElementById("next-tide-0-date");
       const nextTide0TimeElement = document.getElementById("next-tide-0-time");
-      if (nextTide0TimeElement) {
-        const formattedTime = formatDateTime(data.tides.next[0].time);
-        nextTide0TimeElement.textContent = formattedTime;
+      if (nextTide0DateElement && nextTide0TimeElement) {
+        nextTide0DateElement.textContent = formatDate(data.tides.next[0].time);
+        nextTide0TimeElement.textContent = formatTime(data.tides.next[0].time);
       }
 
       // Update second next tide (if it exists)
       const nextTide1TypeElement = document.getElementById("next-tide-1-type");
+      const nextTide1DateElement = document.getElementById("next-tide-1-date");
       const nextTide1TimeElement = document.getElementById("next-tide-1-time");
 
       if (data.tides.next.length >= 2) {
         if (nextTide1TypeElement) {
           nextTide1TypeElement.textContent = data.tides.next[1].type;
         }
-        if (nextTide1TimeElement) {
-          const formattedTime = formatDateTime(data.tides.next[1].time);
-          nextTide1TimeElement.textContent = formattedTime;
+        if (nextTide1DateElement && nextTide1TimeElement) {
+          nextTide1DateElement.textContent = formatDate(
+            data.tides.next[1].time,
+          );
+          nextTide1TimeElement.textContent = formatTime(
+            data.tides.next[1].time,
+          );
         }
       } else {
         // Optional: Clear second tide elements if only one next tide
         if (nextTide1TypeElement) nextTide1TypeElement.textContent = "";
+        if (nextTide1DateElement) nextTide1DateElement.textContent = "";
         if (nextTide1TimeElement) nextTide1TimeElement.textContent = "";
       }
     } else {
       // Optional: Clear next tide elements if no data
       const nextTide0TypeElement = document.getElementById("next-tide-0-type");
       if (nextTide0TypeElement) nextTide0TypeElement.textContent = "";
+      const nextTide0DateElement = document.getElementById("next-tide-0-date");
+      if (nextTide0DateElement) nextTide0DateElement.textContent = "";
       const nextTide0TimeElement = document.getElementById("next-tide-0-time");
       if (nextTide0TimeElement) nextTide0TimeElement.textContent = "";
       const nextTide1TypeElement = document.getElementById("next-tide-1-type");
       if (nextTide1TypeElement) nextTide1TypeElement.textContent = "";
+      const nextTide1DateElement = document.getElementById("next-tide-1-date");
+      if (nextTide1DateElement) nextTide1DateElement.textContent = "";
       const nextTide1TimeElement = document.getElementById("next-tide-1-time");
       if (nextTide1TimeElement) nextTide1TimeElement.textContent = "";
     }
@@ -297,6 +320,7 @@ function updatePageWithConditions(data) {
   const currentStateMsgContainer = document.getElementById(
     "current-state-msg-container",
   );
+  const currentDetailsLink = document.getElementById("current-details-link");
 
   if (data.current) {
     console.log("Current data found in API response.");
@@ -318,6 +342,10 @@ function updatePageWithConditions(data) {
           currentDirectionElement.textContent =
             data.current.direction.toLowerCase();
         }
+        // Show the details link for tidal systems only
+        if (currentDetailsLink) {
+          currentDetailsLink.style.display = "";
+        }
       } else {
         // This is a non-tidal system (just flowing)
         if (currentDirectionTextElement) {
@@ -325,6 +353,10 @@ function updatePageWithConditions(data) {
         }
         if (currentDirectionElement) {
           currentDirectionElement.textContent = "";
+        }
+        // Hide the details link for non-tidal systems
+        if (currentDetailsLink) {
+          currentDetailsLink.style.display = "none";
         }
       }
 
@@ -371,21 +403,33 @@ function updatePageWithConditions(data) {
 }
 
 /**
- * Format ISO date string to human-readable format
+ * Format date part of ISO date string
  * @param {string} isoString - ISO8601 datetime string
  * @returns {string} Formatted date string
  */
-function formatDateTime(isoString) {
+function formatDate(isoString) {
   const date = new Date(isoString);
   const options = {
     weekday: "long",
     month: "long",
     day: "numeric",
+  };
+  return date.toLocaleDateString("en-US", options);
+}
+
+/**
+ * Format time part of ISO date string
+ * @param {string} isoString - ISO8601 datetime string
+ * @returns {string} Formatted time string
+ */
+function formatTime(isoString) {
+  const date = new Date(isoString);
+  const options = {
     hour: "numeric",
     minute: "numeric",
     hour12: true,
   };
-  return date.toLocaleDateString("en-US", options);
+  return date.toLocaleTimeString("en-US", options);
 }
 /**
  * Utility to display a value in the DOM or hide its container if empty

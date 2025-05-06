@@ -60,19 +60,24 @@
       <div class="current">
         The water is currently <strong id="water-temp">Loading...</strong>
       </div>
-      <div class="note" id="temp-station-info">at the Battery.</div>
+      <div class="note" id="temp-station-info">
+        at <span id="temp-station-name">loading</span>.
+      </div>
       {% endif %} {% if config.tide_source %}
       <div class="tides" id="tides-section">
         <p>
-          Last <strong id="past-tide-type">...</strong> tide was at
+          Last <strong id="past-tide-type">...</strong> tide was
+          <strong id="past-tide-date">loading</strong> at
           <strong id="past-tide-time">loading</strong>
         </p>
         <p>
-          Next <strong id="next-tide-0-type">...</strong> tide is at
+          Next <strong id="next-tide-0-type">...</strong> tide is
+          <strong id="next-tide-0-date">loading</strong> at
           <strong id="next-tide-0-time">loading</strong>
         </p>
         <p>
-          Following <strong id="next-tide-1-type">...</strong> tide is at
+          Following <strong id="next-tide-1-type">...</strong> tide is
+          <strong id="next-tide-1-date">loading</strong> at
           <strong id="next-tide-1-time">loading</strong>
         </p>
       </div>
@@ -90,6 +95,19 @@
             ><span id="current-state-msg-prefix"></span
             ><strong><span id="current-state-msg"></span></strong></span
           >.
+          <!-- Tidal current indicator will be shown/hidden by JavaScript -->
+          <span id="current-details-link" style="display: none">
+            <a
+              href="/{{ config.code }}/currents"
+              class="info-icon"
+              title="View detailed current predictions and charts"
+            >
+              <span class="icon">ⓘ</span>
+              <span class="tooltip"
+                >View detailed current predictions and charts</span
+              >
+            </a>
+          </span>
         </p>
       </div>
       {% endif %}

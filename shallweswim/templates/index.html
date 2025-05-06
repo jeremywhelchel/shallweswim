@@ -14,13 +14,6 @@ body_attributes %}{% endblock %} {% block header %}
     ...at
     <a href="{{ config.swim_location_link }}">{{ config.swim_location }}</a>
   </span>
-  {% if config.currents_source %}
-  <span class="note"
-    ><br />
-    <b>NEW</b>: Experimental
-    <a href="/{{ config.code }}/currents">current predictions</a>
-  </span>
-  {% endif %}
 </p>
 {% endblock %} {% block forecast %}
 <h2>Forecast</h2>

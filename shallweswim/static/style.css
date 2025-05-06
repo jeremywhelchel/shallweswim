@@ -145,6 +145,64 @@ h6 {
 }
 
 /* ======================================
+ * INFO ICON AND TOOLTIP
+ * ====================================== */
+.info-icon {
+  position: relative;
+  display: inline-block;
+  margin-left: 5px;
+  text-decoration: none;
+}
+
+.info-icon .icon {
+  display: inline-block;
+  color: #0066cc;
+  font-size: 0.8em;
+  vertical-align: super;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.info-icon:hover .icon {
+  opacity: 1;
+}
+
+.info-icon .tooltip {
+  visibility: hidden;
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: white;
+  text-align: center;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.info-icon .tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #333 transparent transparent transparent;
+}
+
+.info-icon:hover .tooltip {
+  visibility: visible;
+  opacity: 0.9;
+}
+
+/* ======================================
  * TRANSIT INFORMATION
  * ====================================== */
 .transit-div {

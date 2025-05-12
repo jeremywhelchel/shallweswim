@@ -7,7 +7,10 @@ fingerprinting for cache busting in production environments.
 import json
 import logging
 import os
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
+
+from fastapi import Response, staticfiles
+from starlette.types import Scope
 
 
 def load_asset_manifest(manifest_path: str) -> Optional[Dict[str, str]]:
@@ -105,3 +108,65 @@ class AssetManager:
         # Return the URL with the fingerprinted path
         url: str = f"/static/{fingerprinted_path}"
         return url
+
+
+class FingerprintStaticFiles(staticfiles.StaticFiles):
+    """Custom static files handler that serves fingerprinted files.
+
+    This class extends the FastAPI StaticFiles class to handle fingerprinted files.
+    It maps fingerprinted paths back to their original paths when serving files.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the FingerprintStaticFiles handler.
+
+        Args:
+            *args: Arguments to pass to the parent class
+            **kwargs: Keyword arguments to pass to the parent class
+        """
+        self.app = kwargs.pop("app", None)
+        super().__init__(*args, **kwargs)
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        """Get the response for a static file, handling fingerprinted paths.
+
+        Args:
+            path: The path to the static file
+            scope: The ASGI scope
+
+        Returns:
+            The response for the static file with appropriate cache headers
+        """
+        # Check if the path is a fingerprinted path
+        is_fingerprinted = False
+
+        if (
+            self.app
+            and hasattr(self.app.state, "asset_manager")
+            and self.app.state.asset_manager.manifest
+        ):
+            # Reverse lookup in the manifest
+            for (
+                original_path,
+                fingerprinted_path,
+            ) in self.app.state.asset_manager.manifest.items():
+                if fingerprinted_path == path:
+                    path = original_path  # Use the original path for serving
+                    is_fingerprinted = True
+                    break
+
+        # Serve the file using the original StaticFiles implementation
+        response = await super().get_response(path, scope)
+
+        # Add cache headers based on whether the file is fingerprinted
+        if is_fingerprinted:
+            # For fingerprinted files, set a very long cache TTL (1 year)
+            # This follows best practices for immutable content
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # For non-fingerprinted files, use a short or no cache TTL
+            # This ensures users always get the latest version
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+
+        return response

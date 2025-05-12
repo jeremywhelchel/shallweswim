@@ -296,14 +296,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
             content=svg_io.getvalue(), media_type="image/svg+xml"
         )
 
-    @app.get("/api/ready", status_code=301, include_in_schema=False)
-    async def ready_status_redirect() -> fastapi.responses.RedirectResponse:
-        """Temporary redirect from old /api/ready endpoint to new /api/healthy endpoint.
-
-        TODO: Remove this redirect in a future release once all clients are updated.
-        """
-        return fastapi.responses.RedirectResponse(url="/api/healthy", status_code=301)
-
     @app.get("/api/healthy", status_code=200)
     async def healthy_status() -> bool:
         """API endpoint that returns whether all locations' data is healthy.

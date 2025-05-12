@@ -462,20 +462,6 @@ def test_invalid_api_location(api_client: TestClient) -> None:
 
 
 @pytest.mark.integration
-def test_ready_endpoint_redirect(api_client: TestClient) -> None:
-    """Test the old /api/ready endpoint redirects to the new /api/healthy endpoint.
-
-    This tests the backward compatibility redirect that was added when the endpoint was renamed.
-    """
-    # Don't follow redirects so we can test the redirect itself
-    response = api_client.get("/api/ready", follow_redirects=False)
-
-    # Verify response is a redirect
-    assert response.status_code == 301
-    assert response.headers["location"] == "/api/healthy"
-
-
-@pytest.mark.integration
 def test_healthy_endpoint(api_client: TestClient) -> None:
     """Test the healthy API endpoint returns a boolean response.
 

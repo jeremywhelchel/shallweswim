@@ -13,7 +13,6 @@ import datetime
 import logging
 import os
 import signal
-import time
 from concurrent.futures import ProcessPoolExecutor
 from typing import (
     Any,
@@ -119,19 +118,6 @@ app.mount(
 
 templates = templating.Jinja2Templates(directory="shallweswim/templates")
 
-# Create a function to get server timestamp for cache busting
-
-
-def get_server_timestamp() -> int:
-    """Get a timestamp for cache busting.
-
-    This helps prevent caching issues with PWA on iOS 'Save to Home Screen'.
-
-    Returns:
-        int: Current Unix timestamp
-    """
-    return int(time.time())
-
 
 # Register API routes
 api.register_routes(app)
@@ -166,7 +152,6 @@ async def view_all_locations(request: fastapi.Request) -> responses.HTMLResponse
         name="all_locations.html",
         context=dict(
             all_locations=config.CONFIGS,
-            server_timestamp=get_server_timestamp(),
         ),
     )
 
@@ -242,7 +227,6 @@ async def location_index(
         context=dict(
             config=cfg,
             all_locations=config.CONFIGS,
-            server_timestamp=get_server_timestamp(),
         ),
     )
 
@@ -273,7 +257,6 @@ async def location_embed(
         name="embed.html",
         context=dict(
             config=cfg,
-            server_timestamp=get_server_timestamp(),
         ),
     )
 
@@ -304,7 +287,6 @@ async def location_widget(
         name="widget.html",
         context=dict(
             config=cfg,
-            server_timestamp=get_server_timestamp(),
         ),
     )
 
@@ -343,7 +325,6 @@ async def location_currents(
             config=cfg,
             shift=shift,
             shifted_time=formatted_time,
-            server_timestamp=get_server_timestamp(),
         ),
     )
 

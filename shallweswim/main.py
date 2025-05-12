@@ -194,10 +194,11 @@ class FingerprintStaticFiles(staticfiles.StaticFiles):
             scope: The ASGI scope
 
         Returns:
-            The response for the static file
+            The response for the static file with appropriate cache headers
         """
         # Check if the path is a fingerprinted path
-        # If it is, map it back to the original path
+        is_fingerprinted = False
+
         if (
             self.app
             and hasattr(self.app.state, "asset_manager")
@@ -209,14 +210,25 @@ class FingerprintStaticFiles(staticfiles.StaticFiles):
                 fingerprinted_path,
             ) in self.app.state.asset_manager.manifest.items():
                 if fingerprinted_path == path:
-                    logging.debug(
-                        f"Mapped fingerprinted path {path} to {original_path}"
-                    )
-                    path = original_path
+                    path = original_path  # Use the original path for serving
+                    is_fingerprinted = True
                     break
 
         # Serve the file using the original StaticFiles implementation
-        return await super().get_response(path, scope)
+        response = await super().get_response(path, scope)
+
+        # Add cache headers based on whether the file is fingerprinted
+        if is_fingerprinted:
+            # For fingerprinted files, set a very long cache TTL (1 year)
+            # This follows best practices for immutable content
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # For non-fingerprinted files, use a short or no cache TTL
+            # This ensures users always get the latest version
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+
+        return response
 
 
 # Mount static files handler

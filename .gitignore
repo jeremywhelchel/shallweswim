@@ -142,3 +142,6 @@ TODO.md
 
 # Static plots that get updated every new run
 shallweswim/static/plots/**/*.svg
+
+# Asset manifest for fingerprinting
+shallweswim/static/asset-manifest.json

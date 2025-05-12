@@ -83,7 +83,7 @@ cd shallweswim
 poetry install
 
 # Run the development server
-PORT=12345 poetry run python shallweswim/main.py
+poetry run python -m shallweswim.main --port=12345
 ```
 
 Then visit http://localhost:12345 in your browser.

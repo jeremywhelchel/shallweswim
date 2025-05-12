@@ -7,14 +7,24 @@ data to help determine if swimming conditions are favorable.
 """
 
 # Standard library imports
+import argparse
 import contextlib
 import datetime
 import logging
 import os
 import signal
 import time
-from typing import Any, AsyncGenerator, Callable, Coroutine
 from concurrent.futures import ProcessPoolExecutor
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Coroutine,
+    Optional,
+)
+
+# Local imports
+from shallweswim.assets import AssetManager, load_asset_manifest
 
 # Third-party imports
 import aiohttp
@@ -22,6 +32,7 @@ import fastapi
 import google.cloud.logging
 import uvicorn
 from fastapi import HTTPException, Request, Response, responses, staticfiles, templating
+from starlette.types import Scope
 from typing import Awaitable
 
 # Local imports
@@ -158,8 +169,61 @@ async def add_cache_control_headers(
     return response
 
 
+class FingerprintStaticFiles(staticfiles.StaticFiles):
+    """Custom static files handler that serves fingerprinted files.
+
+    This class extends the FastAPI StaticFiles class to handle fingerprinted files.
+    It maps fingerprinted paths back to their original paths when serving files.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the FingerprintStaticFiles handler.
+
+        Args:
+            *args: Arguments to pass to the parent class
+            **kwargs: Keyword arguments to pass to the parent class
+        """
+        self.app = kwargs.pop("app", None)
+        super().__init__(*args, **kwargs)
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        """Get the response for a static file, handling fingerprinted paths.
+
+        Args:
+            path: The path to the static file
+            scope: The ASGI scope
+
+        Returns:
+            The response for the static file
+        """
+        # Check if the path is a fingerprinted path
+        # If it is, map it back to the original path
+        if (
+            self.app
+            and hasattr(self.app.state, "asset_manager")
+            and self.app.state.asset_manager.manifest
+        ):
+            # Reverse lookup in the manifest
+            for (
+                original_path,
+                fingerprinted_path,
+            ) in self.app.state.asset_manager.manifest.items():
+                if fingerprinted_path == path:
+                    logging.debug(
+                        f"Mapped fingerprinted path {path} to {original_path}"
+                    )
+                    path = original_path
+                    break
+
+        # Serve the file using the original StaticFiles implementation
+        return await super().get_response(path, scope)
+
+
+# Mount static files handler
 app.mount(
-    "/static", staticfiles.StaticFiles(directory="shallweswim/static"), name="static"
+    "/static",
+    FingerprintStaticFiles(directory="shallweswim/static", html=True, app=app),
+    name="static",
 )
 
 templates = templating.Jinja2Templates(directory="shallweswim/templates")
@@ -414,6 +478,30 @@ def fmt_datetime(timestamp: datetime.datetime) -> str:
 templates.env.filters["fmt_datetime"] = fmt_datetime
 
 
+# Function to be used in templates
+def static_url(file_path: str) -> str:
+    """Generate a URL for a static file, using fingerprinting if available.
+
+    Args:
+        file_path: Path to the static file, relative to the static directory
+
+    Returns:
+        URL for the static file
+    """
+    # Use the AssetManager if available
+    if hasattr(app.state, "asset_manager"):
+        asset_url: str = app.state.asset_manager.static_url(file_path)
+        return asset_url
+    else:
+        # If we don't have an asset manager, just return the original path
+        default_url: str = f"/static/{file_path}"
+        return default_url
+
+
+# Register the static_url function with Jinja2
+templates.env.globals["static_url"] = static_url
+
+
 # ======================================================================
 # Application initialization and signal handling
 # ======================================================================
@@ -440,31 +528,91 @@ def setup_signal_handlers() -> None:
     signal.signal(signal.SIGTERM, sigterm_handler)
 
 
-def start_app() -> fastapi.FastAPI:
+def start_app(asset_manifest: Optional[str] = None) -> fastapi.FastAPI:
     """Initialize and return the FastAPI application.
 
-    Sets up logging based on the environment (Google Cloud Run or local).
+    Args:
+        asset_manifest: Optional path to asset manifest file for fingerprinting
 
     Returns:
         Configured FastAPI application instance
     """
-    setup_logging()
-    logging.info("***********************************************")
     logging.info("Starting app")
 
     # Set up signal handlers to log signals
     setup_signal_handlers()
 
+    # Load asset manifest if provided
+    if asset_manifest:
+        logging.info(f"Loading asset manifest: {asset_manifest}")
+        manifest = load_asset_manifest(asset_manifest)
+        if manifest is None:
+            # Fail fast and loud - never silently fall back
+            raise RuntimeError(f"Failed to load asset manifest: {asset_manifest}")
+
+        # Create an AssetManager and store it in app.state
+        app.state.asset_manager = AssetManager()
+        app.state.asset_manager.manifest = manifest
+        logging.info("Asset fingerprinting enabled")
+
     return app
+
+
+# Define the argument parser at module level
+parser = argparse.ArgumentParser(description="Run the Shall We Swim application")
+parser.add_argument(
+    "--asset-manifest",
+    type=str,
+    help="Path to asset manifest file for fingerprint-based cache busting",
+)
+parser.add_argument(
+    "--host",
+    type=str,
+    default="0.0.0.0",
+    help="Host to bind the server to",
+)
+parser.add_argument(
+    "--port",
+    type=int,
+    default=int(os.environ.get("PORT", 8080)),
+    help="Port to bind the server to",
+)
+
+
+_parsed_args = parser.parse_args()
+
+
+def create_app() -> fastapi.FastAPI:
+    """Factory function for creating the FastAPI application.
+
+    This function is used by uvicorn to create the application instance.
+    It reads the asset manifest path from parsed arguments if available.
+
+    Returns:
+        FastAPI application instance
+    """
+    # Get the asset manifest path from parsed arguments if available
+    assert _parsed_args is not None
+    asset_manifest = _parsed_args.asset_manifest
+
+    logging.info(f"create_app() called, asset_manifest = {asset_manifest}")
+    return start_app(asset_manifest=asset_manifest)
 
 
 if __name__ == "__main__":
     """Run the application directly with uvicorn when executed as a script."""
+    # Set up logging first, before any logging calls
+    setup_logging()
+    logging.info("***********************************************")
     logging.info("Running uvicorn app")
+    logging.info(f"Command line arguments: {_parsed_args}")
+
+    # Run the application with uvicorn
     uvicorn.run(
-        "main:start_app",
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8080)),
+        "shallweswim.main:create_app",
+        host=_parsed_args.host,
+        port=_parsed_args.port,
         log_level="info",
         reload=True,
+        factory=True,
     )

@@ -13,5 +13,9 @@ RUN poetry config virtualenvs.create false
 RUN poetry install --only main --no-root
 # Copy code and data
 COPY shallweswim shallweswim
-# Run the web service on container startup.
-CMD exec uvicorn shallweswim.main:start_app --host 0.0.0.0 --port ${PORT}
+
+# Generate asset manifest for fingerprinting
+RUN poetry run python -m shallweswim.scripts.generate_asset_manifest
+
+# Run the web service on container startup with asset manifest
+CMD exec python -m shallweswim.main --asset-manifest=shallweswim/static/asset-manifest.json --host 0.0.0.0 --port ${PORT}

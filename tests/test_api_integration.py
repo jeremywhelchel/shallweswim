@@ -462,23 +462,37 @@ def test_invalid_api_location(api_client: TestClient) -> None:
 
 
 @pytest.mark.integration
-def test_ready_endpoint(api_client: TestClient) -> None:
-    """Test the ready API endpoint returns a boolean response.
+def test_ready_endpoint_redirect(api_client: TestClient) -> None:
+    """Test the old /api/ready endpoint redirects to the new /api/healthy endpoint.
+
+    This tests the backward compatibility redirect that was added when the endpoint was renamed.
+    """
+    # Don't follow redirects so we can test the redirect itself
+    response = api_client.get("/api/ready", follow_redirects=False)
+
+    # Verify response is a redirect
+    assert response.status_code == 301
+    assert response.headers["location"] == "/api/healthy"
+
+
+@pytest.mark.integration
+def test_healthy_endpoint(api_client: TestClient) -> None:
+    """Test the healthy API endpoint returns a boolean response.
 
     Since the data is loaded in the api_client fixture with wait_for_data=True,
-    we expect the ready endpoint to return True.
+    we expect the healthy endpoint to return True.
     """
-    response = api_client.get("/api/ready")
+    response = api_client.get("/api/healthy")
 
     # Verify response status code
     assert response.status_code == 200
 
     # Verify response is a boolean
-    ready_status = response.json()
-    assert isinstance(ready_status, bool)
+    healthy_status = response.json()
+    assert isinstance(healthy_status, bool)
 
     # Since the fixture waits for data to be ready, we expect True
-    assert ready_status is True
+    assert healthy_status is True
 
 
 @pytest.mark.integration

@@ -296,15 +296,23 @@ def register_routes(app: fastapi.FastAPI) -> None:
             content=svg_io.getvalue(), media_type="image/svg+xml"
         )
 
-    @app.get("/api/ready", status_code=200)
-    async def ready_status() -> bool:
-        """API endpoint that returns whether all locations' data is ready.
+    @app.get("/api/ready", status_code=301, include_in_schema=False)
+    async def ready_status_redirect() -> fastapi.responses.RedirectResponse:
+        """Temporary redirect from old /api/ready endpoint to new /api/healthy endpoint.
+
+        TODO: Remove this redirect in a future release once all clients are updated.
+        """
+        return fastapi.responses.RedirectResponse(url="/api/healthy", status_code=301)
+
+    @app.get("/api/healthy", status_code=200)
+    async def healthy_status() -> bool:
+        """API endpoint that returns whether all locations' data is healthy.
 
         Returns:
-            Boolean indicating whether all locations' data is ready
-            Status code 200 if ready, 503 if not ready
+            Boolean indicating whether all locations' data is healthy
+            Status code 200 if healthy, 503 if not healthy
         """
-        logging.info("[api] Processing ready status request")
+        logging.info("[api] Processing health status request")
 
         # Check if data managers exist and are initialized
         # This will raise AttributeError if app.state.data_managers doesn't exist
@@ -312,9 +320,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
         if not app.state.data_managers:
             logging.warning("[api] No locations configured")
             raise HTTPException(
-                status_code=503, detail="Service not ready - no locations configured"
+                status_code=503, detail="Service not healthy - no locations configured"
             )
-        any_location_not_ready = False  # Flag to track overall readiness
+        any_location_not_healthy = False  # Flag to track overall health
 
         # Check each location
         for loc_code, loc_data in app.state.data_managers.items():
@@ -323,7 +331,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 logging.warning(f"[{loc_code}] Location not in data dictionary")
                 # Keep this immediate exception as it indicates a config/setup issue
                 raise HTTPException(
-                    status_code=503, detail="Service not ready - location data missing"
+                    status_code=503,
+                    detail="Service not healthy - location data missing",
                 )
 
             # Check if location data is ready
@@ -338,23 +347,23 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     )
 
             if unhealthy_feeds_in_location:
-                any_location_not_ready = True  # Set the flag
+                any_location_not_healthy = True  # Set the flag
                 logging.warning(
-                    f"[/api/ready] Location '{loc_code}' reported not ready. Logging status for its unhealthy feeds..."
+                    f"[/api/healthy] Location '{loc_code}' reported not healthy. Logging status for its unhealthy feeds..."
                 )
 
         # After checking all locations, decide final action based on the flag
-        if any_location_not_ready:
+        if any_location_not_healthy:
             logging.warning(
-                "[/api/ready] At least one location reported not ready. Raising 503."
+                "[/api/healthy] At least one location reported not healthy. Raising 503."
             )
             raise HTTPException(
                 status_code=503,
-                detail="Service not ready - data being loaded",
+                detail="Service not healthy - data being loaded",
             )
         else:
-            # All locations are ready
-            logging.info("[api] All locations report ready status")
+            # All locations are healthy
+            logging.info("[api] All locations report healthy status")
             return True
 
     @app.get("/api/status", response_model=Dict[str, LocationStatus])

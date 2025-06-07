@@ -549,9 +549,7 @@ _CONFIG_LIST = [
             station="45198",
             name="Chicago Buoy",
             # Currently the only data is available for this range.
-            live_enabled=False,
             start_year=2021,
-            end_year=2024,
         ),
         # temp_source=NdbcTempFeedConfig(
         #    station="45198",

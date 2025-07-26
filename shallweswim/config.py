@@ -538,6 +538,7 @@ _CONFIG_LIST = [
         description="La Jolla Cove open water swimming conditions",
     ),
     LocationConfig(
+        enabled=False,
         code="chi",
         name="Chicago",
         swim_location="Ohio Street Beach",

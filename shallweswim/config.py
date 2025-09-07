@@ -594,6 +594,7 @@ _CONFIG_LIST = [
         # webcam https://dolphinclub.org/weather/ (code in page JS source...)
     ),
     LocationConfig(
+        enabled=False,
         code="sdf",
         name="Louisville",
         swim_location="Community Boathouse",
@@ -624,6 +625,7 @@ _CONFIG_LIST = [
         # - Fix Windy embed mode. "waves" isnt relevant here.
     ),
     LocationConfig(
+        enabled=False,
         code="aus",
         name="Austin",
         swim_location="Barton Springs",

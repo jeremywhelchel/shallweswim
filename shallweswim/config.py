@@ -641,6 +641,7 @@ _CONFIG_LIST = [
         description="Austin, TX open water swimming conditions",
     ),
     LocationConfig(
+        enabled=False,
         code="bos",
         name="Boston",
         swim_location="L Street Beach",

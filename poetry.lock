@@ -2225,14 +2225,14 @@ xml = ["lxml (>=4.9.2)"]
 
 [[package]]
 name = "pandera"
-version = "0.24.0rc0"
+version = "0.26.1"
 description = "A light-weight and flexible data validation and testing tool for statistical data objects."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "pandera-0.24.0rc0-py3-none-any.whl", hash = "sha256:1c3ddbb758114e9dd63f2e1a7850926d05e6c7a5d699ab0733c6043c45721765"},
-    {file = "pandera-0.24.0rc0.tar.gz", hash = "sha256:7cb88cac4744dec6914966203456cf97d16e48a8169e8b06988602efec510e09"},
+    {file = "pandera-0.26.1-py3-none-any.whl", hash = "sha256:1ff5b70556ce2f85c6b27e8fbe835a1761972f4d05f6548b4686b0db26ecb73b"},
+    {file = "pandera-0.26.1.tar.gz", hash = "sha256:81a55a6429770d31b3bf4c3e8e1096a38296bd3009f9eca5780fad3c3c17fd82"},
 ]
 
 [package.dependencies]
@@ -2245,11 +2245,12 @@ typing_extensions = "*"
 typing_inspect = ">=0.6.0"
 
 [package.extras]
-all = ["black", "dask[dataframe]", "distributed", "fastapi", "frictionless (<=4.40.8)", "geopandas", "hypothesis (>=6.92.7)", "modin", "pandas-stubs", "polars (>=0.20.0)", "pyspark[connect] (>=3.2.0)", "pyyaml (>=5.1)", "ray", "scipy", "shapely"]
+all = ["black", "dask[dataframe]", "distributed", "fastapi", "frictionless (<=4.40.8)", "geopandas (<1.1.0)", "hypothesis (>=6.92.7)", "ibis-framework (>=9.0.0)", "modin", "pandas-stubs", "polars (>=0.20.0)", "pyspark[connect] (>=3.2.0,<4.0.0)", "pyyaml (>=5.1)", "ray", "scipy", "shapely"]
 dask = ["dask[dataframe]", "distributed"]
 fastapi = ["fastapi"]
-geopandas = ["geopandas", "shapely"]
+geopandas = ["geopandas (<1.1.0)", "shapely"]
 hypotheses = ["scipy"]
+ibis = ["ibis-framework (>=9.0.0)"]
 io = ["black", "frictionless (<=4.40.8)", "pyyaml (>=5.1)"]
 modin = ["dask[dataframe]", "distributed", "modin", "ray"]
 modin-dask = ["dask[dataframe]", "distributed", "modin"]
@@ -2257,7 +2258,7 @@ modin-ray = ["modin", "ray"]
 mypy = ["pandas-stubs"]
 pandas = ["numpy (>=1.24.4)", "pandas (>=2.1.1)"]
 polars = ["polars (>=0.20.0)"]
-pyspark = ["pyspark[connect] (>=3.2.0)"]
+pyspark = ["pyspark[connect] (>=3.2.0,<4.0.0)"]
 strategies = ["hypothesis (>=6.92.7)"]
 
 [[package]]
@@ -3655,4 +3656,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "~3.12"
-content-hash = "b73abf2fd21c848fccfd9270c68c2ed73c055125bd08ee82bb92f7ca254a8fe0"
+content-hash = "ec537e0a42dc1020c2196bb7684b3a2df901d9560fc091abb98209c3b3ca98f5"

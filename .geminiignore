@@ -1,0 +1,26 @@
+# Gemini Ignore File
+# This file is used to ignore files and directories when the AI coding agent is reading the project context.
+
+# Version control
+.git/
+
+# Python virtual environment
+.venv/
+
+# Python caches
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+
+# Build artifacts
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node.js dependencies
+node_modules/
+
+# OS-specific files
+.DS_Store
+Thumbs.db

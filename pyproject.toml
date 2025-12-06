@@ -6,7 +6,7 @@ authors = ["Jeremy Whelchel <jeremy@whelchel.me>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "~3.12"
+python = "~3.13"
 google-cloud-logging = "^3"
 numpy = "^2"
 pandas = "^2"
@@ -41,7 +41,7 @@ freezegun = "^1.5.1"
 pytest-mock = "^3.14.0"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 ignore_missing_imports = true
 warn_unused_ignores = false
@@ -76,7 +76,7 @@ asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "module"
 
 [tool.basedpyright]
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 venvPath = "."
 venv = ".venv"
 

@@ -1,6 +1,6 @@
 # Shall We Swim Today?
 
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
 [![Poetry](https://img.shields.io/badge/Poetry-Managed-blueviolet)](https://python-poetry.org/)
 
@@ -68,7 +68,7 @@ Shall We Swim is a FastAPI application with a modular architecture:
 
 ### Prerequisites
 
-- Python 3.12
+- Python 3.13
 - [Poetry](https://python-poetry.org/) for dependency management
 - Docker (optional, for containerized deployment)
 

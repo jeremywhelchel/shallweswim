@@ -6,7 +6,7 @@ This document provides context for AI coding agents to understand the "Shall We 
 
 "Shall We Swim Today?" is a FastAPI web application that provides real-time tide, current, and temperature data for open water swimming locations. It helps swimmers make informed decisions about swim conditions.
 
-The application is built with Python 3.12, FastAPI, and Poetry for dependency management. It fetches data from NOAA CO-OPS and USGS NWIS APIs.
+The application is built with Python 3.13, FastAPI, and Poetry for dependency management. It fetches data from NOAA CO-OPS and USGS NWIS APIs.
 
 ## Key Files and Directories
 

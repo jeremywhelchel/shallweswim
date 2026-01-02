@@ -8,16 +8,12 @@ jobs:
     name: Run mypy type checking
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.13"
+        uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
         with:
+          python-version: "3.13"
           enable-cache: true
 
       - name: Install dependencies
@@ -25,11 +21,3 @@ jobs:
 
       - name: Run mypy type checking
         run: uv run mypy --config-file=pyproject.toml .
-
-      - name: Upload error report on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mypy-error-report
-          path: .mypy_cache
-          retention-days: 7

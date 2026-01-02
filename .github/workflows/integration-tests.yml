@@ -18,30 +18,24 @@ jobs:
     name: Run Integration Tests
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.13"
+        uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
         with:
+          python-version: "3.13"
           enable-cache: true
 
       - name: Install dependencies
         run: uv sync --dev
 
       - name: Run integration tests
-        run: uv run pytest -v -m integration --run-integration
+        run: uv run pytest -v -m integration --run-integration --junitxml=integration-test-results.xml
 
-      - name: Upload test report on failure
+      - name: Upload test results on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-report
-          path: |
-            .pytest_cache
-            pytest-report.xml
+          name: integration-test-results
+          path: integration-test-results.xml
           retention-days: 7

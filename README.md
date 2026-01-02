@@ -2,7 +2,7 @@
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
-[![Poetry](https://img.shields.io/badge/Poetry-Managed-blueviolet)](https://python-poetry.org/)
+[![uv](https://img.shields.io/badge/uv-Managed-blueviolet)](https://github.com/astral-sh/uv)
 
 **A web application that helps open water swimmers make informed decisions about swim conditions.**
 
@@ -69,7 +69,7 @@ Shall We Swim is a FastAPI application with a modular architecture:
 ### Prerequisites
 
 - Python 3.13
-- [Poetry](https://python-poetry.org/) for dependency management
+- [uv](https://github.com/astral-sh/uv) for dependency management
 - Docker (optional, for containerized deployment)
 
 ### Run Locally
@@ -80,10 +80,10 @@ git clone https://github.com/jeremywhelchel/shallweswim.git
 cd shallweswim
 
 # Install dependencies
-poetry install
+uv sync
 
 # Run the development server
-poetry run python -m shallweswim.main --port=12345
+uv run python -m shallweswim.main --port=12345
 ```
 
 Then visit http://localhost:12345 in your browser.
@@ -114,14 +114,14 @@ The application is hosted on Google Cloud Run:
 ### Setup
 
 ```bash
-# Install Poetry (recommended method)
-curl -sSL https://install.python-poetry.org | python3 -
+# Install uv (recommended method)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install dependencies
-poetry install
+# Install dependencies (including dev dependencies)
+uv sync --all-extras
 
 # Set up pre-commit hooks
-poetry run pre-commit install
+uv run pre-commit install
 ```
 
 ### Testing and Code Quality
@@ -130,28 +130,28 @@ The project uses pytest for tests and several tools to maintain code quality. Th
 
 ```bash
 # Run unit tests (excluding integration tests)
-poetry run pytest -v -k "not integration"
+uv run pytest -v -k "not integration"
 
 # Run integration tests (connects to external APIs)
-poetry run pytest -v -m integration --run-integration
+uv run pytest -v -m integration --run-integration
 
 # Run type checking
-poetry run mypy --config-file=pyproject.toml .
+uv run mypy --config-file=pyproject.toml .
 
 # Run linting to detect unused code
-poetry run pylint shallweswim/ tests/
+uv run pylint shallweswim/ tests/
 
 # Format code with Black
-poetry run black .
+uv run black .
 
 # Run all pre-commit hooks
-poetry run pre-commit run --all-files
+uv run pre-commit run --all-files
 
 # Run with code coverage
-poetry run pytest --cov=shallweswim
+uv run pytest --cov=shallweswim
 
 # Run with code coverage and generate HTML report
-poetry run pytest --cov=shallweswim --cov-report=html
+uv run pytest --cov=shallweswim --cov-report=html
 ```
 
 Note: Integration tests connect to live NOAA CO-OPS API and may occasionally fail if external services are experiencing issues or if the expected data is temporarily unavailable.

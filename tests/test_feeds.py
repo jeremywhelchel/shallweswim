@@ -1014,13 +1014,18 @@ class TestCompositeFeed:
         mock_feed2._fetch.return_value = test_df2
 
         # Mock the _get_feeds and _combine_feeds methods
-        with patch.object(
-            simple_composite_feed, "_get_feeds", return_value=[mock_feed1, mock_feed2]
-        ) as mock_get_feeds, patch.object(
-            simple_composite_feed,
-            "_combine_feeds",
-            return_value=pd.concat([test_df1, test_df2]),
-        ) as mock_combine_feeds:
+        with (
+            patch.object(
+                simple_composite_feed,
+                "_get_feeds",
+                return_value=[mock_feed1, mock_feed2],
+            ) as mock_get_feeds,
+            patch.object(
+                simple_composite_feed,
+                "_combine_feeds",
+                return_value=pd.concat([test_df1, test_df2]),
+            ) as mock_combine_feeds,
+        ):
 
             # Call _fetch
             result = await simple_composite_feed._fetch(clients=mock_clients)
@@ -1077,10 +1082,13 @@ class TestCompositeFeed:
         combined_df = pd.concat([valid_temp_dataframe, valid_temp_dataframe])
 
         # Mock both _get_feeds and _combine_feeds methods
-        with patch.object(
-            simple_composite_feed, "_get_feeds", return_value=[feed1, feed2]
-        ), patch.object(
-            simple_composite_feed, "_combine_feeds", return_value=combined_df
+        with (
+            patch.object(
+                simple_composite_feed, "_get_feeds", return_value=[feed1, feed2]
+            ),
+            patch.object(
+                simple_composite_feed, "_combine_feeds", return_value=combined_df
+            ),
         ):
             # Call _fetch
             result = await simple_composite_feed._fetch(clients=mock_clients)

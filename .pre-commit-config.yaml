@@ -18,14 +18,7 @@ repos:
       - id: prettier
         types_or: [markdown, yaml, json, html, css, javascript]
 
-  # Poetry validation
-  - repo: https://github.com/python-poetry/poetry
-    rev: "2.1.2"
-    hooks:
-      - id: poetry-check
-      - id: poetry-lock
-
-  # Local hooks using poetry-managed tools
+  # Local hooks using uv-managed tools
   - repo: local
     hooks:
       # Run unit tests (fast)
@@ -33,7 +26,7 @@ repos:
         name: pytest unit tests
         description: Run fast unit tests to catch breakages early
         language: system
-        entry: poetry run pytest -v -k "not integration"
+        entry: uv run pytest -v -k "not integration"
         pass_filenames: false
         always_run: true
 
@@ -42,7 +35,7 @@ repos:
         name: mypy type checking
         description: Check type annotations with mypy
         language: system
-        entry: poetry run mypy --config-file=pyproject.toml .
+        entry: uv run mypy --config-file=pyproject.toml .
         pass_filenames: false
         always_run: true
 
@@ -51,7 +44,7 @@ repos:
         name: pylint unused code check
         description: Detect unused imports, variables, and dead code
         language: system
-        entry: poetry run pylint shallweswim/ tests/
+        entry: uv run pylint shallweswim/ tests/
         pass_filenames: false
         always_run: true
 
@@ -60,15 +53,15 @@ repos:
         name: pytest integration tests
         description: Run integration tests (disabled by default, enable as needed)
         language: system
-        entry: poetry run pytest -v -m integration --run-integration
+        entry: uv run pytest -v -m integration --run-integration
         pass_filenames: false
         stages: [manual] # Not run by default, use "pre-commit run pytest-integration" to run
 
       # Black code formatting (run last to ensure final formatting)
       - id: black
         name: black formatter
-        description: Format code with Black using Poetry
+        description: Format code with Black using uv
         language: system
-        entry: poetry run black
+        entry: uv run black
         types: [python]
         require_serial: true

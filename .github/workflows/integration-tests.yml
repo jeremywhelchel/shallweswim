@@ -27,7 +27,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Run integration tests
         run: uv run pytest -v -m integration --run-integration --junitxml=integration-test-results.xml

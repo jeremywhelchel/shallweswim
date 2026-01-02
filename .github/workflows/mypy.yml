@@ -17,7 +17,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Run mypy type checking
         run: uv run mypy --config-file=pyproject.toml .

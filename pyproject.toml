@@ -25,19 +25,19 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black>=25,<26",
+    "black>=25,<27",
     "pytest>=8,<9",
     "pytest-asyncio>=1.2.0,<2",
     "pre-commit>=4,<5",
     "mypy>=1.15.0,<2",
-    "types-pytz>=2025.2.0.20250326",
+    "types-pytz",
     "matplotlib-stubs>=0.3.11,<1",
     "httpx>=0.28.1,<1",
     "pylint>=4.0.2,<5",
-    "types-python-dateutil>=2.9.0.20241206",
+    "types-python-dateutil",
     "pytest-cov>=7.0.0,<8",
     "pytest-aiohttp>=1.1.0,<2",
-    "types-requests>=2.32.0.20250328",
+    "types-requests",
     "freezegun>=1.5.1,<2",
     "pytest-mock>=3.14.0,<4",
 ]

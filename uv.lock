@@ -1533,7 +1533,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.3,<4" },
-    { name = "black", marker = "extra == 'dev'", specifier = ">=25,<26" },
+    { name = "black", marker = "extra == 'dev'", specifier = ">=25,<27" },
     { name = "dataretrieval", specifier = ">=1.0.11,<2" },
     { name = "fastapi", specifier = ">=0.120.1,<1" },
     { name = "freezegun", marker = "extra == 'dev'", specifier = ">=1.5.1,<2" },
@@ -1558,9 +1558,9 @@ requires-dist = [
     { name = "seaborn", specifier = ">=0.13,<1" },
     { name = "starlette", specifier = ">=0.49.1,<1" },
     { name = "tenacity", specifier = ">=9.1.2,<10" },
-    { name = "types-python-dateutil", marker = "extra == 'dev'", specifier = ">=2.9.0.20241206" },
-    { name = "types-pytz", marker = "extra == 'dev'", specifier = ">=2025.2.0.20250326" },
-    { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.32.0.20250328" },
+    { name = "types-python-dateutil", marker = "extra == 'dev'" },
+    { name = "types-pytz", marker = "extra == 'dev'" },
+    { name = "types-requests", marker = "extra == 'dev'" },
     { name = "uvicorn", specifier = ">=0.38.0,<1" },
 ]
 provides-extras = ["dev"]

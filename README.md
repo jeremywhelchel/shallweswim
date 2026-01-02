@@ -92,7 +92,7 @@ Then visit http://localhost:12345 in your browser.
 
 ```bash
 # Build the Docker image
-docker build -t shallweswim .
+docker buildx build -t shallweswim .
 
 # Run the container
 docker run -e PORT=80 -p 12345:80 shallweswim

@@ -9,12 +9,24 @@ substitutions:
 
 steps:
   - name: "gcr.io/cloud-builders/docker"
-    id: docker_build
-    args: ["build", "-t", "${_IMAGE_NAME}", "."]
+    id: build-and-push
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        # Create a modern builder instance with docker-container driver
+        docker buildx create --name builder --driver docker-container --use
 
-  - name: "gcr.io/cloud-builders/docker"
-    id: docker_push
-    args: ["push", "${_IMAGE_NAME}"]
+        # Build, cache, and push in one atomic operation
+        docker buildx build \
+          --platform linux/amd64 \
+          -t ${_IMAGE_NAME} \
+          --cache-from=type=registry,ref=${_IMAGE_NAME}:buildcache \
+          --cache-to=type=registry,ref=${_IMAGE_NAME}:buildcache,mode=max \
+          --push \
+          .
+    env:
+      - DOCKER_BUILDKIT=1
 
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     id: cloud_run_deploy
@@ -29,9 +41,6 @@ steps:
         "--region",
         "${_REGION}",
       ]
-
-images:
-  - "${_IMAGE_NAME}"
 
 options:
   dynamic_substitutions: true

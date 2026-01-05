@@ -2,80 +2,62 @@
 
 This document provides context for AI coding agents to understand the "Shall We Swim Today?" project.
 
+## Quick Links
+- **[Code Conventions](docs/CONVENTIONS.md)**: STRICTLY follow these standards for all code changes.
+- **[Project README](../README.md)**: General project overview and setup.
+
 ## Project Overview
 
-"Shall We Swim Today?" is a FastAPI web application that provides real-time tide, current, and temperature data for open water swimming locations. It helps swimmers make informed decisions about swim conditions.
+"Shall We Swim Today?" is a FastAPI web application that provides real-time tide, current, and temperature data for open water swimming locations. It fetches data from NOAA CO-OPS and USGS NWIS APIs.
 
-The application is built with Python 3.13, FastAPI, and Poetry for dependency management. It fetches data from NOAA CO-OPS and USGS NWIS APIs.
+**Tech Stack:**
+- **Language**: Python 3.13
+- **Web Framework**: FastAPI
+- **Dependency Management**: uv
+- **Data Processing**: Pandas, NumPy
+- **Plotting**: Matplotlib (run in process pool)
+- **Validation**: Pydantic v2
+- **Testing**: pytest
 
-## Key Files and Directories
+## Codebase Map
 
-- `shallweswim/`: The main application package.
-  - `main.py`: The FastAPI application entry point. It handles application startup, lifespan events, and serves HTML templates.
-  - `api.py`: Defines the API endpoints for fetching swim conditions, status, and data. It contains the core logic for handling API requests.
-  - `data.py`: Manages data feeds and coordinates data fetching from various sources. The `LocationDataManager` class is central to this process.
-  - `config.py`: Contains the configuration for all supported swimming locations, including station IDs and data source details. This is the first place to look when adding a new location or modifying an existing one.
-  - `feeds.py`: A modular data feed framework for different data types (e.g., tides, temperatures).
-  - `clients/`: Contains the API clients for interacting with external services like NOAA CO-OPS (`coops.py`), USGS NWIS (`nwis.py`), and NDBC (`ndbc.py`).
-  - `plot.py`: Handles the generation of plots and visualizations.
-  - `static/`: Static assets like CSS, JavaScript, and images.
-  - `templates/`: Jinja2 HTML templates for the web UI.
-- `tests/`: Contains the test suite.
-  - `test_api.py`: Tests for the API endpoints.
-  - `test_data.py`: Tests for the data management logic.
-  - Integration tests are marked with the `integration` marker and connect to external APIs.
-- `pyproject.toml`: Defines project dependencies, scripts, and tool configurations (mypy, pylint, pytest).
-- `Dockerfile`: For building and running the application in a Docker container.
-- `build_and_deploy.sh`: Script for deploying the application to Google Cloud Run.
+### Core Logic (`shallweswim/`)
+- **`main.py`**: Application entry point. Handles `lifespan` (startup/shutdown) and serves HTML.
+- **`api.py`**: JSON API endpoints. *Entry point for all data requests.*
+- **`data.py`**: **Critical Component.** `LocationDataManager` orchestrates data fetching for a specific location. It manages multiple `Feed` instances.
+- **`feeds.py`**: **Critical Component.** The `Feed` abstract base class and its implementations. Handles caching, expiration, and data readiness.
+- **`config.py`**: Central configuration registry. Defines known swimming locations and their data sources.
+- **`plot.py`**: Generates static plots (tide charts, temperature trends). *Note: CPU-intensive, usually run in a separate process.*
+- **`util.py`**: Shared utilities (timezones, date formatting).
 
-## Detailed Data Flow
+### External Interactions (`shallweswim/clients/`)
+- **`base.py`**: Base API client with retry logic.
+- **`coops.py`, `nwis.py`, `ndbc.py`**: Specific clients for NOAA/USGS/NDBC services.
 
-A typical request for swim conditions for a location (e.g., `/api/nyc/conditions`) follows this path:
+### Data Models
+- **`api_types.py`**: Pydantic models for API responses.
+- **`dataframe_models.py`**: Pandera schemas for validation of internal DataFrames.
 
-1.  **`main.py` receives the request:** The FastAPI application routes the request to the appropriate handler in `api.py`.
-2.  **`api.py` handles the request:** The `location_conditions` function in `api.py` is called.
-3.  **Validate Location:** The function first validates the location code using `config.get()`.
-4.  **Retrieve Data Manager:** It retrieves the `LocationDataManager` instance for the requested location from the `app.state.data_managers` dictionary.
-5.  **Fetch Data:** The `LocationDataManager`'s methods (e.g., `get_current_temperature()`, `get_current_tide_info()`) are called.
-6.  **Access Feeds:** These methods, in turn, access the underlying data `Feed` objects (e.g., `NoaaTempFeed`, `NoaaTidesFeed`) which are managed by the `LocationDataManager`.
-7.  **Fetch from External APIs:** If the data in a feed is expired, the feed will use one of the API clients from the `clients/` directory (e.g., `CoopsApi`) to fetch fresh data from the external NOAA or USGS APIs.
-8.  **Process and Return Data:** The raw data is processed, validated, and transformed into Pydantic models defined in `api_types.py`.
-9.  **JSON Response:** The Pydantic models are serialized to a JSON response and sent back to the client.
+## Common Development Tasks
 
-## Core Abstractions
+### 1. Adding a New Data Feed Type
+1.  **Define Client**: If needed, add a client in `shallweswim/clients/`.
+2.  **Create Feed Class**: In `shallweswim/feeds.py`, create a class inheriting from `Feed` (or a subclass like `NoaaBaseFeed`).
+3.  **Implement `fetch_data`**: Implement the method to call the client and return a DataFrame.
+4.  **Register Config**: Add a configuration model in `config.py`.
 
-- **`LocationDataManager` (`data.py`):** This is the central class for managing all data related to a single location. It is responsible for:
-  - Initializing and managing all data `Feed`s for a location.
-  - Providing a high-level API for accessing processed data (e.g., current temperature, tide info).
-  - Tracking the overall status and health of the data for a location.
-- **`Feed` Framework (`feeds.py`):** This is a modular system for fetching and managing data from different sources.
-  - Each `Feed` is responsible for a specific type of data (e.g., `NoaaTidesFeed`, `NwisTempFeed`).
-  - Feeds handle data fetching, caching (with expiration), and validation.
-  - This makes it easy to add new data sources without modifying the core data management logic.
+### 2. Adding a New Swimming Location
+1.  **Find Station IDs**: Locate the NOAA/USGS station IDs for tides, currents, and temp.
+2.  **Update Config**: Add a new `LocationConfig` entry in `shallweswim/config.py`.
+3.  **Verify**: Run the app locally and check the new endpoint `/api/{new_loc}/conditions`.
 
-## Configuration Schema (`config.py`)
+### 3. Modifying the API
+1.  **Update Model**: Change `shallweswim/api_types.py` to reflect the new response structure.
+2.  **Update Logic**: Modify `shallweswim/api.py` to populate the new fields.
+3.  **Test**: Update `tests/test_api.py`.
 
-- The application's configuration is defined using Pydantic models for type safety and validation.
-- `LocationConfig`: The main model that defines a swimming location.
-- `BaseFeedConfig` and its subclasses (e.g., `CoopsTempFeedConfig`, `NwisCurrentFeedConfig`): These models define the specific parameters for each data source, such as station IDs and API endpoints. This structured approach makes the configuration clear, explicit, and less prone to errors.
+## Key Concepts to Remember
 
-## API Data Models (`api_types.py`)
-
-- The API uses Pydantic models to define the structure of its JSON responses.
-- Key models include:
-  - `LocationConditions`: The main response model for the `/api/{location}/conditions` endpoint.
-  - `TemperatureInfo`, `TideInfo`, `CurrentInfo`: Sub-models that structure the different types of data.
-- Using these models ensures that the API responses are consistent and well-documented.
-
-## Testing Strategy
-
-- The project uses `pytest` for testing.
-- **Unit Tests:** These tests are designed to run quickly and do not make external API calls. They use mock objects (created with `unittest.mock`) to simulate the behavior of external services. The `mock_data_managers` fixture in `tests/test_api.py` is a good example of this approach.
-- **Integration Tests:** These tests are marked with the `integration` pytest marker and are designed to test the application's integration with external APIs (NOAA, USGS). They are run separately from the unit tests.
-
-## How to Add a New Location
-
-1.  **Add a new `LocationConfig` object** to the `_CONFIG_LIST` in `shallweswim/config.py`.
-2.  **Provide the necessary data sources** (temperature, tides, currents) for the new location. You will likely need to find the correct station IDs from NOAA CO-OPS or USGS NWIS.
-3.  **Enable the location** by setting `enabled=True`.
-4.  **Add tests** for the new location.
+- **Process Pool**: Plotting is slow. `main.py` creates a `ProcessPoolExecutor` in `app.state.process_pool`. Use it for `plot.py` functions.
+- **Data Freshness**: Feeds self-manage expiration. `api.py` just asks for data; the feed decides if it needs to fetch fresh data or return cached data.
+- **Timezones**: All internal times should be UTC-aware or explicitly handled. Use `util.effective_time` for shifting times relative to a location's timezone.

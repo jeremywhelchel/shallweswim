@@ -1,0 +1,11 @@
+# Cursor Rules
+
+This project uses a centralized set of coding conventions.
+
+**YOU MUST READ AND FOLLOW:**
+- `docs/CONVENTIONS.md`
+
+**Key Highlights:**
+- **Package Manager**: `uv` (NOT poetry or pip)
+- **Framework**: FastAPI + Pydantic v2
+- **Testing**: pytest (unit tests run fast, integration tests need `-m integration`)

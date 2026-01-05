@@ -111,6 +111,9 @@ The application is hosted on Google Cloud Run:
 
 ## Development
 
+**Documentation**
+- [Code Conventions & Architecture](docs/CONVENTIONS.md) - **Read this first** before making changes.
+
 ### Setup
 
 ```bash

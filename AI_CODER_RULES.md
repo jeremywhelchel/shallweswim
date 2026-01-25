@@ -1,5 +1,7 @@
 # AI CODER RULES
 
+**For full documentation, see [README.md](README.md).** This file contains quick-reference rules for AI coders.
+
 ## Project Overview
 
 Open water swimming conditions app (shallweswim.today). Aggregates tide, current, and temperature data from NOAA/USGS APIs for multiple locations.

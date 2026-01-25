@@ -22,6 +22,7 @@ uv run python -m shallweswim.main --port=12345  # Run locally
 3. **Run pre-commit after major changes** - Catches formatting, linting, and type errors.
 4. **Don't run integration tests** unless explicitly requested - They hit live external APIs.
 5. **Follow CONVENTIONS.md strictly** - See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for architecture and coding standards.
+6. **Never modify station configurations** - Do not change NOAA/USGS station IDs or data sources without explicit user approval. Configuration changes are out of scope.
 
 ## Architecture Quick Reference
 

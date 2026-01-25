@@ -156,6 +156,10 @@ class BaseApiClient(abc.ABC):
                 location_code=location_code,
             )
             raise  # Re-raise the final RetryableClientError
+        except StationUnavailableError:
+            # Expected operational condition - already logged as WARNING in _execute_request
+            # Just propagate to _handle_task_exception which logs at WARNING level
+            raise
         except Exception as e:
             # Log non-retryable failures immediately
             self.log(

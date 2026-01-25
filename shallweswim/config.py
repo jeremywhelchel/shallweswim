@@ -546,7 +546,6 @@ _CONFIG_LIST = [
         description="La Jolla Cove open water swimming conditions",
     ),
     LocationConfig(
-        enabled=False,
         code="chi",
         name="Chicago",
         swim_location="Ohio Street Beach",
@@ -602,7 +601,6 @@ _CONFIG_LIST = [
         # webcam https://dolphinclub.org/weather/ (code in page JS source...)
     ),
     LocationConfig(
-        enabled=False,
         code="sdf",
         name="Louisville",
         swim_location="Community Boathouse",
@@ -633,7 +631,6 @@ _CONFIG_LIST = [
         # - Fix Windy embed mode. "waves" isnt relevant here.
     ),
     LocationConfig(
-        enabled=False,
         code="aus",
         name="Austin",
         swim_location="Barton Springs",
@@ -649,7 +646,6 @@ _CONFIG_LIST = [
         description="Austin, TX open water swimming conditions",
     ),
     LocationConfig(
-        enabled=False,
         code="bos",
         name="Boston",
         swim_location="L Street Beach",

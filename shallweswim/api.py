@@ -298,65 +298,66 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
     @app.get("/api/healthy", status_code=200)
     async def healthy_status() -> bool:
-        """API endpoint that returns whether all locations' data is healthy.
+        """API endpoint for service health check (used by Cloud Run).
+
+        Returns 200 if at least one location can serve data (fresh or stale).
+        Returns 503 only if NO location has any data available.
+
+        This lenient check ensures single station outages don't mark the entire
+        service unhealthy. For detailed per-feed health status, use /api/status.
 
         Returns:
-            Boolean indicating whether all locations' data is healthy
+            True if service can serve at least one location
             Status code 200 if healthy, 503 if not healthy
         """
         logging.info("[api] Processing health status request")
 
         # Check if data managers exist and are initialized
-        # This will raise AttributeError if app.state.data_managers doesn't exist
-        # which is appropriate for a service that's not properly initialized
         if not app.state.data_managers:
             logging.warning("[api] No locations configured")
             raise HTTPException(
                 status_code=503, detail="Service not healthy - no locations configured"
             )
-        any_location_not_healthy = False  # Flag to track overall health
 
-        # Check each location
+        # Check if at least one location has data
+        locations_with_data = []
+        locations_without_data = []
+
         for loc_code, loc_data in app.state.data_managers.items():
-            # Check if location data exists
             if not loc_data:
                 logging.warning(f"[{loc_code}] Location not in data dictionary")
-                # Keep this immediate exception as it indicates a config/setup issue
                 raise HTTPException(
                     status_code=503,
                     detail="Service not healthy - location data missing",
                 )
 
-            # Check if location data is ready
-            unhealthy_feeds_in_location = []
-            for feed_name, feed in loc_data._feeds.items():
-                if feed is not None and not feed.is_healthy:
-                    unhealthy_feeds_in_location.append(
-                        feed.status.model_dump(mode="json")
-                    )
-                    logging.warning(
-                        f"[{loc_code}/{feed_name}] Feed is unhealthy. Status: {feed.status.model_dump_json()}"
-                    )
+            if loc_data.has_data:
+                locations_with_data.append(loc_code)
+            else:
+                locations_without_data.append(loc_code)
 
-            if unhealthy_feeds_in_location:
-                any_location_not_healthy = True  # Set the flag
-                logging.warning(
-                    f"[/api/healthy] Location '{loc_code}' reported not healthy. Logging status for its unhealthy feeds..."
-                )
+        # Log status for visibility
+        if locations_without_data:
+            logging.info(
+                f"[/api/healthy] Locations without data: {locations_without_data}"
+            )
+        if locations_with_data:
+            logging.info(f"[/api/healthy] Locations with data: {locations_with_data}")
 
-        # After checking all locations, decide final action based on the flag
-        if any_location_not_healthy:
+        # Healthy if at least one location can serve data
+        if locations_with_data:
+            logging.info(
+                f"[api] Service healthy - {len(locations_with_data)} location(s) have data"
+            )
+            return True
+        else:
             logging.warning(
-                "[/api/healthy] At least one location reported not healthy. Raising 503."
+                "[/api/healthy] No location has data available. Raising 503."
             )
             raise HTTPException(
                 status_code=503,
-                detail="Service not healthy - data being loaded",
+                detail="Service not healthy - no location has data",
             )
-        else:
-            # All locations are healthy
-            logging.info("[api] All locations report healthy status")
-            return True
 
     @app.get("/api/status", response_model=Dict[str, LocationStatus])
     async def all_locations_status() -> Dict[str, LocationStatus]:

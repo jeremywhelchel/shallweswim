@@ -327,6 +327,21 @@ class LocationDataManager(object):
         return True
 
     @property
+    def has_data(self) -> bool:
+        """Check if any configured feed has data (fresh or stale).
+
+        This is a lenient check used for health endpoints - returns True if
+        the location can serve any data at all, even if some feeds are expired.
+
+        Returns:
+            True if at least one feed has data, False if no data available
+        """
+        for feed in self._feeds.values():
+            if feed is not None and feed._data is not None:
+                return True
+        return False
+
+    @property
     def status(self) -> api_types.LocationStatus:
         """Get a Pydantic model with the status of all configured feeds.
 

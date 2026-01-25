@@ -59,3 +59,27 @@ This document outlines the coding standards and architectural patterns for the "
   - **Args**: List arguments and their types.
   - **Returns**: Describe the return value.
   - **Raises**: List exceptions raised.
+
+## 5. Station Outage Handling
+
+External data sources (NOAA, USGS, NDBC) may have temporary outages. The application handles these gracefully:
+
+### Health Check (`/api/healthy`)
+
+- Returns **200** if at least 1 location has data (fresh or stale)
+- Returns **503** only if NO location can serve any data
+- Used by Cloud Run for routing decisions
+- Single station outages do NOT trigger 503
+
+### Monitoring (`/api/status`)
+
+- Returns detailed status for all locations/feeds
+- Shows `is_healthy`, `is_expired`, `age_seconds` per feed
+- Use external monitoring (GCP Cloud Monitoring) to alert on stale data
+- Recommended: Alert if `is_healthy: false` persists > 30 minutes for critical feeds
+
+### Integration Tests
+
+- Locations with `test_required=True` in config (e.g., NYC) must pass
+- Other locations skip gracefully on data unavailability
+- Run with: `uv run pytest -m integration --run-integration`

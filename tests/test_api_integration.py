@@ -493,9 +493,12 @@ def test_invalid_api_location(api_client: TestClient) -> None:
 def test_healthy_endpoint(api_client: TestClient) -> None:
     """Test the healthy API endpoint returns a valid response.
 
-    Note: Individual locations may fail to load due to station outages.
-    The endpoint returns 200 with True if all locations are healthy,
-    or 503 with an error detail if any location is unhealthy.
+    The endpoint uses a lenient health check:
+    - Returns 200 if at least 1 location has data (fresh or stale)
+    - Returns 503 only if NO location can serve any data
+
+    This ensures single station outages don't mark the entire service unhealthy.
+    For detailed per-feed status, use /api/status instead.
     """
     response = api_client.get("/api/healthy")
 

@@ -160,6 +160,15 @@ uv run pytest --cov=shallweswim --cov-report=html
 
 Note: Integration tests connect to live NOAA CO-OPS API and may occasionally fail if external services are experiencing issues or if the expected data is temporarily unavailable.
 
+## Monitoring & Station Outages
+
+External data sources (NOAA, USGS) occasionally experience outages. The application handles these gracefully:
+
+- **Health check (`/api/healthy`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
+- **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, and `age_seconds`. Use this for granular monitoring and alerting.
+
+For production deployments, set up external monitoring on `/api/status` to alert when critical feeds become unhealthy. See [Code Conventions](docs/CONVENTIONS.md) for detailed station outage handling strategy.
+
 ## API Documentation
 
 When running locally, API documentation is available at:

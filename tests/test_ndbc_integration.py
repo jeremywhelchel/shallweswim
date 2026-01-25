@@ -81,10 +81,11 @@ async def test_live_temperature_fetch_stdmet() -> None:
         )
     else:
         # Check that valid temperatures are in a reasonable Fahrenheit range
-        below_freezing = valid_temps[valid_temps["water_temp"] <= 32]
+        # Sea water freezes at ~28.4°F (-2°C) due to salt content
+        below_freezing = valid_temps[valid_temps["water_temp"] < 28]
         assert (
             below_freezing.empty
-        ), f"Water temperatures should be above freezing. Found {len(below_freezing)} problematic readings:\n{below_freezing.head(10) if len(below_freezing) > 10 else below_freezing}"
+        ), f"Water temperatures should be above sea water freezing point (~28°F). Found {len(below_freezing)} problematic readings:\n{below_freezing.head(10) if len(below_freezing) > 10 else below_freezing}"
 
         above_boiling = valid_temps[valid_temps["water_temp"] >= 212]
         assert (
@@ -127,10 +128,11 @@ async def test_live_temperature_fetch_ocean() -> None:
             )
         else:
             # Check that valid temperatures are in a reasonable Fahrenheit range
-            below_freezing = valid_temps[valid_temps["water_temp"] <= 32]
+            # Sea water freezes at ~28.4°F (-2°C) due to salt content
+            below_freezing = valid_temps[valid_temps["water_temp"] < 28]
             assert (
                 below_freezing.empty
-            ), f"Water temperatures should be above freezing. Found {len(below_freezing)} problematic readings:\n{below_freezing.head(10) if len(below_freezing) > 10 else below_freezing}"
+            ), f"Water temperatures should be above sea water freezing point (~28°F). Found {len(below_freezing)} problematic readings:\n{below_freezing.head(10) if len(below_freezing) > 10 else below_freezing}"
 
             above_boiling = valid_temps[valid_temps["water_temp"] >= 212]
             assert (

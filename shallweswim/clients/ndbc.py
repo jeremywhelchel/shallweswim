@@ -20,6 +20,7 @@ from shallweswim.clients.base import (
     BaseApiClient,
     BaseClientError,
     RetryableClientError,
+    StationUnavailableError,
 )
 from shallweswim.util import c_to_f
 
@@ -112,12 +113,20 @@ class NdbcApi(BaseApiClient):
 
             # Check if the result is a dictionary (often empty or error indication)
             if isinstance(raw_result, dict):
-                error_msg = (
-                    f"NDBC API returned a dictionary, not DataFrame: {raw_result}"
-                )
-                # Treat this as a data error, not necessarily retryable
-                self.log(error_msg, level=logging.WARNING, location_code=location_code)
-                raise NdbcDataError(error_msg)
+                if raw_result == {}:
+                    # Empty dict = station has no data (expected operational condition)
+                    error_msg = f"NDBC station {station_id} returned no data"
+                    self.log(
+                        error_msg, level=logging.WARNING, location_code=location_code
+                    )
+                    raise StationUnavailableError(error_msg)
+                else:
+                    # Non-empty dict = unexpected format (potential API change)
+                    error_msg = f"NDBC API returned unexpected dict: {raw_result}"
+                    self.log(
+                        error_msg, level=logging.ERROR, location_code=location_code
+                    )
+                    raise NdbcDataError(error_msg)
 
             # Explicitly check if it's a DataFrame
             if not isinstance(raw_result, pd.DataFrame):

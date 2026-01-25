@@ -19,6 +19,20 @@ class RetryableClientError(BaseClientError):
     """Exception raised when a client encounters a transient, retryable error."""
 
 
+class StationUnavailableError(BaseClientError):
+    """Station is temporarily unavailable or has no data.
+
+    This is an EXPECTED operational condition, not a bug.
+    Use ONLY when we're confident the station is offline or has no data,
+    NOT for unexpected data formats or parsing failures.
+
+    Examples:
+    - NDBC returns empty dict {}
+    - COOPS returns "No data was found" message
+    - Empty DataFrame with zero rows for requested time range
+    """
+
+
 # Type variable for the result of the API call
 T = TypeVar("T")
 

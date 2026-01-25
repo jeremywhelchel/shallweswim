@@ -155,13 +155,22 @@ def register_routes(app: fastapi.FastAPI) -> None:
         logging.info(f"[{location}] Processing conditions request")
         cfg = validate_location(location)
 
+        # Get the data manager for this location
+        data_manager = app.state.data_managers[location]
+
+        # Check if location has data before attempting to serve
+        # This prevents AssertionError from _get_feed_data when feeds are empty
+        if not data_manager.ready:
+            logging.warning(f"[{location}] No data available for conditions request")
+            raise HTTPException(
+                status_code=503,
+                detail=f"{cfg.name} data temporarily unavailable",
+            )
+
         # Create location info
         location_info = LocationInfo(
             code=location, name=cfg.name, swim_location=cfg.swim_location
         )
-
-        # Get the data manager for this location
-        data_manager = app.state.data_managers[location]
 
         # Initialize temperature and tides as None
         temperature_info = None

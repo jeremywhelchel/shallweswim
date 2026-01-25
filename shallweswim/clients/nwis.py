@@ -24,6 +24,7 @@ from shallweswim.clients.base import (
     BaseApiClient,
     BaseClientError,  # Import BaseClientError
     RetryableClientError,
+    StationUnavailableError,
 )  # noqa
 from shallweswim.util import c_to_f
 
@@ -109,10 +110,12 @@ class NwisApi(BaseApiClient):
                 or not isinstance(raw_result, pd.DataFrame)
                 or raw_result.empty
             ):
-                error_msg = f"No data returned from NWIS API for site {sites}, params {parameterCd}"
-                # This is treated as a data error, not necessarily retryable
+                error_msg = (
+                    f"NWIS site {sites} returned no data for params {parameterCd}"
+                )
+                # Station has no data - expected operational condition
                 self.log(error_msg, level=logging.WARNING, location_code=location_code)
-                raise NwisDataError(error_msg)
+                raise StationUnavailableError(error_msg)
 
             return raw_result
 

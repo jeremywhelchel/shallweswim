@@ -62,7 +62,47 @@ This document outlines the coding standards and architectural patterns for the "
 
 ## 5. Station Outage Handling
 
-External data sources (NOAA, USGS, NDBC) may have temporary outages. The application handles these gracefully:
+External data sources (NOAA, USGS, NDBC) may have temporary outages. The application handles these gracefully through principled error handling.
+
+### Two Code Paths
+
+**Background feed refresh** (populates data):
+
+- `StationUnavailableError` → WARNING log (no alert)
+- Other `BaseClientError` → ERROR log (alert)
+- Other exceptions → ERROR log (alert)
+- Feed stays stale, retries on next interval
+
+**API request handlers** (serves users):
+
+- Feed not ready → 503 + WARNING log
+- Other exceptions → 500 + ERROR log (bug)
+
+### Exception Classes (`clients/base.py`)
+
+- **`StationUnavailableError`**: Use ONLY for confirmed "no data" conditions
+
+  - NDBC returns empty dict `{}`
+  - COOPS returns "No data was found"
+  - Empty DataFrame for time range
+
+- **`*DataError`**: Unexpected data format, parsing failures
+
+  - May indicate API changed - needs investigation
+
+- **`*ConnectionError`**: Network issues
+  - May be transient or infrastructure problem
+
+### Logging Guidelines
+
+- **WARNING**: Expected operational issues (station outages)
+
+  - Does NOT trigger GCP alerts (query: `severity=ERROR`)
+  - Visible in logs for debugging
+
+- **ERROR**: Unexpected issues requiring attention
+  - Triggers GCP alerts
+  - Indicates potential bug or API change
 
 ### Health Check (`/api/healthy`)
 

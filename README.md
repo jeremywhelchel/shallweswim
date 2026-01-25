@@ -169,6 +169,11 @@ External data sources (NOAA, USGS) occasionally experience outages. The applicat
 
 For production deployments, set up external monitoring on `/api/status` to alert when critical feeds become unhealthy. See [Code Conventions](docs/CONVENTIONS.md) for detailed station outage handling strategy.
 
+### HTTP Error Codes
+
+- **503 Service Unavailable**: External station has no data (expected, retry later)
+- **500 Internal Server Error**: Bug in our code (needs immediate attention)
+
 ## API Documentation
 
 When running locally, API documentation is available at:

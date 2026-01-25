@@ -21,7 +21,11 @@ from shallweswim import config as config_lib
 from shallweswim import feeds
 from shallweswim import plot
 from shallweswim import util
-from shallweswim.clients.base import BaseApiClient
+from shallweswim.clients.base import (
+    BaseApiClient,
+    BaseClientError,
+    StationUnavailableError,
+)
 from shallweswim.types import (
     CurrentInfo,
     CurrentDirection,
@@ -1026,16 +1030,22 @@ class LocationDataManager(object):
         )
 
     def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
-        """Handle exceptions from asyncio tasks to prevent them from being silently ignored.
+        """Handle exceptions from asyncio tasks with appropriate logging levels.
 
-        This callback is attached to asyncio tasks and will log any exceptions that occur,
-        ensuring they're not silently swallowed by the event loop.
+        This callback is attached to asyncio tasks and logs exceptions at the
+        appropriate level based on whether they're expected operational conditions
+        or unexpected errors requiring investigation.
+
+        Log levels:
+        - WARNING: Expected conditions (station unavailable) - does NOT trigger alerts
+        - ERROR: Unexpected conditions (API changes, bugs) - triggers GCP alerts
+
+        Note: This is a done_callback. Re-raising here doesn't crash the service -
+        it just triggers asyncio's exception handler. The feed stays stale and
+        retries on the next interval regardless.
 
         Args:
             task: The asyncio task that completed (successfully or with an exception)
-
-        Raises:
-            Exception: Re-raises any exception from the task to ensure failures are visible
         """
         try:
             # If the task raised an exception, this will re-raise it
@@ -1043,11 +1053,22 @@ class LocationDataManager(object):
         except asyncio.CancelledError:
             # Task was cancelled, which is normal during shutdown
             self.log(f"Task {task.get_name()} was cancelled", level=logging.DEBUG)
+        except StationUnavailableError as e:
+            # Expected operational condition - station has no data
+            # Log as WARNING (does NOT trigger GCP alerts)
+            # Feed stays stale, will retry on next interval
+            self.log(f"Station unavailable: {e}", level=logging.WARNING)
+        except BaseClientError as e:
+            # Unexpected upstream issue - potential API change or parsing error
+            # Log as ERROR (triggers GCP alerts)
+            # Feed stays stale, will retry on next interval
+            self.log(f"Upstream error: {e}", level=logging.ERROR)
+            raise  # Re-raise for extra visibility in asyncio's exception handler
         except Exception as e:
-            # Log the exception that was raised by the task
+            # Internal error - bug in our code
+            # Log as ERROR (triggers GCP alerts)
             self.log(
                 f"Unhandled exception in task {task.get_name()}: {e}",
                 level=logging.ERROR,
             )
-            # Re-raise the exception to follow the project principle of failing fast
-            raise
+            raise  # Re-raise for extra visibility in asyncio's exception handler

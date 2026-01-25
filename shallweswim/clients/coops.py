@@ -17,6 +17,7 @@ from shallweswim.clients.base import (
     BaseApiClient,
     BaseClientError,
     RetryableClientError,
+    StationUnavailableError,
 )
 from shallweswim.types import (
     TIDE_TYPE_CATEGORIES,
@@ -181,12 +182,23 @@ class CoopsApi(BaseApiClient):
             first_cell = str(df.iloc[0, 0])
             if "error" in first_cell.lower():
                 error_msg = first_cell
-                self.log(
-                    f"NOAA CO-OPS API data error for {url}: {error_msg}",
-                    level=logging.ERROR,
-                    location_code=location_code,
-                )
-                raise CoopsDataError(error_msg)  # API error is a data error
+                # Distinguish between "no data" (expected) and other errors (unexpected)
+                if "no data" in first_cell.lower():
+                    # Station has no data - expected operational condition
+                    self.log(
+                        f"NOAA CO-OPS station has no data for {url}: {error_msg}",
+                        level=logging.WARNING,
+                        location_code=location_code,
+                    )
+                    raise StationUnavailableError(error_msg)
+                else:
+                    # Other API error - unexpected, needs investigation
+                    self.log(
+                        f"NOAA CO-OPS API error for {url}: {error_msg}",
+                        level=logging.ERROR,
+                        location_code=location_code,
+                    )
+                    raise CoopsDataError(error_msg)
 
         self.log(
             f"Successfully parsed {len(df)} records from {url}",

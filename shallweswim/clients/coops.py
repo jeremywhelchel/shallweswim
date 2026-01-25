@@ -172,16 +172,21 @@ class CoopsApi(BaseApiClient):
             raise CoopsDataError(error_msg) from e  # Parsing error is a data error
 
         # Check for API-level errors reported in the CSV data
-        # Example: {'Error': 'No data was found for the specified station.'}
-        # Check if the DataFrame has one row and potentially an 'Error' message
-        if len(df) == 1 and df.shape[1] == 1 and "error" in str(df.iloc[0, 0]).lower():
-            error_msg = df.iloc[0, 0]  # Get the actual error message
-            self.log(
-                f"NOAA CO-OPS API data error for {url}: {error_msg}",
-                level=logging.ERROR,
-                location_code=location_code,
-            )
-            raise CoopsDataError(error_msg)  # API error is a data error
+        # NOAA returns errors in different formats:
+        # 1. Single-column: {'Error': 'No data was found...'}
+        # 2. Multi-column: 'Date Time, Water Temperature, X, N, R \n Error: No data was found...'
+        # Check if any cell in the first row contains an error message
+        if len(df) >= 1:
+            # Check first column of first row for error message
+            first_cell = str(df.iloc[0, 0])
+            if "error" in first_cell.lower():
+                error_msg = first_cell
+                self.log(
+                    f"NOAA CO-OPS API data error for {url}: {error_msg}",
+                    level=logging.ERROR,
+                    location_code=location_code,
+                )
+                raise CoopsDataError(error_msg)  # API error is a data error
 
         self.log(
             f"Successfully parsed {len(df)} records from {url}",

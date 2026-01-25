@@ -9,7 +9,8 @@ Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 """
 
 # Standard library imports
-from typing import AsyncGenerator
+import asyncio
+from typing import AsyncGenerator, cast
 
 # Third-party imports
 import aiohttp
@@ -56,13 +57,26 @@ async def api_client() -> AsyncGenerator[TestClient, None]:
         app.state.http_session = session
 
         # Initialize data for all test locations
-        # We set wait_for_data=True to ensure data is loaded before tests run
+        # We set wait_for_data=False to allow individual locations to fail
+        # without blocking other tests. Per-location readiness is checked in tests.
         await api.initialize_location_data(
             location_codes=TEST_LOCATIONS,
             app=app,  # Pass the app instance
-            wait_for_data=True,  # Wait for data to load before running tests
-            timeout=30.0,  # Maximum time to wait for data to be ready
+            wait_for_data=False,  # Don't block - check readiness per-location in tests
         )
+
+        # Wait for each location to become ready (with individual timeouts)
+        # This allows some locations to fail without blocking others
+        for location_code in TEST_LOCATIONS:
+            data_manager = app.state.data_managers[location_code]
+            try:
+                await asyncio.wait_for(
+                    data_manager.wait_until_ready(timeout=30.0),
+                    timeout=35.0,  # Slightly longer outer timeout
+                )
+            except (asyncio.TimeoutError, Exception):
+                # Location failed to load - tests will skip/fail based on test_required
+                pass
 
         # Register only the API routes
         api.register_routes(app)
@@ -273,10 +287,24 @@ def test_conditions_api(api_client: TestClient, location_code: str) -> None:
     """Test the conditions API endpoint for all configured locations.
 
     This test dynamically tests all locations in the configuration.
+    Locations with test_required=True must pass; others can skip on data unavailability.
     """
     # Get location config to determine what should be present
     location_config = config.get(location_code)
     assert location_config is not None, f"Config for {location_code} not found"
+
+    # Check if data is ready for this location
+    app = cast(fastapi.FastAPI, api_client.app)
+    data_manager = app.state.data_managers[location_code]
+    if not data_manager.ready:
+        if location_config.test_required:
+            pytest.fail(
+                f"Required location {location_code} has no data available (station outage?)"
+            )
+        else:
+            pytest.skip(
+                f"Location {location_code} data unavailable - skipping (station outage?)"
+            )
 
     response = api_client.get(f"/api/{location_code}/conditions")
     validate_conditions_response(response, location_code)
@@ -463,22 +491,30 @@ def test_invalid_api_location(api_client: TestClient) -> None:
 
 @pytest.mark.integration
 def test_healthy_endpoint(api_client: TestClient) -> None:
-    """Test the healthy API endpoint returns a boolean response.
+    """Test the healthy API endpoint returns a valid response.
 
-    Since the data is loaded in the api_client fixture with wait_for_data=True,
-    we expect the healthy endpoint to return True.
+    Note: Individual locations may fail to load due to station outages.
+    The endpoint returns 200 with True if all locations are healthy,
+    or 503 with an error detail if any location is unhealthy.
     """
     response = api_client.get("/api/healthy")
 
-    # Verify response status code
-    assert response.status_code == 200
+    # Verify response status code is either 200 (all healthy) or 503 (some unhealthy)
+    assert response.status_code in [
+        200,
+        503,
+    ], f"Unexpected status: {response.status_code}"
 
-    # Verify response is a boolean
-    healthy_status = response.json()
-    assert isinstance(healthy_status, bool)
+    data = response.json()
 
-    # Since the fixture waits for data to be ready, we expect True
-    assert healthy_status is True
+    if response.status_code == 200:
+        # Healthy: returns True
+        assert isinstance(data, bool)
+        assert data is True
+    else:
+        # Unhealthy (503): returns error detail
+        assert isinstance(data, dict)
+        assert "detail" in data
 
 
 @pytest.mark.integration

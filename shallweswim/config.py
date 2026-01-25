@@ -449,6 +449,13 @@ class LocationConfig(BaseModel, frozen=True):
         ),
     ] = True
 
+    test_required: Annotated[
+        bool,
+        Field(
+            description="If True, integration tests for this location must not be skipped on data unavailability"
+        ),
+    ] = False
+
     @property
     def coordinates(self) -> Tuple[float, float]:
         """Return the location's coordinates as a (latitude, longitude) tuple.
@@ -503,6 +510,7 @@ _CONFIG_LIST = [
         latitude=40.573,
         longitude=-73.954,
         timezone=pytz.timezone("US/Eastern"),
+        test_required=True,
         temp_source=CoopsTempFeedConfig(
             station=8518750,
             name="The Battery, NY",

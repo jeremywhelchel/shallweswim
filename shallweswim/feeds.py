@@ -819,7 +819,7 @@ def create_temp_feed(
         )
     elif isinstance(temp_config, config_lib.NwisTempFeedConfig):
         # Get the parameter_cd if provided
-        parameter_cd = kwargs.get("parameter_cd", None)
+        parameter_cd = kwargs.get("parameter_cd")
         feed_kwargs = {}
         if parameter_cd is not None:
             feed_kwargs["parameter_cd"] = parameter_cd

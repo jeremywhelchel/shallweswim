@@ -316,13 +316,8 @@ class LocationDataManager:
         if not configured_feeds:
             return True
 
-        # Check if any configured feed is expired
-        for feed in configured_feeds:
-            if feed.is_expired:
-                return False
-
-        # All configured feeds exist and are not expired
-        return True
+        # All configured feeds must not be expired
+        return all(not feed.is_expired for feed in configured_feeds)
 
     @property
     def has_data(self) -> bool:

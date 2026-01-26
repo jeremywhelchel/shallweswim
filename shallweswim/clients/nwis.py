@@ -308,9 +308,9 @@ class NwisApi(BaseApiClient):
                 output_col_name = "discharge_cfs"
             elif parameter_cd == "00061":
                 output_col_name = "discharge_cms"
-            elif parameter_cd == "00055":  # Mean velocity, ft/sec
-                output_col_name = "velocity_fps"
-            elif parameter_cd == "72255":  # Stream velocity, ft/sec
+            elif (
+                parameter_cd == "00055" or parameter_cd == "72255"
+            ):  # Mean velocity, ft/sec
                 output_col_name = "velocity_fps"
             else:
                 # Fallback for unknown but present parameter codes

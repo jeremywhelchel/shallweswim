@@ -54,10 +54,13 @@ select = [
     "UP",     # pyupgrade (modern Python syntax)
     "B",      # flake8-bugbear (common bugs)
     "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify (simplify code patterns)
     "RUF",    # Ruff-specific rules
 ]
 ignore = [
     "E501",   # Line too long (formatter handles code; comments/docstrings are ok)
+    "SIM105", # contextlib.suppress - explicit try/except with comments is clearer
+    "SIM117", # nested with - combining makes lines too long
 ]
 
 [tool.ruff.format]

@@ -125,7 +125,8 @@ External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) may have temporary out
 
 **API request handlers** (serves users):
 
-- Feed not ready → 503 + WARNING log
+- No data available → 503 + WARNING log
+- Stale data → Serve it (better than 503 for users)
 - Other exceptions → 500 + ERROR log (bug)
 
 ### Exception Classes (`clients/base.py`)
@@ -179,9 +180,10 @@ Each feed has an **expiration interval** that determines how often it refreshes:
 | Live Temperature       | 10 minutes       | Real-time observations |
 | Historical Temperature | 3 hours          | Slower-changing data   |
 
-**Health status** uses a 15-minute buffer to prevent flapping:
+**Feed status properties**:
 
-- `is_expired`: Data older than refresh interval
-- `is_healthy`: Data within interval + 15-minute buffer
+- `has_data`: Any data exists (used by API endpoints - serve stale over 503)
+- `is_expired`: Data older than refresh interval (triggers background refresh)
+- `is_healthy`: Data within interval + 15-minute buffer (for monitoring display)
 
 Background tasks continuously refresh feeds. Failed fetches leave the feed stale (serving old data) until the next successful refresh.

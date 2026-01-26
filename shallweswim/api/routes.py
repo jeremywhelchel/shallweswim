@@ -159,8 +159,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
         data_manager = app.state.data_managers[location]
 
         # Check if location has data before attempting to serve
-        # This prevents AssertionError from _get_feed_data when feeds are empty
-        if not data_manager.ready:
+        # Use has_data (not ready) to serve stale data during brief refresh windows
+        # Background updater handles freshness - user-facing endpoints serve any available data
+        if not data_manager.has_data:
             logging.warning(f"[{location}] No data available for conditions request")
             raise HTTPException(
                 status_code=503,

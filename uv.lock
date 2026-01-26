@@ -292,15 +292,15 @@ wheels = [
 
 [[package]]
 name = "dataretrieval"
-version = "1.1.0"
+version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pandas" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/85/c8/114fde564ba2587a8efae2bd447b721db0503877b05787f2778a0b9d74ae/dataretrieval-1.1.0.tar.gz", hash = "sha256:55d6109e42905036092e703d4c74f53073e1046c33ea1e75ddb453a748b06a31", size = 4617550, upload-time = "2025-11-26T21:19:39.683Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/03/0f/711171b3dead54e0bad51fd8756ff4ea57f27a21fef03329954ea0cbab90/dataretrieval-1.1.1.tar.gz", hash = "sha256:90ffaa4c97e2e93ad0bc6f958e1a386b46bfb01a8c7495b850106a540019a108", size = 4234699, upload-time = "2026-01-22T17:59:18.042Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/6b/f9e688a750bc282e5296a033b395d2bdd52637d720c2fdf5010fb594198b/dataretrieval-1.1.0-py3-none-any.whl", hash = "sha256:d21d4b9460f957601ab0a441f552d83e7e310fcae90f156fe73c57be015d6f2e", size = 60412, upload-time = "2025-11-26T21:19:38.351Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/97/1231e62fe6b4b63e306bfb8ad3731f4f6a50fdf35e1a19c25d77e161e45c/dataretrieval-1.1.1-py3-none-any.whl", hash = "sha256:4e81c9cb8140e90681d705abf477f2e82571483c58773a48db8db44a4dca8a60", size = 62685, upload-time = "2026-01-22T17:59:16.828Z" },
 ]
 
 [[package]]
@@ -1534,7 +1534,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.3,<4" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=25,<27" },
-    { name = "dataretrieval", specifier = ">=1.0.11,<2" },
+    { name = "dataretrieval", specifier = ">=1.1.1,<2" },
     { name = "fastapi", specifier = ">=0.120.1,<1" },
     { name = "freezegun", marker = "extra == 'dev'", specifier = ">=1.5.1,<2" },
     { name = "google-cloud-logging", specifier = ">=3,<4" },

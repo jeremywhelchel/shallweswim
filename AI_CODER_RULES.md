@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-Open water swimming conditions app (shallweswim.today). Aggregates tide, current, and temperature data from NOAA/USGS APIs for multiple locations.
+Open water swimming conditions app (shallweswim.today). Aggregates tide, current, and temperature data from NOAA CO-OPS, NOAA NDBC, and USGS NWIS APIs for multiple locations.
 
 ## Essential Commands
 
@@ -30,7 +30,8 @@ uv run python -m shallweswim.main --port=12345  # Run locally
 ## Architecture Quick Reference
 
 ```
-API Handler → LocationDataManager → Feed → ApiClient → External Service
+User Request:  API Handler → LocationDataManager → Feed (cached data)
+Background:    Feed → ApiClient → External Service → Update Cache
 ```
 
 ```

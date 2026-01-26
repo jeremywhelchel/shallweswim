@@ -6,7 +6,7 @@
 
 **A web application that helps open water swimmers make informed decisions about swim conditions.**
 
-[shallweswim.today](https://shallweswim.today) provides real-time tide, current, and temperature data for popular open water swimming locations:
+[shallweswim.today](https://shallweswim.today) aggregates real-time tide, current, and temperature data from government APIs (NOAA, USGS) for popular open water swimming locations:
 
 - **New York** - Coney Island / Brighton Beach
 - **San Diego** - La Jolla Cove
@@ -43,13 +43,17 @@ The application is **fully stateless** with no database or persistent storage. O
 
 ### Request Flow
 
+**User requests** always serve cached data (fast, no external calls):
 ```
-HTTP Request → API Handler → LocationDataManager → Feed → ApiClient → External API
-     ↓
-HTTP Response ← JSON/HTML ← Processed Data ← Cached Data
+HTTP Request → API Handler → LocationDataManager → Feed (cached) → Response
 ```
 
-Feeds refresh in the background on configurable intervals (10 min to 24 hours depending on data type). Failed fetches serve stale data until the next successful refresh.
+**Background tasks** refresh feeds on intervals (10 min to 24 hours):
+```
+Background Task → Feed → ApiClient → External API → Update Cache
+```
+
+Failed fetches leave data stale until the next successful refresh.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component documentation, coding standards, and error handling patterns.
 
@@ -147,11 +151,11 @@ uv run pytest --cov=shallweswim
 uv run pytest --cov=shallweswim --cov-report=html
 ```
 
-Note: Integration tests connect to live NOAA CO-OPS API and may occasionally fail if external services are experiencing issues or if the expected data is temporarily unavailable.
+Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS) and may occasionally fail if services are experiencing issues or data is temporarily unavailable.
 
 ## Monitoring & Station Outages
 
-External data sources (NOAA, USGS) occasionally experience outages. The application handles these gracefully:
+External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) occasionally experience outages. The application handles these gracefully:
 
 - **Health check (`/api/healthy`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
 - **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, and `age_seconds`. Use this for granular monitoring and alerting.

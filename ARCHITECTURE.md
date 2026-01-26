@@ -2,6 +2,8 @@
 
 This document describes the architectural patterns, coding standards, and design decisions for the "Shall We Swim Today?" project.
 
+**Architecture pattern**: Data aggregator (not a proxy). The app fetches data from multiple upstream APIs in background tasks, caches it in memory, and serves processed results. User requests never trigger external API calls.
+
 ## 1. Architectural Patterns
 
 ### Project Structure
@@ -35,7 +37,15 @@ static/              # CSS, JS, images
 
 ### Data Flow
 
-`API Handler` -> `LocationDataManager` -> `Feed` -> `ApiClient` -> `External Service`
+**User requests** serve cached data (no external calls):
+```
+API Handler → LocationDataManager → Feed (cached data) → Response
+```
+
+**Background refresh** updates the cache on intervals:
+```
+Background Task → Feed → ApiClient → External Service → Update Cache
+```
 
 ### Configuration
 
@@ -62,7 +72,7 @@ static/              # CSS, JS, images
 
 - **API Layer**: Catch internal exceptions and convert them to `HTTPException` with appropriate status codes (404, 503, etc.).
 - **Data Layer**: Fail fast. Use `AssertionError` for "impossible" states (e.g., missing app state). Raise `ValueError` or specific custom exceptions for operational errors (e.g., parsing failure).
-- **Feeds**: Feeds should handle transient network errors gracefully (e.g., retries) but expose a "healthy" status property.
+- **Feeds**: Feeds call API clients (which handle retries internally) and expose a "healthy" status property based on data freshness.
 
 ### Logging
 
@@ -73,6 +83,9 @@ static/              # CSS, JS, images
 
 - **Unit Tests**: Must run fast. Mock all external network calls using `unittest.mock` or `pytest-mock`.
 - **Integration Tests**: Marked with `@pytest.mark.integration`. These hit real external APIs and are run separately.
+  - Locations with `test_required=True` in config (e.g., NYC) must pass
+  - Other locations skip gracefully on data unavailability
+  - Run with: `uv run pytest -m integration --run-integration`
 - **Fixtures**: Use `conftest.py` for shared fixtures.
 
 ## 4. Documentation
@@ -84,7 +97,7 @@ static/              # CSS, JS, images
 
 ## 5. Station Outage Handling
 
-External data sources (NOAA, USGS, NDBC) may have temporary outages. The application handles these gracefully through principled error handling.
+External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) may have temporary outages. The application handles these gracefully through principled error handling.
 
 ### Two Code Paths
 
@@ -112,8 +125,8 @@ External data sources (NOAA, USGS, NDBC) may have temporary outages. The applica
 
   - May indicate API changed - needs investigation
 
-- **`*ConnectionError`**: Network issues
-  - May be transient or infrastructure problem
+- **`RetryableClientError`**: Transient network issues (timeouts, connection errors)
+  - Automatically retried by `BaseApiClient.request_with_retry()`
 
 ### Logging Guidelines
 
@@ -139,12 +152,6 @@ External data sources (NOAA, USGS, NDBC) may have temporary outages. The applica
 - Shows `is_healthy`, `is_expired`, `age_seconds` per feed
 - Use external monitoring (GCP Cloud Monitoring) to alert on stale data
 - Recommended: Alert if `is_healthy: false` persists > 30 minutes for critical feeds
-
-### Integration Tests
-
-- Locations with `test_required=True` in config (e.g., NYC) must pass
-- Other locations skip gracefully on data unavailability
-- Run with: `uv run pytest -m integration --run-integration`
 
 ## 6. Feed Lifecycle
 

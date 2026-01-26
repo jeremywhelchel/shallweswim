@@ -18,7 +18,6 @@ from shallweswim.clients.coops import (
 )
 from pandas.testing import assert_frame_equal
 
-
 # Type definitions for test data (assuming they are defined elsewhere or basic)
 # Fixtures
 

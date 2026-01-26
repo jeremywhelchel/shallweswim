@@ -9,7 +9,6 @@ import os
 
 import google.cloud.logging  # type: ignore[import]
 
-
 # Determine project root for relative log paths (directory containing this file)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

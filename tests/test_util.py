@@ -9,7 +9,6 @@ from freezegun import freeze_time
 from shallweswim import util
 from shallweswim.api_types import DataFrameSummary
 
-
 # Constants
 EXPECTED_COLUMNS = ["value", "flag"]
 EXPECTED_DTYPES: Dict[str, Union[type, str]] = {

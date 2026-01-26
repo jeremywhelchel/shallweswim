@@ -21,6 +21,15 @@ repos:
   # Local hooks using uv-managed tools
   - repo: local
     hooks:
+      # Sync environment first to ensure tools match lockfile
+      - id: uv-sync
+        name: uv sync
+        description: Sync environment with lockfile before running tools
+        language: system
+        entry: uv sync --all-extras --quiet
+        pass_filenames: false
+        always_run: true
+
       # Run unit tests (fast)
       - id: pytest-unit
         name: pytest unit tests

@@ -33,7 +33,6 @@ from shallweswim.api_types import (
     TideInfo,
 )
 
-
 # Data store for location data will be stored in app.state.data_managers
 
 

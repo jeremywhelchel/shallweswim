@@ -38,11 +38,13 @@ static/              # CSS, JS, images
 ### Data Flow
 
 **User requests** serve cached data (no external calls):
+
 ```
 API Handler → LocationDataManager → Feed (cached data) → Response
 ```
 
 **Background refresh** updates the cache on intervals:
+
 ```
 Background Task → Feed → ApiClient → External Service → Update Cache
 ```
@@ -157,14 +159,15 @@ External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) may have temporary out
 
 Each feed has an **expiration interval** that determines how often it refreshes:
 
-| Feed Type | Refresh Interval | Rationale |
-|-----------|------------------|-----------|
-| Tides | 24 hours | Predictions are stable |
-| Currents | 24 hours | Predictions are stable |
-| Live Temperature | 10 minutes | Real-time observations |
-| Historical Temperature | 3 hours | Slower-changing data |
+| Feed Type              | Refresh Interval | Rationale              |
+| ---------------------- | ---------------- | ---------------------- |
+| Tides                  | 24 hours         | Predictions are stable |
+| Currents               | 24 hours         | Predictions are stable |
+| Live Temperature       | 10 minutes       | Real-time observations |
+| Historical Temperature | 3 hours          | Slower-changing data   |
 
 **Health status** uses a 15-minute buffer to prevent flapping:
+
 - `is_expired`: Data older than refresh interval
 - `is_healthy`: Data within interval + 15-minute buffer
 

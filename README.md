@@ -44,11 +44,13 @@ The application is **fully stateless** with no database or persistent storage. O
 ### Request Flow
 
 **User requests** always serve cached data (fast, no external calls):
+
 ```
 HTTP Request → API Handler → LocationDataManager → Feed (cached) → Response
 ```
 
 **Background tasks** refresh feeds on intervals (10 min to 24 hours):
+
 ```
 Background Task → Feed → ApiClient → External API → Update Cache
 ```

@@ -6,15 +6,20 @@
 
 **A web application that helps open water swimmers make informed decisions about swim conditions.**
 
-[shallweswim.today](https://shallweswim.today) provides real-time tide, current, and temperature data for popular open water swimming locations including:
+[shallweswim.today](https://shallweswim.today) provides real-time tide, current, and temperature data for popular open water swimming locations:
 
-- Coney Island / Brighton Beach (NYC)
-- La Jolla Cove (San Diego)
-- Additional locations are being added regularly
+- **New York** - Coney Island / Brighton Beach
+- **San Diego** - La Jolla Cove
+- **Chicago** - Ohio Street Beach
+- **San Francisco** - Aquatic Park
+- **Louisville** - Community Boathouse (Ohio River)
+- **Austin** - Barton Springs
+- **Boston** - L Street Beach
+- **Seattle** - Alki Beach
 
 ## Features
 
-- **Real-time conditions** from NOAA CO-OPS and USGS NWIS APIs
+- **Real-time conditions** from NOAA CO-OPS, NOAA NDBC, and USGS NWIS APIs
 - **Tide predictions** with high/low tide times and heights
 - **Current velocity** data with flood/ebb direction
 - **Water temperature trends** (48-hour, 2-month, and multi-year)
@@ -24,45 +29,29 @@
 
 ## Architecture
 
-Shall We Swim is a FastAPI application with a modular architecture:
+Shall We Swim is a FastAPI application with a modular architecture.
 
-### Core Components
+### Runtime Model
 
-- **Feed Framework (`feeds.py`)**: Modular data feed system for different data types
-  - Base `Feed` class with expiration tracking and status reporting
-  - Specialized feed types (NoaaTempFeed, NoaaTidesFeed, etc.) for different data sources
-  - Composite feeds for combining multiple data sources
-- **Data Management (`data.py`)**: Coordinates feeds and processes data from various sources
-  - Manages feed lifecycle and data freshness
-  - Provides status monitoring and ready-state tracking
-  - Handles data processing and transformation
-  - Formats temperature data with appropriate precision
-- **API Layer (`api.py`)**: JSON endpoints for swim conditions and status
-  - Location-specific endpoints for conditions data
-  - Status endpoints for monitoring system health
-  - Current prediction and tide visualization endpoints
-- **Web UI (`main.py`)**: HTML templates and web interface
-  - Responsive design with modern UI components
-  - Conditional display of data based on feed availability
-  - Transit information for NYC locations
-- **NOAA CO-OPS Client (`coops.py`)**: Interacts with NOAA's Center for Operational Oceanographic Products and Services API
-- **USGS NWIS Client (`nwis.py`)**: Interacts with the USGS National Water Information System API
-  - Handles both Celsius and Fahrenheit temperature parameters
-  - Performs necessary unit conversions
-- **Configuration (`config.py`)**: Location settings and station IDs
-- **Utilities (`util.py`)**: Common utilities for time handling and data processing
+The application is **fully stateless** with no database or persistent storage. On startup, each instance fetches historical data (~8 days) directly from external APIs and holds it in memory. This design was chosen for Cloud Run deployment simplicity - instances can scale to zero and spin back up without managing storage.
 
-### Data Flow
+**Implications:**
 
-1. **Data Fetching**: Specialized Feed classes fetch data (tides, currents, temperatures) from NOAA CO-OPS, USGS NWIS, and other sources for configured locations
-2. **Data Processing**: Raw data is processed with appropriate timezone conversions and unit transformations
-3. **Status Monitoring**: Feed and DataManager status is tracked and exposed via API endpoints
-4. **Plot Generation**: Visualizations are asynchronously generated for different time spans:
-   - 48-hour tide/current predictions
-   - 2-month historical temperature data
-   - Multi-year temperature trends
-5. **API Endpoints**: Processed data and system status are available via JSON endpoints
-6. **Web UI**: Templates display the data with visualizations and location-specific information (like transit status)
+- Cold starts require fetching all data before serving (gated by `/api/healthy`)
+- Instance shutdown loses all data (automatically re-fetched on next startup)
+- Multiple instances don't share state (each fetches independently)
+
+### Request Flow
+
+```
+HTTP Request → API Handler → LocationDataManager → Feed → ApiClient → External API
+     ↓
+HTTP Response ← JSON/HTML ← Processed Data ← Cached Data
+```
+
+Feeds refresh in the background on configurable intervals (10 min to 24 hours depending on data type). Failed fetches serve stale data until the next successful refresh.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component documentation, coding standards, and error handling patterns.
 
 ## Getting Started
 
@@ -113,7 +102,7 @@ The application is hosted on Google Cloud Run:
 
 **Documentation**
 
-- [Code Conventions & Architecture](docs/CONVENTIONS.md) - **Read this first** before making changes.
+- [Architecture & Conventions](ARCHITECTURE.md) - **Read this first** before making changes.
 
 ### Setup
 
@@ -167,7 +156,7 @@ External data sources (NOAA, USGS) occasionally experience outages. The applicat
 - **Health check (`/api/healthy`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
 - **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, and `age_seconds`. Use this for granular monitoring and alerting.
 
-For production deployments, set up external monitoring on `/api/status` to alert when critical feeds become unhealthy. See [Code Conventions](docs/CONVENTIONS.md) for detailed station outage handling strategy.
+For production deployments, set up external monitoring on `/api/status` to alert when critical feeds become unhealthy. See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed station outage handling strategy.
 
 ### HTTP Error Codes
 
@@ -188,7 +177,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgements
 
 - [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (Center for Operational Oceanographic Products and Services) for tide, current, and temperature data
-- [USGS NWIS API](https://waterservices.usgs.gov/) (National Water Information System) for water temperature data
+- [NOAA NDBC API](https://www.ndbc.noaa.gov/) (National Data Buoy Center) for buoy-based water temperature data
+- [USGS NWIS API](https://waterservices.usgs.gov/) (National Water Information System) for water temperature and river current data
 - [FastAPI](https://fastapi.tiangolo.com/) for the web framework
 - [Matplotlib](https://matplotlib.org/) for data visualization
 - [Feather Icons](https://feathericons.com/) for UI icons

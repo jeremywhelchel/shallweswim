@@ -44,7 +44,7 @@ WHY THIS PATTERN MATTERS:
 - StationUnavailableError raised in validation phase propagates naturally
 - If validation were inside the try block, `except Exception` would catch it
 - This caused bugs where expected "no data" was logged as ERROR instead of WARNING
-- See CONVENTIONS.md Section 5 for full error handling documentation
+- See ARCHITECTURE.md Section 5 for full error handling documentation
 
 Error Hierarchy
 ---------------

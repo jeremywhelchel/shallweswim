@@ -1,8 +1,30 @@
-# Code Conventions
+# Architecture & Conventions
 
-This document outlines the coding standards and architectural patterns for the "Shall We Swim Today?" project.
+This document describes the architectural patterns, coding standards, and design decisions for the "Shall We Swim Today?" project.
 
 ## 1. Architectural Patterns
+
+### Project Structure
+
+```
+shallweswim/
+├── main.py          # App entry point, web UI routes, templates
+├── api.py           # JSON API routes (delegates to data.py)
+├── data.py          # LocationDataManager - coordinates feeds per location
+├── feeds.py         # Feed classes with caching/expiration
+├── config.py        # Location configs, station IDs, feed settings
+├── plotting.py      # Chart generation (runs in process pool)
+├── util.py          # Shared utilities
+└── clients/         # External API clients
+    ├── base.py      # BaseApiClient with retry logic, error hierarchy
+    ├── coops.py     # NOAA CO-OPS (tides, currents, coastal temps)
+    ├── ndbc.py      # NOAA NDBC (buoy temperatures)
+    └── nwis.py      # USGS NWIS (river temps, discharge)
+
+tests/               # Unit and integration tests
+templates/           # Jinja2 HTML templates
+static/              # CSS, JS, images
+```
 
 ### Modular Design
 
@@ -123,3 +145,20 @@ External data sources (NOAA, USGS, NDBC) may have temporary outages. The applica
 - Locations with `test_required=True` in config (e.g., NYC) must pass
 - Other locations skip gracefully on data unavailability
 - Run with: `uv run pytest -m integration --run-integration`
+
+## 6. Feed Lifecycle
+
+Each feed has an **expiration interval** that determines how often it refreshes:
+
+| Feed Type | Refresh Interval | Rationale |
+|-----------|------------------|-----------|
+| Tides | 24 hours | Predictions are stable |
+| Currents | 24 hours | Predictions are stable |
+| Live Temperature | 10 minutes | Real-time observations |
+| Historical Temperature | 3 hours | Slower-changing data |
+
+**Health status** uses a 15-minute buffer to prevent flapping:
+- `is_expired`: Data older than refresh interval
+- `is_healthy`: Data within interval + 15-minute buffer
+
+Background tasks continuously refresh feeds. Failed fetches leave the feed stale (serving old data) until the next successful refresh.

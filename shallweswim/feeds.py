@@ -21,7 +21,7 @@ from shallweswim import config as config_lib
 from shallweswim import dataframe_models as df_models
 from shallweswim.api_types import DataFrameSummary, FeedStatus
 from shallweswim.clients import coops, ndbc, nwis
-from shallweswim.clients.base import BaseApiClient
+from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
@@ -253,9 +253,17 @@ class Feed(BaseModel, abc.ABC):
             self._ready_event.set()
             self.log(f"Successfully updated {self.__class__.__name__}")
 
+        except StationUnavailableError as e:
+            # Expected operational condition - log at WARNING (no GCP alerts)
+            # See ARCHITECTURE.md Section 5 for error handling documentation
+            self.log(
+                f"Station unavailable for {self.__class__.__name__}: {e}",
+                logging.WARNING,
+            )
+            self._last_error = e
+            raise
         except Exception as e:
-            # Log the error but don't suppress it - following the project principle
-            # of failing fast for internal errors
+            # Unexpected error - log at ERROR (triggers GCP alerts)
             self.log(f"Error updating {self.__class__.__name__}: {e}", logging.ERROR)
             self._last_error = e
             raise

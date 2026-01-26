@@ -12,10 +12,6 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 
 # Third-party imports
-import numpy as np
-import pandas as pd
-from scipy.signal import find_peaks
-
 from shallweswim import api_types, feeds, plot
 
 # Local imports
@@ -25,14 +21,11 @@ from shallweswim.clients.base import (
     BaseClientError,
     StationUnavailableError,
 )
+from shallweswim.core import queries
 from shallweswim.types import (
-    CurrentDirection,
     CurrentInfo,
-    DataSourceType,
     LegacyChartInfo,
     TemperatureReading,
-    TideCategory,
-    TideEntry,
     TideInfo,
 )
 from shallweswim.util import utc_now
@@ -53,79 +46,6 @@ EXPIRATION_PERIODS = {
     # Hourly fetch historic temps + generate charts
     "historic_temps": datetime.timedelta(hours=3),
 }
-
-
-def _process_local_magnitude_pct(
-    df: pd.DataFrame,
-    current_df: pd.DataFrame,
-    direction_type: str,
-    invert: bool = False,
-) -> pd.DataFrame:
-    """Calculate magnitude percentages relative to local peaks.
-
-    Args:
-        df: Main DataFrame containing all current data
-        current_df: DataFrame containing current data for one direction
-        direction_type: String identifier (CurrentDirection.FLOODING.value or CurrentDirection.EBBING.value)
-        invert: Whether to invert values for finding peaks (for ebb currents)
-
-    Returns:
-        DataFrame with added local_mag_pct column for the specified direction
-    """
-    # Create a copy of the input DataFrame to avoid modifying the original
-    result_df = df.copy()
-
-    if current_df.empty:
-        return result_df
-
-    # Get magnitude values, invert for ebb
-    values = current_df["magnitude"].values
-    if invert:
-        values = -values  # type: ignore[operator]
-
-    # Find peaks with optimized parameters
-    # For flooding, peaks are maxima; for ebbing, peaks are minima
-    # Since find_peaks finds maxima, we negate values for ebbing to find minima
-    search_values = (
-        -values if direction_type == CurrentDirection.EBBING.value else values  # type: ignore[operator]
-    )
-    peaks, _ = find_peaks(search_values, prominence=0.1, distance=3)
-
-    # No peaks found - use global approach as fallback
-    if len(peaks) == 0:
-        # Set global percentage for all points of this direction
-        for idx in result_df.index[result_df["direction"] == direction_type]:
-            result_df.at[idx, "local_mag_pct"] = result_df.at[idx, "mag_pct"]
-        return result_df
-
-    # For each peak, find its "influence zone" (range of time where it's the closest peak)
-    peak_times = current_df.index[peaks]
-    peak_values = [current_df.at[pt, "magnitude"] for pt in peak_times]
-
-    # For each time point, find the nearest peak and calculate percentage relative to it
-    for idx in result_df.index[result_df["direction"] == direction_type]:
-        # Find closest peak in time
-        time_diffs = [
-            (idx - peak_time).total_seconds() / 3600 for peak_time in peak_times
-        ]
-        abs_diffs = [abs(diff) for diff in time_diffs]
-        nearest_peak_idx = abs_diffs.index(min(abs_diffs))
-        # We only need the peak value, not the time
-        nearest_peak_value = peak_values[nearest_peak_idx]
-
-        # Calculate percentage of current magnitude relative to nearest peak
-        current_value = result_df.at[idx, "magnitude"]
-
-        # Both current_value and nearest_peak_value are already positive magnitudes
-        # We always want the percentage to be: current magnitude / peak magnitude
-        # This works for both ebbing and flooding currents since we're dealing with
-        # absolute magnitude values, not raw velocities
-        local_pct = current_value / nearest_peak_value if nearest_peak_value > 0 else 0
-
-        # Store the local percentage
-        result_df.at[idx, "local_mag_pct"] = local_pct
-
-    return result_df
 
 
 class LocationDataManager:
@@ -684,338 +604,66 @@ class LocationDataManager:
                 # Optionally re-raise depending on desired shutdown behavior
                 # raise
 
-    def _get_feed_data(self, feed_name: str) -> pd.DataFrame:
-        """Get data from a feed and assert that it's available.
-
-        Args:
-            feed_name: The name of the feed to get data from
-
-        Returns:
-            The feed data as a pandas DataFrame
-
-        Raises:
-            AssertionError: If the feed data is not available
-        """
-        feed = self._feeds.get(feed_name)
-        data = feed.values if feed is not None else None
-        assert data is not None
-        return data
-
-    def _get_latest_row(self, df: pd.DataFrame) -> pd.Series:
-        """Get the latest row from a DataFrame.
-
-        Args:
-            df: DataFrame with a DatetimeIndex
-
-        Returns:
-            The latest row as a pandas Series
-        """
-        return df.iloc[-1]
-
-    def _get_row_at_time(self, df: pd.DataFrame, t: datetime.datetime) -> pd.Series:
-        """Get the row closest to the specified time.
-
-        Args:
-            df: DataFrame with a DatetimeIndex
-            t: Time to find the closest row for
-
-        Returns:
-            The row closest to the specified time as a pandas Series
-        """
-        # All times should be assumed to be naive
-        return df.loc[df.index.asof(t)]
-
-    def _record_to_tide_entry(self, record: dict[str, Any]) -> TideEntry:
-        """Convert a record dictionary to a TideEntry object."""
-        return TideEntry(
-            time=record["time"],
-            type=TideCategory(record["type"]),
-            prediction=record["prediction"],
-        )
-
     def get_current_temperature(self) -> TemperatureReading:
         """Get the most recent water temperature reading.
 
-        Retrieves the latest temperature data from the configured temperature source.
-        The temperature is rounded to 1 decimal place for consistency.
-
         Returns:
-            A TemperatureReading object containing:
-                - timestamp: datetime of when the reading was taken
-                - temperature: float representing the water temperature in degrees Celsius
-                - source: optional string identifying the data source
+            A TemperatureReading object with timestamp and temperature
 
         Raises:
-            ValueError: If no temperature data is available or the feed is not configured
+            AssertionError: If no temperature data is available
         """
-        # Get live temperature data from the feed
-        live_temps_data = self._get_feed_data("live_temps")
-
-        # Get the latest temperature reading
-        latest_row = self._get_latest_row(live_temps_data)
-        time = latest_row.name
-        temp = latest_row["water_temp"]
-
-        # Round temperature to 1 decimal place to avoid excessive precision
-        rounded_temp = round(temp, 1)  # type: ignore[call-overload]
-
-        return TemperatureReading(timestamp=time, temperature=rounded_temp)  # type: ignore[arg-type]
+        return queries.get_current_temperature(self._feeds)
 
     def get_current_tide_info(self) -> TideInfo:
         """Get the previous tide and upcoming tides relative to current time.
 
-        Retrieves the most recent tide before current time and the next two
-        upcoming tides from the tide predictions data. All times are naive datetimes
-        in the location's timezone.
-
         Returns:
-            A TideInfo object containing:
-                - past: List of TideEntry objects with the most recent tide information
-                - next: List of TideEntry objects with the next two upcoming tides
+            A TideInfo object with past and next tide entries
 
         Raises:
-            AssertionError: If tide data feed is missing or not properly configured
+            AssertionError: If tide data feed is missing
         """
-        # Get tides data from the feed
-        tides_data = self._get_feed_data("tides")
-
-        # Get current time in the location's timezone as a naive datetime and convert to pandas Timestamp for slicing
-        now = self.config.local_now()
-        now_ts = pd.Timestamp(now)
-
-        # Ensure DataFrame has no timezone info for consistent comparison
-        assert tides_data.index.tz is None, "Tide DataFrame should use naive datetimes"  # type: ignore[attr-defined]
-
-        # Extract past and future tide data
-        past_tides_df = tides_data[:now_ts].tail(1)
-        next_tides_df = tides_data[now_ts:].head(2)
-
-        # Convert DataFrames to dictionaries for processing
-        past_tide_dicts = past_tides_df.reset_index().to_dict(orient="records")
-        next_tide_dicts = next_tides_df.reset_index().to_dict(orient="records")
-
-        # Convert DataFrame records to TideEntry objects using the helper method
-        past_tides = [self._record_to_tide_entry(record) for record in past_tide_dicts]
-        next_tides = [self._record_to_tide_entry(record) for record in next_tide_dicts]
-
-        return TideInfo(past=past_tides, next=next_tides)
+        return queries.get_current_tide_info(self._feeds, self.config)
 
     def get_chart_info(self, t: datetime.datetime | None = None) -> LegacyChartInfo:
         """Generate chart information based on tide data for the specified time.
 
-        Calculates the time since the last tide event and generates appropriate
-        chart information including filenames and titles. This supports the legacy
-        chart display system.
-
         Args:
-            t: The time to generate chart info for, defaults to current time in location's timezone
+            t: The time to generate chart info for, defaults to current time
 
         Returns:
-            A LegacyChartInfo object containing:
-                - hours_since_last_tide: Number of hours since last tide
-                - last_tide_type: Type of last tide ("high" or "low")
-                - chart_filename: Filename for the chart image
-                - map_title: Formatted title for the map display
+            A LegacyChartInfo object with chart filename and metadata
 
         Raises:
             AssertionError: If tide data is not available
         """
-        if not t:
-            t = self.config.local_now()
-
-        # Get tides data from the feed
-        tides_data = self._get_feed_data("tides")
-
-        # Get the row closest to the specified time
-        row = self._get_row_at_time(tides_data, t)
-        # TODO: Break this into a function
-        tide_type = row["type"]
-
-        # Get the timestamp from the row
-        row_time = row.name
-
-        offset = t - row_time  # type: ignore[operator]
-        offset_hrs = offset.seconds / (60 * 60)
-        if offset_hrs > 5.5:
-            chart_num = 0
-            INVERT = {"high": "low", "low": "high"}
-            chart_type = INVERT[tide_type]  # type: ignore[index]
-            # TODO: last tide type will be wrong here in the chart
-        else:
-            chart_num = round(offset_hrs)
-            chart_type = tide_type
-
-        legacy_map_title = f"{chart_type.capitalize()} Water at New York"  # type: ignore[attr-defined]
-        if chart_num:
-            suffix = "s" if chart_num > 1 else ""
-            legacy_map_title = f"{chart_num} Hour{suffix} after " + legacy_map_title
-        filename = f"{chart_type}+{chart_num}.png"
-
-        return LegacyChartInfo(
-            hours_since_last_tide=offset_hrs,
-            last_tide_type=tide_type,  # type: ignore[arg-type]
-            chart_filename=filename,
-            map_title=legacy_map_title,
-        )
+        return queries.get_chart_info(self._feeds, self.config, t)
 
     def get_current_flow_info(self) -> CurrentInfo:
         """Get the latest observed current information.
 
-        Retrieves the most recent current observation from the configured current source.
-        This returns actual observed data, not predictions.
-
         Returns:
-            A CurrentInfo object containing the timestamp, magnitude, and source type
-            of the most recent current observation
+            A CurrentInfo object with the most recent current observation
 
         Raises:
-            AssertionError: If current data is not available or not properly loaded
+            AssertionError: If current data is not available
         """
-
-        # Get currents data from the feed
-        currents_data = self._get_feed_data("currents")
-
-        # Get the latest current reading
-        latest_reading = self._get_latest_row(currents_data)
-        latest_timestamp = latest_reading.name  # Timestamp is in the index
-
-        return CurrentInfo(
-            timestamp=latest_timestamp,  # type: ignore[arg-type]
-            source_type=DataSourceType.OBSERVATION,
-            magnitude=latest_reading["velocity"],  # type: ignore[arg-type]
-        )
+        return queries.get_current_flow_info(self._feeds)
 
     def predict_flow_at_time(self, t: datetime.datetime | None = None) -> CurrentInfo:
         """Predict tidal current conditions for a specific time.
 
-        Analyzes current prediction data to determine the state, direction, and magnitude
-        of the tidal current at the specified time. Includes contextual information about
-        whether the current is strengthening, weakening, or at peak/slack.
-
-        NOTE: This method is currently specific to TIDAL current systems.
-        River current predictions will require a separate implementation.
-
         Args:
-            t: Time to predict current for, defaults to current time in location's timezone.
-               Must be a naive datetime in the location's timezone.
+            t: Time to predict current for, defaults to current time
 
         Returns:
-            A CurrentInfo object containing:
-                - direction: Direction of current (FLOODING or EBBING)
-                - magnitude: Magnitude of current in knots
-                - magnitude_pct: Relative magnitude percentage (0.0-1.0) compared to local peaks
-                - state_description: Text description of current state (e.g., "getting stronger", "at its weakest")
-                - source_type: Always PREDICTION for this method
+            A CurrentInfo object with current prediction
 
         Raises:
-            AssertionError: If current data is not available or input datetime has timezone info
+            AssertionError: If current data is not available
         """
-        # This method is only for TIDAL currents
-        if not t:
-            t = self.config.local_now()
-
-        # Get currents data from the feed
-        currents_data = self._get_feed_data("currents")
-
-        # Create a working copy of the current data for analysis
-        df = currents_data.copy()
-
-        # Convert raw velocity to magnitude and direction
-        df["v"] = df["velocity"]
-        df["magnitude"] = df["v"].abs()
-
-        # Add a slope column to track if current is strengthening or weakening
-        # For ebb currents (negative values), we need to negate the slope
-        # so that strengthening (becoming more negative) is represented by positive slope
-        df["raw_slope"] = df["v"].diff()
-
-        # Create a directionally correct slope column
-        # For flooding: positive slope = strengthening, negative slope = weakening
-        # For ebbing: negative slope = strengthening (more negative), positive slope = weakening (less negative)
-        conditions = [
-            (df["v"] > 0),  # flooding
-            (df["v"] < 0),  # ebbing
-        ]
-        choices = [
-            df["raw_slope"],  # for flooding, use raw slope
-            -df["raw_slope"],  # for ebbing, negate the slope
-        ]
-        df["slope"] = np.select(conditions, choices, default=0)
-
-        # Mark direction as flood or ebb
-        conditions = [
-            (df["v"] > 0),  # flooding
-            (df["v"] < 0),  # ebbing
-        ]
-        choices = [CurrentDirection.FLOODING.value, CurrentDirection.EBBING.value]
-        df["direction"] = np.select(conditions, choices, default="")
-
-        # Initialize column for local magnitude percentage
-        df["local_mag_pct"] = 0.0  # Default to 0% of local peak
-
-        # Process flood and ebb separately
-        flood_df = df[df["v"] > 0].copy()
-        ebb_df = df[df["v"] < 0].copy()
-
-        # Calculate mag_pct for global magnitude ranking (needed for fallback)
-        df["mag_pct"] = df.groupby("direction")["magnitude"].rank(pct=True)
-
-        # Now calculate magnitude percentages relative to local peaks
-        # Process both directions sequentially, passing the result of one to the next
-        df = _process_local_magnitude_pct(df, flood_df, CurrentDirection.FLOODING.value)  # type: ignore[arg-type]
-        df = _process_local_magnitude_pct(
-            df,
-            ebb_df,  # type: ignore[reportArgumentType]
-            CurrentDirection.EBBING.value,
-            invert=True,  # type: ignore[arg-type]
-        )
-
-        # Ensure we're using a naive datetime for DataFrame slicing
-        # All datetimes must be naive in the appropriate timezone
-        assert t.tzinfo is None, "Input datetime must be naive"
-
-        # Ensure DataFrame has no timezone info for consistent comparison
-        assert df.index.tz is None, "DataFrame should use naive datetimes"  # type: ignore[attr-defined]
-
-        # Get the row at or after the specified time
-        row = self._get_row_at_time(df, t)
-
-        # Constants for determining current state based on local magnitude percentage
-        STRONG_THRESHOLD = 0.85  # 85% of local peak is considered "strong"
-        SLACK_THRESHOLD = (
-            0.2  # Absolute threshold for considering current as slack water
-        )
-        magnitude = row["magnitude"]
-        local_pct = row["local_mag_pct"]
-
-        # First check if we're near slack water (zero crossing)
-        # This takes precedence over magnitude percentage
-        if magnitude < SLACK_THRESHOLD:
-            msg = "at its weakest (slack)"
-        # Check if we're at/near a peak based on local percentage
-        elif local_pct > STRONG_THRESHOLD:
-            msg = "at its strongest"  # Near a local peak
-        # Otherwise use slope to determine if strengthening or weakening
-        # The slope has been adjusted already to account for current direction
-        # so we can use a consistent interpretation: positive = strengthening, negative = weakening
-        elif row["slope"] < 0:
-            msg = "getting weaker"
-        elif row["slope"] > 0:
-            msg = "getting stronger"
-        else:
-            msg = "stable"
-
-        direction_str = row["direction"]
-
-        # Return a structured object with current information
-        return CurrentInfo(
-            timestamp=t,  # Include the timestamp parameter
-            source_type=DataSourceType.PREDICTION,  # Added source type
-            direction=CurrentDirection(direction_str),
-            magnitude=magnitude,  # type: ignore[arg-type]
-            magnitude_pct=row["local_mag_pct"],  # type: ignore[arg-type]
-            state_description=msg,
-        )
+        return queries.predict_flow_at_time(self._feeds, self.config, t)
 
     def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
         """Handle exceptions from asyncio tasks with appropriate logging levels.

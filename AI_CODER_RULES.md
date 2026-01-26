@@ -1,5 +1,7 @@
 # AI CODER RULES
 
+> **IMPORTANT:** `CLAUDE.md` and `GEMINI.md` are symlinks to this file. Do not delete or rename `AI_CODER_RULES.md` - edit it in place to update rules for all AI tools.
+
 **For full documentation, see [README.md](README.md).** This file contains quick-reference rules for AI coders.
 
 ## Project Overview

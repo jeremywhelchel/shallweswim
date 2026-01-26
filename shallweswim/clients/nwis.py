@@ -119,6 +119,9 @@ class NwisApi(BaseApiClient):
 
             return raw_result
 
+        except StationUnavailableError:
+            # Already logged as WARNING above, just propagate
+            raise
         except (
             # Assuming dataretrieval might raise these if it uses requests
             # Need to confirm actual exceptions raised by dataretrieval on network errors

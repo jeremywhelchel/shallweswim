@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 # Local imports
+from shallweswim.clients.base import StationUnavailableError
 from shallweswim.clients.nwis import NwisApi, NwisApiError, NwisDataError
 
 # Mark all tests in this file as integration tests that hit live services
@@ -61,11 +62,9 @@ async def test_integration_missing_temp_column() -> None:
     timezone = "America/New_York"
     location_code = "test_loc_missing"
 
-    # Use parameter 00011 (Fahrenheit) for site 01646500, expecting NwisDataError
-    # Expect NwisApiError because the generic except block wraps the NwisDataError
-    with pytest.raises(
-        NwisApiError, match="Unexpected error.*NwisDataError: No data returned"
-    ):
+    # Use parameter 00011 (Fahrenheit) for site 01646500, expecting no data
+    # With principled error handling, missing data raises StationUnavailableError
+    with pytest.raises(StationUnavailableError, match="returned no data"):
         # Create a real session and client instance
         async with aiohttp.ClientSession() as session:
             nwis_client = NwisApi(session)

@@ -136,6 +136,9 @@ class NdbcApi(BaseApiClient):
 
             return raw_result
 
+        except StationUnavailableError:
+            # Already logged as WARNING above, just propagate
+            raise
         except (
             requests.exceptions.ConnectionError,
             requests.exceptions.Timeout,

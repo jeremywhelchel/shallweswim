@@ -93,6 +93,8 @@ class NwisApi(BaseApiClient):
             f"Executing NWIS request for site {sites}, params={parameterCd}, start={start}, end={end}",
             location_code=location_code,
         )
+
+        # --- Fetch phase (network errors caught here) ---
         try:
             # Fetch the data using asyncio.to_thread to avoid blocking
             # dataretrieval uses requests internally
@@ -104,24 +106,6 @@ class NwisApi(BaseApiClient):
                 start=start,
                 end=end,
             )
-            # Check if the result is empty or not a DataFrame after successful execution
-            if (
-                raw_result is None
-                or not isinstance(raw_result, pd.DataFrame)
-                or raw_result.empty
-            ):
-                error_msg = (
-                    f"NWIS site {sites} returned no data for params {parameterCd}"
-                )
-                # Station has no data - expected operational condition
-                self.log(error_msg, level=logging.WARNING, location_code=location_code)
-                raise StationUnavailableError(error_msg)
-
-            return raw_result
-
-        except StationUnavailableError:
-            # Already logged as WARNING above, just propagate
-            raise
         except (
             # Assuming dataretrieval might raise these if it uses requests
             # Need to confirm actual exceptions raised by dataretrieval on network errors
@@ -131,14 +115,24 @@ class NwisApi(BaseApiClient):
         ) as e:
             # Convert known transient network errors to our retryable type
             error_msg = f"Network error during NWIS request for site {sites}: {e.__class__.__name__}: {e}"
-            # Log is handled by tenacity, just raise the correct error type
             raise RetryableClientError(error_msg) from e
         except Exception as e:
-            # Catch other potential errors from dataretrieval or pandas within the thread
-            error_msg = f"Unexpected error during NWIS request for site {sites}: {e.__class__.__name__}: {e}"
+            # Catch other potential errors from dataretrieval within the thread
+            error_msg = f"Unexpected error during NWIS fetch for site {sites}: {e.__class__.__name__}: {e}"
             self.log(error_msg, level=logging.ERROR, location_code=location_code)
-            # Re-raise as a general NwisApiError
             raise NwisApiError(error_msg) from e
+
+        # --- Validation phase (outside try - exceptions propagate naturally) ---
+        if (
+            raw_result is None
+            or not isinstance(raw_result, pd.DataFrame)
+            or raw_result.empty
+        ):
+            error_msg = f"NWIS site {sites} returned no data for params {parameterCd}"
+            self.log(error_msg, level=logging.WARNING, location_code=location_code)
+            raise StationUnavailableError(error_msg)
+
+        return raw_result
 
     async def temperature(
         self,

@@ -97,6 +97,8 @@ class NdbcApi(BaseApiClient):
             f"Executing NDBC request for station {station_id}, mode={mode}, start={start_time}, end={end_time}",
             location_code=location_code,
         )
+
+        # --- Fetch phase (network errors caught here) ---
         try:
             # Initialize the synchronous NDBC API client within the method
             # because it doesn't seem thread-safe or designed for reuse across awaits.
@@ -110,35 +112,6 @@ class NdbcApi(BaseApiClient):
                 start_time=start_time,
                 end_time=end_time,
             )
-
-            # Check if the result is a dictionary (often empty or error indication)
-            if isinstance(raw_result, dict):
-                if raw_result == {}:
-                    # Empty dict = station has no data (expected operational condition)
-                    error_msg = f"NDBC station {station_id} returned no data"
-                    self.log(
-                        error_msg, level=logging.WARNING, location_code=location_code
-                    )
-                    raise StationUnavailableError(error_msg)
-                else:
-                    # Non-empty dict = unexpected format (potential API change)
-                    error_msg = f"NDBC API returned unexpected dict: {raw_result}"
-                    self.log(
-                        error_msg, level=logging.ERROR, location_code=location_code
-                    )
-                    raise NdbcDataError(error_msg)
-
-            # Explicitly check if it's a DataFrame
-            if not isinstance(raw_result, pd.DataFrame):
-                error_msg = f"NDBC API returned unexpected type {type(raw_result)}, expected DataFrame."
-                self.log(error_msg, level=logging.ERROR, location_code=location_code)
-                raise NdbcDataError(error_msg)
-
-            return raw_result
-
-        except StationUnavailableError:
-            # Already logged as WARNING above, just propagate
-            raise
         except (
             requests.exceptions.ConnectionError,
             requests.exceptions.Timeout,
@@ -148,11 +121,32 @@ class NdbcApi(BaseApiClient):
             error_msg = f"Network error during NDBC request for station {station_id}: {e.__class__.__name__}: {e}"
             raise RetryableClientError(error_msg) from e
         except Exception as e:
-            # Catch other potential errors from ndbc-api or pandas within the thread
-            error_msg = f"Unexpected error during NDBC request for station {station_id}: {e.__class__.__name__}: {e}"
+            # Catch other potential errors from ndbc-api within the thread
+            error_msg = f"Unexpected error during NDBC fetch for station {station_id}: {e.__class__.__name__}: {e}"
             self.log(error_msg, level=logging.ERROR, location_code=location_code)
-            # Re-raise as a general NdbcApiError or let it propagate
             raise NdbcApiError(error_msg) from e
+
+        # --- Validation phase (outside try - exceptions propagate naturally) ---
+        # Check if the result is a dictionary (often empty or error indication)
+        if isinstance(raw_result, dict):
+            if raw_result == {}:
+                # Empty dict = station has no data (expected operational condition)
+                error_msg = f"NDBC station {station_id} returned no data"
+                self.log(error_msg, level=logging.WARNING, location_code=location_code)
+                raise StationUnavailableError(error_msg)
+            else:
+                # Non-empty dict = unexpected format (potential API change)
+                error_msg = f"NDBC API returned unexpected dict: {raw_result}"
+                self.log(error_msg, level=logging.ERROR, location_code=location_code)
+                raise NdbcDataError(error_msg)
+
+        # Explicitly check if it's a DataFrame
+        if not isinstance(raw_result, pd.DataFrame):
+            error_msg = f"NDBC API returned unexpected type {type(raw_result)}, expected DataFrame."
+            self.log(error_msg, level=logging.ERROR, location_code=location_code)
+            raise NdbcDataError(error_msg)
+
+        return raw_result
 
     # Change from @classmethod to instance method
     async def temperature(

@@ -1,4 +1,59 @@
-"""Base class for API clients."""
+"""Base class for API clients.
+
+Architecture
+------------
+All API clients inherit from BaseApiClient and implement `_execute_request`.
+The base class provides retry logic via `request_with_retry`.
+
+Implementation Pattern for _execute_request
+-------------------------------------------
+Subclasses MUST structure `_execute_request` with TWO SEPARATE PHASES:
+
+1. **FETCH PHASE** (inside try/except):
+   - Perform the actual API call or library function
+   - Catch ONLY network/connection errors here
+   - Raise RetryableClientError for transient errors (timeouts, connection refused)
+   - Raise client-specific *ApiError for unexpected fetch failures
+
+2. **VALIDATION PHASE** (OUTSIDE try/except):
+   - Check if the response indicates "no data" (expected condition)
+   - Raise StationUnavailableError for confirmed "no data" conditions
+   - Raise client-specific *DataError for unexpected formats
+
+Example structure:
+    async def _execute_request(self, ..., location_code: str) -> pd.DataFrame:
+        # --- FETCH PHASE ---
+        try:
+            raw_result = await self._do_api_call(...)
+        except NetworkErrors as e:
+            raise RetryableClientError(...) from e
+        except Exception as e:
+            raise MyClientApiError(...) from e
+
+        # --- VALIDATION PHASE (outside try!) ---
+        if raw_result is empty:
+            self.log(..., level=WARNING)
+            raise StationUnavailableError(...)  # Propagates naturally
+        if raw_result has unexpected format:
+            self.log(..., level=ERROR)
+            raise MyClientDataError(...)
+
+        return raw_result
+
+WHY THIS PATTERN MATTERS:
+- StationUnavailableError raised in validation phase propagates naturally
+- If validation were inside the try block, `except Exception` would catch it
+- This caused bugs where expected "no data" was logged as ERROR instead of WARNING
+- See CONVENTIONS.md Section 5 for full error handling documentation
+
+Error Hierarchy
+---------------
+- BaseClientError: Base for all client errors
+  - RetryableClientError: Transient errors, will be retried
+  - StationUnavailableError: Expected "no data" condition (WARNING, not ERROR)
+  - *ApiError (per client): Unexpected errors during fetch
+  - *DataError (per client): Unexpected response format
+"""
 
 import abc
 import logging
@@ -91,16 +146,35 @@ class BaseApiClient(abc.ABC):
 
     @abc.abstractmethod
     async def _execute_request(self, *args: Any, **kwargs: Any) -> T:
-        """Subclasses must implement this method to perform the actual client-specific request.
+        """Perform the client-specific API request. See module docstring for pattern.
 
-        This method should:
-        1. Perform the necessary API call or library function execution.
-        2. Catch specific, transient, retryable errors (e.g., connection errors, timeouts)
-           and raise RetryableClientError from them.
-        3. Handle non-retryable errors (e.g., bad HTTP status, data parsing errors)
-           by raising appropriate subclass-specific exceptions (e.g., CoopsDataError) or
-           letting other unexpected errors propagate.
-        4. Return the successfully retrieved and parsed data on success.
+        IMPORTANT: Structure this method with TWO SEPARATE PHASES:
+
+        1. FETCH PHASE (inside try/except):
+           - Perform API call
+           - Catch network errors → raise RetryableClientError
+           - Catch other fetch errors → raise *ApiError
+
+        2. VALIDATION PHASE (OUTSIDE try/except - this is critical!):
+           - Check for "no data" → raise StationUnavailableError (WARNING)
+           - Check for bad format → raise *DataError (ERROR)
+
+        The validation phase MUST be outside try/except so that
+        StationUnavailableError propagates without being caught by
+        a generic `except Exception` handler.
+
+        Args:
+            *args: Client-specific positional arguments.
+            **kwargs: Must include 'location_code' for logging.
+
+        Returns:
+            The successfully retrieved data (typically pd.DataFrame).
+
+        Raises:
+            RetryableClientError: Transient network error (will be retried).
+            StationUnavailableError: Station has no data (expected, WARNING).
+            *ApiError: Unexpected error during fetch (ERROR).
+            *DataError: Unexpected response format (ERROR).
         """
         pass
 

@@ -110,7 +110,9 @@ def _process_local_magnitude_pct(
         return df
 
     # Get magnitude values for peak detection
-    magnitudes = current_df["magnitude"].values
+    magnitudes: np.ndarray[Any, np.dtype[np.floating[Any]]] = np.asarray(
+        current_df["magnitude"].values
+    )
     if invert:
         magnitudes = -magnitudes
 
@@ -393,8 +395,8 @@ def predict_flow_at_time(
     df["local_mag_pct"] = 0.0
 
     # Process flood and ebb separately
-    flood_df = df[df["v"] > 0].copy()
-    ebb_df = df[df["v"] < 0].copy()
+    flood_df: pd.DataFrame = df[df["v"] > 0].copy()  # type: ignore[assignment]
+    ebb_df: pd.DataFrame = df[df["v"] < 0].copy()  # type: ignore[assignment]
 
     # Calculate mag_pct for global magnitude ranking (needed for fallback)
     df["mag_pct"] = df.groupby("direction")["magnitude"].rank(pct=True)

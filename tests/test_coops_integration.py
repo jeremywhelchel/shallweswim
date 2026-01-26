@@ -8,12 +8,13 @@ Run with: pytest tests/test_coops_integration.py -v --run-integration
 
 # pylint: disable=unused-argument
 
-import pytest
-import pandas as pd
-import datetime
 import asyncio
-import aiohttp
+import datetime
 from typing import Literal
+
+import aiohttp
+import pandas as pd
+import pytest
 
 from shallweswim.clients.coops import CoopsApi
 
@@ -176,9 +177,9 @@ async def test_live_temperature_intervals() -> None:
     # Note: This assumes that the data is actually available at both intervals
     # If this test fails, it may be because the station only provides hourly data
     if len(df_default) > 0 and len(df_hourly) > 0:
-        assert len(df_default) >= len(
-            df_hourly
-        ), "Default interval should have more points than hourly"
+        assert len(df_default) >= len(df_hourly), (
+            "Default interval should have more points than hourly"
+        )
 
 
 @pytest.mark.integration

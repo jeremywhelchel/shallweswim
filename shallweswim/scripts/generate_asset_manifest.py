@@ -15,7 +15,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Set
 
 # Configure logging
 logging.basicConfig(
@@ -56,8 +55,8 @@ def generate_fingerprinted_name(file_path: str, file_hash: str) -> str:
 
 
 def scan_static_directory(
-    static_dir: Path, exclude_dirs: Set[str] = set()
-) -> Dict[str, str]:
+    static_dir: Path, exclude_dirs: set[str] | None = None
+) -> dict[str, str]:
     """Scan the static directory and generate a manifest of fingerprinted filenames.
 
     Args:
@@ -67,6 +66,8 @@ def scan_static_directory(
     Returns:
         Dict mapping original paths (relative to static_dir) to fingerprinted paths
     """
+    if exclude_dirs is None:
+        exclude_dirs = set()
     if exclude_dirs is None:
         exclude_dirs = set()
 

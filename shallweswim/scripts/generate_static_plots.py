@@ -2,6 +2,7 @@
 """Generate static maps."""
 
 import logging
+
 from shallweswim import plot
 from shallweswim.types import CurrentDirection
 

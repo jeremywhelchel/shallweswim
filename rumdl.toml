@@ -1,0 +1,6 @@
+# rumdl configuration
+# Disable MD013 (line length) - 80 chars is too strict for markdown prose
+# Disable MD036 (emphasis instead of heading) - used intentionally in README
+
+[global]
+disable = ["MD013", "MD036"]

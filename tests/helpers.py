@@ -16,4 +16,4 @@ def assert_json_serializable(obj: Any) -> None:
     try:
         json.dumps(obj)
     except (TypeError, ValueError) as e:
-        assert False, f"Object is not JSON serializable: {e}"
+        raise AssertionError(f"Object is not JSON serializable: {e}") from e

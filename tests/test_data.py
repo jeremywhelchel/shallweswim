@@ -3,32 +3,33 @@
 # Standard library imports
 import asyncio
 import datetime
+from collections.abc import AsyncGenerator, Mapping
 from concurrent.futures import ProcessPoolExecutor
-from typing import Any, AsyncGenerator, Mapping, cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
-# Third-party imports
-from freezegun import freeze_time
 import pandas as pd
 import pytest
 import pytest_asyncio
 import pytz
+
+# Third-party imports
 from freezegun import freeze_time
 from pytest_mock import MockerFixture
+
+# Local imports
+from shallweswim import config as config_lib
+from shallweswim import feeds
+from shallweswim.api_types import FeedStatus
 
 # Import API client classes
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
-
-# Local imports
-from shallweswim import config as config_lib
-from shallweswim import feeds
 from shallweswim.data import LocationDataManager
-from shallweswim.types import CurrentInfo, CurrentDirection, DataSourceType
-from shallweswim.api_types import FeedStatus
 from shallweswim.feeds import Feed
+from shallweswim.types import CurrentDirection, CurrentInfo, DataSourceType
 
 # Local helpers
 from tests.helpers import assert_json_serializable
@@ -122,7 +123,7 @@ def mock_current_data() -> pd.DataFrame:
 
 
 @pytest_asyncio.fixture
-async def process_pool() -> AsyncGenerator[ProcessPoolExecutor, None]:
+async def process_pool() -> AsyncGenerator[ProcessPoolExecutor]:
     """Fixture to provide a ProcessPoolExecutor and ensure it's shut down."""
     pool = ProcessPoolExecutor()
     yield pool
@@ -145,12 +146,16 @@ async def mock_data_with_currents(
     mock_current_data: pd.DataFrame,
     process_pool: ProcessPoolExecutor,
     mock_clients: Mapping[str, BaseApiClient],
-) -> AsyncGenerator[LocationDataManager, None]:
+) -> AsyncGenerator[LocationDataManager]:
     """Create a LocationDataManager instance with mock current data."""
     # Use freezegun to set a fixed time for testing
     with freeze_time("2025-04-22 12:00:00"):
         # Use the provided process_pool fixture with mock clients
-        data = LocationDataManager(mock_config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]
+        data = LocationDataManager(
+            mock_config,
+            clients=mock_clients,  # type: ignore[reportArgumentType]
+            process_pool=process_pool,
+        )
 
         # Create a mock currents feed
         mock_currents_feed = MagicMock()
@@ -200,7 +205,11 @@ async def test_current_prediction_at_ebb_peak(
 
     # Use freezegun to set a fixed time for testing
     with freeze_time("2025-04-22 12:00:00"):
-        data = LocationDataManager(config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]
+        data = LocationDataManager(
+            config,
+            clients=mock_clients,  # type: ignore[reportArgumentType]
+            process_pool=process_pool,
+        )
 
     # Create a more comprehensive dataset for testing ebb currents
     # Create a single day with a complete cycle
@@ -652,7 +661,7 @@ async def test_data_ready_property(
     # Use a hardcoded list of all possible feed names
     # Note: This used to use FeedName from typing.Literal, but we've simplified it
     # to avoid type errors. The type ignore is for runtime NameError.
-    all_feed_names = ["tides", "currents", "live_temps", "historic_temps"]  # type: ignore[name-defined] # noqa: F821
+    all_feed_names = ["tides", "currents", "live_temps", "historic_temps"]  # type: ignore[name-defined]
     for feed_name in all_feed_names:
         if feed_name not in data._feeds:
             data._feeds[feed_name] = None

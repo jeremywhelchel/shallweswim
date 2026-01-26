@@ -5,41 +5,43 @@
 # Standard library imports
 import asyncio
 import datetime
-from tests.helpers import assert_json_serializable
-from typing import Dict, cast, Any, List, Type
-from unittest.mock import patch, MagicMock, AsyncMock
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pandas as pd
 
 # Third-party imports
 import pandera as pa
-import pandera.typing as pat
 import pandera.errors
-import pandas as pd
+import pandera.typing as pat
 import pytest
 import pytz
 
 # Local imports
-from shallweswim import config as config_lib, util
+from shallweswim import config as config_lib
+from shallweswim import util
+from shallweswim.api_types import DataFrameSummary
 from shallweswim.clients.base import (
     BaseApiClient,
     RetryableClientError,
 )
 from shallweswim.clients.coops import CoopsApi
-from shallweswim.clients.nwis import NwisApi
 from shallweswim.clients.ndbc import NdbcApi
+from shallweswim.clients.nwis import NwisApi
+from shallweswim.dataframe_models import (
+    CurrentDataModel,
+    WaterTempDataModel,
+)
 from shallweswim.feeds import (
-    Feed,
+    CompositeFeed,
+    CoopsCurrentsFeed,
     CoopsTempFeed,
     CoopsTidesFeed,
-    CoopsCurrentsFeed,
-    CompositeFeed,
-    MultiStationCurrentsFeed,
+    Feed,
     HistoricalTempsFeed,
+    MultiStationCurrentsFeed,
 )
-from shallweswim.dataframe_models import (
-    WaterTempDataModel,
-    CurrentDataModel,
-)
-from shallweswim.api_types import DataFrameSummary
+from tests.helpers import assert_json_serializable
 
 
 # Define a reusable simple model for test fixtures
@@ -70,7 +72,8 @@ def location_config() -> config_lib.LocationConfig:
 def coops_temp_config_fixture() -> config_lib.CoopsTempFeedConfig:
     """Create a temperature source config fixture."""
     return config_lib.CoopsTempFeedConfig(
-        station=8518750, name="Test Station"  # Using a valid 7-digit station ID
+        station=8518750,
+        name="Test Station",  # Using a valid 7-digit station ID
     )
 
 
@@ -104,7 +107,7 @@ def valid_currents_dataframe() -> pd.DataFrame:
     # Generate current velocity values (positive=flood, negative=ebb)
     # Create a repeating pattern that's exactly the right length
     pattern = [1.2, 0.8, 0.3, -0.2, -0.7, -1.1, -0.9, -0.5, -0.1, 0.4, 0.9, 1.3]
-    velocities: List[float] = []
+    velocities: list[float] = []
     while len(velocities) < len(index):
         velocities.extend(pattern)
     velocities = velocities[: len(index)]
@@ -152,7 +155,7 @@ def valid_temp_dataframe() -> pd.DataFrame:
 
 
 @pytest.fixture
-def mock_clients() -> Dict[str, BaseApiClient]:
+def mock_clients() -> dict[str, BaseApiClient]:
     """Provides a mock dictionary of specific API clients."""
     return {
         "coops": MagicMock(spec=CoopsApi),
@@ -177,7 +180,7 @@ def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
     class ConcreteFeed(Feed):
         feed_config: TestConfig = TestConfig()  # type: ignore[assignment]
 
-        async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+        async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
             # Return a simple DataFrame for testing
             index = pd.date_range(
                 start=datetime.datetime(2025, 4, 22, 0, 0, 0),
@@ -187,7 +190,7 @@ def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
             return pd.DataFrame({"value": range(len(index))}, index=index)
 
         @property
-        def data_model(self) -> Type[pa.DataFrameModel]:
+        def data_model(self) -> type[pa.DataFrameModel]:
             """Return the Pandera model associated with this test feed."""
             return TestDataModel
 
@@ -222,19 +225,19 @@ def simple_composite_feed(location_config: config_lib.LocationConfig) -> Composi
         feed_config: TestConfig = TestConfig()  # type: ignore[assignment]
 
         @property
-        def data_model(self) -> Type[pa.DataFrameModel]:
+        def data_model(self) -> type[pa.DataFrameModel]:
             """Return the Pandera model for combined data (using test model here)."""
             return TestDataModel
 
-        def _get_feeds(self, clients: Dict[str, BaseApiClient]) -> List[Feed]:
+        def _get_feeds(self, clients: dict[str, BaseApiClient]) -> list[Feed]:
             """Get test feeds - this will be mocked in tests."""
             return []
 
-        def _combine_feeds(self, dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+        def _combine_feeds(self, dataframes: list[pd.DataFrame]) -> pd.DataFrame:
             """Combine test dataframes - this will be mocked in tests."""
             return pd.DataFrame()
 
-        async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+        async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
             feeds = self._get_feeds(clients=clients)
             tasks = [feed._fetch(clients=clients) for feed in feeds]
             results = await asyncio.gather(*tasks)
@@ -356,21 +359,20 @@ class TestFeedBase:
 
     @pytest.mark.asyncio
     async def test_update_calls_fetch(
-        self, concrete_feed: Feed, mock_clients: Dict[str, BaseApiClient]
+        self, concrete_feed: Feed, mock_clients: dict[str, BaseApiClient]
     ) -> None:
         """Test that update calls _fetch and updates timestamp and data."""
         # Use patch to mock the _fetch method
         original_fetch = concrete_feed._fetch
         fetch_called = False
 
-        async def mock_fetch(clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+        async def mock_fetch(clients: dict[str, BaseApiClient]) -> pd.DataFrame:
             nonlocal fetch_called
             fetch_called = True
             return await original_fetch(clients)
 
         # Use monkeypatch instead of direct assignment to avoid mypy error
         with patch.object(concrete_feed, "_fetch", mock_fetch):
-
             # Call update
             await concrete_feed.update(clients=mock_clients)
 
@@ -648,7 +650,7 @@ class TestCoopsTidesFeed:
         self,
         location_config: config_lib.LocationConfig,
         tide_config: config_lib.CoopsTideFeedConfig,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
         # Get the mock coops client from the fixture and cast it
@@ -693,7 +695,7 @@ class TestCoopsTidesFeed:
         self,
         location_config: config_lib.LocationConfig,
         tide_config: config_lib.CoopsTideFeedConfig,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch raises an exception if the API call fails."""
         # Get the mock coops client from the fixture and cast it
@@ -724,7 +726,7 @@ class TestCoopsCurrentsFeed:
         self,
         location_config: config_lib.LocationConfig,
         currents_config: config_lib.CoopsCurrentsFeedConfig,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
         # Get the mock coops client from the fixture and cast it
@@ -766,7 +768,7 @@ class TestCoopsCurrentsFeed:
     async def test_fetch_with_valid_station(
         self,
         location_config: config_lib.LocationConfig,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch works with a valid station specified directly."""
         # Create a config with a valid station
@@ -808,7 +810,7 @@ class TestCoopsCurrentsFeed:
         self,
         location_config: config_lib.LocationConfig,
         currents_config: config_lib.CoopsCurrentsFeedConfig,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch handles API errors correctly."""
         # Get the mock coops client from the fixture and cast it
@@ -840,7 +842,7 @@ class TestCoopsTempFeed:
         self,
         location_config: config_lib.LocationConfig,
         coops_temp_config_fixture: config_lib.CoopsTempFeedConfig,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls the COOPS client with correct parameters."""
         # Get the mock coops client from the fixture and cast it
@@ -885,7 +887,7 @@ class TestCoopsTempFeed:
         self,
         location_config: config_lib.LocationConfig,
         coops_temp_config_fixture: config_lib.CoopsTempFeedConfig,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch passes date range to COOPS API when provided."""
         # Get the mock coops client from the fixture and cast it
@@ -937,7 +939,7 @@ class TestCoopsTempFeed:
         self,
         location_config: config_lib.LocationConfig,
         coops_temp_config_fixture: config_lib.CoopsTempFeedConfig,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch uses default date range when not provided."""
         # Get the mock coops client from the fixture and cast it
@@ -995,7 +997,7 @@ class TestCompositeFeed:
     async def test_fetch_calls_get_feeds_and_combine_feeds(
         self,
         simple_composite_feed: CompositeFeed,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch calls _get_feeds and _combine_feeds."""
         # Create mock feeds and a test DataFrame to return
@@ -1026,7 +1028,6 @@ class TestCompositeFeed:
                 return_value=pd.concat([test_df1, test_df2]),
             ) as mock_combine_feeds,
         ):
-
             # Call _fetch
             result = await simple_composite_feed._fetch(clients=mock_clients)
 
@@ -1047,7 +1048,7 @@ class TestCompositeFeed:
         self,
         simple_composite_feed: CompositeFeed,
         valid_temp_dataframe: pd.DataFrame,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch combines DataFrames correctly."""
 
@@ -1062,10 +1063,10 @@ class TestCompositeFeed:
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
-            def data_model(self) -> Type[pa.DataFrameModel]:
+            def data_model(self) -> type[pa.DataFrameModel]:
                 return TestDataModel
 
-            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+            async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
                 return valid_temp_dataframe
 
         # Create two instances of TestFeed
@@ -1103,7 +1104,7 @@ class TestCompositeFeed:
     async def test_fetch_propagates_errors(
         self,
         simple_composite_feed: CompositeFeed,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _fetch propagates errors from underlying feeds."""
 
@@ -1130,7 +1131,7 @@ class TestMultiStationCurrentsFeed:
     def test_get_feeds_creates_correct_feeds(
         self,
         multi_station_currents_feed: MultiStationCurrentsFeed,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _get_feeds creates the correct number of CoopsCurrentsFeed instances."""
         # Get the feeds
@@ -1227,7 +1228,7 @@ class TestMultiStationCurrentsFeed:
         self,
         multi_station_currents_feed: MultiStationCurrentsFeed,
         valid_currents_dataframe: pd.DataFrame,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test error handling when one station fails but others succeed."""
 
@@ -1242,10 +1243,10 @@ class TestMultiStationCurrentsFeed:
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
-            def data_model(self) -> Type[pa.DataFrameModel]:
+            def data_model(self) -> type[pa.DataFrameModel]:
                 return CurrentDataModel  # type: ignore[return-value]
 
-            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+            async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
                 raise ValueError("Test station error")
 
         # Create a test feed that returns valid data
@@ -1253,10 +1254,10 @@ class TestMultiStationCurrentsFeed:
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
-            def data_model(self) -> Type[pa.DataFrameModel]:
+            def data_model(self) -> type[pa.DataFrameModel]:
                 return CurrentDataModel  # type: ignore[return-value]
 
-            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+            async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
                 return valid_currents_dataframe
 
         # Mock _get_feeds to return one error feed and one success feed
@@ -1285,7 +1286,7 @@ class TestHistoricalTempsFeed:
     def test_get_feeds_creates_correct_feeds(
         self,
         historical_temps_feed: HistoricalTempsFeed,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test that _get_feeds creates the correct number of CoopsTempFeed instances."""
         # Get the feeds
@@ -1392,7 +1393,7 @@ class TestHistoricalTempsFeed:
         self,
         historical_temps_feed: HistoricalTempsFeed,
         valid_temp_dataframe: pd.DataFrame,
-        mock_clients: Dict[str, BaseApiClient],
+        mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test error handling when one year fails but others succeed."""
 
@@ -1407,10 +1408,10 @@ class TestHistoricalTempsFeed:
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
-            def data_model(self) -> Type[pa.DataFrameModel]:
+            def data_model(self) -> type[pa.DataFrameModel]:
                 return WaterTempDataModel  # type: ignore[return-value]
 
-            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+            async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
                 raise ValueError("Test year error")
 
         # Create a test feed that returns valid data
@@ -1418,10 +1419,10 @@ class TestHistoricalTempsFeed:
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
             @property
-            def data_model(self) -> Type[pa.DataFrameModel]:
+            def data_model(self) -> type[pa.DataFrameModel]:
                 return WaterTempDataModel  # type: ignore[return-value]
 
-            async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+            async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
                 return valid_temp_dataframe
 
         # Mock _get_feeds to return one error feed and one success feed

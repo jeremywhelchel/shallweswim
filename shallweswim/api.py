@@ -8,7 +8,6 @@ import asyncio
 import io
 import logging
 import warnings
-from typing import Dict, Optional
 
 # Third-party imports
 import aiohttp
@@ -16,13 +15,10 @@ import fastapi
 from fastapi import HTTPException
 
 # Local imports
-from shallweswim import config as config_lib, data as data_lib, plot, util, types
-from shallweswim.clients.base import BaseApiClient
-from shallweswim.clients.coops import CoopsApi
-from shallweswim.clients.nwis import NwisApi
-from shallweswim.clients.ndbc import NdbcApi
+from shallweswim import config as config_lib
+from shallweswim import data as data_lib
+from shallweswim import plot, types, util
 from shallweswim.api_types import (
-    TideEntry,
     CurrentInfo,
     CurrentsResponse,
     LegacyChartInfo,
@@ -30,8 +26,13 @@ from shallweswim.api_types import (
     LocationInfo,
     LocationStatus,
     TemperatureInfo,
+    TideEntry,
     TideInfo,
 )
+from shallweswim.clients.base import BaseApiClient
+from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.ndbc import NdbcApi
+from shallweswim.clients.nwis import NwisApi
 
 # Data store for location data will be stored in app.state.data_managers
 
@@ -51,7 +52,7 @@ async def initialize_location_data(
     location_codes: list[str],
     app: fastapi.FastAPI,
     wait_for_data: bool = False,
-    timeout: Optional[float] = 30.0,
+    timeout: float | None = 30.0,
 ) -> dict[str, data_lib.LocationDataManager]:
     """Initialize data for the specified locations.
 
@@ -80,7 +81,7 @@ async def initialize_location_data(
     process_pool = app.state.process_pool
 
     # Create API client instances using the shared session
-    api_clients: Dict[str, BaseApiClient] = {
+    api_clients: dict[str, BaseApiClient] = {
         "coops": CoopsApi(session=session),
         "nwis": NwisApi(session=session),
         "ndbc": NdbcApi(session=session),
@@ -119,7 +120,7 @@ async def initialize_location_data(
         await asyncio.gather(*wait_tasks)
 
     # Create a properly typed dictionary to return
-    result: Dict[str, data_lib.LocationDataManager] = app.state.data_managers
+    result: dict[str, data_lib.LocationDataManager] = app.state.data_managers
     return result
 
 
@@ -293,7 +294,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             )
         except AssertionError as e:
             # The function now raises assertions instead of returning None
-            raise HTTPException(status_code=404, detail=str(e))
+            raise HTTPException(status_code=404, detail=str(e)) from e
 
         # Convert figure to SVG in a StringIO buffer
         svg_io = io.StringIO()
@@ -367,8 +368,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 detail="Service not healthy - no location has data",
             )
 
-    @app.get("/api/status", response_model=Dict[str, LocationStatus])
-    async def all_locations_status() -> Dict[str, LocationStatus]:
+    @app.get("/api/status", response_model=dict[str, LocationStatus])
+    async def all_locations_status() -> dict[str, LocationStatus]:
         """API endpoint that returns status information for all configured locations.
 
         Returns:
@@ -462,7 +463,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             # Get current prediction information
             current_info = app.state.data_managers[location].predict_flow_at_time(ts)
         except ValueError as e:
-            raise HTTPException(status_code=503, detail=str(e))
+            raise HTTPException(status_code=503, detail=str(e)) from e
 
         # Get legacy chart information
         chart_info = app.state.data_managers[location].get_chart_info(ts)
@@ -575,4 +576,4 @@ def register_routes(app: fastapi.FastAPI) -> None:
             # Catch potential errors during data fetching/processing
             raise HTTPException(
                 status_code=500, detail="Internal server error retrieving feed data"
-            )
+            ) from e

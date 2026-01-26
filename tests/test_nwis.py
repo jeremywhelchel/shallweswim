@@ -4,18 +4,19 @@
 
 # Standard library imports
 import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Third-party imports
 import aiohttp
 import pandas as pd
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 
-# Local imports
-from shallweswim.clients.nwis import NwisApi, NwisDataError
 from shallweswim.clients.base import (
     ClientConnectionError,
 )
+
+# Local imports
+from shallweswim.clients.nwis import NwisApi, NwisDataError
 
 
 def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:

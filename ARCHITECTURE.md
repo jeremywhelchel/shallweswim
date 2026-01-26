@@ -8,7 +8,7 @@ This document describes the architectural patterns, coding standards, and design
 
 ### Project Structure
 
-```
+```text
 shallweswim/
 ├── main.py          # App entry point, web UI routes, templates
 ├── api.py           # JSON API routes (delegates to data.py)
@@ -39,13 +39,13 @@ static/              # CSS, JS, images
 
 **User requests** serve cached data (no external calls):
 
-```
+```text
 API Handler → LocationDataManager → Feed (cached data) → Response
 ```
 
 **Background refresh** updates the cache on intervals:
 
-```
+```text
 Background Task → Feed → ApiClient → External Service → Update Cache
 ```
 

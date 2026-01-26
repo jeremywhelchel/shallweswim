@@ -23,15 +23,14 @@ import abc
 import datetime
 from datetime import tzinfo
 from types import MappingProxyType
-from typing import Annotated, List, Optional, Tuple
+from typing import Annotated
 
 # Third-party imports
 import pytz
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # Local imports
-from shallweswim import types
-from shallweswim import util
+from shallweswim import types, util
 
 
 class BaseFeedConfig(BaseModel, abc.ABC, frozen=True):
@@ -40,14 +39,14 @@ class BaseFeedConfig(BaseModel, abc.ABC, frozen=True):
     model_config = ConfigDict(extra="forbid")
 
     name: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Human-readable name of the data source (e.g., station name, site name)"
         ),
     ] = None
 
     outliers: Annotated[
-        List[str],
+        list[str],
         Field(
             description="List of timestamps (YYYY-MM-DD HH:MM:SS format) with potentially erroneous data to flag or remove"
         ),
@@ -83,12 +82,12 @@ class TempFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
     ] = True
 
     start_year: Annotated[
-        Optional[int],
+        int | None,
         Field(description="Starting year for historical temperature data."),
     ] = None
 
     end_year: Annotated[
-        Optional[int],
+        int | None,
         Field(
             description="Ending year for historical temperature data. If not provided, defaults to current year."
         ),
@@ -136,7 +135,7 @@ class CoopsTempFeedConfig(TempFeedConfig, frozen=True):
         station_url = (
             f"https://tidesandcurrents.noaa.gov/stationhome.html?id={self.station}"
         )
-        return f"Water temperature data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.name or 'Unknown'})"
+        return f'Water temperature data provided by <a href="{station_url}" target="_blank">NOAA CO-OPS Station {self.station}</a> ({self.name or "Unknown"})'
 
 
 class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
@@ -166,7 +165,7 @@ class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
         station_url = (
             f"https://tidesandcurrents.noaa.gov/stationhome.html?id={self.station}"
         )
-        return f"Tide data provided by <a href=\"{station_url}\" target=\"_blank\">NOAA CO-OPS Station {self.station}</a> ({self.name or 'Unknown'})"
+        return f'Tide data provided by <a href="{station_url}" target="_blank">NOAA CO-OPS Station {self.station}</a> ({self.name or "Unknown"})'
 
 
 class CurrentsFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
@@ -204,7 +203,7 @@ class CoopsCurrentsFeedConfig(CurrentsFeedConfig, frozen=True):
     model_config = ConfigDict(extra="forbid")
 
     stations: Annotated[
-        List[Annotated[str, Field(min_length=1)]],
+        list[Annotated[str, Field(min_length=1)]],
         Field(
             description="Current stations for water current speed and direction (strings like 'ACT3876', unlike temp/tide stations)"
         ),
@@ -315,7 +314,7 @@ class NdbcTempFeedConfig(TempFeedConfig, frozen=True):
         station_url = (
             f"https://www.ndbc.noaa.gov/station_page.php?station={self.station}"
         )
-        return f"Water temperature data provided by <a href=\"{station_url}\" target=\"_blank\">NDBC Station {self.station}</a> ({self.name or 'Unknown'})"
+        return f'Water temperature data provided by <a href="{station_url}" target="_blank">NDBC Station {self.station}</a> ({self.name or "Unknown"})'
 
 
 class NwisTempFeedConfig(TempFeedConfig, frozen=True):
@@ -352,7 +351,7 @@ class NwisTempFeedConfig(TempFeedConfig, frozen=True):
             HTML string with citation information for USGS NWIS data
         """
         site_url = f"https://waterdata.usgs.gov/monitoring-location/{self.site_no}/"
-        return f"Water temperature data provided by <a href=\"{site_url}\" target=\"_blank\">USGS NWIS Site {self.site_no}</a> ({self.name or 'Unknown'})"
+        return f'Water temperature data provided by <a href="{site_url}" target="_blank">USGS NWIS Site {self.site_no}</a> ({self.name or "Unknown"})'
 
 
 class LocationConfig(BaseModel, frozen=True):
@@ -428,17 +427,17 @@ class LocationConfig(BaseModel, frozen=True):
 
     # Data source configurations
     temp_source: Annotated[
-        Optional[TempFeedConfig],
+        TempFeedConfig | None,
         Field(description="Configuration for temperature data source"),
     ] = None
 
     tide_source: Annotated[
-        Optional[CoopsTideFeedConfig],
+        CoopsTideFeedConfig | None,
         Field(description="Configuration for tide data source"),
     ] = None
 
     currents_source: Annotated[
-        Optional[CurrentsFeedConfig],
+        CurrentsFeedConfig | None,
         Field(description="Configuration for currents data source"),
     ] = None
 
@@ -457,7 +456,7 @@ class LocationConfig(BaseModel, frozen=True):
     ] = False
 
     @property
-    def coordinates(self) -> Tuple[float, float]:
+    def coordinates(self) -> tuple[float, float]:
         """Return the location's coordinates as a (latitude, longitude) tuple.
 
         This is convenient for passing to mapping APIs or weather services that
@@ -494,7 +493,7 @@ class LocationConfig(BaseModel, frozen=True):
         now_utc = util.utc_now()
 
         # Add UTC timezone info, convert to location timezone, then strip tzinfo
-        now_utc_with_tz = now_utc.replace(tzinfo=datetime.timezone.utc)
+        now_utc_with_tz = now_utc.replace(tzinfo=datetime.UTC)
         local_now = now_utc_with_tz.astimezone(self.timezone)
 
         # Return naive datetime in local time
@@ -705,7 +704,7 @@ _CONFIG_LIST = [
 CONFIGS = MappingProxyType({c.code.lower(): c for c in _CONFIG_LIST if c.enabled})
 
 
-def get(code: str) -> Optional[LocationConfig]:
+def get(code: str) -> LocationConfig | None:
     """Get location config by 3-letter code.
 
     The lookup is case-insensitive, so "NYC", "nyc", and "Nyc" all retrieve
@@ -721,7 +720,7 @@ def get(code: str) -> Optional[LocationConfig]:
     return CONFIGS.get(code)
 
 
-def get_all_configs() -> List[LocationConfig]:
+def get_all_configs() -> list[LocationConfig]:
     """Get all location configurations, including disabled ones.
 
     This function is primarily intended for testing purposes.

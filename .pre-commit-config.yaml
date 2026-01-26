@@ -1,5 +1,5 @@
 # Pre-commit configuration for shallweswim
-# Runs the same checks as GitHub Actions workflows
+# Philosophy: Fast hooks only. Type checking and tests run in CI.
 repos:
   # Basic file hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -11,66 +11,26 @@ repos:
       - id: check-added-large-files
       - id: check-merge-conflict
 
-  # Prettier for non-Python files
+  # Prettier for non-Python files (excluding Markdown)
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: "v4.0.0-alpha.8"
     hooks:
       - id: prettier
-        types_or: [markdown, yaml, json, html, css, javascript]
+        types_or: [yaml, json, html, css, javascript]
 
-  # Local hooks using uv-managed tools
+  # Rumdl for Markdown (Rust-based, protects wiki links)
   - repo: local
     hooks:
-      # Sync environment first to ensure tools match lockfile
-      - id: uv-sync
-        name: uv sync
-        description: Sync environment with lockfile before running tools
+      - id: rumdl
+        name: rumdl markdown linter
+        entry: rumdl check . --fix
         language: system
-        entry: uv sync --all-extras --quiet
-        pass_filenames: false
-        always_run: true
+        types: [markdown]
 
-      # Run unit tests (fast)
-      - id: pytest-unit
-        name: pytest unit tests
-        description: Run fast unit tests to catch breakages early
-        language: system
-        entry: uv run pytest -v -k "not integration"
-        pass_filenames: false
-        always_run: true
-
-      # Type checking - full project
-      - id: mypy
-        name: mypy type checking
-        description: Check type annotations with mypy
-        language: system
-        entry: uv run mypy --config-file=pyproject.toml .
-        pass_filenames: false
-        always_run: true
-
-      # Pylint for detecting unused imports and dead code
-      - id: pylint
-        name: pylint unused code check
-        description: Detect unused imports, variables, and dead code
-        language: system
-        entry: uv run pylint shallweswim/ tests/
-        pass_filenames: false
-        always_run: true
-
-      # Optionally run integration tests before commit (disabled by default)
-      - id: pytest-integration
-        name: pytest integration tests
-        description: Run integration tests (disabled by default, enable as needed)
-        language: system
-        entry: uv run pytest -v -m integration --run-integration
-        pass_filenames: false
-        stages: [manual] # Not run by default, use "pre-commit run pytest-integration" to run
-
-      # Black code formatting (run last to ensure final formatting)
-      - id: black
-        name: black formatter
-        description: Format code with Black using uv
-        language: system
-        entry: uv run black
-        types: [python]
-        require_serial: true
+  # Ruff - fast Python linter and formatter (no venv needed)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

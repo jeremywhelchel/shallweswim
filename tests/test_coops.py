@@ -4,19 +4,19 @@
 import datetime
 import io
 from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Third-party imports
 import aiohttp
 import pandas as pd
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from pandas.testing import assert_frame_equal
 
 # Local imports
 from shallweswim.clients.coops import (
     CoopsApi,
     CoopsConnectionError,
 )
-from pandas.testing import assert_frame_equal
 
 # Type definitions for test data (assuming they are defined elsewhere or basic)
 # Fixtures
@@ -148,9 +148,7 @@ async def test_temperature_success(
         expected_water_df = pd.DataFrame(
             {"water_temp": [62.5, 63.2], "air_temp": [65.0, 66.0]},
             index=pd.to_datetime(["2025-04-19 10:00:00", "2025-04-19 16:00:00"]),
-        ).rename_axis(
-            "time"
-        )  # Match index name set by _FixTime
+        ).rename_axis("time")  # Match index name set by _FixTime
         # Client returns all temp columns found, test needs to select the relevant one
         assert_frame_equal(df_water[["water_temp"]], expected_water_df[["water_temp"]])
 
@@ -164,9 +162,7 @@ async def test_temperature_success(
         expected_air_df = pd.DataFrame(
             {"water_temp": [62.5, 63.2], "air_temp": [65.0, 66.0]},
             index=pd.to_datetime(["2025-04-19 10:00:00", "2025-04-19 16:00:00"]),
-        ).rename_axis(
-            "time"
-        )  # Match index name set by _FixTime
+        ).rename_axis("time")  # Match index name set by _FixTime
         # Client returns all temp columns found, test needs to select the relevant one
         assert_frame_equal(df_air[["air_temp"]], expected_air_df[["air_temp"]])
 

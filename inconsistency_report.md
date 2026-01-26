@@ -4,7 +4,7 @@ This report highlights areas where the implementation deviates from the apparent
 
 ---
 
-### **1. Partially Implemented Features for Multiple Locations**
+## **1. Partially Implemented Features for Multiple Locations**
 
 - **Issue:** The application is designed to support multiple swimming locations, but some key features are hardcoded to work only for "nyc".
 - **Evidence:**

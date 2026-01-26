@@ -10,8 +10,10 @@ Open water swimming conditions app (shallweswim.today). Aggregates tide, current
 
 ```bash
 uv run pytest -v -k "not integration"   # Unit tests (default)
-uv run mypy --config-file=pyproject.toml .  # Type checking
-uv run pre-commit run --all-files       # All quality checks
+uv run ruff check .                      # Linting
+uv run ruff format --check .             # Formatting check
+uv run basedpyright                      # Type checking
+uv run pre-commit run --all-files        # All quality checks
 uv run python -m shallweswim.main --port=12345  # Run locally
 ```
 
@@ -29,12 +31,12 @@ uv run python -m shallweswim.main --port=12345  # Run locally
 
 ## Architecture Quick Reference
 
-```
+```text
 User Request:  API Handler → LocationDataManager → Feed (cached data)
 Background:    Feed → ApiClient → External Service → Update Cache
 ```
 
-```
+```text
 shallweswim/
 ├── main.py      # App entry, web UI routes
 ├── api.py       # JSON API routes (delegates to data.py)

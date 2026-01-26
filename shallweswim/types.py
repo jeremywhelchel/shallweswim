@@ -7,7 +7,6 @@ API-related types are defined in api_types.py.
 # Standard library imports
 import datetime
 import enum
-from typing import List, Optional
 from dataclasses import dataclass
 
 #############################################################
@@ -69,8 +68,8 @@ class TideEntry:
 class TideInfo:
     """Structured information about past and future tides."""
 
-    past: List[TideEntry]  # The most recent tide
-    next: List[TideEntry]  # The next two upcoming tides
+    past: list[TideEntry]  # The most recent tide
+    next: list[TideEntry]  # The next two upcoming tides
 
 
 @dataclass
@@ -87,10 +86,10 @@ class CurrentInfo:
     magnitude: float
 
     # Current direction (e.g., flooding, ebbing) or None for unidirectional systems
-    direction: Optional[CurrentDirection] = None
+    direction: CurrentDirection | None = None
 
-    magnitude_pct: Optional[float] = None
-    state_description: Optional[str] = None
+    magnitude_pct: float | None = None
+    state_description: str | None = None
 
 
 @dataclass
@@ -98,6 +97,6 @@ class LegacyChartInfo:
     """Structured information about a tide chart (internal)."""
 
     hours_since_last_tide: float
-    last_tide_type: Optional[TideCategory]
+    last_tide_type: TideCategory | None
     chart_filename: str
     map_title: str

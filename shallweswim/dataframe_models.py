@@ -1,5 +1,7 @@
 """Pandera DataFrame models for validating internal data structures."""
 
+from typing import ClassVar
+
 import pandas as pd
 import pandera.pandas as pa
 import pandera.typing as pa_typing
@@ -36,11 +38,10 @@ class TimeSeriesDataModel(pa.DataFrameModel):
         coerce = False
         # Controls how the DataFrame is serialized to JSON for FastAPI output.
         to_format = "dict"
-        to_format_kwargs = {"orient": "index"}
+        to_format_kwargs: ClassVar[dict[str, str]] = {"orient": "index"}
 
 
 class WaterTempDataModel(TimeSeriesDataModel):
-
     water_temp: pa_typing.Series[float] = pa.Field(nullable=True)
 
     @pa.check("water_temp", error="water_temp all NaN")

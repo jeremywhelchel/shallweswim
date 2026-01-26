@@ -8,35 +8,33 @@ and provides the necessary data for plotting and presentation.
 import asyncio
 import datetime
 import logging
-from typing import Any, Dict, Optional
 from concurrent.futures import ProcessPoolExecutor
+from typing import Any
 
 # Third-party imports
 import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
 
+from shallweswim import api_types, feeds, plot
+
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim import feeds
-from shallweswim import plot
-from shallweswim import util
 from shallweswim.clients.base import (
     BaseApiClient,
     BaseClientError,
     StationUnavailableError,
 )
 from shallweswim.types import (
-    CurrentInfo,
     CurrentDirection,
+    CurrentInfo,
+    DataSourceType,
     LegacyChartInfo,
+    TemperatureReading,
     TideCategory,
     TideEntry,
     TideInfo,
-    TemperatureReading,
-    DataSourceType,
 )
-from shallweswim import api_types
 from shallweswim.util import utc_now
 
 # Constants
@@ -55,10 +53,6 @@ EXPIRATION_PERIODS = {
     # Hourly fetch historic temps + generate charts
     "historic_temps": datetime.timedelta(hours=3),
 }
-
-
-# Use the utility function for consistent time handling
-utc_now = util.utc_now
 
 
 def _process_local_magnitude_pct(
@@ -134,7 +128,7 @@ def _process_local_magnitude_pct(
     return result_df
 
 
-class LocationDataManager(object):
+class LocationDataManager:
     """LocationDataManager for ShallWeSwim application.
 
     This class manages all the data feeds for one location. It handles fetching, processing,
@@ -146,7 +140,7 @@ class LocationDataManager(object):
     def __init__(
         self,
         config: config_lib.LocationConfig,
-        clients: Dict[str, BaseApiClient],
+        clients: dict[str, BaseApiClient],
         process_pool: ProcessPoolExecutor,  # For CPU-bound tasks like plotting
     ):
         """Initialize the Data manager for a specific location.
@@ -162,7 +156,7 @@ class LocationDataManager(object):
 
         # Dictionary mapping dataset names to their corresponding feeds
         # This is the single source of truth for all feed instances and data
-        self._feeds: Dict[str, Optional[feeds.Feed]] = {
+        self._feeds: dict[str, feeds.Feed | None] = {
             "tides": self._configure_tides_feed(),
             "currents": self._configure_currents_feed(),
             "live_temps": self._configure_live_temps_feed(),
@@ -170,10 +164,10 @@ class LocationDataManager(object):
         }
 
         # Background update task
-        self._update_task: Optional[asyncio.Task[None]] = None
+        self._update_task: asyncio.Task[None] | None = None
         self._ready_event = asyncio.Event()
 
-    def _configure_live_temps_feed(self) -> Optional[feeds.Feed]:
+    def _configure_live_temps_feed(self) -> feeds.Feed | None:
         """Configure the live temperature feed.
 
         Returns:
@@ -211,7 +205,7 @@ class LocationDataManager(object):
             # Re-raise with more context about what we were trying to do
             raise TypeError(f"Error configuring live temperature feed: {e}") from e
 
-    def _configure_historic_temps_feed(self) -> Optional[feeds.Feed]:
+    def _configure_historic_temps_feed(self) -> feeds.Feed | None:
         """Configure the historical temperature feed.
 
         Returns:
@@ -262,7 +256,7 @@ class LocationDataManager(object):
                 f"Error configuring historical temperature feed: {e}"
             ) from e
 
-    def _configure_tides_feed(self) -> Optional[feeds.Feed]:
+    def _configure_tides_feed(self) -> feeds.Feed | None:
         """Configure the tides feed.
 
         Returns:
@@ -286,7 +280,7 @@ class LocationDataManager(object):
             # Re-raise with more context about what we were trying to do
             raise TypeError(f"Error configuring tide feed: {e}") from e
 
-    def _configure_currents_feed(self) -> Optional[feeds.Feed]:
+    def _configure_currents_feed(self) -> feeds.Feed | None:
         """Configure the currents feed.
 
         Returns:
@@ -353,7 +347,7 @@ class LocationDataManager(object):
             A LocationStatus object containing a dictionary mapping feed names
             to their FeedStatus objects.
         """
-        status_dict: Dict[str, api_types.FeedStatus] = {}
+        status_dict: dict[str, api_types.FeedStatus] = {}
 
         # Add status for each configured feed
         for name, feed in self._feeds.items():
@@ -811,7 +805,7 @@ class LocationDataManager(object):
 
         return TideInfo(past=past_tides, next=next_tides)
 
-    def get_chart_info(self, t: Optional[datetime.datetime] = None) -> LegacyChartInfo:
+    def get_chart_info(self, t: datetime.datetime | None = None) -> LegacyChartInfo:
         """Generate chart information based on tide data for the specified time.
 
         Calculates the time since the last tide event and generates appropriate
@@ -856,13 +850,11 @@ class LocationDataManager(object):
             chart_num = round(offset_hrs)
             chart_type = tide_type
 
-        legacy_map_title = "%s Water at New York" % chart_type.capitalize()  # type: ignore[attr-defined]
+        legacy_map_title = f"{chart_type.capitalize()} Water at New York"  # type: ignore[attr-defined]
         if chart_num:
-            legacy_map_title = (
-                "%i Hour%s after " % (chart_num, "s" if chart_num > 1 else "")
-                + legacy_map_title
-            )
-        filename = "%s+%s.png" % (chart_type, chart_num)
+            suffix = "s" if chart_num > 1 else ""
+            legacy_map_title = f"{chart_num} Hour{suffix} after " + legacy_map_title
+        filename = f"{chart_type}+{chart_num}.png"
 
         return LegacyChartInfo(
             hours_since_last_tide=offset_hrs,
@@ -898,9 +890,7 @@ class LocationDataManager(object):
             magnitude=latest_reading["velocity"],  # type: ignore[arg-type]
         )
 
-    def predict_flow_at_time(
-        self, t: Optional[datetime.datetime] = None
-    ) -> CurrentInfo:
+    def predict_flow_at_time(self, t: datetime.datetime | None = None) -> CurrentInfo:
         """Predict tidal current conditions for a specific time.
 
         Analyzes current prediction data to determine the state, direction, and magnitude
@@ -979,7 +969,10 @@ class LocationDataManager(object):
         # Process both directions sequentially, passing the result of one to the next
         df = _process_local_magnitude_pct(df, flood_df, CurrentDirection.FLOODING.value)  # type: ignore[arg-type]
         df = _process_local_magnitude_pct(
-            df, ebb_df, CurrentDirection.EBBING.value, invert=True  # type: ignore[arg-type]
+            df,
+            ebb_df,  # type: ignore[reportArgumentType]
+            CurrentDirection.EBBING.value,
+            invert=True,  # type: ignore[arg-type]
         )
 
         # Ensure we're using a naive datetime for DataFrame slicing

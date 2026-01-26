@@ -25,7 +25,7 @@ from shallweswim.clients.base import (
     BaseClientError,  # Import BaseClientError
     RetryableClientError,
     StationUnavailableError,
-)  # noqa
+)
 from shallweswim.util import c_to_f
 
 
@@ -110,7 +110,7 @@ class NwisApi(BaseApiClient):
             # Assuming dataretrieval might raise these if it uses requests
             # Need to confirm actual exceptions raised by dataretrieval on network errors
             aiohttp.ClientConnectionError,  # Example: if underlying requests uses aiohttp? Unlikely.
-            asyncio.TimeoutError,
+            TimeoutError,
             # Add specific exceptions from dataretrieval/requests if known
         ) as e:
             # Convert known transient network errors to our retryable type
@@ -208,7 +208,7 @@ class NwisApi(BaseApiClient):
             # Convert temperature from Celsius to Fahrenheit if parameter is 00010
             if parameter_cd == "00010":
                 self.log(
-                    f"Converting temperature from Celsius to Fahrenheit for parameter 00010",
+                    "Converting temperature from Celsius to Fahrenheit for parameter 00010",
                     location_code=location_code,
                 )
                 temp_df["water_temp"] = temp_df["water_temp"].map(c_to_f)
@@ -273,7 +273,7 @@ class NwisApi(BaseApiClient):
         # Define time range for 'iv' service (e.g., last 24 hours)
         # NWIS often returns only the most recent value for 'iv' regardless of range,
         # but providing a range is good practice.
-        end_date = datetime.datetime.now(datetime.timezone.utc).date()
+        end_date = datetime.datetime.now(datetime.UTC).date()
         start_date = end_date - datetime.timedelta(days=1)
         start_date_str = start_date.strftime("%Y-%m-%d")
         end_date_str = end_date.strftime("%Y-%m-%d")

@@ -10,20 +10,22 @@ Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 
 # Standard library imports
 import asyncio
-from typing import AsyncGenerator, cast
+from collections.abc import AsyncGenerator
+from concurrent.futures import ProcessPoolExecutor
+from typing import cast
 
 # Third-party imports
 import aiohttp
 import dateutil.parser
+
+# Local imports
+import fastapi
 import httpx
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
-from concurrent.futures import ProcessPoolExecutor
 
-# Local imports
-import fastapi
-from shallweswim import config, api
+from shallweswim import api, config
 from shallweswim.types import CurrentDirection
 
 # Mark all tests in this file as integration tests
@@ -34,7 +36,7 @@ TEST_LOCATIONS = list(config.CONFIGS.keys())
 
 
 @pytest_asyncio.fixture(scope="module")
-async def api_client() -> AsyncGenerator[TestClient, None]:
+async def api_client() -> AsyncGenerator[TestClient]:
     """Create a test client for API testing.
 
     This creates a dedicated FastAPI app with only the API routes registered.
@@ -74,7 +76,7 @@ async def api_client() -> AsyncGenerator[TestClient, None]:
                     data_manager.wait_until_ready(timeout=30.0),
                     timeout=35.0,  # Slightly longer outer timeout
                 )
-            except (asyncio.TimeoutError, Exception):
+            except (TimeoutError, Exception):
                 # Location failed to load - tests will skip/fail based on test_required
                 pass
 
@@ -128,17 +130,17 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
         )
 
     if has_live_temp:
-        assert (
-            "temperature" in data
-        ), f"Missing temperature data for {location_code} which has live_enabled=True"
+        assert "temperature" in data, (
+            f"Missing temperature data for {location_code} which has live_enabled=True"
+        )
         temp = data["temperature"]
         if temp is not None:
             assert "timestamp" in temp, "Missing temperature timestamp"
             assert "water_temp" in temp, "Missing water temperature value"
             assert "units" in temp, "Missing temperature units"
-            assert isinstance(
-                temp["water_temp"], (int, float)
-            ), "Water temperature is not a number"
+            assert isinstance(temp["water_temp"], int | float), (
+                "Water temperature is not a number"
+            )
     elif "temperature" in data:
         # If temperature data is present even though live_enabled is False, validate it
         temp = data["temperature"]
@@ -146,9 +148,9 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
             assert "timestamp" in temp, "Missing temperature timestamp"
             assert "water_temp" in temp, "Missing water temperature value"
             assert "units" in temp, "Missing temperature units"
-            assert isinstance(
-                temp["water_temp"], (int, float)
-            ), "Water temperature is not a number"
+            assert isinstance(temp["water_temp"], int | float), (
+                "Water temperature is not a number"
+            )
 
             # Always verify the timestamp is recent (within the last 3 hours)
             # Parse the timestamp - should be naive
@@ -197,9 +199,9 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
 
     # Validate location details
     location = data["location"]
-    assert (
-        location["code"] == location_code
-    ), f"Expected location code {location_code}, got {location['code']}"
+    assert location["code"] == location_code, (
+        f"Expected location code {location_code}, got {location['code']}"
+    )
     assert "name" in location, "Missing location name"
     assert "swim_location" in location, "Missing swim location"
 
@@ -222,9 +224,9 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
             # Ensure the tide_time is naive for comparison
             if tide_time.tzinfo is not None:
                 tide_time = tide_time.replace(tzinfo=None)
-            assert (
-                tide_time <= local_now
-            ), f"Past tide time {tide_time} is not in the past compared to local time {local_now}"
+            assert tide_time <= local_now, (
+                f"Past tide time {tide_time} is not in the past compared to local time {local_now}"
+            )
 
         # Validate that future tides are actually in the future
         for tide in tides["next"]:
@@ -232,15 +234,15 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
             # Ensure the tide_time is naive for comparison
             if tide_time.tzinfo is not None:
                 tide_time = tide_time.replace(tzinfo=None)
-            assert (
-                tide_time >= local_now
-            ), f"Next tide time {tide_time} is not in the future compared to local time {local_now}"
+            assert tide_time >= local_now, (
+                f"Next tide time {tide_time} is not in the future compared to local time {local_now}"
+            )
 
         # Validate that all tide times are distinct
         all_tide_times = [tide["time"] for tide in tides["past"] + tides["next"]]
-        assert len(all_tide_times) == len(
-            set(all_tide_times)
-        ), "Tide times are not unique"
+        assert len(all_tide_times) == len(set(all_tide_times)), (
+            "Tide times are not unique"
+        )
 
     # === Validate current data ===
     has_current_source = (
@@ -256,25 +258,25 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
         assert "magnitude" in current_data
         assert "source_type" in current_data
         assert isinstance(current_data["timestamp"], str)
-        assert isinstance(current_data["magnitude"], (int, float))
+        assert isinstance(current_data["magnitude"], int | float)
         assert isinstance(current_data["source_type"], str)
         # Optional fields can be None or the expected type
-        assert isinstance(
-            current_data.get("direction"), (str, type(None))
-        ), "Direction is not str or None"
+        assert isinstance(current_data.get("direction"), str | type(None)), (
+            "Direction is not str or None"
+        )
         if current_data.get("direction") is not None:
             # Check if it's a valid enum value if not None
             # We need to compare string values since the API returns strings
             valid_directions = [direction.value for direction in CurrentDirection]
-            assert (
-                current_data["direction"] in valid_directions
-            ), f"Invalid current direction: {current_data['direction']}"
+            assert current_data["direction"] in valid_directions, (
+                f"Invalid current direction: {current_data['direction']}"
+            )
         assert isinstance(
-            current_data.get("magnitude_pct"), (int, float, type(None))
+            current_data.get("magnitude_pct"), int | float | type(None)
         ), "Magnitude pct is not number or None"
-        assert isinstance(
-            current_data.get("state_description"), (str, type(None))
-        ), "State description is not str or None"
+        assert isinstance(current_data.get("state_description"), str | type(None)), (
+            "State description is not str or None"
+        )
     else:
         assert data["current"] is None, "Current data should be null when no source"
 
@@ -329,12 +331,12 @@ def test_conditions_api(api_client: TestClient, location_code: str) -> None:
         )
 
     if has_live_temp:
-        assert (
-            "temperature" in data
-        ), f"Temperature data missing for {location_code} which has live_enabled=True"
-        assert (
-            "water_temp" in data["temperature"]
-        ), f"Water temperature missing for {location_code}"
+        assert "temperature" in data, (
+            f"Temperature data missing for {location_code} which has live_enabled=True"
+        )
+        assert "water_temp" in data["temperature"], (
+            f"Water temperature missing for {location_code}"
+        )
     else:
         # If live_enabled is False, the API might still return temperature data if available,
         # but we shouldn't require it in our tests
@@ -351,9 +353,9 @@ def test_conditions_api(api_client: TestClient, location_code: str) -> None:
     else:
         # Field might be absent or set to None
         if "tides" in data:
-            assert (
-                data["tides"] is None
-            ), f"Expected tides to be None for {location_code} which has no tide source"
+            assert data["tides"] is None, (
+                f"Expected tides to be None for {location_code} which has no tide source"
+            )
 
 
 def validate_currents_response(response: httpx.Response, location_code: str) -> None:
@@ -376,13 +378,15 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
         assert response.status_code in [
             404,
             501,
-        ], f"Expected 404 or 501 for location without currents, got {response.status_code}"
+        ], (
+            f"Expected 404 or 501 for location without currents, got {response.status_code}"
+        )
         return
 
     # For locations with currents, validate the response
-    assert (
-        response.status_code == 200
-    ), f"Expected 200 for location with currents, got {response.status_code}"
+    assert response.status_code == 200, (
+        f"Expected 200 for location with currents, got {response.status_code}"
+    )
     assert "application/json" in response.headers["content-type"]
 
     # Parse JSON response
@@ -398,9 +402,9 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
 
     # Validate location details
     location = data["location"]
-    assert (
-        location["code"] == location_code
-    ), f"Expected location code {location_code}, got {location['code']}"
+    assert location["code"] == location_code, (
+        f"Expected location code {location_code}, got {location['code']}"
+    )
     assert "name" in location, "Missing location name"
     assert "swim_location" in location, "Missing swim location"
 
@@ -415,12 +419,12 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
         CurrentDirection.FLOODING.value,
         CurrentDirection.EBBING.value,
     ], f"Invalid current direction: {current['direction']}"
-    assert isinstance(
-        current["magnitude"], (int, float)
-    ), "Current magnitude is not a number"
-    assert isinstance(
-        current["magnitude_pct"], (int, float)
-    ), "Current magnitude percentage is not a number"
+    assert isinstance(current["magnitude"], int | float), (
+        "Current magnitude is not a number"
+    )
+    assert isinstance(current["magnitude_pct"], int | float), (
+        "Current magnitude percentage is not a number"
+    )
 
     # Validate legacy chart data
     chart = data["legacy_chart"]

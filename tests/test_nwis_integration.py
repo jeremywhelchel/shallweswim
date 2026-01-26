@@ -117,12 +117,12 @@ async def test_integration_live_temperature_fetch() -> None:
 
     # Check that the temperatures are reasonable for water
     # Water shouldn't be below freezing (32°F) or above 100°F
-    assert (
-        df["water_temp"].min() >= 32.0
-    ), f"Water temperature below freezing: {df['water_temp'].min()}°F"
-    assert (
-        df["water_temp"].max() <= 100.0
-    ), f"Water temperature too high: {df['water_temp'].max()}°F"
+    assert df["water_temp"].min() >= 32.0, (
+        f"Water temperature below freezing: {df['water_temp'].min()}°F"
+    )
+    assert df["water_temp"].max() <= 100.0, (
+        f"Water temperature too high: {df['water_temp'].max()}°F"
+    )
 
     # Check that the timestamps are in the requested range
     # Allow a buffer of one day on each end
@@ -138,12 +138,12 @@ async def test_integration_live_temperature_fetch() -> None:
     max_ts_str = str(df.index.max())
 
     # Use pandas' built-in comparison which handles type compatibility
-    assert all(
-        df.index >= buffer_begin
-    ), f"Earliest timestamp {min_ts_str} before requested begin date {begin_date}"
-    assert all(
-        df.index <= buffer_end
-    ), f"Latest timestamp {max_ts_str} after requested end date {end_date}"
+    assert all(df.index >= buffer_begin), (
+        f"Earliest timestamp {min_ts_str} before requested begin date {begin_date}"
+    )
+    assert all(df.index <= buffer_end), (
+        f"Latest timestamp {max_ts_str} after requested end date {end_date}"
+    )
 
 
 @pytest.mark.integration
@@ -175,12 +175,12 @@ async def test_integration_live_temperature_fetch_with_parameter_cd() -> None:
 
     # Check that the temperatures are reasonable for water
     # Water shouldn't be below freezing (32°F) or above 100°F
-    assert (
-        df["water_temp"].min() >= 32.0
-    ), f"Water temperature below freezing: {df['water_temp'].min()}°F"
-    assert (
-        df["water_temp"].max() <= 100.0
-    ), f"Water temperature too high: {df['water_temp'].max()}°F"
+    assert df["water_temp"].min() >= 32.0, (
+        f"Water temperature below freezing: {df['water_temp'].min()}°F"
+    )
+    assert df["water_temp"].max() <= 100.0, (
+        f"Water temperature too high: {df['water_temp'].max()}°F"
+    )
 
 
 @pytest.mark.integration
@@ -203,9 +203,9 @@ async def test_get_nwis_currents() -> None:
 
             # Basic checks
             assert isinstance(df, pd.DataFrame)
-            assert (
-                not df.empty
-            ), f"No current data returned for site {site_no}, param {parameter_cd}"
+            assert not df.empty, (
+                f"No current data returned for site {site_no}, param {parameter_cd}"
+            )
             assert "velocity_fps" in df.columns
             assert isinstance(df.index, pd.DatetimeIndex)
             # Note: NWIS 'iv' service might only return one row

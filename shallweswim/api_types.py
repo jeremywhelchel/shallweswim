@@ -6,13 +6,12 @@ via Pydantic models. Internal types are defined in types.py.
 
 # Standard library imports
 import datetime
-from typing import List, Optional, Dict
 
 # Third-party imports
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # Local imports
-from shallweswim.types import TideCategory, DataSourceType, CurrentDirection
+from shallweswim.types import CurrentDirection, DataSourceType, TideCategory
 
 #############################################################
 # API TYPES - Used for external API request/response models  #
@@ -36,20 +35,20 @@ class DataFrameSummary(BaseModel):
 
     length: int = Field(..., description="Number of rows in the DataFrame.")
     width: int = Field(..., description="Number of columns in the DataFrame.")
-    column_names: List[str] = Field(..., description="List of column names.")
-    index_oldest: Optional[datetime.datetime] = Field(
+    column_names: list[str] = Field(..., description="List of column names.")
+    index_oldest: datetime.datetime | None = Field(
         None,
         description="Oldest timestamp in the DataFrame index (timezone-naive). None if empty/non-datetime index.",
     )
-    index_newest: Optional[datetime.datetime] = Field(
+    index_newest: datetime.datetime | None = Field(
         None,
         description="Newest timestamp in the DataFrame index (timezone-naive). None if empty/non-datetime index.",
     )
-    missing_values: Dict[str, int] = Field(
+    missing_values: dict[str, int] = Field(
         ...,
         description="Dictionary mapping column names to the count of missing values.",
     )
-    index_frequency: Optional[str] = Field(
+    index_frequency: str | None = Field(
         None,
         description="Inferred frequency of the DataFrame index (e.g., 'H', 'D', 'T'). None if irregular.",
     )
@@ -70,7 +69,7 @@ class TemperatureInfo(BaseModel):
     )
     water_temp: float = Field(..., description="Water temperature in degrees")
     units: str = Field("F", description="Temperature units (F for Fahrenheit)")
-    station_name: Optional[str] = Field(
+    station_name: str | None = Field(
         None, description="Human-readable name of the temperature station"
     )
 
@@ -93,8 +92,8 @@ class TideInfo(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    past: List[TideEntry] = Field(..., description="Recently occurred tides")
-    next: List[TideEntry] = Field(..., description="Upcoming tides")
+    past: list[TideEntry] = Field(..., description="Recently occurred tides")
+    next: list[TideEntry] = Field(..., description="Upcoming tides")
 
 
 class CurrentInfo(BaseModel):
@@ -106,15 +105,15 @@ class CurrentInfo(BaseModel):
         ...,
         description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
     )
-    direction: Optional[CurrentDirection] = Field(
+    direction: CurrentDirection | None = Field(
         None,
         description="Direction of current (Enum: CurrentDirection, null if non-tidal)",
     )
     magnitude: float = Field(..., description="Current strength in knots")
-    magnitude_pct: Optional[float] = Field(
+    magnitude_pct: float | None = Field(
         None, description="Relative magnitude percentage (0.0-1.0, null if non-tidal)"
     )
-    state_description: Optional[str] = Field(
+    state_description: str | None = Field(
         None,
         description="Human-readable description of current state (null if non-tidal)",
     )
@@ -146,23 +145,23 @@ class FeedStatus(BaseModel):
 
     name: str = Field(..., description="Class name of the Feed")
     location: str = Field(..., description="Location code associated with the feed")
-    fetch_timestamp: Optional[datetime.datetime] = Field(
+    fetch_timestamp: datetime.datetime | None = Field(
         None, description="Timestamp of the last successful data fetch (naive UTC)"
     )
-    age_seconds: Optional[float] = Field(
+    age_seconds: float | None = Field(
         None, description="Data age in seconds at the time of status check"
     )
     is_expired: bool = Field(..., description="Whether the data is considered expired")
-    expiration_seconds: Optional[float] = Field(
+    expiration_seconds: float | None = Field(
         None, description="Configured expiration time in seconds for the feed"
     )
     is_healthy: bool = Field(
         ..., description="Whether the data is recent enough to be considered healthy"
     )
-    data_summary: Optional[DataFrameSummary] = Field(
+    data_summary: DataFrameSummary | None = Field(
         None, description="Summary statistics of the feed's DataFrame, if available"
     )
-    error: Optional[str] = Field(
+    error: str | None = Field(
         None, description="Last error message encountered by the feed, if any"
     )
 
@@ -170,7 +169,7 @@ class FeedStatus(BaseModel):
 class LocationStatus(BaseModel):
     """Represents the status of all feeds for a specific location."""
 
-    feeds: Dict[str, FeedStatus] = Field(
+    feeds: dict[str, FeedStatus] = Field(
         ..., description="Dictionary mapping feed names to their FeedStatus objects."
     )
 
@@ -212,12 +211,10 @@ class LocationConditions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     location: LocationInfo
-    temperature: Optional[TemperatureInfo] = Field(
+    temperature: TemperatureInfo | None = Field(
         None, description="Water temperature information (if available)"
     )
-    tides: Optional[TideInfo] = Field(
-        None, description="Tide information (if available)"
-    )
-    current: Optional[CurrentInfo] = Field(
+    tides: TideInfo | None = Field(None, description="Tide information (if available)")
+    current: CurrentInfo | None = Field(
         None, description="Current information (if available)"
     )

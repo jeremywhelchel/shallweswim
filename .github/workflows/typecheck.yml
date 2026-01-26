@@ -1,11 +1,11 @@
-name: Code Formatting
-# Run black code formatter on every push to ensure consistent style
+name: Type Checking
+# Run basedpyright type checking on every push
 on: [push]
 
 jobs:
-  black:
+  basedpyright:
     runs-on: ubuntu-latest
-    name: Run black code formatter
+    name: Run basedpyright type checker
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,5 +19,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      - name: Run Black formatter
-        run: uv run black --diff --check .
+      - name: Run basedpyright type checking
+        run: uv run basedpyright

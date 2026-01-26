@@ -57,8 +57,9 @@ Error Hierarchy
 
 import abc
 import logging
+from typing import Any, TypeVar
+
 import aiohttp
-from typing import Optional, Any, TypeVar
 import tenacity
 
 
@@ -114,7 +115,7 @@ class BaseApiClient(abc.ABC):
         self,
         message: str,
         level: int = logging.INFO,
-        location_code: Optional[str] = None,
+        location_code: str | None = None,
     ) -> None:
         """Log a message with standardized formatting including client type and location."""
         prefix = f"[{location_code or 'general'}][{self.client_type}]"

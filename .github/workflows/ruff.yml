@@ -1,11 +1,11 @@
-name: Type Checking
-# Run mypy type checking on every push to catch type errors early
+name: Ruff
+# Run ruff linter and formatter checks on every push
 on: [push]
 
 jobs:
-  mypy:
+  ruff:
     runs-on: ubuntu-latest
-    name: Run mypy type checking
+    name: Run ruff linter and formatter
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,5 +19,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      - name: Run mypy type checking
-        run: uv run mypy --config-file=pyproject.toml .
+      - name: Run ruff linter
+        run: uv run ruff check .
+
+      - name: Run ruff formatter
+        run: uv run ruff format --check .

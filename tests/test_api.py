@@ -3,30 +3,31 @@
 # pylint: disable=duplicate-code,unused-argument
 
 # Standard library imports
-from unittest.mock import MagicMock, patch
-from typing import Generator
 import datetime
+from collections.abc import Generator
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
 
 # Third-party imports
 import pytest
-from fastapi import FastAPI
+import pytz
+from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
+
+from shallweswim import types as sw_types
 
 # Local imports
 from shallweswim.api import register_routes
-from shallweswim import types as sw_types
-from shallweswim.api_types import LocationStatus, FeedStatus, LocationConditions
+from shallweswim.api_types import FeedStatus, LocationConditions, LocationStatus
 from shallweswim.config import (
-    LocationConfig,
+    CoopsCurrentsFeedConfig,
     CoopsTempFeedConfig,
     CoopsTideFeedConfig,
-    CoopsCurrentsFeedConfig,
+    LocationConfig,
 )
 from shallweswim.data import LocationDataManager
 from tests.helpers import assert_json_serializable
-import pandas as pd
-import pytz
-from fastapi import status
 
 
 @pytest.fixture
@@ -48,7 +49,7 @@ def test_client(app: FastAPI) -> TestClient:
 @pytest.fixture
 def mock_data_managers(
     app: FastAPI,
-) -> Generator[dict[str, LocationConfig], None, None]:
+) -> Generator[dict[str, LocationConfig]]:
     """Create mock data managers for testing."""
     # Create real location configs
     nyc_config = LocationConfig(

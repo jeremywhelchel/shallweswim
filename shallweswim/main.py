@@ -13,32 +13,28 @@ import datetime
 import logging
 import os
 import signal
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine
 from concurrent.futures import ProcessPoolExecutor
 from typing import (
     Any,
-    AsyncGenerator,
-    Callable,
-    Coroutine,
-    Optional,
 )
-
-# Local imports
-from shallweswim.assets import AssetManager, FingerprintStaticFiles, load_asset_manifest
-from shallweswim.logging_utils import setup_logging
 
 # Third-party imports
 import aiohttp
 import fastapi
 import uvicorn
 from fastapi import HTTPException, Request, Response, responses, templating
-from typing import Awaitable
 
 # Local imports
-from shallweswim import config, api
+from shallweswim import api, config
+
+# Local imports
+from shallweswim.assets import AssetManager, FingerprintStaticFiles, load_asset_manifest
+from shallweswim.logging_utils import setup_logging
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None]:
     """Initialize data sources during application startup.
 
     This loads data for all configured locations and starts data collection.
@@ -150,9 +146,9 @@ async def view_all_locations(request: fastapi.Request) -> responses.HTMLResponse
     return templates.TemplateResponse(
         request=request,
         name="all_locations.html",
-        context=dict(
-            all_locations=config.CONFIGS,
-        ),
+        context={
+            "all_locations": config.CONFIGS,
+        },
     )
 
 
@@ -224,10 +220,10 @@ async def location_index(
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context=dict(
-            config=cfg,
-            all_locations=config.CONFIGS,
-        ),
+        context={
+            "config": cfg,
+            "all_locations": config.CONFIGS,
+        },
     )
 
 
@@ -255,9 +251,9 @@ async def location_embed(
     return templates.TemplateResponse(
         request=request,
         name="embed.html",
-        context=dict(
-            config=cfg,
-        ),
+        context={
+            "config": cfg,
+        },
     )
 
 
@@ -285,9 +281,9 @@ async def location_widget(
     return templates.TemplateResponse(
         request=request,
         name="widget.html",
-        context=dict(
-            config=cfg,
-        ),
+        context={
+            "config": cfg,
+        },
     )
 
 
@@ -311,7 +307,7 @@ async def location_currents(
         raise HTTPException(status_code=404, detail=f"Bad location: {location}")
 
     # Calculate the shifted time
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     shifted_time = now + datetime.timedelta(minutes=shift)
 
     # Format the time for display
@@ -321,11 +317,11 @@ async def location_currents(
     return templates.TemplateResponse(
         request=request,
         name="current.html",
-        context=dict(
-            config=cfg,
-            shift=shift,
-            shifted_time=formatted_time,
-        ),
+        context={
+            "config": cfg,
+            "shift": shift,
+            "shifted_time": formatted_time,
+        },
     )
 
 
@@ -400,7 +396,7 @@ def setup_signal_handlers() -> None:
     signal.signal(signal.SIGTERM, sigterm_handler)
 
 
-def start_app(asset_manifest: Optional[str] = None) -> fastapi.FastAPI:
+def start_app(asset_manifest: str | None = None) -> fastapi.FastAPI:
     """Initialize and return the FastAPI application.
 
     Args:

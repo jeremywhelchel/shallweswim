@@ -9,7 +9,7 @@ import abc
 import asyncio
 import datetime
 import logging
-from typing import Any, Optional, Literal, List, Dict, Type
+from typing import Any, Literal
 
 # Third-party imports
 import pandas as pd
@@ -18,13 +18,13 @@ from pydantic import BaseModel, ConfigDict
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim.clients.base import BaseApiClient
-from shallweswim.clients import coops
-from shallweswim.clients import ndbc
-from shallweswim.clients import nwis
 from shallweswim import dataframe_models as df_models
-from shallweswim.util import utc_now, summarize_dataframe, fps_to_knots
-from shallweswim.api_types import FeedStatus, DataFrameSummary
+from shallweswim.api_types import DataFrameSummary, FeedStatus
+from shallweswim.clients import coops, ndbc, nwis
+from shallweswim.clients.base import BaseApiClient
+from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.nwis import NwisApi
+from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
@@ -49,14 +49,14 @@ class Feed(BaseModel, abc.ABC):
 
     # Frequency in which this data needs to be fetched, otherwise it is considered expired.
     # If None, this dataset will never expire and only needs to be fetched once.
-    expiration_interval: Optional[datetime.timedelta]
+    expiration_interval: datetime.timedelta | None
 
     # Private fields - not included in serialization but still validated
-    _fetch_timestamp: Optional[datetime.datetime] = None
-    _data: Optional[pd.DataFrame] = None
+    _fetch_timestamp: datetime.datetime | None = None
+    _data: pd.DataFrame | None = None
     # Event used to signal when data is ready
     _ready_event: asyncio.Event = asyncio.Event()
-    _last_error: Optional[Exception] = None
+    _last_error: Exception | None = None
 
     # Modern Pydantic v2 configuration using model_config
     model_config = ConfigDict(
@@ -80,7 +80,7 @@ class Feed(BaseModel, abc.ABC):
             self._ready_event.set()
 
     @property
-    def age(self) -> Optional[datetime.timedelta]:
+    def age(self) -> datetime.timedelta | None:
         """Calculate the age of the data as a timedelta.
 
         Returns:
@@ -169,7 +169,7 @@ class Feed(BaseModel, abc.ABC):
         Returns:
             A FeedStatus object containing information about the feed's status
         """
-        data_summary: Optional[DataFrameSummary] = None
+        data_summary: DataFrameSummary | None = None
         if self._data is not None:
             data_summary = summarize_dataframe(self._data)
 
@@ -201,7 +201,7 @@ class Feed(BaseModel, abc.ABC):
 
         return status_obj
 
-    async def wait_until_ready(self, timeout: Optional[float] = None) -> bool:
+    async def wait_until_ready(self, timeout: float | None = None) -> bool:
         """Wait until the feed has data available.
 
         This method waits until the feed has successfully fetched data and is ready to use.
@@ -221,14 +221,14 @@ class Feed(BaseModel, abc.ABC):
             # Wait for the ready event to be set
             await asyncio.wait_for(self._ready_event.wait(), timeout)
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.log(
                 f"Timeout waiting for {self.__class__.__name__} to be ready",
                 logging.WARNING,
             )
             return False
 
-    async def update(self, clients: Dict[str, BaseApiClient]) -> None:
+    async def update(self, clients: dict[str, BaseApiClient]) -> None:
         """Update the data from this feed if it is expired."""
         if not self.is_expired:
             self.log(
@@ -261,7 +261,7 @@ class Feed(BaseModel, abc.ABC):
             raise
 
     @abc.abstractmethod
-    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch data from the external source.
 
         This method should be implemented by subclasses to fetch data
@@ -276,7 +276,7 @@ class Feed(BaseModel, abc.ABC):
         ...
 
     @abc.abstractproperty
-    def data_model(self) -> Type[DataFrameModel]:
+    def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         ...
 
@@ -345,8 +345,8 @@ class TempFeed(Feed, abc.ABC):
     interval: Literal["h", "6-min"]  # XXX 6-min is noaa specific. Make a type
 
     # Optional time range for data fetch
-    start: Optional[datetime.datetime] = None
-    end: Optional[datetime.datetime] = None
+    start: datetime.datetime | None = None
+    end: datetime.datetime | None = None
 
     @property
     def name(self) -> str:
@@ -369,7 +369,7 @@ class CurrentsFeed(Feed, abc.ABC):
     feed_config: config_lib.CurrentsFeedConfig  # type: ignore[assignment]
 
     @property
-    def data_model(self) -> Type[DataFrameModel]:
+    def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         # All current feeds should conform to the CurrentDataModel
         return df_models.CurrentDataModel  # type: ignore[return-value]
@@ -385,11 +385,11 @@ class CoopsTempFeed(TempFeed):
     product: Literal["air_temperature", "water_temperature"] = "water_temperature"
 
     @property
-    def data_model(self) -> Type[DataFrameModel]:
+    def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
-    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA CO-OPS API.
 
         Returns:
@@ -437,11 +437,11 @@ class NdbcTempFeed(TempFeed):
     client: ndbc.NdbcApi  # Add type hint for mypy
 
     @property
-    def data_model(self) -> Type[DataFrameModel]:
+    def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
-    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA NDBC API.
 
         Returns:
@@ -493,11 +493,11 @@ class NwisTempFeed(TempFeed):
     interval: Literal["h", "6-min"] = "h"  # NWIS typically provides hourly data
 
     @property
-    def data_model(self) -> Type[DataFrameModel]:
+    def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
-    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from USGS NWIS API.
 
         Returns:
@@ -547,14 +547,14 @@ class CoopsTidesFeed(Feed):
 
     feed_config: config_lib.CoopsTideFeedConfig  # type: ignore[assignment]
     interval: Literal["h", "6-min"] = "h"  # Add default interval
-    start: Optional[datetime.date] = None
+    start: datetime.date | None = None
 
     @property
-    def data_model(self) -> Type[DataFrameModel]:
+    def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.TidePredictionDataModel  # type: ignore[return-value]
 
-    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch tide predictions from NOAA CO-OPS API.
 
         Returns:
@@ -590,10 +590,10 @@ class CoopsCurrentsFeed(CurrentsFeed):
 
     feed_config: config_lib.CoopsCurrentsFeedConfig  # type: ignore[assignment]
     interval: Literal["h", "6-min"] = "h"  # Add default interval
-    start: Optional[datetime.date] = None
+    start: datetime.date | None = None
 
     # The station to use for fetching currents data (optional, will use first station from config if not provided)
-    station: Optional[str] = None
+    station: str | None = None
 
     # Whether to interpolate between flood/slack/ebb points
     interpolate: bool = True
@@ -604,7 +604,7 @@ class CoopsCurrentsFeed(CurrentsFeed):
         if not self.station and self.feed_config.stations:
             self.station = self.feed_config.stations[0]
 
-    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch current predictions from NOAA CO-OPS API.
 
         Returns:
@@ -642,7 +642,7 @@ class CompositeFeed(Feed, abc.ABC):
     data from multiple years.
     """
 
-    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch data from all underlying feeds and combine them.
 
         The specific combination logic is implemented in _combine_feeds.
@@ -664,7 +664,7 @@ class CompositeFeed(Feed, abc.ABC):
         return self._combine_feeds(results)
 
     @abc.abstractmethod
-    def _get_feeds(self, clients: Dict[str, BaseApiClient]) -> List[Feed]:
+    def _get_feeds(self, clients: dict[str, BaseApiClient]) -> list[Feed]:
         """Get the list of feeds to combine.
 
         Returns:
@@ -673,7 +673,7 @@ class CompositeFeed(Feed, abc.ABC):
         pass
 
     @abc.abstractmethod
-    def _combine_feeds(self, dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+    def _combine_feeds(self, dataframes: list[pd.DataFrame]) -> pd.DataFrame:
         """Combine the DataFrames from multiple feeds.
 
         Args:
@@ -696,17 +696,17 @@ class MultiStationCurrentsFeed(CompositeFeed):
     feed_config: config_lib.CoopsCurrentsFeedConfig  # type: ignore[assignment]
 
     @property
-    def data_model(self) -> Type[DataFrameModel]:
+    def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.CurrentDataModel  # type: ignore[return-value]
 
-    def _get_feeds(self, clients: Dict[str, BaseApiClient]) -> List[Feed]:
+    def _get_feeds(self, clients: dict[str, BaseApiClient]) -> list[Feed]:
         """Create a CoopsCurrentsFeed for each station in the config.
 
         Returns:
             List of CoopsCurrentsFeed instances, one for each station
         """
-        feeds: List[Feed] = []
+        feeds: list[Feed] = []
         for station in self.feed_config.stations:
             feed = create_current_feed(
                 location_config=self.location_config,
@@ -718,7 +718,7 @@ class MultiStationCurrentsFeed(CompositeFeed):
             feeds.append(feed)
         return feeds
 
-    def _combine_feeds(self, dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+    def _combine_feeds(self, dataframes: list[pd.DataFrame]) -> pd.DataFrame:
         """Combine current data from multiple stations.
 
         Strategy: For overlapping timestamps, calculate the average velocity.
@@ -757,11 +757,11 @@ class MultiStationCurrentsFeed(CompositeFeed):
 def create_temp_feed(
     location_config: config_lib.LocationConfig,
     temp_config: config_lib.TempFeedConfig,
-    start: Optional[datetime.datetime] = None,
-    end: Optional[datetime.datetime] = None,
+    start: datetime.datetime | None = None,
+    end: datetime.datetime | None = None,
     interval: Literal["h", "6-min"] = "h",
-    expiration_interval: Optional[datetime.timedelta] = None,
-    clients: Dict[str, BaseApiClient] = {},  # Add clients dict parameter
+    expiration_interval: datetime.timedelta | None = None,
+    clients: dict[str, BaseApiClient] | None = None,
     **kwargs: Any,
 ) -> TempFeed:
     """Create a temperature feed based on the configuration type.
@@ -785,6 +785,9 @@ def create_temp_feed(
     Raises:
         TypeError: If an unsupported temperature source type is provided
     """
+    if clients is None:
+        clients = {}
+
     # Create the appropriate feed based on the config type
     if isinstance(temp_config, config_lib.CoopsTempFeedConfig):
         return CoopsTempFeed(
@@ -846,9 +849,9 @@ def create_temp_feed(
 def create_current_feed(
     location_config: config_lib.LocationConfig,
     current_config: config_lib.CurrentsFeedConfig,
-    station: Optional[str] = None,
-    expiration_interval: Optional[datetime.timedelta] = None,
-    clients: Optional[Dict[str, BaseApiClient]] = None,  # Add clients param
+    station: str | None = None,
+    expiration_interval: datetime.timedelta | None = None,
+    clients: dict[str, BaseApiClient] | None = None,  # Add clients param
 ) -> Feed:
     """Create a current feed based on the configuration type.
 
@@ -908,7 +911,7 @@ def create_current_feed(
 def create_tide_feed(
     location_config: config_lib.LocationConfig,
     tide_config: config_lib.CoopsTideFeedConfig,
-    expiration_interval: Optional[datetime.timedelta] = None,
+    expiration_interval: datetime.timedelta | None = None,
 ) -> Feed:
     """Create a tide feed based on the configuration type.
 
@@ -941,11 +944,11 @@ class NwisCurrentFeed(CurrentsFeed):
     feed_config: config_lib.NwisCurrentFeedConfig  # type: ignore[assignment]
 
     @property
-    def data_model(self) -> Type[DataFrameModel]:
+    def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.CurrentDataModel  # type: ignore[return-value]
 
-    async def _fetch(self, clients: Dict[str, BaseApiClient]) -> pd.DataFrame:
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch currents data from NWIS.
 
         Returns:
@@ -1010,14 +1013,14 @@ class HistoricalTempsFeed(CompositeFeed):
     start_year: int
     end_year: int
     interval: Literal["h", "6-min"] = "h"
-    clients: Dict[str, BaseApiClient] = {}  # Add clients dict parameter
+    clients: dict[str, BaseApiClient] = {}  # Add clients dict parameter
 
     @property
-    def data_model(self) -> Type[DataFrameModel]:
+    def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
-    def _get_feeds(self, clients: Dict[str, BaseApiClient]) -> List[Feed]:
+    def _get_feeds(self, clients: dict[str, BaseApiClient]) -> list[Feed]:
         """Create temperature feeds for each year in the range.
 
         For the current year, caps the end date to today to avoid requesting future dates
@@ -1026,7 +1029,7 @@ class HistoricalTempsFeed(CompositeFeed):
         Returns:
             List of TempFeed instances, one for each year in the range
         """
-        feeds: List[Feed] = []
+        feeds: list[Feed] = []
         current_date = utc_now()
 
         for year in range(self.start_year, self.end_year + 1):
@@ -1060,7 +1063,7 @@ class HistoricalTempsFeed(CompositeFeed):
             feeds.append(feed)
         return feeds
 
-    def _combine_feeds(self, dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+    def _combine_feeds(self, dataframes: list[pd.DataFrame]) -> pd.DataFrame:
         """Combine temperature data from multiple years.
 
         Simply concatenates the dataframes from different years and resamples to hourly intervals.

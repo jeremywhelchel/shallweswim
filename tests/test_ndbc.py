@@ -4,15 +4,16 @@
 
 # Standard library imports
 import datetime
+from unittest.mock import AsyncMock, patch
 
 # Third-party imports
 import pandas as pd
 import pytest
-from unittest.mock import patch, AsyncMock
+
+from shallweswim.clients.base import RetryableClientError
 
 # Local imports
 from shallweswim.clients.ndbc import NdbcApi, NdbcDataError
-from shallweswim.clients.base import RetryableClientError
 from shallweswim.util import c_to_f
 
 

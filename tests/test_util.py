@@ -1,9 +1,9 @@
 # pylint: disable=duplicate-code
 import datetime
-import pytest
-import pandas as pd
+
 import numpy as np
-from typing import Dict, Optional, Union
+import pandas as pd
+import pytest
 from freezegun import freeze_time
 
 from shallweswim import util
@@ -11,7 +11,7 @@ from shallweswim.api_types import DataFrameSummary
 
 # Constants
 EXPECTED_COLUMNS = ["value", "flag"]
-EXPECTED_DTYPES: Dict[str, Union[type, str]] = {
+EXPECTED_DTYPES: dict[str, type | str] = {
     "value": np.float64,
     "flag": "int64",
 }
@@ -25,7 +25,7 @@ def test_now() -> None:
 
     # Test that the time is within a reasonable range of UTC time
     # Get naive UTC time for comparison
-    utc_now = datetime.datetime.now(tz=datetime.timezone.utc).replace(tzinfo=None)
+    utc_now = datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None)
     time_diff = abs((utc_now - now).total_seconds())
     assert time_diff < 1  # Should be less than 1 second difference
 
@@ -192,7 +192,7 @@ summarize_test_cases = [
 @freeze_time("2024-01-15 12:00:00 UTC")
 @pytest.mark.parametrize("df_input, expected_summary", summarize_test_cases)
 def test_summarize_dataframe(
-    df_input: Optional[pd.DataFrame], expected_summary: DataFrameSummary
+    df_input: pd.DataFrame | None, expected_summary: DataFrameSummary
 ) -> None:
     """Test summarize_dataframe with various inputs using parametrization."""
     summary = util.summarize_dataframe(df_input)

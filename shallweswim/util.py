@@ -2,7 +2,7 @@
 
 # Standard library imports
 import datetime
-from typing import Optional, cast
+from typing import cast
 
 # Third-party imports
 import pandas as pd
@@ -22,7 +22,7 @@ def utc_now() -> datetime.datetime:
     For NOAA data, timestamps are in local time based on the station's location.
     """
     # Get timezone-aware UTC time, then strip the timezone to make it naive
-    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
 
 def effective_time(
@@ -38,7 +38,7 @@ def effective_time(
         Naive datetime with the shift applied, in the specified timezone with tzinfo removed
     """
     # Get current time (as a timezone-aware datetime)
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
 
     # Convert to the location's timezone
     now = now.astimezone(timezone)
@@ -74,9 +74,9 @@ def fps_to_knots(speed_fps: float) -> float:
 def pivot_year(df: pd.DataFrame) -> pd.DataFrame:
     """Move year dimension to columns."""
     # Access year from DatetimeIndex in a way compatible with pandas 2.x
-    assert isinstance(
-        df.index, pd.DatetimeIndex
-    ), "DataFrame index must be a DatetimeIndex"
+    assert isinstance(df.index, pd.DatetimeIndex), (
+        "DataFrame index must be a DatetimeIndex"
+    )
     df = df.assign(year=df.index.to_series().dt.year)
     df.index = pd.to_datetime(
         # Use 2020-indexing because it's a leap year
@@ -114,7 +114,7 @@ def latest_time_value(df: pd.DataFrame | pd.Series) -> datetime.datetime:
     return dt
 
 
-def summarize_dataframe(df: Optional[pd.DataFrame]) -> api_types.DataFrameSummary:
+def summarize_dataframe(df: pd.DataFrame | None) -> api_types.DataFrameSummary:
     """Generates a summary object for a given pandas DataFrame.
 
     Args:
@@ -140,7 +140,7 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> api_types.DataFrameSummar
     column_names = df.columns.tolist()
 
     # Infer index frequency
-    index_frequency: Optional[str] = None
+    index_frequency: str | None = None
     if isinstance(df.index, pd.DatetimeIndex) and not df.index.empty:
         index_frequency = pd.infer_freq(df.index)
 
@@ -148,8 +148,8 @@ def summarize_dataframe(df: Optional[pd.DataFrame]) -> api_types.DataFrameSummar
     missing_values = df.isnull().sum().astype(int).to_dict()
 
     # Get index min/max, checking if index is DatetimeIndex
-    index_oldest: Optional[datetime.datetime] = None
-    index_newest: Optional[datetime.datetime] = None
+    index_oldest: datetime.datetime | None = None
+    index_newest: datetime.datetime | None = None
     if isinstance(df.index, pd.DatetimeIndex) and not df.index.empty:
         # Get min and max timestamps from the index
         min_ts = df.index.min()

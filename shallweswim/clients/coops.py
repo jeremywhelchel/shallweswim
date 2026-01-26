@@ -1,12 +1,11 @@
 """NOAA CO-OPS (Center for Operational Oceanographic Products and Services) API client."""
 
 # Standard library imports
-import asyncio
 import datetime
 import io
 import logging
 import urllib.parse
-from typing import Literal, Optional, TypedDict, cast
+from typing import ClassVar, Literal, TypedDict, cast
 
 # Third-party imports
 import aiohttp
@@ -27,7 +26,7 @@ from shallweswim.types import (
 ProductType = Literal[
     "predictions", "currents_predictions", "air_temperature", "water_temperature"
 ]
-TimeInterval = Literal["hilo", "MAX_SLACK", "h", None]
+TimeInterval = Literal["hilo", "MAX_SLACK", "h", "6-min", None]
 DateFormat = "%Y%m%d"
 
 # Temperature product types
@@ -61,17 +60,17 @@ class CurrentData(TypedDict):
     """Current prediction data."""
 
     velocity: float
-    depth: Optional[float]
-    type: Optional[str]
-    mean_flood_dir: Optional[float]
-    bin: Optional[int]
+    depth: float | None
+    type: str | None
+    mean_flood_dir: float | None
+    bin: int | None
 
 
 class TemperatureData(TypedDict):
     """Temperature data."""
 
-    water_temp: Optional[float]
-    air_temp: Optional[float]
+    water_temp: float | None
+    air_temp: float | None
 
 
 class CoopsApiError(BaseClientError):
@@ -99,7 +98,7 @@ class CoopsApi(BaseApiClient):
     """
 
     BASE_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-    BASE_PARAMS: CoopsRequestParams = {
+    BASE_PARAMS: ClassVar[CoopsRequestParams] = {
         "application": "shallweswim",
         "time_zone": "lst_ldt",
         "units": "english",
@@ -157,7 +156,7 @@ class CoopsApi(BaseApiClient):
                 # Read CSV data if status is OK
                 csv_data = await response.text()
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        except (TimeoutError, aiohttp.ClientError) as e:
             # Convert specific connection/timeout errors into our standard retryable error
             error_msg = f"Network error during CO-OPS request to {url}: {e.__class__.__name__}: {e}"
             # Log is handled by the tenacity retry logger in the base class
@@ -297,19 +296,18 @@ class CoopsApi(BaseApiClient):
         raw_df: pd.DataFrame = await self.request_with_retry(location_code, url)
 
         # Existing processing logic (using raw_df as input)
-        currents = (
-            raw_df.pipe(self._FixTime, time_col="Time").rename(
-                columns={
-                    " Depth": "depth",
-                    " Type": "type",
-                    " Velocity_Major": "velocity",
-                    " meanFloodDir": "mean_flood_dir",
-                    " Bin": "bin",
-                }
-            )
+        currents = raw_df.pipe(self._FixTime, time_col="Time").rename(
+            columns={
+                " Depth": "depth",
+                " Type": "type",
+                " Velocity_Major": "velocity",
+                " meanFloodDir": "mean_flood_dir",
+                " Bin": "bin",
+            }
+        )[
             # only return velocity for now to avoid some issues with other columns
-            [["velocity"]]
-        )
+            ["velocity"]
+        ]
 
         if interpolate:
             # Data is just flood/slack/ebb datapoints. Create a smooth curve

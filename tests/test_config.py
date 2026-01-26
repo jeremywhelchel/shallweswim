@@ -1,5 +1,6 @@
 """Unit tests for configuration module."""
 
+import pydantic
 import pytest
 import pytz
 
@@ -8,9 +9,9 @@ from shallweswim import config
 
 def test_config_list_not_empty() -> None:
     """Test that the location configurations list contains at least one location."""
-    assert (
-        len(config.get_all_configs()) > 0
-    ), "Location configurations list should not be empty"
+    assert len(config.get_all_configs()) > 0, (
+        "Location configurations list should not be empty"
+    )
 
 
 def test_all_configs_valid() -> None:
@@ -51,7 +52,7 @@ def test_timezone_objects() -> None:
     assert loc.timezone is tz_obj
 
     # String should fail since we now require tzinfo objects
-    with pytest.raises(Exception):
+    with pytest.raises(pydantic.ValidationError):
         # This deliberately passes an invalid string to verify it's rejected
         # mypy will flag this, but it's intentional for the test
         config.LocationConfig(
@@ -72,15 +73,15 @@ def test_get_function() -> None:
     for cfg in config.get_all_configs():
         if cfg.enabled:
             retrieved = config.get(cfg.code)
-            assert (
-                retrieved is not None
-            ), f"get() should return a config for '{cfg.code}'"
+            assert retrieved is not None, (
+                f"get() should return a config for '{cfg.code}'"
+            )
             assert retrieved.code == cfg.code
         else:
             retrieved = config.get(cfg.code)
-            assert (
-                retrieved is None
-            ), f"get() should not return a disabled config for '{cfg.code}'"
+            assert retrieved is None, (
+                f"get() should not return a disabled config for '{cfg.code}'"
+            )
 
     # Test with a non-existent code
     assert config.get("zzz") is None, "get() should return None for non-existent codes"

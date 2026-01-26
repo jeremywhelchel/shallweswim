@@ -7,13 +7,13 @@ fingerprinting for cache busting in production environments.
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import Response, staticfiles
 from starlette.types import Scope
 
 
-def load_asset_manifest(manifest_path: str) -> Optional[Dict[str, str]]:
+def load_asset_manifest(manifest_path: str) -> dict[str, str] | None:
     """Load the asset manifest from a JSON file.
 
     Args:
@@ -43,8 +43,8 @@ def load_asset_manifest(manifest_path: str) -> Optional[Dict[str, str]]:
 
     try:
         logging.info(f"Opening manifest file: {manifest_path}")
-        with open(manifest_path, "r") as f:
-            manifest: Dict[str, str] = json.load(f)
+        with open(manifest_path) as f:
+            manifest: dict[str, str] = json.load(f)
             logging.info(f"Loaded asset manifest with {len(manifest)} entries")
             # Log a few sample entries to help with debugging
             sample_entries = list(manifest.items())[:3]
@@ -60,7 +60,7 @@ class AssetManager:
 
     def __init__(self) -> None:
         """Initialize the asset manager with an empty manifest."""
-        self.manifest: Dict[str, str] = {}
+        self.manifest: dict[str, str] = {}
 
     def get_fingerprinted_path(self, file_path: str) -> str:
         """Get the fingerprinted path for a static file.

@@ -6,13 +6,13 @@ with the current API implementation.
 Run with: pytest tests/test_ndbc_integration.py -v --run-integration
 """
 
-# pylint: disable=unused-argument
-
-import pytest
-import pandas as pd
-import datetime
 import asyncio
+import datetime
 
+import pandas as pd
+import pytest
+
+from shallweswim.clients.base import BaseClientError
 from shallweswim.clients.ndbc import NdbcApi
 
 # Mark all tests in this file as integration tests that hit live services
@@ -83,14 +83,14 @@ async def test_live_temperature_fetch_stdmet() -> None:
         # Check that valid temperatures are in a reasonable Fahrenheit range
         # Sea water freezes at ~28.4°F (-2°C) due to salt content
         below_freezing = valid_temps[valid_temps["water_temp"] < 28]
-        assert (
-            below_freezing.empty
-        ), f"Water temperatures should be above sea water freezing point (~28°F). Found {len(below_freezing)} problematic readings:\n{below_freezing.head(10) if len(below_freezing) > 10 else below_freezing}"
+        assert below_freezing.empty, (
+            f"Water temperatures should be above sea water freezing point (~28°F). Found {len(below_freezing)} problematic readings:\n{below_freezing.head(10) if len(below_freezing) > 10 else below_freezing}"
+        )
 
         above_boiling = valid_temps[valid_temps["water_temp"] >= 212]
-        assert (
-            above_boiling.empty
-        ), f"Water temperatures should be below boiling (212°F). Found {len(above_boiling)} problematic readings:\n{above_boiling.head(10) if len(above_boiling) > 10 else above_boiling}"
+        assert above_boiling.empty, (
+            f"Water temperatures should be below boiling (212°F). Found {len(above_boiling)} problematic readings:\n{above_boiling.head(10) if len(above_boiling) > 10 else above_boiling}"
+        )
 
 
 @pytest.mark.integration
@@ -130,21 +130,21 @@ async def test_live_temperature_fetch_ocean() -> None:
             # Check that valid temperatures are in a reasonable Fahrenheit range
             # Sea water freezes at ~28.4°F (-2°C) due to salt content
             below_freezing = valid_temps[valid_temps["water_temp"] < 28]
-            assert (
-                below_freezing.empty
-            ), f"Water temperatures should be above sea water freezing point (~28°F). Found {len(below_freezing)} problematic readings:\n{below_freezing.head(10) if len(below_freezing) > 10 else below_freezing}"
+            assert below_freezing.empty, (
+                f"Water temperatures should be above sea water freezing point (~28°F). Found {len(below_freezing)} problematic readings:\n{below_freezing.head(10) if len(below_freezing) > 10 else below_freezing}"
+            )
 
             above_boiling = valid_temps[valid_temps["water_temp"] >= 212]
-            assert (
-                above_boiling.empty
-            ), f"Water temperatures should be below boiling (212°F). Found {len(above_boiling)} problematic readings:\n{above_boiling.head(10) if len(above_boiling) > 10 else above_boiling}"
+            assert above_boiling.empty, (
+                f"Water temperatures should be below boiling (212°F). Found {len(above_boiling)} problematic readings:\n{above_boiling.head(10) if len(above_boiling) > 10 else above_boiling}"
+            )
     except Exception as e:
         # Some stations might not have oceanographic data
         # Fail the test if the station doesn't support ocean mode
         if "No water temperature data ('OTMP')" in str(e):
-            assert (
-                False
-            ), f"Station {NDBC_OCEAN_STATION} should have oceanographic data but doesn't"
+            pytest.fail(
+                f"Station {NDBC_OCEAN_STATION} should have oceanographic data but doesn't"
+            )
         else:
             # Re-raise any other exceptions
             raise
@@ -190,9 +190,9 @@ async def test_date_range_handling() -> None:
 
     # The longer date range should have more data points
     # (or at least the same if data is missing for some days)
-    assert len(df_long) >= len(
-        df_short
-    ), "Longer date range should have at least as many data points"
+    assert len(df_long) >= len(df_short), (
+        "Longer date range should have at least as many data points"
+    )
 
 
 @pytest.mark.integration
@@ -231,9 +231,9 @@ async def test_timezone_conversion() -> None:
     validate_temperature_data(df_pacific)
 
     # They should have the same number of data points
-    assert len(df_eastern) == len(
-        df_pacific
-    ), "Same data should have same number of points regardless of timezone"
+    assert len(df_eastern) == len(df_pacific), (
+        "Same data should have same number of points regardless of timezone"
+    )
 
     # The timestamps should be different due to timezone conversion
     # Eastern time is 3 hours ahead of Pacific time
@@ -300,7 +300,7 @@ async def test_invalid_station() -> None:
     # Use a non-existent station ID
     invalid_station = "99999"
 
-    with pytest.raises(Exception):
+    with pytest.raises(BaseClientError):
         await ndbc_api.temperature(
             station_id=invalid_station,
             begin_date=begin_date,

@@ -17,7 +17,6 @@ import math
 import os
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Union
 
 # Third-party imports
 import matplotlib.dates as md
@@ -31,8 +30,7 @@ from scipy.signal import find_peaks
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim import types
-from shallweswim import util
+from shallweswim import types, util
 
 # Set default Seaborn theme settings for consistent plot appearance
 sns.set_theme()
@@ -40,7 +38,7 @@ sns.axes_style("darkgrid")
 
 # Constants for plot sizes
 STANDARD_FIGURE_SIZE = (16, 8)  # Standard plot size in inches
-CURRENT_CHART_SIZE = (16, 6)  # Size for current charts (2596 × 967 pixels)
+CURRENT_CHART_SIZE = (16, 6)  # Size for current charts (2596 x 967 pixels)
 
 # Font size constants
 TITLE_FONT_SIZE = 24
@@ -104,7 +102,7 @@ def get_plot_filepath(
 
 def save_fig(
     fig: Figure,
-    dst: Union[str, io.StringIO],
+    dst: str | io.StringIO,
     fmt: str = "svg",
     location_code: str = "unknown",
 ) -> None:
@@ -178,7 +176,7 @@ def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) ->
     add_celsius_axis(ax)
 
     # Make current year stand out with bold red line.
-    data_line = [l for l in ax.lines if len(l.get_xdata())][-1]
+    data_line = [ln for ln in ax.lines if len(ln.get_xdata())][-1]
     legend_line = ax.legend().get_lines()[-1]
     for line in [data_line, legend_line]:
         line.set_linewidth(3)
@@ -221,9 +219,7 @@ def live_temp_plot(
     return ax
 
 
-def create_live_temp_plot(
-    live_temps: pd.DataFrame, station_name: Optional[str]
-) -> Figure:
+def create_live_temp_plot(live_temps: pd.DataFrame, station_name: str | None) -> Figure:
     """Create a plot of recent water temperature data.
 
     Creates a plot showing both raw temperature readings and a 2-hour
@@ -267,7 +263,7 @@ def create_live_temp_plot(
 
 
 def generate_and_save_live_temp_plot(
-    live_temps: pd.DataFrame, location_code: str, station_name: Optional[str]
+    live_temps: pd.DataFrame, location_code: str, station_name: str | None
 ) -> None:
     """Generate and save a plot of recent water temperature data.
 
@@ -280,9 +276,9 @@ def generate_and_save_live_temp_plot(
         None - Saves the plot to a file
     """
     # Assert we have sufficient data
-    assert (
-        live_temps is not None and len(live_temps) >= 2
-    ), "Insufficient temperature data for plotting"
+    assert live_temps is not None and len(live_temps) >= 2, (
+        "Insufficient temperature data for plotting"
+    )
 
     logging.info(f"[{location_code}] Generating live temperature plot")
     try:
@@ -297,7 +293,7 @@ def generate_and_save_live_temp_plot(
 
 
 def create_historic_monthly_plot(
-    hist_temps: pd.DataFrame, station_name: Optional[str]
+    hist_temps: pd.DataFrame, station_name: str | None
 ) -> Figure:
     """Create a plot showing historical temperature data centered around the current date.
 
@@ -341,7 +337,7 @@ def create_historic_monthly_plot(
 
 
 def create_historic_yearly_plot(
-    hist_temps: pd.DataFrame, station_name: Optional[str]
+    hist_temps: pd.DataFrame, station_name: str | None
 ) -> Figure:
     """Create a plot showing historical temperature data for the full year.
 
@@ -392,7 +388,7 @@ def create_historic_yearly_plot(
 
 
 def generate_and_save_historic_plots(
-    hist_temps: pd.DataFrame, location_code: str, station_name: Optional[str]
+    hist_temps: pd.DataFrame, location_code: str, station_name: str | None
 ) -> None:
     """Generate and save historical temperature plots.
 
@@ -408,9 +404,9 @@ def generate_and_save_historic_plots(
         None - Saves the plots to files
     """
     # Assert we have sufficient data
-    assert (
-        hist_temps is not None and len(hist_temps) >= 10
-    ), "Insufficient historical temperature data for plotting"
+    assert hist_temps is not None and len(hist_temps) >= 10, (
+        "Insufficient historical temperature data for plotting"
+    )
 
     logging.info(f"[{location_code}] Generating historic temperature plots")
     logging.debug(
@@ -472,9 +468,9 @@ def create_tide_current_plot(
     """
     # Assert that we have sufficient data
     assert tides is not None and len(tides) >= 2, "Insufficient tide data for plotting"
-    assert (
-        currents is not None and len(currents) >= 2
-    ), "Insufficient current data for plotting"
+    assert currents is not None and len(currents) >= 2, (
+        "Insufficient current data for plotting"
+    )
 
     # Select a window of data around the current time
     start_time = location_config.local_now() - datetime.timedelta(hours=3)
@@ -788,7 +784,7 @@ def create_current_chart(ef: str, magnitude_bin: int, _: str = "") -> Figure:
     assert (magnitude_bin >= 0) and (magnitude_bin <= 100), magnitude_bin
     magnitude_pct = magnitude_bin / 100
 
-    fig = Figure(figsize=CURRENT_CHART_SIZE)  # Dimensions: 2596 × 967
+    fig = Figure(figsize=CURRENT_CHART_SIZE)  # Dimensions: 2596 x 967
 
     ax = fig.subplots()
     map_img = mpimg.imread("static/base_coney_map.png")
@@ -806,7 +802,7 @@ def create_current_chart(ef: str, magnitude_bin: int, _: str = "") -> Figure:
     )
 
     # Arrow positions for the current chart
-    ARROWS: List[ArrowPosition] = [
+    ARROWS: list[ArrowPosition] = [
         ArrowPosition(600, 800, 260),
         ArrowPosition(900, 750, 260),
         ArrowPosition(1150, 850, 335),

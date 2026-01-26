@@ -45,13 +45,13 @@ The application is **fully stateless** with no database or persistent storage. O
 
 **User requests** always serve cached data (fast, no external calls):
 
-```
+```text
 HTTP Request → API Handler → LocationDataManager → Feed (cached) → Response
 ```
 
 **Background tasks** refresh feeds on intervals (10 min to 24 hours):
 
-```
+```text
 Background Task → Feed → ApiClient → External API → Update Cache
 ```
 
@@ -81,7 +81,7 @@ uv sync
 uv run python -m shallweswim.main --port=12345
 ```
 
-Then visit http://localhost:12345 in your browser.
+Then visit <http://localhost:12345> in your browser.
 
 ### Run with Docker
 
@@ -93,7 +93,7 @@ docker buildx build -t shallweswim .
 docker run -e PORT=80 -p 12345:80 shallweswim
 ```
 
-Then visit http://localhost:12345 in your browser.
+Then visit <http://localhost:12345> in your browser.
 
 ## Deployment
 
@@ -135,13 +135,13 @@ uv run pytest -v -k "not integration"
 uv run pytest -v -m integration --run-integration
 
 # Run type checking
-uv run mypy --config-file=pyproject.toml .
+uv run basedpyright
 
-# Run linting to detect unused code
-uv run pylint shallweswim/ tests/
+# Run linting
+uv run ruff check .
 
-# Format code with Black
-uv run black .
+# Format code
+uv run ruff format .
 
 # Run all pre-commit hooks
 uv run pre-commit run --all-files
@@ -173,8 +173,8 @@ For production deployments, set up external monitoring on `/api/status` to alert
 
 When running locally, API documentation is available at:
 
-- Swagger UI: http://localhost:12345/docs
-- ReDoc: http://localhost:12345/redoc
+- Swagger UI: <http://localhost:12345/docs>
+- ReDoc: <http://localhost:12345/redoc>
 
 ## License
 
@@ -195,8 +195,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 GitHub Actions workflows automatically verify the following on every push:
 
 - **Unit Tests**: All unit tests pass
-- **Type Checking**: No type errors are found by mypy
-- **Code Formatting**: All Python code follows Black style
-- **Linting**: No unused imports, variables, or arguments are detected by pylint
+- **Type Checking**: No type errors found by basedpyright
+- **Code Quality**: Ruff linting and formatting checks pass
 
 Additionally, a separate integration test workflow runs daily to ensure compatibility with external APIs.

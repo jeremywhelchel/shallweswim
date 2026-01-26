@@ -25,15 +25,14 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black>=25,<27",
+    "ruff>=0.9,<1",
+    "basedpyright>=1.29,<2",
     "pytest>=8,<9",
     "pytest-asyncio>=1.2.0,<2",
     "pre-commit>=4,<5",
-    "mypy>=1.15.0,<2",
     "types-pytz",
     "matplotlib-stubs>=0.3.11,<1",
     "httpx>=0.28.1,<1",
-    "pylint>=4.0.2,<5",
     "types-python-dateutil",
     "pytest-cov>=7.0.0,<8",
     "pytest-aiohttp>=1.1.0,<2",
@@ -42,36 +41,27 @@ dev = [
     "pytest-mock>=3.14.0,<4",
 ]
 
-[tool.mypy]
-python_version = "3.13"
-strict = true
-ignore_missing_imports = true
-warn_unused_ignores = false
+[tool.ruff]
+line-length = 88
+target-version = "py313"
 
-[tool.pylint.master]
-jobs = 4
-ignore = "CVS"
-persistent = true
-
-[tool.pylint.messages_control]
-# Only check for specific errors/warnings
-# Focus on the most important issues like unused imports and dead code
-enable = [
-    "W0611", # unused-import
-    "W0612", # unused-variable
-    "W0613", # unused-argument
-    "W0614", # unused-wildcard-import
-    "W0641", # possibly-unused-variable
-    "E0704", # misplaced-bare-raise
-    "C0415", # import-outside-toplevel
-    "R0801", # duplicate-code
+[tool.ruff.lint]
+select = [
+    "F",      # Pyflakes (unused imports, variables)
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "I",      # isort (import sorting)
+    "UP",     # pyupgrade (modern Python syntax)
+    "B",      # flake8-bugbear (common bugs)
+    "C4",     # flake8-comprehensions
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "E501",   # Line too long (formatter handles code; comments/docstrings are ok)
 ]
 
-# Disable all checks except those explicitly enabled above
-disable = "all"
-
-[tool.pylint.reports]
-output-format = "colorized"
+[tool.ruff.format]
+# Black-compatible defaults
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
@@ -79,8 +69,13 @@ asyncio_default_fixture_loop_scope = "module"
 
 [tool.basedpyright]
 pythonVersion = "3.13"
+typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"
+# Pandas stubs have incomplete type definitions - report as warnings for now
+reportInvalidTypeArguments = "warning"
+reportAttributeAccessIssue = "warning"
+reportCallIssue = "warning"
 
 [build-system]
 requires = ["hatchling"]

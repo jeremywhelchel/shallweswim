@@ -8,5 +8,12 @@
       "source.organizeImports.ruff": "explicit"
     }
   },
-  "python.analysis.typeCheckingMode": "standard"
+  "python.analysis.typeCheckingMode": "standard",
+  "[markdown]": {
+    "editor.defaultFormatter": "rvben.rumdl",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.rumdl": "explicit"
+    }
+  }
 }

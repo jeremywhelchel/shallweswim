@@ -10,29 +10,42 @@ This document describes the architectural patterns, coding standards, and design
 
 ```text
 shallweswim/
-├── main.py          # App entry point, web UI routes, templates
-├── api.py           # JSON API routes (delegates to data.py)
-├── data.py          # LocationDataManager - coordinates feeds per location
-├── feeds.py         # Feed classes with caching/expiration
-├── config.py        # Location configs, station IDs, feed settings
-├── plotting.py      # Chart generation (runs in process pool)
-├── util.py          # Shared utilities
-└── clients/         # External API clients
-    ├── base.py      # BaseApiClient with retry logic, error hierarchy
-    ├── coops.py     # NOAA CO-OPS (tides, currents, coastal temps)
-    ├── ndbc.py      # NOAA NDBC (buoy temperatures)
-    └── nwis.py      # USGS NWIS (river temps, discharge)
+├── main.py              # App entry point, web UI routes, templates
+├── api/                 # API layer
+│   ├── __init__.py      # Re-exports from routes
+│   └── routes.py        # JSON API routes (delegates to core/)
+├── config/              # Configuration layer
+│   ├── __init__.py      # Re-exports from locations
+│   └── locations.py     # Location configs, station IDs, feed settings
+├── core/                # Business logic layer
+│   ├── __init__.py
+│   ├── manager.py       # LocationDataManager - coordinates feeds
+│   ├── queries.py       # Query functions (temp, tide, current info)
+│   ├── updater.py       # Background update helpers
+│   └── feeds.py         # Feed classes with caching/expiration
+├── clients/             # External API clients
+│   ├── base.py          # BaseApiClient with retry logic, error hierarchy
+│   ├── coops.py         # NOAA CO-OPS (tides, currents, coastal temps)
+│   ├── ndbc.py          # NOAA NDBC (buoy temperatures)
+│   └── nwis.py          # USGS NWIS (river temps, discharge)
+├── plotting.py          # Chart generation (runs in process pool)
+└── util.py              # Shared utilities
 
-tests/               # Unit and integration tests
-templates/           # Jinja2 HTML templates
-static/              # CSS, JS, images
+tests/                   # Unit and integration tests
+templates/               # Jinja2 HTML templates
+static/                  # CSS, JS, images
 ```
+
+**Backwards compatibility**: Top-level shim files (`api.py`, `config.py`, `data.py`, `feeds.py`) re-export from the new locations for import compatibility.
 
 ### Modular Design
 
-- **API (`api.py`)**: Contains _only_ route handlers and request validation. Delegates business logic to `data.py` or `feeds.py`.
-- **Data Management (`data.py`)**: `LocationDataManager` is the facade for all data operations per location. It coordinates multiple `Feed`s.
-- **Feeds (`feeds.py`)**: Encapsulates data fetching, caching, and validation. Each data source type (e.g., `NoaaTidesFeed`) is a separate class inheriting from `Feed`.
+- **API (`api/routes.py`)**: Contains _only_ route handlers and request validation. Delegates business logic to `core/`.
+- **Core Manager (`core/manager.py`)**: `LocationDataManager` is the facade for all data operations per location. It coordinates multiple `Feed`s and manages the background update loop.
+- **Core Queries (`core/queries.py`)**: Standalone functions for querying feed data (temperature, tide info, current predictions).
+- **Core Updater (`core/updater.py`)**: Helper functions for the background update loop (expiration checks, dataset updates, exception handling).
+- **Feeds (`core/feeds.py`)**: Encapsulates data fetching, caching, and validation. Each data source type (e.g., `CoopsTidesFeed`) is a separate class inheriting from `Feed`.
+- **Config (`config/locations.py`)**: Location configurations, station IDs, and feed settings using Pydantic models.
 - **Clients (`clients/`)**: Pure API clients. They handle HTTP requests, retries, and raw data parsing, but know nothing about the application's business logic (caching, expiration).
 
 ### Data Flow
@@ -51,9 +64,9 @@ Background Task → Feed → ApiClient → External Service → Update Cache
 
 ### Configuration
 
-- All static configuration is in `config.py`.
+- All static configuration is in `config/locations.py`.
 - Use Pydantic models for configuration schemas (e.g., `LocationConfig`, `BaseFeedConfig`).
-- Avoid hardcoding constants in logic files; move them to `config.py` or module-level constants if they are "magic numbers".
+- Avoid hardcoding constants in logic files; move them to `config/` or module-level constants if they are "magic numbers".
 
 ## 2. Coding Standards
 

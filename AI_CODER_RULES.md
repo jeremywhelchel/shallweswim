@@ -32,23 +32,28 @@ uv run python -m shallweswim.main --port=12345  # Run locally
 ## Architecture Quick Reference
 
 ```text
-User Request:  API Handler → LocationDataManager → Feed (cached data)
-Background:    Feed → ApiClient → External Service → Update Cache
+User Request:  API Handler → LocationDataManager → queries → Feed (cached data)
+Background:    updater → Feed → ApiClient → External Service → Update Cache
 ```
 
 ```text
 shallweswim/
-├── main.py      # App entry, web UI routes
-├── api.py       # JSON API routes (delegates to data.py)
-├── data.py      # LocationDataManager coordinates feeds
-├── feeds.py     # Feed classes with caching/expiration
-├── config.py    # Location configs and station IDs
-├── clients/     # Pure API clients (coops, ndbc, nwis)
-└── plotting.py  # Chart generation (process pool)
+├── main.py           # App entry, web UI routes
+├── api/              # JSON API routes
+│   └── routes.py     # Route handlers (delegates to core/)
+├── config/           # Configuration
+│   └── locations.py  # Location configs and station IDs
+├── core/             # Business logic
+│   ├── manager.py    # LocationDataManager coordinates feeds
+│   ├── queries.py    # Query functions (temp, tide, current info)
+│   ├── updater.py    # Background update helpers
+│   └── feeds.py      # Feed classes with caching/expiration
+├── clients/          # Pure API clients (coops, ndbc, nwis)
+└── plotting.py       # Chart generation (process pool)
 ```
 
 ## Before Implementing
 
 - Check existing patterns in similar code before writing new code
-- New locations: config.py → data.py → api.py → main.py → tests
+- New locations: config/locations.py → core/manager.py → api/routes.py → main.py → tests
 - CPU-bound work (plotting): Must use process pool, not async

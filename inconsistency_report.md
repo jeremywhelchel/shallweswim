@@ -8,8 +8,8 @@ This report highlights areas where the implementation deviates from the apparent
 
 - **Issue:** The application is designed to support multiple swimming locations, but some key features are hardcoded to work only for "nyc".
 - **Evidence:**
-  - In `shallweswim/api.py`, the `/api/{location}/currents` endpoint has a check that raises a `501 Not Implemented` error for any location other than "nyc". This indicates that the current prediction logic is specific to New York and has not been generalized.
-  - The presence of numerous disabled locations in `shallweswim/config.py` (e.g., "chi", "sfo", "sdf") with complete or partial data source configurations suggests that the intent is to support these locations, but the implementation is not yet complete.
+  - In `shallweswim/api/routes.py`, the `/api/{location}/currents` endpoint has a check that raises a `501 Not Implemented` error for any location other than "nyc". This indicates that the current prediction logic is specific to New York and has not been generalized.
+  - The presence of numerous disabled locations in `shallweswim/config/locations.py` (e.g., "chi", "sfo", "sdf") with complete or partial data source configurations suggests that the intent is to support these locations, but the implementation is not yet complete.
 
 ### **2. Incomplete User Experience Features**
 
@@ -21,14 +21,14 @@ This report highlights areas where the implementation deviates from the apparent
 
 - **Issue:** There are commented-out code blocks and configurations that appear to be either deprecated or experimental, which can create confusion.
 - **Evidence:**
-  - In `shallweswim/config.py`, the configuration for "sfo" (San Francisco) has a commented-out `CoopsTempFeedConfig` with a note that the station is unavailable. While the note is helpful, the commented-out code itself could be removed to improve clarity.
-  - The "tst" (Test) location in `shallweswim/config.py` seems to be for internal testing and is disabled, which is appropriate, but it adds to the number of incomplete location configurations in the file.
+  - In `shallweswim/config/locations.py`, the configuration for "sfo" (San Francisco) has a commented-out `CoopsTempFeedConfig` with a note that the station is unavailable. While the note is helpful, the commented-out code itself could be removed to improve clarity.
+  - The "tst" (Test) location in `shallweswim/config/locations.py` seems to be for internal testing and is disabled, which is appropriate, but it adds to the number of incomplete location configurations in the file.
 
 ### **4. Potential for Configuration-Driven Logic**
 
 - **Issue:** Some logic that is hardcoded in the API could be driven by the location configuration, which would make the system more flexible.
 - **Evidence:**
-  - The aforementioned check `if location != "nyc":` in `shallweswim/api.py` is a prime candidate for this. A more robust design might involve adding a `features` field to the `LocationConfig` model in `shallweswim/config.py` to indicate which features (e.g., "current_predictions") are available for each location. The API could then check for the presence of a feature flag instead of a hardcoded location code.
+  - The aforementioned check `if location != "nyc":` in `shallweswim/api/routes.py` is a prime candidate for this. A more robust design might involve adding a `features` field to the `LocationConfig` model in `shallweswim/config/locations.py` to indicate which features (e.g., "current_predictions") are available for each location. The API could then check for the presence of a feature flag instead of a hardcoded location code.
 
 ---
 

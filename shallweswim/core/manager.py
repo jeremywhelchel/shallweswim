@@ -508,10 +508,10 @@ class LocationDataManager:
                             # Decide whether to raise e or just log
 
                 except Exception as e:
-                    # Log the exception but don't swallow it - let it propagate
+                    # Log the exception but continue loop to retry on next interval
+                    # Feed stays stale until the next successful refresh
                     self.log(f"Error in data update loop: {e}", level=logging.ERROR)
-                    # Re-raise the exception to ensure error is not silently ignored
-                    raise
+                    # Don't re-raise - allow loop to continue and retry
 
                 # Set the ready event after the first successful update
                 if not self._ready_event.is_set():
@@ -522,10 +522,6 @@ class LocationDataManager:
         except asyncio.CancelledError:
             # This is expected when the task is cancelled, so we let it propagate
             raise
-        except Exception as e:
-            # Log any unexpected exceptions at the outer level as well
-            self.log(f"Fatal error in data update loop: {e}", level=logging.ERROR)
-            raise  # Re-raise to ensure error is not silently ignored
 
     def start(self) -> None:
         """Start the background data fetching process.

@@ -54,6 +54,13 @@ shallweswim/
 └── plotting.py       # Chart generation (process pool)
 ```
 
+## Error Handling Philosophy
+
+- **Internal bugs (our code)**: Fail fast, log ERROR, let it crash - developers need to notice and fix
+- **External API failures (NOAA, USGS)**: Log ERROR for visibility, but continue/retry - transient issues self-heal
+- Background update loop: Catch external errors, log them, continue loop to retry on next interval
+- Never silently swallow errors - always log at appropriate level (WARNING for expected, ERROR for unexpected)
+
 ## Before Implementing
 
 - Check existing patterns in similar code before writing new code

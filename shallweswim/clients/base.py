@@ -57,7 +57,7 @@ Error Hierarchy
 
 import abc
 import logging
-from typing import Any, TypeVar
+from typing import Any
 
 import aiohttp
 import tenacity
@@ -87,10 +87,6 @@ class StationUnavailableError(BaseClientError):
     - COOPS returns "No data was found" message
     - Empty DataFrame with zero rows for requested time range
     """
-
-
-# Type variable for the result of the API call
-T = TypeVar("T")
 
 
 class BaseApiClient(abc.ABC):
@@ -146,7 +142,7 @@ class BaseApiClient(abc.ABC):
         )
 
     @abc.abstractmethod
-    async def _execute_request(self, *args: Any, **kwargs: Any) -> T:
+    async def _execute_request(self, *args: Any, **kwargs: Any) -> Any:
         """Perform the client-specific API request. See module docstring for pattern.
 
         IMPORTANT: Structure this method with TWO SEPARATE PHASES:
@@ -181,7 +177,7 @@ class BaseApiClient(abc.ABC):
 
     async def request_with_retry(
         self, location_code: str, *args: Any, **kwargs: Any
-    ) -> T:
+    ) -> Any:
         """Executes the client-specific request with retry logic using tenacity.
 
         Args:
@@ -211,7 +207,7 @@ class BaseApiClient(abc.ABC):
         # Apply the decorator dynamically to the _execute_request call
         # We need to wrap it in an inner async function to apply the decorator correctly
         # Pass location_code explicitly for the logger
-        async def decorated_execute(*inner_args: Any, **inner_kwargs: Any) -> T:
+        async def decorated_execute(*inner_args: Any, **inner_kwargs: Any) -> Any:
             return await self._execute_request(*inner_args, **inner_kwargs)
 
         # Add location_code to kwargs if not already present, for the logger
@@ -220,7 +216,7 @@ class BaseApiClient(abc.ABC):
 
         try:
             # Call the decorated execution function
-            result: T = await retry_decorator(decorated_execute)(*args, **kwargs)
+            result: Any = await retry_decorator(decorated_execute)(*args, **kwargs)
             return result
         except RetryableClientError as e:
             # Log final failure after all retries

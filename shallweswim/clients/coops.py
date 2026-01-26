@@ -251,7 +251,7 @@ class CoopsApi(BaseApiClient):
                 ["prediction", "type"]
             ]
         )
-        return cast("pd.DataFrame[TideData]", df)
+        return cast(pd.DataFrame, df)
 
     async def currents(
         self,
@@ -320,7 +320,7 @@ class CoopsApi(BaseApiClient):
                 # With sparse data, fall back to linear interpolation
                 currents = resampled.interpolate(method="linear")
 
-        return cast("pd.DataFrame[CurrentData]", currents)
+        return cast(pd.DataFrame, currents)
 
     async def temperature(
         self,
@@ -386,7 +386,7 @@ class CoopsApi(BaseApiClient):
             )  # Metadata columns we don't use
         )
 
-        return cast("pd.DataFrame[TemperatureData]", df)
+        return cast(pd.DataFrame, df)
 
     def _FixTime(self, df: pd.DataFrame, time_col: str = "Date Time") -> pd.DataFrame:
         """Fix timestamp column in NOAA CO-OPS API response.

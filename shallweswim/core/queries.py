@@ -13,6 +13,11 @@ from scipy.signal import find_peaks
 
 from shallweswim import config as config_lib
 from shallweswim.core import feeds
+from shallweswim.core.feeds import (
+    FEED_CURRENTS,
+    FEED_LIVE_TEMPS,
+    FEED_TIDES,
+)
 from shallweswim.types import (
     CurrentDirection,
     CurrentInfo,
@@ -170,7 +175,7 @@ def get_current_temperature(
         AssertionError: If no temperature data is available or the feed is not configured
     """
     # Get live temperature data from the feed
-    live_temps_data = get_feed_data(feeds_dict, "live_temps")
+    live_temps_data = get_feed_data(feeds_dict, FEED_LIVE_TEMPS)
 
     # Get the latest temperature reading
     latest_row = get_latest_row(live_temps_data)
@@ -206,7 +211,7 @@ def get_current_tide_info(
         AssertionError: If tide data feed is missing or not properly configured
     """
     # Get tides data from the feed
-    tides_data = get_feed_data(feeds_dict, "tides")
+    tides_data = get_feed_data(feeds_dict, FEED_TIDES)
 
     # Get current time in the location's timezone as a naive datetime and convert to pandas Timestamp for slicing
     now = config.local_now()
@@ -260,7 +265,7 @@ def get_chart_info(
         t = config.local_now()
 
     # Get tides data from the feed
-    tides_data = get_feed_data(feeds_dict, "tides")
+    tides_data = get_feed_data(feeds_dict, FEED_TIDES)
 
     # Get the row closest to the specified time
     row = get_row_at_time(tides_data, t)
@@ -312,7 +317,7 @@ def get_current_flow_info(
         AssertionError: If current data is not available or not properly loaded
     """
     # Get currents data from the feed
-    currents_data = get_feed_data(feeds_dict, "currents")
+    currents_data = get_feed_data(feeds_dict, FEED_CURRENTS)
 
     # Get the latest current reading
     latest_reading = get_latest_row(currents_data)
@@ -360,7 +365,7 @@ def predict_flow_at_time(
         t = config.local_now()
 
     # Get currents data from the feed
-    currents_data = get_feed_data(feeds_dict, "currents")
+    currents_data = get_feed_data(feeds_dict, FEED_CURRENTS)
 
     # Create a working copy of the current data for analysis
     df = currents_data.copy()

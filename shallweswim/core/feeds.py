@@ -26,6 +26,12 @@ from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
 
+# Feed name constants - use these instead of string literals to prevent typos
+FEED_TIDES = "tides"
+FEED_CURRENTS = "currents"
+FEED_LIVE_TEMPS = "live_temps"
+FEED_HISTORIC_TEMPS = "historic_temps"
+
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired
 HEALTH_CHECK_BUFFER = datetime.timedelta(

@@ -250,6 +250,21 @@ class LocationDataManager:
                 return True
         return False
 
+    def has_feed_data(self, feed_name: str) -> bool:
+        """Check if a specific feed has data available.
+
+        Use this to check before calling query functions that assert data exists.
+        This prevents AssertionError for expected conditions (no data yet).
+
+        Args:
+            feed_name: Name of the feed to check (use constants from feeds module)
+
+        Returns:
+            True if the feed exists and has data, False otherwise
+        """
+        feed = self._feeds.get(feed_name)
+        return feed is not None and feed._data is not None
+
     @property
     def status(self) -> api_types.LocationStatus:
         """Get a Pydantic model with the status of all configured feeds.

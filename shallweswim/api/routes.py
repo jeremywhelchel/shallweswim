@@ -33,6 +33,11 @@ from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
+from shallweswim.core.feeds import (
+    FEED_CURRENTS,
+    FEED_LIVE_TEMPS,
+    FEED_TIDES,
+)
 
 # Data store for location data will be stored in app.state.data_managers
 
@@ -179,9 +184,12 @@ def register_routes(app: fastapi.FastAPI) -> None:
         current_info = None
 
         # Prepare temperature information if available
-        if cfg.temp_source is not None and cfg.temp_source.live_enabled:
-            # Directly attempt to get the temperature reading. If it fails (returns None),
-            # it will raise a ValueError, aligning with fail-fast.
+        # Check both config AND data availability to prevent AssertionError
+        if (
+            cfg.temp_source is not None
+            and cfg.temp_source.live_enabled
+            and data_manager.has_feed_data(FEED_LIVE_TEMPS)
+        ):
             temp_reading = data_manager.get_current_temperature()
 
             # cfg.temp_source is guaranteed to exist and have a name due to the outer check.
@@ -193,9 +201,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 station_name=cfg.temp_source.name,
             )
 
-        # Add tide data only if the location has a tide source
-        if cfg.tide_source:
-            # Get tide information
+        # Add tide data only if the location has a tide source AND data is available
+        if cfg.tide_source and data_manager.has_feed_data(FEED_TIDES):
             tide_info = data_manager.get_current_tide_info()
 
             # Create Pydantic model instances
@@ -219,8 +226,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
             tides_info = TideInfo(past=past_tides, next=next_tides)
 
-        # Fetch Current Data (if configured)
-        if cfg.currents_source:
+        # Fetch Current Data (if configured AND data is available)
+        if cfg.currents_source and data_manager.has_feed_data(FEED_CURRENTS):
             # Use the source_type to determine which method to call
             match cfg.currents_source.source_type:
                 case types.DataSourceType.PREDICTION:
@@ -275,12 +282,21 @@ def register_routes(app: fastapi.FastAPI) -> None:
         ts = util.effective_time(cfg.timezone, shift_minutes=shift)
 
         # Generate the tide/current plot
+        data_manager = app.state.data_managers[location]
+
+        # Check both required feeds have data before attempting to generate plot
+        if not (
+            data_manager.has_feed_data(FEED_TIDES)
+            and data_manager.has_feed_data(FEED_CURRENTS)
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail=f"{cfg.name} tide/current data temporarily unavailable",
+            )
+
         try:
-            # Get data directly from feeds - will raise AttributeError if feed is None
-            # which will be caught by the try-except block
-            data_manager = app.state.data_managers[location]
-            tides_data = data_manager._feeds.get("tides").values
-            currents_data = data_manager._feeds.get("currents").values
+            tides_data = data_manager._feeds.get(FEED_TIDES).values  # type: ignore[union-attr]
+            currents_data = data_manager._feeds.get(FEED_CURRENTS).values  # type: ignore[union-attr]
 
             # Offload plotting to the process pool
             pool = app.state.process_pool

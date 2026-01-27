@@ -442,7 +442,7 @@ async def test_startup_before_data_fetched(
 
     Emulates: User requests during cold start.
     """
-    client, mock_coops, manager, app = mock_api_client_no_wait
+    client, _mock_coops, _manager, _app = mock_api_client_no_wait
 
     # Manager not started yet - no data loaded
     response = client.get("/api/nyc/conditions")
@@ -461,7 +461,7 @@ async def test_partial_feeds_loaded(
 
     Emulates: The 500 bug scenario (has_data=True but specific feed empty).
     """
-    client, mock_coops, manager, app = mock_api_client_no_wait
+    client, mock_coops, manager, _app = mock_api_client_no_wait
 
     # Configure: tides works, temps fails
     mock_coops.should_fail_temperature = True
@@ -498,7 +498,7 @@ async def test_all_feeds_expired_but_have_stale_data(
 
     Emulates: Extended API outage, system serves cached data.
     """
-    client, mock_coops, manager, app = mock_api_client_with_controls
+    client, _mock_coops, manager, _app = mock_api_client_with_controls
 
     # Data is loaded (fixture waits for ready)
     assert manager.has_data is True
@@ -544,7 +544,7 @@ async def test_station_unavailable_during_startup(
     Emulates: NOAA station maintenance.
     """
 
-    client, mock_coops, manager, app = mock_api_client_no_wait
+    client, mock_coops, manager, _app = mock_api_client_no_wait
 
     # Configure all feeds to fail
     mock_coops.should_fail_tides = True
@@ -665,7 +665,7 @@ async def test_plot_with_missing_currents(
 
     Emulates: Current station offline but tide station working.
     """
-    client, mock_coops, manager, app = mock_api_client_no_wait
+    client, mock_coops, manager, _app = mock_api_client_no_wait
 
     # Configure: tides works, currents fails
     mock_coops.should_fail_currents = True
@@ -694,7 +694,7 @@ async def test_feed_update_fails_during_refresh(
 
     Emulates: NOAA outage during refresh window.
     """
-    client, mock_coops, manager, app = mock_api_client_with_controls
+    client, mock_coops, manager, _app = mock_api_client_with_controls
 
     # Data is loaded (fixture waits for ready)
     # Verify we have data

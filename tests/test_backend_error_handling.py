@@ -55,7 +55,7 @@ def create_manager_with_feeds(feeds_dict: dict[str, Any]) -> LocationDataManager
     return manager
 
 
-def create_mock_task_with_exception(exception: Exception) -> MagicMock:
+def create_mock_task_with_exception(exception: BaseException) -> MagicMock:
     """Create a mock asyncio.Task that raises an exception on result().
 
     Args:
@@ -376,7 +376,7 @@ class TestUpdateLoopResilience:
         mock_feed = MagicMock()
         mock_feed.is_expired = False
 
-        feeds_dict = {FEED_TIDES: mock_feed}
+        feeds_dict: dict[str, Any] = {FEED_TIDES: mock_feed}
 
         assert updater.is_expired(feeds_dict, FEED_TIDES) is False
 

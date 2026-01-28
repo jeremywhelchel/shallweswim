@@ -18,6 +18,7 @@ import logging
 import aiohttp
 import dataretrieval.nwis as nwis
 import pandas as pd
+import requests
 
 # Local imports
 from shallweswim.clients.base import (
@@ -107,11 +108,11 @@ class NwisApi(BaseApiClient):
                 end=end,
             )
         except (
-            # Assuming dataretrieval might raise these if it uses requests
-            # Need to confirm actual exceptions raised by dataretrieval on network errors
-            aiohttp.ClientConnectionError,  # Example: if underlying requests uses aiohttp? Unlikely.
+            # dataretrieval uses requests internally, so catch requests exceptions
+            requests.exceptions.ConnectionError,  # Includes SSLError
+            requests.exceptions.Timeout,
+            requests.exceptions.ReadTimeout,
             TimeoutError,
-            # Add specific exceptions from dataretrieval/requests if known
         ) as e:
             # Convert known transient network errors to our retryable type
             error_msg = f"Network error during NWIS request for site {sites}: {e.__class__.__name__}: {e}"

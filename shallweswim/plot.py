@@ -16,6 +16,7 @@ import logging
 import math
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 
 # Third-party imports
@@ -135,15 +136,28 @@ def save_fig(
         logging.debug(f"[{location_code}] Saving plot to memory buffer in {fmt} format")
 
     # Save the figure and log success
+    # For file outputs, use atomic write (temp file + rename) to prevent race conditions
+    # when the file is being served while being regenerated
+    tmp_path: str | None = None
     try:
-        fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
-        # Log the absolute path for file output location
         if isinstance(dst, str):
+            # Write to temp file in same directory (same filesystem for atomic rename)
+            file_dirname = os.path.dirname(dst)
+            fd, tmp_path = tempfile.mkstemp(dir=file_dirname, suffix=f".{fmt}.tmp")
+            os.close(fd)  # Close fd, savefig will open it
+            fig.savefig(tmp_path, format=fmt, bbox_inches="tight", transparent=False)
+            os.rename(tmp_path, dst)  # Atomic on POSIX
             abs_path = os.path.abspath(dst)
             logging.info(f"[{location_code}] Plot saved to absolute path: {abs_path}")
+        else:
+            # Memory buffer - write directly
+            fig.savefig(dst, format=fmt, bbox_inches="tight", transparent=False)
 
         logging.debug(f"[{location_code}] Plot saved successfully")
     except Exception as e:
+        # Clean up temp file on error
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
         logging.error(f"[{location_code}] Error saving plot: {e}")
         raise
 

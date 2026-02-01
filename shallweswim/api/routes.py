@@ -469,8 +469,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
         # Only NYC is fully supported for current predictions at this time
         if location != "nyc":
             raise HTTPException(
-                status_code=501,
-                detail=f"Current predictions for '{location}' are not fully implemented yet",
+                status_code=404,
+                detail=f"Current predictions for '{location}' are not available",
             )
 
         # Calculate effective time with shift relative to the location's timezone

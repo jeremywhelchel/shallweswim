@@ -373,13 +373,10 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
         and location_config.currents_source is not None
     )
 
-    # If the location doesn't support currents, we expect a 404 or 501 response
+    # If the location doesn't support currents, we expect a 404 response
     if not has_currents_source:
-        assert response.status_code in [
-            404,
-            501,
-        ], (
-            f"Expected 404 or 501 for location without currents, got {response.status_code}"
+        assert response.status_code == 404, (
+            f"Expected 404 for location without currents, got {response.status_code}"
         )
         return
 

@@ -18,6 +18,7 @@ import math
 from collections.abc import AsyncGenerator
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
+from unittest.mock import patch
 
 import aiohttp
 import pandas as pd
@@ -26,13 +27,24 @@ import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from shallweswim import api, config
+from shallweswim import api
 from shallweswim.clients.base import StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.data import LocationDataManager
 from shallweswim.types import TIDE_TYPE_CATEGORIES
+from tests.conftest import TEST_CONFIG_FULL, TEST_CONFIG_NON_NYC_WITH_CURRENTS
+
+
+def _mock_config_get(code: str):
+    """Mock config.get() to return our fake test configs."""
+    configs = {
+        TEST_CONFIG_FULL.code: TEST_CONFIG_FULL,
+        TEST_CONFIG_NON_NYC_WITH_CURRENTS.code: TEST_CONFIG_NON_NYC_WITH_CURRENTS,
+    }
+    return configs.get(code)
+
 
 # =============================================================================
 # Test Data Factories
@@ -218,39 +230,40 @@ async def mock_api_client() -> AsyncGenerator[TestClient]:
     This fixture waits for all data to be loaded before yielding.
     Use this for happy path tests where all data should be available.
     """
-    app = FastAPI()
-    app.state.data_managers = {}
-    app.state.process_pool = ProcessPoolExecutor()
+    # Patch config.get to return our fake test configs
+    with patch("shallweswim.config.get", _mock_config_get):
+        app = FastAPI()
+        app.state.data_managers = {}
+        app.state.process_pool = ProcessPoolExecutor()
 
-    async with aiohttp.ClientSession() as session:
-        app.state.http_session = session
+        async with aiohttp.ClientSession() as session:
+            app.state.http_session = session
 
-        # Create MOCK clients instead of real ones
-        mock_clients: dict[str, Any] = {
-            "coops": MockCoopsApi(session=session),
-            "nwis": MockNwisApi(session=session),
-            "ndbc": MockNdbcApi(session=session),
-        }
+            # Create MOCK clients instead of real ones
+            mock_clients: dict[str, Any] = {
+                "coops": MockCoopsApi(session=session),
+                "nwis": MockNwisApi(session=session),
+                "ndbc": MockNdbcApi(session=session),
+            }
 
-        # Create LocationDataManager with mock clients
-        cfg = config.get("nyc")
-        assert cfg is not None, "NYC config not found"
+            # Create LocationDataManager with fake test config
+            cfg = TEST_CONFIG_FULL
 
-        app.state.data_managers["nyc"] = LocationDataManager(
-            cfg, clients=mock_clients, process_pool=app.state.process_pool
-        )
-        app.state.data_managers["nyc"].start()
+            app.state.data_managers[cfg.code] = LocationDataManager(
+                cfg, clients=mock_clients, process_pool=app.state.process_pool
+            )
+            app.state.data_managers[cfg.code].start()
 
-        # Wait for data to load (should be fast with mocks)
-        await app.state.data_managers["nyc"].wait_until_ready(timeout=10.0)
+            # Wait for data to load (should be fast with mocks)
+            await app.state.data_managers[cfg.code].wait_until_ready(timeout=10.0)
 
-        api.register_routes(app)
+            api.register_routes(app)
 
-        yield TestClient(app)
+            yield TestClient(app)
 
-        # Cleanup
-        await app.state.data_managers["nyc"].stop()
-        app.state.process_pool.shutdown(wait=False)
+            # Cleanup
+            await app.state.data_managers[cfg.code].stop()
+            app.state.process_pool.shutdown(wait=False)
 
 
 @pytest_asyncio.fixture
@@ -262,41 +275,42 @@ async def mock_api_client_with_controls() -> AsyncGenerator[
     This fixture provides access to the mock client for test control.
     Returns tuple of (TestClient, MockCoopsApi, LocationDataManager, FastAPI).
     """
-    app = FastAPI()
-    app.state.data_managers = {}
-    app.state.process_pool = ProcessPoolExecutor()
+    # Patch config.get to return our fake test configs
+    with patch("shallweswim.config.get", _mock_config_get):
+        app = FastAPI()
+        app.state.data_managers = {}
+        app.state.process_pool = ProcessPoolExecutor()
 
-    async with aiohttp.ClientSession() as session:
-        app.state.http_session = session
+        async with aiohttp.ClientSession() as session:
+            app.state.http_session = session
 
-        # Create MOCK clients
-        mock_coops = MockCoopsApi(session=session)
-        mock_clients: dict[str, Any] = {
-            "coops": mock_coops,
-            "nwis": MockNwisApi(session=session),
-            "ndbc": MockNdbcApi(session=session),
-        }
+            # Create MOCK clients
+            mock_coops = MockCoopsApi(session=session)
+            mock_clients: dict[str, Any] = {
+                "coops": mock_coops,
+                "nwis": MockNwisApi(session=session),
+                "ndbc": MockNdbcApi(session=session),
+            }
 
-        # Create LocationDataManager with mock clients
-        cfg = config.get("nyc")
-        assert cfg is not None, "NYC config not found"
+            # Create LocationDataManager with fake test config
+            cfg = TEST_CONFIG_FULL
 
-        manager = LocationDataManager(
-            cfg, clients=mock_clients, process_pool=app.state.process_pool
-        )
-        app.state.data_managers["nyc"] = manager
-        manager.start()
+            manager = LocationDataManager(
+                cfg, clients=mock_clients, process_pool=app.state.process_pool
+            )
+            app.state.data_managers[cfg.code] = manager
+            manager.start()
 
-        # Wait for data to load (should be fast with mocks)
-        await manager.wait_until_ready(timeout=10.0)
+            # Wait for data to load (should be fast with mocks)
+            await manager.wait_until_ready(timeout=10.0)
 
-        api.register_routes(app)
+            api.register_routes(app)
 
-        yield TestClient(app), mock_coops, manager, app
+            yield TestClient(app), mock_coops, manager, app
 
-        # Cleanup
-        await manager.stop()
-        app.state.process_pool.shutdown(wait=False)
+            # Cleanup
+            await manager.stop()
+            app.state.process_pool.shutdown(wait=False)
 
 
 @pytest_asyncio.fixture
@@ -307,38 +321,39 @@ async def mock_api_client_no_wait() -> AsyncGenerator[
 
     Use this for testing startup race conditions.
     """
-    app = FastAPI()
-    app.state.data_managers = {}
-    app.state.process_pool = ProcessPoolExecutor()
+    # Patch config.get to return our fake test configs
+    with patch("shallweswim.config.get", _mock_config_get):
+        app = FastAPI()
+        app.state.data_managers = {}
+        app.state.process_pool = ProcessPoolExecutor()
 
-    async with aiohttp.ClientSession() as session:
-        app.state.http_session = session
+        async with aiohttp.ClientSession() as session:
+            app.state.http_session = session
 
-        # Create MOCK clients
-        mock_coops = MockCoopsApi(session=session)
-        mock_clients: dict[str, Any] = {
-            "coops": mock_coops,
-            "nwis": MockNwisApi(session=session),
-            "ndbc": MockNdbcApi(session=session),
-        }
+            # Create MOCK clients
+            mock_coops = MockCoopsApi(session=session)
+            mock_clients: dict[str, Any] = {
+                "coops": mock_coops,
+                "nwis": MockNwisApi(session=session),
+                "ndbc": MockNdbcApi(session=session),
+            }
 
-        # Create LocationDataManager with mock clients
-        cfg = config.get("nyc")
-        assert cfg is not None, "NYC config not found"
+            # Create LocationDataManager with fake test config
+            cfg = TEST_CONFIG_FULL
 
-        manager = LocationDataManager(
-            cfg, clients=mock_clients, process_pool=app.state.process_pool
-        )
-        app.state.data_managers["nyc"] = manager
+            manager = LocationDataManager(
+                cfg, clients=mock_clients, process_pool=app.state.process_pool
+            )
+            app.state.data_managers[cfg.code] = manager
 
-        # DON'T start the manager yet - let tests control this
-        api.register_routes(app)
+            # DON'T start the manager yet - let tests control this
+            api.register_routes(app)
 
-        yield TestClient(app), mock_coops, manager, app
+            yield TestClient(app), mock_coops, manager, app
 
-        # Cleanup
-        await manager.stop()
-        app.state.process_pool.shutdown(wait=False)
+            # Cleanup
+            await manager.stop()
+            app.state.process_pool.shutdown(wait=False)
 
 
 # =============================================================================
@@ -356,7 +371,7 @@ async def test_conditions_with_mock_data(mock_api_client: TestClient) -> None:
 
     # Verify all data types present
     assert data["location"]["code"] == "nyc"
-    assert "New York" in data["location"]["name"]  # Flexible match
+    assert "Test Location" in data["location"]["name"]
 
     # Temperature should be present (NYC has live temps)
     assert data["temperature"] is not None
@@ -577,82 +592,83 @@ async def test_recovery_after_failure() -> None:
     2. Service restarts (new manager) when station is back
     3. New manager loads data successfully
     """
-    app = FastAPI()
-    app.state.data_managers = {}
-    app.state.process_pool = ProcessPoolExecutor()
+    # Patch config.get to return our fake test configs
+    with patch("shallweswim.config.get", _mock_config_get):
+        app = FastAPI()
+        app.state.data_managers = {}
+        app.state.process_pool = ProcessPoolExecutor()
 
-    async with aiohttp.ClientSession() as session:
-        app.state.http_session = session
+        async with aiohttp.ClientSession() as session:
+            app.state.http_session = session
 
-        # Create MOCK clients - initially failing
-        mock_coops = MockCoopsApi(session=session)
-        mock_coops.should_fail_tides = True
-        mock_coops.should_fail_currents = True
-        mock_coops.should_fail_temperature = True
+            # Create MOCK clients - initially failing
+            mock_coops = MockCoopsApi(session=session)
+            mock_coops.should_fail_tides = True
+            mock_coops.should_fail_currents = True
+            mock_coops.should_fail_temperature = True
 
-        mock_clients: dict[str, Any] = {
-            "coops": mock_coops,
-            "nwis": MockNwisApi(session=session),
-            "ndbc": MockNdbcApi(session=session),
-        }
+            mock_clients: dict[str, Any] = {
+                "coops": mock_coops,
+                "nwis": MockNwisApi(session=session),
+                "ndbc": MockNdbcApi(session=session),
+            }
 
-        cfg = config.get("nyc")
-        assert cfg is not None
+            cfg = TEST_CONFIG_FULL
 
-        # First manager - will fail
-        manager1 = LocationDataManager(
-            cfg, clients=mock_clients, process_pool=app.state.process_pool
-        )
-        app.state.data_managers["nyc"] = manager1
-        manager1.start()
+            # First manager - will fail
+            manager1 = LocationDataManager(
+                cfg, clients=mock_clients, process_pool=app.state.process_pool
+            )
+            app.state.data_managers[cfg.code] = manager1
+            manager1.start()
 
-        api.register_routes(app)
-        client = TestClient(app)
+            api.register_routes(app)
+            client = TestClient(app)
 
-        # Wait for initial (failed) fetch attempt
-        await asyncio.sleep(1.0)
+            # Wait for initial (failed) fetch attempt
+            await asyncio.sleep(1.0)
 
-        # Should return 503 initially
-        response = client.get("/api/nyc/conditions")
-        assert response.status_code == 503
+            # Should return 503 initially
+            response = client.get("/api/nyc/conditions")
+            assert response.status_code == 503
 
-        # Stop the failed manager
-        await manager1.stop()
+            # Stop the failed manager
+            await manager1.stop()
 
-        # === Simulate service restart with station back online ===
+            # === Simulate service restart with station back online ===
 
-        # Create fresh mock clients - now working
-        mock_coops2 = MockCoopsApi(session=session)
-        # Not setting should_fail flags = success
+            # Create fresh mock clients - now working
+            mock_coops2 = MockCoopsApi(session=session)
+            # Not setting should_fail flags = success
 
-        mock_clients2: dict[str, Any] = {
-            "coops": mock_coops2,
-            "nwis": MockNwisApi(session=session),
-            "ndbc": MockNdbcApi(session=session),
-        }
+            mock_clients2: dict[str, Any] = {
+                "coops": mock_coops2,
+                "nwis": MockNwisApi(session=session),
+                "ndbc": MockNdbcApi(session=session),
+            }
 
-        # Create NEW manager with working mocks
-        manager2 = LocationDataManager(
-            cfg, clients=mock_clients2, process_pool=app.state.process_pool
-        )
-        app.state.data_managers["nyc"] = manager2
-        manager2.start()
+            # Create NEW manager with working mocks
+            manager2 = LocationDataManager(
+                cfg, clients=mock_clients2, process_pool=app.state.process_pool
+            )
+            app.state.data_managers[cfg.code] = manager2
+            manager2.start()
 
-        # Wait for data to load
-        await manager2.wait_until_ready(timeout=10.0)
+            # Wait for data to load
+            await manager2.wait_until_ready(timeout=10.0)
 
-        # Should now return 200
-        response = client.get("/api/nyc/conditions")
-        assert response.status_code == 200
+            # Should now return 200
+            response = client.get("/api/nyc/conditions")
+            assert response.status_code == 200
 
-        # Verify data is present
-        data = response.json()
-        assert data["tides"] is not None
-        assert data["current"] is not None
+            # Verify data is present
+            data = response.json()
+            assert data["tides"] is not None
+            assert data["current"] is not None
 
-        # Cleanup
-        await manager2.stop()
-        app.state.process_pool.shutdown(wait=False)
+            # Cleanup
+            await manager2.stop()
+            app.state.process_pool.shutdown(wait=False)
 
 
 @pytest.mark.asyncio
@@ -722,3 +738,50 @@ async def test_feed_update_fails_during_refresh(
     # Data should still be present (stale but available)
     data = response.json()
     assert data["tides"] is not None
+
+
+# =============================================================================
+# Location-Specific Behavior Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_currents_endpoint_non_nyc_returns_404() -> None:
+    """Currents endpoint for non-NYC location returns 404.
+
+    This location has currents_source configured but isn't NYC,
+    so current predictions return 404 (not 501) to avoid 5xx alerting.
+    """
+    # Patch config.get to return our fake test configs
+    with patch("shallweswim.config.get", _mock_config_get):
+        app = FastAPI()
+        app.state.data_managers = {}
+        app.state.process_pool = ProcessPoolExecutor()
+
+        async with aiohttp.ClientSession() as session:
+            app.state.http_session = session
+            cfg = TEST_CONFIG_NON_NYC_WITH_CURRENTS  # Has currents but isn't NYC
+
+            mock_clients: dict[str, Any] = {
+                "coops": MockCoopsApi(session=session),
+                "nwis": MockNwisApi(session=session),
+                "ndbc": MockNdbcApi(session=session),
+            }
+
+            manager = LocationDataManager(
+                cfg, clients=mock_clients, process_pool=app.state.process_pool
+            )
+            app.state.data_managers[cfg.code] = manager
+            manager.start()
+
+            try:
+                await manager.wait_until_ready(timeout=10.0)
+                api.register_routes(app)
+
+                with TestClient(app) as client:
+                    response = client.get(f"/api/{cfg.code}/currents")
+                    assert response.status_code == 404
+                    assert "not available" in response.json()["detail"]
+            finally:
+                await manager.stop()
+                app.state.process_pool.shutdown(wait=False)

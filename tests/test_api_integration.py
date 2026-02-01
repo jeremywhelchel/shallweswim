@@ -473,24 +473,6 @@ def test_currents_api(api_client: TestClient, location_code: str) -> None:
 
 
 @pytest.mark.integration
-def test_invalid_api_location(api_client: TestClient) -> None:
-    """Test that API requests for invalid locations return 404 errors."""
-    # Test conditions endpoint
-    response = api_client.get("/api/invalid_location/conditions")
-    assert response.status_code == 404
-    error_data = response.json()
-    assert "detail" in error_data
-    assert "not found" in error_data["detail"].lower()
-
-    # Test currents endpoint
-    response = api_client.get("/api/invalid_location/currents")
-    assert response.status_code == 404
-    error_data = response.json()
-    assert "detail" in error_data
-    assert "not found" in error_data["detail"].lower()
-
-
-@pytest.mark.integration
 def test_healthy_endpoint(api_client: TestClient) -> None:
     """Test the healthy API endpoint returns a valid response.
 

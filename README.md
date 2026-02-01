@@ -155,6 +155,22 @@ uv run pytest --cov=shallweswim --cov-report=html
 
 Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS) and may occasionally fail if services are experiencing issues or data is temporarily unavailable.
 
+### Testing Philosophy
+
+The test suite uses a three-tier strategy:
+
+| Tier | Files | External APIs | Config | Run By Default |
+|------|-------|---------------|--------|----------------|
+| **Unit** | `test_*.py` (most) | Mocked | Fake test configs | Yes |
+| **E2E Stack** | `test_mocked_stack.py` | Mocked | Fake test configs | Yes |
+| **Integration** | `test_*_integration.py` | Real NOAA/USGS | Real configs | No (`--run-integration`) |
+
+**Key principles:**
+
+- **Unit/E2E tests are deterministic** - No external dependencies, fake configs defined in `tests/conftest.py`
+- **Integration tests validate real-world compatibility** - May fail due to external factors (station outages, API changes)
+- **Fake configs are explicit** - Each test controls exactly what scenario it tests, independent of production config
+
 ## Monitoring & Station Outages
 
 External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) occasionally experience outages. The application handles these gracefully:

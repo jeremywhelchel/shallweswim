@@ -466,11 +466,11 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 detail=f"Location '{location}' does not support current predictions",
             )
 
-        # Only NYC is fully supported for current predictions at this time
-        if location != "nyc":
+        # Only PREDICTION-type sources support time-shifted current predictions
+        if cfg.currents_source.source_type != types.DataSourceType.PREDICTION:
             raise HTTPException(
                 status_code=404,
-                detail=f"Current predictions for '{location}' are not available",
+                detail=f"Current predictions for '{location}' are not available (observation-only)",
             )
 
         # Calculate effective time with shift relative to the location's timezone
@@ -482,19 +482,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
         except ValueError as e:
             raise HTTPException(status_code=503, detail=str(e)) from e
 
-        # Get legacy chart information
-        chart_info = app.state.data_managers[location].get_chart_info(ts)
-
         # Get fwd/back shift values for navigation
         fwd = min(shift + 60, util.MAX_SHIFT_LIMIT)
         back = max(shift - 60, util.MIN_SHIFT_LIMIT)
-
-        # Get current chart filename
-        current_chart_filename = plot.get_current_chart_filename(
-            current_info.direction.value,
-            plot.bin_magnitude(current_info.magnitude_pct),
-            location_code=location,
-        )
 
         # Format current_info data for the API response
         current_prediction = CurrentInfo(
@@ -506,13 +496,22 @@ def register_routes(app: fastapi.FastAPI) -> None:
             source_type=current_info.source_type,
         )
 
-        # Format legacy chart data for the API response
-        legacy_chart = LegacyChartInfo(
-            hours_since_last_tide=round(chart_info.hours_since_last_tide, 1),
-            last_tide_type=chart_info.last_tide_type,
-            chart_filename=chart_info.chart_filename,
-            map_title=chart_info.map_title,
-        )
+        # Get chart data only if this location has chart assets configured
+        legacy_chart = None
+        current_chart_filename = None
+        if cfg.currents_source.has_static_charts:
+            chart_info = app.state.data_managers[location].get_chart_info(ts)
+            legacy_chart = LegacyChartInfo(
+                hours_since_last_tide=round(chart_info.hours_since_last_tide, 1),
+                last_tide_type=chart_info.last_tide_type,
+                chart_filename=chart_info.chart_filename,
+                map_title=chart_info.map_title,
+            )
+            current_chart_filename = plot.get_current_chart_filename(
+                current_info.direction.value,
+                plot.bin_magnitude(current_info.magnitude_pct),
+                location_code=location,
+            )
 
         # Return structured response
         return CurrentsResponse(

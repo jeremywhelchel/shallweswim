@@ -438,23 +438,21 @@ def test_get_feed_data_feed_not_found(
     assert "Feed 'badfeed' not found for location 'nyc'" in response.json()["detail"]
 
 
-def test_currents_endpoint_non_nyc_returns_404(
+def test_currents_endpoint_no_currents_source_returns_404(
     test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
 ) -> None:
-    """Test that currents endpoint returns 404 for non-NYC locations.
+    """Test that currents endpoint returns 404 for locations without currents_source.
 
-    Current predictions are only fully implemented for NYC. Other locations
-    should return 404 (not 501) to avoid triggering 5xx alerting.
+    Locations without currents_source configured get 404 "does not support".
+    Returns 404 (not 501) to avoid triggering 5xx alerting.
 
-    See also: test_mocked_stack.py::test_currents_endpoint_non_nyc_returns_404
-    which tests a location WITH currents_source configured (but not NYC).
+    See also: test_mocked_stack.py::test_currents_endpoint_observation_source_returns_404
+    which tests a location WITH currents_source configured but OBSERVATION type.
     """
     # sfo doesn't have currents_source configured, so it gets 404
     response = test_client.get("/api/sfo/currents")
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    # Either "does not support" (no currents_source) or "not available" (has source but not NYC)
-    detail = response.json()["detail"]
-    assert "not support" in detail or "not available" in detail
+    assert "does not support" in response.json()["detail"]
 
 
 def test_invalid_location_returns_404(

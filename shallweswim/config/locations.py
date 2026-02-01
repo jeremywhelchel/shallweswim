@@ -183,6 +183,13 @@ class CurrentsFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
         ),
     ] = types.CurrentSystemType.TIDAL
 
+    has_static_charts: Annotated[
+        bool,
+        Field(
+            description="Whether this location has pre-generated static chart assets for the /currents endpoint"
+        ),
+    ] = False
+
     @property
     @abc.abstractmethod
     def source_type(self) -> types.DataSourceType:
@@ -523,6 +530,7 @@ _CONFIG_LIST = [
                 "ACT3876",  # Coney Island Channel
                 "NYH1905",  # Rockaway Inslet
             ],
+            has_static_charts=True,  # NYC has static chart assets
         ),
         description="Coney Island Brighton Beach open water swimming conditions",
     ),

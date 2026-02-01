@@ -190,9 +190,13 @@ class CurrentsResponse(BaseModel):
         description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
     )
     current: CurrentInfo
-    legacy_chart: LegacyChartInfo
-    current_chart_filename: str = Field(
-        ..., description="Filename of the current chart image"
+    legacy_chart: LegacyChartInfo | None = Field(
+        default=None,
+        description="Legacy chart info (only for locations with chart assets)",
+    )
+    current_chart_filename: str | None = Field(
+        default=None,
+        description="Filename of the current chart image (only for locations with chart assets)",
     )
     navigation: dict[str, object] = Field(
         ..., description="Navigation parameters for time shifting"

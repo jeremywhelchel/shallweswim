@@ -34,14 +34,19 @@ from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.data import LocationDataManager
 from shallweswim.types import TIDE_TYPE_CATEGORIES
-from tests.conftest import TEST_CONFIG_FULL, TEST_CONFIG_NON_NYC_WITH_CURRENTS
+from tests.conftest import (
+    TEST_CONFIG_FULL,
+    TEST_CONFIG_OBSERVATION_CURRENTS,
+    TEST_CONFIG_PREDICTION_NO_CHARTS,
+)
 
 
 def _mock_config_get(code: str):
     """Mock config.get() to return our fake test configs."""
     configs = {
         TEST_CONFIG_FULL.code: TEST_CONFIG_FULL,
-        TEST_CONFIG_NON_NYC_WITH_CURRENTS.code: TEST_CONFIG_NON_NYC_WITH_CURRENTS,
+        TEST_CONFIG_OBSERVATION_CURRENTS.code: TEST_CONFIG_OBSERVATION_CURRENTS,
+        TEST_CONFIG_PREDICTION_NO_CHARTS.code: TEST_CONFIG_PREDICTION_NO_CHARTS,
     }
     return configs.get(code)
 
@@ -746,11 +751,12 @@ async def test_feed_update_fails_during_refresh(
 
 
 @pytest.mark.asyncio
-async def test_currents_endpoint_non_nyc_returns_404() -> None:
-    """Currents endpoint for non-NYC location returns 404.
+async def test_currents_endpoint_observation_source_returns_404() -> None:
+    """Currents endpoint for OBSERVATION-type source returns 404.
 
-    This location has currents_source configured but isn't NYC,
-    so current predictions return 404 (not 501) to avoid 5xx alerting.
+    This location has currents_source configured but it's OBSERVATION type (like Louisville),
+    not PREDICTION type. The /currents endpoint only works with PREDICTION sources.
+    Returns 404 (not 501) to avoid 5xx alerting.
     """
     # Patch config.get to return our fake test configs
     with patch("shallweswim.config.get", _mock_config_get):
@@ -760,7 +766,7 @@ async def test_currents_endpoint_non_nyc_returns_404() -> None:
 
         async with aiohttp.ClientSession() as session:
             app.state.http_session = session
-            cfg = TEST_CONFIG_NON_NYC_WITH_CURRENTS  # Has currents but isn't NYC
+            cfg = TEST_CONFIG_OBSERVATION_CURRENTS  # Has currents but OBSERVATION type
 
             mock_clients: dict[str, Any] = {
                 "coops": MockCoopsApi(session=session),
@@ -781,7 +787,54 @@ async def test_currents_endpoint_non_nyc_returns_404() -> None:
                 with TestClient(app) as client:
                     response = client.get(f"/api/{cfg.code}/currents")
                     assert response.status_code == 404
-                    assert "not available" in response.json()["detail"]
+                    assert "observation-only" in response.json()["detail"]
+            finally:
+                await manager.stop()
+                app.state.process_pool.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_currents_endpoint_prediction_no_charts_returns_null_charts() -> None:
+    """Currents endpoint for PREDICTION source without charts returns null chart fields.
+
+    This location has PREDICTION-type currents (supports /currents endpoint) but
+    has_static_charts=False, so legacy_chart and current_chart_filename should be null.
+    """
+    with patch("shallweswim.config.get", _mock_config_get):
+        app = FastAPI()
+        app.state.data_managers = {}
+        app.state.process_pool = ProcessPoolExecutor()
+
+        async with aiohttp.ClientSession() as session:
+            app.state.http_session = session
+            cfg = TEST_CONFIG_PREDICTION_NO_CHARTS  # PREDICTION type but no charts
+
+            mock_clients: dict[str, Any] = {
+                "coops": MockCoopsApi(session=session),
+                "nwis": MockNwisApi(session=session),
+                "ndbc": MockNdbcApi(session=session),
+            }
+
+            manager = LocationDataManager(
+                cfg, clients=mock_clients, process_pool=app.state.process_pool
+            )
+            app.state.data_managers[cfg.code] = manager
+            manager.start()
+
+            try:
+                await manager.wait_until_ready(timeout=10.0)
+                api.register_routes(app)
+
+                with TestClient(app) as client:
+                    response = client.get(f"/api/{cfg.code}/currents")
+                    assert response.status_code == 200
+                    data = response.json()
+                    # Should have current prediction data
+                    assert "current" in data
+                    assert data["current"] is not None
+                    # But chart fields should be null (no static charts configured)
+                    assert data["legacy_chart"] is None
+                    assert data["current_chart_filename"] is None
             finally:
                 await manager.stop()
                 app.state.process_pool.shutdown(wait=False)

@@ -67,18 +67,19 @@ async def api_client() -> AsyncGenerator[TestClient]:
             wait_for_data=False,  # Don't block - check readiness per-location in tests
         )
 
-        # Wait for each location to become ready (with individual timeouts)
-        # This allows some locations to fail without blocking others
-        for location_code in TEST_LOCATIONS:
+        # Wait for all locations to become ready in parallel (longest pole)
+        async def wait_for_location(location_code: str) -> None:
             data_manager = app.state.data_managers[location_code]
             try:
                 await asyncio.wait_for(
-                    data_manager.wait_until_ready(timeout=30.0),
-                    timeout=35.0,  # Slightly longer outer timeout
+                    data_manager.wait_until_ready(timeout=15.0),
+                    timeout=20.0,
                 )
             except (TimeoutError, Exception):
                 # Location failed to load - tests will skip/fail based on test_required
                 pass
+
+        await asyncio.gather(*[wait_for_location(loc) for loc in TEST_LOCATIONS])
 
         # Register only the API routes
         api.register_routes(app)

@@ -397,7 +397,44 @@ async def test_conditions_with_mock_data(mock_api_client: TestClient) -> None:
 @pytest.mark.asyncio
 async def test_current_tide_plot_with_mock_data(mock_api_client: TestClient) -> None:
     """Plot generation works with mock data."""
-    response = mock_api_client.get("/api/nyc/current_tide_plot")
+    response = mock_api_client.get("/api/nyc/plots/current_tide")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert "<svg" in response.text
+    assert "</svg>" in response.text
+
+
+@pytest.mark.asyncio
+async def test_live_temps_plot_with_mock_data(mock_api_client: TestClient) -> None:
+    """Live temps plot endpoint returns valid SVG with mock data."""
+    response = mock_api_client.get("/api/nyc/plots/live_temps")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert "<svg" in response.text
+    assert "</svg>" in response.text
+
+
+@pytest.mark.asyncio
+async def test_historic_temps_plot_2mo_with_mock_data(
+    mock_api_client: TestClient,
+) -> None:
+    """Historic temps 2-month plot endpoint returns valid SVG with mock data."""
+    response = mock_api_client.get("/api/nyc/plots/historic_temps?period=2mo")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert "<svg" in response.text
+    assert "</svg>" in response.text
+
+
+@pytest.mark.asyncio
+async def test_historic_temps_plot_12mo_with_mock_data(
+    mock_api_client: TestClient,
+) -> None:
+    """Historic temps 12-month plot endpoint returns valid SVG with mock data."""
+    response = mock_api_client.get("/api/nyc/plots/historic_temps?period=12mo")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/svg+xml"
@@ -698,7 +735,7 @@ async def test_plot_with_missing_currents(
     await asyncio.sleep(1.0)
 
     # Plot requires both tides AND currents
-    response = client.get("/api/nyc/current_tide_plot")
+    response = client.get("/api/nyc/plots/current_tide")
 
     # Should return 503 with specific message, not 500 crash
     assert response.status_code == 503

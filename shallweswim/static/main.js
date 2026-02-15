@@ -609,7 +609,7 @@ function updateCharts(data) {
   // Update tide current plot
   const tideCurrentPlot = document.getElementById("tide-current-plot");
   if (tideCurrentPlot) {
-    tideCurrentPlot.src = `/api/${data.location.code}/current_tide_plot?shift=${data.navigation.shift}`;
+    tideCurrentPlot.src = `/api/${data.location.code}/plots/current_tide?shift=${data.navigation.shift}`;
   }
 
   // Update legacy chart

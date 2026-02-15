@@ -259,8 +259,71 @@ def register_routes(app: fastapi.FastAPI) -> None:
             current=current_info,
         )
 
-    @app.get("/api/{location}/current_tide_plot")
-    async def current_tide_plot(
+    @app.get("/api/{location}/plots/live_temps")
+    async def get_live_temps_plot(location: str) -> fastapi.responses.Response:
+        """Serve the live temperature plot for the specified location.
+
+        Args:
+            location: Location code (e.g., "nyc", "sfo")
+
+        Returns:
+            SVG image response with live temperature visualization
+        """
+        logging.info(f"[{location}] Processing live temps plot request")
+        validate_location(location)
+
+        data_manager = app.state.data_managers[location]
+        plot_bytes = data_manager.get_plot("live_temps")
+
+        if plot_bytes is None:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Live temperature plot not yet available for {location}",
+            )
+
+        return fastapi.responses.Response(
+            content=plot_bytes, media_type="image/svg+xml"
+        )
+
+    @app.get("/api/{location}/plots/historic_temps")
+    async def get_historic_temps_plot(
+        location: str, period: str = "2mo"
+    ) -> fastapi.responses.Response:
+        """Serve a historic temperature plot for the specified location.
+
+        Args:
+            location: Location code (e.g., "nyc", "sfo")
+            period: Time period - "2mo" for 2-month or "12mo" for full year
+
+        Returns:
+            SVG image response with historic temperature visualization
+        """
+        logging.info(
+            f"[{location}] Processing historic temps plot request, period={period}"
+        )
+        validate_location(location)
+
+        if period not in ("2mo", "12mo"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid period '{period}'. Must be '2mo' or '12mo'.",
+            )
+
+        data_manager = app.state.data_managers[location]
+        plot_bytes = data_manager.get_plot(f"historic_temps_{period}")
+
+        if plot_bytes is None:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Historic temperature plot ({period}) not yet available for {location}",
+            )
+
+        return fastapi.responses.Response(
+            content=plot_bytes, media_type="image/svg+xml"
+        )
+
+    @app.get("/api/{location}/plots/current_tide")
+    async def get_current_tide_plot(
         location: str, shift: int = 0
     ) -> fastapi.responses.Response:
         """Generate and serve a tide and current plot for the specified location.
@@ -527,7 +590,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 "next_hour": fwd,
                 "prev_hour": back,
                 "current_api_url": f"/api/{location}/currents",
-                "plot_url": f"/api/{location}/current_tide_plot?shift={shift}",
+                "plot_url": f"/api/{location}/plots/current_tide?shift={shift}",
             },
         )
 

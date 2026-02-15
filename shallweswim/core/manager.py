@@ -83,6 +83,10 @@ class LocationDataManager:
         self._update_task: asyncio.Task[None] | None = None
         self._ready_event = asyncio.Event()
 
+        # In-memory storage for generated plots (eliminates filesystem race condition)
+        # Keys: "live_temps", "historic_temps_2mo", "historic_temps_12mo"
+        self._plots: dict[str, bytes] = {}
+
     def _configure_live_temps_feed(self) -> feeds.Feed | None:
         """Configure the live temperature feed.
 
@@ -458,6 +462,10 @@ class LocationDataManager:
                     if self._expired("currents"):
                         await self._update_dataset("currents")
 
+                    # Track plot generation tasks with their types
+                    live_temps_task: asyncio.Future[bytes] | None = None
+                    historic_temps_task: asyncio.Future[dict[str, bytes]] | None = None
+
                     if self._expired("live_temps"):
                         await self._update_dataset("live_temps")
                         live_temps_feed = self._feeds.get("live_temps")
@@ -473,14 +481,14 @@ class LocationDataManager:
                         )
                         if live_temps_data is not None and len(live_temps_data) >= 2:
                             self.log("Submitting live temps plot generation.")
-                            task = loop.run_in_executor(
+                            live_temps_task = loop.run_in_executor(
                                 self.process_pool,
-                                plot.generate_and_save_live_temp_plot,
+                                plot.generate_live_temp_plot,
                                 live_temps_data,
                                 self.config.code,
                                 temp_source_name,
                             )
-                            plot_tasks.append(task)
+                            plot_tasks.append(live_temps_task)
 
                     if self._expired("historic_temps"):
                         await self._update_dataset("historic_temps")
@@ -500,20 +508,31 @@ class LocationDataManager:
                             and len(historic_temps_data) >= 10
                         ):
                             self.log("Submitting historic temps plot generation.")
-                            task = loop.run_in_executor(
+                            historic_temps_task = loop.run_in_executor(
                                 self.process_pool,
-                                plot.generate_and_save_historic_plots,
+                                plot.generate_historic_temp_plots,
                                 historic_temps_data,
                                 self.config.code,
                                 temp_source_name,
                             )
-                            plot_tasks.append(task)
+                            plot_tasks.append(historic_temps_task)
 
                     # Wait for any submitted plotting tasks to complete in parallel
                     if plot_tasks:
                         self.log(f"Waiting for {len(plot_tasks)} plot task(s)...")
                         try:
                             await asyncio.gather(*plot_tasks)
+                            # Store results in memory
+                            if live_temps_task is not None:
+                                self._plots["live_temps"] = live_temps_task.result()
+                            if historic_temps_task is not None:
+                                historic_results = historic_temps_task.result()
+                                self._plots["historic_temps_2mo"] = historic_results[
+                                    "2mo"
+                                ]
+                                self._plots["historic_temps_12mo"] = historic_results[
+                                    "12mo"
+                                ]
                             self.log(f"Completed {len(plot_tasks)} plot task(s).")
                         except Exception as e:
                             self.log(
@@ -631,6 +650,17 @@ class LocationDataManager:
             AssertionError: If current data is not available
         """
         return queries.get_current_flow_info(self._feeds)
+
+    def get_plot(self, plot_type: str) -> bytes | None:
+        """Get a generated plot by type.
+
+        Args:
+            plot_type: One of "live_temps", "historic_temps_2mo", "historic_temps_12mo"
+
+        Returns:
+            The plot as SVG bytes, or None if not yet generated
+        """
+        return self._plots.get(plot_type)
 
     def predict_flow_at_time(self, t: datetime.datetime | None = None) -> CurrentInfo:
         """Predict tidal current conditions for a specific time.

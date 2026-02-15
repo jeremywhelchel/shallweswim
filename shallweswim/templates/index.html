@@ -74,18 +74,18 @@ block content %} {% if config.code == 'nyc' %}
 {% if config.temp_source.live_enabled %}
 <img
   class="plot"
-  src="/static/plots/{{ config.code }}/live_temps.svg"
+  src="/api/{{ config.code }}/plots/live_temps"
   alt="Live temperature plot"
 />
 {% endif %} {% if config.temp_source.historic_enabled %}
 <img
   class="plot"
-  src="/static/plots/{{ config.code }}/historic_temps_2mo_24h_mean.svg"
+  src="/api/{{ config.code }}/plots/historic_temps?period=2mo"
   alt="2 month temperature plot, all years"
 />
 <img
   class="plot"
-  src="/static/plots/{{ config.code }}/historic_temps_12mo_24h_mean.svg"
+  src="/api/{{ config.code }}/plots/historic_temps?period=12mo"
   alt="12 month temperature plot, all years"
 />
 {% endif %} {% endif %} {% if config.code == 'nyc' %}

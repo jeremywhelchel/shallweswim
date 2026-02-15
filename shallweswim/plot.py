@@ -85,22 +85,6 @@ def add_celsius_axis(ax: Axes) -> Axes:
     return ax2
 
 
-def get_plot_filepath(
-    location_code: str, plot_type: str, extension: str = "svg"
-) -> str:
-    """Generate standard file path for plots.
-
-    Args:
-        location_code: Location identifier
-        plot_type: Type of plot (e.g., 'current_temp', 'historic_temp_yr')
-        extension: File extension without dot (defaults to 'svg')
-
-    Returns:
-        Full path to the plot file
-    """
-    return f"static/plots/{location_code}/{plot_type}.{extension}"
-
-
 def save_fig(
     fig: Figure,
     dst: str | io.StringIO,
@@ -160,6 +144,22 @@ def save_fig(
             os.unlink(tmp_path)
         logging.error(f"[{location_code}] Error saving plot: {e}")
         raise
+
+
+def fig_to_bytes(fig: Figure, fmt: str = "svg") -> bytes:
+    """Convert a matplotlib Figure to bytes.
+
+    Args:
+        fig: Figure object to convert
+        fmt: Format to save in ('svg', 'png', etc.)
+
+    Returns:
+        bytes: The figure as bytes in the specified format
+    """
+    buf = io.BytesIO()
+    fig.savefig(buf, format=fmt, bbox_inches="tight", transparent=False)
+    buf.seek(0)
+    return buf.getvalue()
 
 
 #############################################################
@@ -276,18 +276,18 @@ def create_live_temp_plot(live_temps: pd.DataFrame, station_name: str | None) ->
     return fig
 
 
-def generate_and_save_live_temp_plot(
+def generate_live_temp_plot(
     live_temps: pd.DataFrame, location_code: str, station_name: str | None
-) -> None:
-    """Generate and save a plot of recent water temperature data.
+) -> bytes:
+    """Generate a plot of recent water temperature data and return as bytes.
 
     Args:
         live_temps: DataFrame containing temperature data
-        location_code: Location identifier for file naming
+        location_code: Location identifier for logging
         station_name: Station name for plot title or None
 
     Returns:
-        None - Saves the plot to a file
+        bytes: The plot as SVG bytes
     """
     # Assert we have sufficient data
     assert live_temps is not None and len(live_temps) >= 2, (
@@ -297,10 +297,9 @@ def generate_and_save_live_temp_plot(
     logging.info(f"[{location_code}] Generating live temperature plot")
     try:
         live_fig = create_live_temp_plot(live_temps, station_name)
-        # Save to file
-        plot_filename = get_plot_filepath(location_code, "live_temps")
-        save_fig(live_fig, plot_filename, location_code=location_code)
+        plot_bytes = fig_to_bytes(live_fig)
         logging.info(f"[{location_code}] Live temperature plot generated successfully")
+        return plot_bytes
     except Exception as e:
         logging.error(f"[{location_code}] Error generating live temperature plot: {e}")
         raise
@@ -401,21 +400,23 @@ def create_historic_yearly_plot(
     return fig
 
 
-def generate_and_save_historic_plots(
+def generate_historic_temp_plots(
     hist_temps: pd.DataFrame, location_code: str, station_name: str | None
-) -> None:
-    """Generate and save historical temperature plots.
+) -> dict[str, bytes]:
+    """Generate historical temperature plots and return as bytes.
 
     Creates plots showing water temperature data across multiple years,
     including 2-month and full-year comparisons.
 
     Args:
         hist_temps: DataFrame containing historical temperature data
-        location_code: Location identifier for file naming
+        location_code: Location identifier for logging
         station_name: Station name for plot titles or None
 
     Returns:
-        None - Saves the plots to files
+        dict mapping period names to SVG bytes:
+            - "2mo": 2-month centered plot
+            - "12mo": Full year plot
     """
     # Assert we have sufficient data
     assert hist_temps is not None and len(hist_temps) >= 10, (
@@ -428,25 +429,21 @@ def generate_and_save_historic_plots(
     )
 
     try:
-        # Create and save monthly plot
+        # Create monthly plot
         logging.debug(f"[{location_code}] Creating 2-month historic plot")
         monthly_fig = create_historic_monthly_plot(hist_temps, station_name)
         assert monthly_fig is not None, "Failed to create historic monthly plot"
-        mon_plot_filename = get_plot_filepath(
-            location_code, "historic_temps_2mo_24h_mean"
-        )
-        save_fig(monthly_fig, mon_plot_filename, location_code=location_code)
+        monthly_bytes = fig_to_bytes(monthly_fig)
         logging.info(f"[{location_code}] 2-month historic plot generated successfully")
 
-        # Create and save yearly plot
+        # Create yearly plot
         logging.debug(f"[{location_code}] Creating yearly historic plot")
         yearly_fig = create_historic_yearly_plot(hist_temps, station_name)
         assert yearly_fig is not None, "Failed to create historic yearly plot"
-        yr_plot_filename = get_plot_filepath(
-            location_code, "historic_temps_12mo_24h_mean"
-        )
-        save_fig(yearly_fig, yr_plot_filename, location_code=location_code)
+        yearly_bytes = fig_to_bytes(yearly_fig)
         logging.info(f"[{location_code}] Yearly historic plot generated successfully")
+
+        return {"2mo": monthly_bytes, "12mo": yearly_bytes}
     except Exception as e:
         logging.error(
             f"[{location_code}] Error generating historic temperature plots: {e}"
@@ -691,32 +688,6 @@ def create_tide_current_plot(
     ax.tick_params(which="minor", length=4, width=1)
 
     return fig
-
-
-def generate_and_save_tide_current_plot(
-    tides: pd.DataFrame,
-    currents: pd.DataFrame,
-    t: datetime.datetime,
-    location_config: config_lib.LocationConfig,
-    filename: str,
-) -> None:
-    """Generate and save a plot showing tide and current data.
-
-    Args:
-        tides: DataFrame with tide predictions
-        currents: DataFrame with current predictions
-        t: Datetime to mark on the plot
-        location_config: Location configuration for timezone settings
-        filename: Filename to save the plot
-
-    Returns:
-        None
-    """
-    fig = create_tide_current_plot(tides, currents, t, location_config)
-    assert fig is not None, "Failed to create tide and current plot"
-
-    # Save the figure to the provided filename
-    save_fig(fig, filename, location_code=location_config.code)
 
 
 # Current chart utility values and functions

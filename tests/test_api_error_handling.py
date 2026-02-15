@@ -209,7 +209,7 @@ def test_conditions_all_feeds_missing_specific_data(
 
 
 # =============================================================================
-# /api/{location}/current_tide_plot endpoint tests
+# /api/{location}/plots/current_tide endpoint tests
 # =============================================================================
 
 
@@ -229,7 +229,7 @@ def test_plot_missing_tides_returns_503(app_with_mock_manager: Any) -> None:
     mock_manager.has_feed_data.side_effect = has_feed_data_side_effect
 
     client = TestClient(app)
-    response = client.get("/api/nyc/current_tide_plot")
+    response = client.get("/api/nyc/plots/current_tide")
 
     assert response.status_code == 503
     assert "tide/current data temporarily unavailable" in response.json()["detail"]
@@ -251,10 +251,25 @@ def test_plot_missing_currents_returns_503(app_with_mock_manager: Any) -> None:
     mock_manager.has_feed_data.side_effect = has_feed_data_side_effect
 
     client = TestClient(app)
-    response = client.get("/api/nyc/current_tide_plot")
+    response = client.get("/api/nyc/plots/current_tide")
 
     assert response.status_code == 503
     assert "tide/current data temporarily unavailable" in response.json()["detail"]
+
+
+# =============================================================================
+# /api/{location}/plots/historic_temps endpoint tests
+# =============================================================================
+
+
+def test_historic_temps_plot_invalid_period(app_with_mock_manager: Any) -> None:
+    """Historic temps plot with invalid period returns 400."""
+    app, _ = app_with_mock_manager
+    client = TestClient(app)
+    response = client.get("/api/nyc/plots/historic_temps?period=invalid")
+
+    assert response.status_code == 400
+    assert "Invalid period" in response.json()["detail"]
 
 
 # =============================================================================

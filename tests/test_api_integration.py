@@ -506,8 +506,8 @@ def test_healthy_endpoint(api_client: TestClient) -> None:
 
 @pytest.mark.integration
 def test_get_current_tide_plot_nyc(api_client: TestClient) -> None:
-    """Test the GET /api/nyc/current_tide_plot endpoint."""
-    response = api_client.get("/api/nyc/current_tide_plot")
+    """Test the GET /api/nyc/plots/current_tide endpoint."""
+    response = api_client.get("/api/nyc/plots/current_tide")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/svg+xml"
@@ -516,4 +516,42 @@ def test_get_current_tide_plot_nyc(api_client: TestClient) -> None:
     assert len(svg_content) > 100  # Check it's not trivially small
     assert "<svg" in svg_content
     assert "</svg>" in svg_content
-    # TODO: Could add more specific checks on SVG content if needed
+
+
+@pytest.mark.integration
+def test_get_live_temps_plot_nyc(api_client: TestClient) -> None:
+    """Test the GET /api/nyc/plots/live_temps endpoint."""
+    response = api_client.get("/api/nyc/plots/live_temps")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    svg_content = response.text
+    assert len(svg_content) > 100
+    assert "<svg" in svg_content
+    assert "</svg>" in svg_content
+
+
+@pytest.mark.integration
+def test_get_historic_temps_plot_2mo_nyc(api_client: TestClient) -> None:
+    """Test the GET /api/nyc/plots/historic_temps?period=2mo endpoint."""
+    response = api_client.get("/api/nyc/plots/historic_temps?period=2mo")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    svg_content = response.text
+    assert len(svg_content) > 100
+    assert "<svg" in svg_content
+    assert "</svg>" in svg_content
+
+
+@pytest.mark.integration
+def test_get_historic_temps_plot_12mo_nyc(api_client: TestClient) -> None:
+    """Test the GET /api/nyc/plots/historic_temps?period=12mo endpoint."""
+    response = api_client.get("/api/nyc/plots/historic_temps?period=12mo")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    svg_content = response.text
+    assert len(svg_content) > 100
+    assert "<svg" in svg_content
+    assert "</svg>" in svg_content

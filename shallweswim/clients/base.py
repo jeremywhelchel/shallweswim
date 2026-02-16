@@ -96,6 +96,7 @@ class BaseApiClient(abc.ABC):
     MAX_RETRIES: int = 4  # Total attempts = MAX_RETRIES + 1
     INITIAL_RETRY_DELAY: float = 0.5  # seconds
     MAX_RETRY_DELAY: float = 5.0  # seconds
+    REQUEST_TIMEOUT: float = 30.0  # seconds - timeout for individual API requests
 
     def __init__(self, session: aiohttp.ClientSession):
         self._session = session

@@ -143,7 +143,8 @@ class CoopsApi(BaseApiClient):
         )
         csv_data: str
         try:
-            async with self._session.get(url) as response:
+            timeout = aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT)
+            async with self._session.get(url, timeout=timeout) as response:
                 if response.status != 200:
                     # Treat non-200 responses as non-retryable connection errors
                     error_msg = f"HTTP error {response.status} for {url}"

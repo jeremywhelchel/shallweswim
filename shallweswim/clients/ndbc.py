@@ -105,13 +105,21 @@ class NdbcApi(BaseApiClient):
             api = NdbcApiClient()
 
             # Fetch the data using asyncio.to_thread to avoid blocking
-            raw_result = await asyncio.to_thread(
-                api.get_data,
-                station_id=station_id,
-                mode=mode,
-                start_time=start_time,
-                end_time=end_time,
+            # Wrap with wait_for to enforce timeout (ndbc-api has no timeout support)
+            raw_result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    api.get_data,
+                    station_id=station_id,
+                    mode=mode,
+                    start_time=start_time,
+                    end_time=end_time,
+                ),
+                timeout=self.REQUEST_TIMEOUT,
             )
+        except TimeoutError as e:
+            # Convert timeout to our retryable error type
+            error_msg = f"Request timed out after {self.REQUEST_TIMEOUT}s for NDBC station {station_id}"
+            raise RetryableClientError(error_msg) from e
         except (
             requests.exceptions.ConnectionError,
             requests.exceptions.Timeout,

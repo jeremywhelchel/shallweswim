@@ -99,20 +99,29 @@ class NwisApi(BaseApiClient):
         try:
             # Fetch the data using asyncio.to_thread to avoid blocking
             # dataretrieval uses requests internally
-            raw_result = await asyncio.to_thread(
-                nwis.get_record,
-                sites=sites,
-                service=service,
-                parameterCd=parameterCd,
-                start=start,
-                end=end,
+            # Wrap with wait_for to enforce timeout (dataretrieval has no timeout support)
+            raw_result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    nwis.get_record,
+                    sites=sites,
+                    service=service,
+                    parameterCd=parameterCd,
+                    start=start,
+                    end=end,
+                ),
+                timeout=self.REQUEST_TIMEOUT,
             )
+        except TimeoutError as e:
+            # Convert timeout to our retryable error type
+            error_msg = (
+                f"Request timed out after {self.REQUEST_TIMEOUT}s for NWIS site {sites}"
+            )
+            raise RetryableClientError(error_msg) from e
         except (
             # dataretrieval uses requests internally, so catch requests exceptions
             requests.exceptions.ConnectionError,  # Includes SSLError
             requests.exceptions.Timeout,
             requests.exceptions.ReadTimeout,
-            TimeoutError,
         ) as e:
             # Convert known transient network errors to our retryable type
             error_msg = f"Network error during NWIS request for site {sites}: {e.__class__.__name__}: {e}"

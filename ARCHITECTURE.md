@@ -144,6 +144,15 @@ External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) may have temporary out
 - **`RetryableClientError`**: Transient network issues (timeouts, connection errors)
   - Automatically retried by `BaseApiClient.request_with_retry()`
 
+### Client Timeouts
+
+All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIMEOUT` in `clients/base.py`):
+
+- **COOPS**: Uses aiohttp per-request timeout
+- **NWIS/NDBC**: Uses `asyncio.wait_for()` around synchronous library calls
+
+Timeouts raise `RetryableClientError` and are automatically retried by `request_with_retry()`.
+
 ### Logging Guidelines
 
 - **WARNING**: Expected operational issues (station outages)

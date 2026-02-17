@@ -10,6 +10,9 @@ Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 
 # Standard library imports
 import asyncio
+import logging
+import os
+import platform
 from collections.abc import AsyncGenerator
 from concurrent.futures import ProcessPoolExecutor
 from typing import cast
@@ -33,6 +36,17 @@ pytestmark = pytest.mark.integration
 
 # Get all available locations from the config
 TEST_LOCATIONS = list(config.CONFIGS.keys())
+
+
+@pytest.mark.integration
+def test_00_environment_info() -> None:
+    """Log environment info for debugging CI issues."""
+    logging.info("=== Environment Info ===")
+    logging.info(f"Python: {platform.python_version()}")
+    logging.info(f"Platform: {platform.platform()}")
+    logging.info(f"CPU count: {os.cpu_count()}")
+    logging.info(f"MPLBACKEND: {os.environ.get('MPLBACKEND', 'not set')}")
+    logging.info("========================")
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -532,22 +546,22 @@ def test_get_live_temps_plot_nyc(api_client: TestClient) -> None:
 
 
 @pytest.mark.integration
-def test_get_historic_temps_plot_2mo_nyc(api_client: TestClient) -> None:
-    """Test the GET /api/nyc/plots/historic_temps?period=2mo endpoint."""
-    response = api_client.get("/api/nyc/plots/historic_temps?period=2mo")
+@pytest.mark.parametrize("period", ["2mo", "12mo"])
+def test_get_historic_temps_plot_nyc(api_client: TestClient, period: str) -> None:
+    """Test the GET /api/nyc/plots/historic_temps endpoint for different periods."""
+    logging.info(f"[test_{period}] Starting {period} plot test")
 
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "image/svg+xml"
-    svg_content = response.text
-    assert len(svg_content) > 100
-    assert "<svg" in svg_content
-    assert "</svg>" in svg_content
+    app = cast(fastapi.FastAPI, api_client.app)
+    data_manager = app.state.data_managers["nyc"]
+    cached = data_manager.get_plot(f"historic_temps_{period}")
+    logging.info(
+        f"[test_{period}] Plot cached: {cached is not None}, "
+        f"size: {len(cached) if cached else 0}"
+    )
 
-
-@pytest.mark.integration
-def test_get_historic_temps_plot_12mo_nyc(api_client: TestClient) -> None:
-    """Test the GET /api/nyc/plots/historic_temps?period=12mo endpoint."""
-    response = api_client.get("/api/nyc/plots/historic_temps?period=12mo")
+    logging.info(f"[test_{period}] Making API request...")
+    response = api_client.get(f"/api/nyc/plots/historic_temps?period={period}")
+    logging.info(f"[test_{period}] Got response: {response.status_code}")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/svg+xml"

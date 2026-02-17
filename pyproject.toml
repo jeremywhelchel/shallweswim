@@ -39,6 +39,7 @@ dev = [
     "types-requests",
     "freezegun>=1.5.1,<2",
     "pytest-mock>=3.14.0,<4",
+    "pytest-timeout>=2.3.1,<3",
 ]
 
 [tool.ruff]
@@ -69,6 +70,7 @@ ignore = [
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "module"
+timeout = 60
 
 [tool.basedpyright]
 pythonVersion = "3.13"

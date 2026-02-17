@@ -153,6 +153,13 @@ All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIM
 
 Timeouts raise `RetryableClientError` and are automatically retried by `request_with_retry()`.
 
+### Plot Generation Timeouts
+
+Plot generation runs in a `ProcessPoolExecutor` with timeouts to catch matplotlib hangs (common in CI due to font/backend issues):
+
+- **Background plots** (`core/manager.py`): 60-second timeout. If exceeded, plots are skipped and retried on next update interval
+- **On-demand plots** (`api/routes.py`): 30-second timeout. If exceeded, returns HTTP 503 (user is waiting)
+
 ### Logging Guidelines
 
 - **WARNING**: Expected operational issues (station outages)

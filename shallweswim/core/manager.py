@@ -30,6 +30,10 @@ from shallweswim.util import utc_now
 # Default year to start historical temperature data collection
 DEFAULT_HISTORIC_TEMPS_START_YEAR = 2011
 
+# Timeout for plot generation in ProcessPoolExecutor (seconds)
+# Matplotlib can be slow, especially on first run (font cache, etc.)
+PLOT_TIMEOUT = 60.0
+
 # Data expiration periods
 EXPIRATION_PERIODS = {
     # Tidal predictions already cover a wide past/present window
@@ -521,7 +525,10 @@ class LocationDataManager:
                     if plot_tasks:
                         self.log(f"Waiting for {len(plot_tasks)} plot task(s)...")
                         try:
-                            await asyncio.gather(*plot_tasks)
+                            await asyncio.wait_for(
+                                asyncio.gather(*plot_tasks),
+                                timeout=PLOT_TIMEOUT,
+                            )
                             # Store results in memory
                             if live_temps_task is not None:
                                 self._plots["live_temps"] = live_temps_task.result()
@@ -534,12 +541,17 @@ class LocationDataManager:
                                     "12mo"
                                 ]
                             self.log(f"Completed {len(plot_tasks)} plot task(s).")
+                        except TimeoutError:
+                            self.log(
+                                f"Plot generation timed out after {PLOT_TIMEOUT}s",
+                                level=logging.ERROR,
+                            )
+                            # Tasks will be retried on next update interval
                         except Exception as e:
                             self.log(
                                 f"Error during parallel plot generation: {e}",
                                 level=logging.ERROR,
                             )
-                            # Decide whether to raise e or just log
 
                 except Exception as e:
                     # Log the exception but continue loop to retry on next interval

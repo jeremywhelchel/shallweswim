@@ -41,6 +41,9 @@ from shallweswim.core.feeds import (
 
 # Data store for location data will be stored in app.state.data_managers
 
+# Timeout for on-demand plot generation (seconds)
+# Shorter than background (60s) since user is waiting
+PLOT_TIMEOUT = 30.0
 
 # Filter the specific Pydantic serialization warning globally for production
 # Note: Tests might handle this separately (e.g., via pytest markers/config)
@@ -361,17 +364,27 @@ def register_routes(app: fastapi.FastAPI) -> None:
             tides_data = data_manager._feeds.get(FEED_TIDES).values  # type: ignore[union-attr]
             currents_data = data_manager._feeds.get(FEED_CURRENTS).values  # type: ignore[union-attr]
 
-            # Offload plotting to the process pool
+            # Offload plotting to the process pool with timeout
             pool = app.state.process_pool
             loop = asyncio.get_running_loop()
-            fig = await loop.run_in_executor(
-                pool,
-                plot.create_tide_current_plot,  # Function to run
-                tides_data,  # Argument 1
-                currents_data,  # Argument 2
-                ts,  # Argument 3
-                cfg,  # Argument 4
+            fig = await asyncio.wait_for(
+                loop.run_in_executor(
+                    pool,
+                    plot.create_tide_current_plot,  # Function to run
+                    tides_data,  # Argument 1
+                    currents_data,  # Argument 2
+                    ts,  # Argument 3
+                    cfg,  # Argument 4
+                ),
+                timeout=PLOT_TIMEOUT,
             )
+        except TimeoutError as e:
+            logging.error(
+                f"[{location}] Plot generation timed out after {PLOT_TIMEOUT}s"
+            )
+            raise HTTPException(
+                status_code=503, detail="Plot generation timed out"
+            ) from e
         except AssertionError as e:
             # The function now raises assertions instead of returning None
             raise HTTPException(status_code=404, detail=str(e)) from e

@@ -31,6 +31,8 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run integration tests
+        env:
+          MPLBACKEND: Agg
         run: uv run pytest -v -m integration --run-integration --log-cli-level=INFO --junitxml=integration-test-results.xml
 
       - name: Upload test results on failure

@@ -15,7 +15,6 @@ import os
 import platform
 from collections.abc import AsyncGenerator
 from concurrent.futures import ProcessPoolExecutor
-from typing import cast
 
 # Third-party imports
 import aiohttp
@@ -26,7 +25,6 @@ import fastapi
 import httpx
 import pytest
 import pytest_asyncio
-from fastapi.testclient import TestClient
 
 from shallweswim import api, config
 from shallweswim.types import CurrentDirection
@@ -50,10 +48,11 @@ def test_00_environment_info() -> None:
 
 
 @pytest_asyncio.fixture(scope="module")
-async def api_client() -> AsyncGenerator[TestClient]:
-    """Create a test client for API testing.
+async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
+    """Create a FastAPI app for API testing.
 
     This creates a dedicated FastAPI app with only the API routes registered.
+    Tests use httpx.AsyncClient with ASGITransport to make requests.
     """
 
     # Create a dedicated FastAPI app for API testing only
@@ -98,11 +97,8 @@ async def api_client() -> AsyncGenerator[TestClient]:
         # Register only the API routes
         api.register_routes(app)
 
-        # Create a test client for the API-only app
-        client = TestClient(app)
-
-        # Yield the client to allow tests to run
-        yield client
+        # Yield the app to allow tests to run
+        yield app
 
         # Clean up all data managers after tests are complete
         for data_manager in app.state.data_managers.values():
@@ -298,9 +294,10 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
     # TODO: Add validation for other fields if needed
 
 
+@pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.parametrize("location_code", TEST_LOCATIONS)
-def test_conditions_api(api_client: TestClient, location_code: str) -> None:
+async def test_conditions_api(test_app: fastapi.FastAPI, location_code: str) -> None:
     """Test the conditions API endpoint for all configured locations.
 
     This test dynamically tests all locations in the configuration.
@@ -311,8 +308,7 @@ def test_conditions_api(api_client: TestClient, location_code: str) -> None:
     assert location_config is not None, f"Config for {location_code} not found"
 
     # Check if data is ready for this location
-    app = cast(fastapi.FastAPI, api_client.app)
-    data_manager = app.state.data_managers[location_code]
+    data_manager = test_app.state.data_managers[location_code]
     if not data_manager.ready:
         if location_config.test_required:
             pytest.fail(
@@ -323,7 +319,11 @@ def test_conditions_api(api_client: TestClient, location_code: str) -> None:
                 f"Location {location_code} data unavailable - skipping (station outage?)"
             )
 
-    response = api_client.get(f"/api/{location_code}/conditions")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=test_app), base_url="http://test"
+    ) as client:
+        response = await client.get(f"/api/{location_code}/conditions")
+
     validate_conditions_response(response, location_code)
 
     # Verify location-specific details
@@ -459,9 +459,10 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
     assert "plot_url" in nav, "Missing plot URL"
 
 
+@pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.parametrize("location_code", ["nyc"])
-def test_currents_api(api_client: TestClient, location_code: str) -> None:
+async def test_currents_api(test_app: fastapi.FastAPI, location_code: str) -> None:
     """Test the currents API endpoint for all configured locations.
 
     This test dynamically tests all locations in the configuration.
@@ -470,25 +471,29 @@ def test_currents_api(api_client: TestClient, location_code: str) -> None:
     location_config = config.get(location_code)
     assert location_config is not None, f"Config for {location_code} not found"
 
-    response = api_client.get(f"/api/{location_code}/currents")
-    validate_currents_response(response, location_code)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=test_app), base_url="http://test"
+    ) as client:
+        response = await client.get(f"/api/{location_code}/currents")
+        validate_currents_response(response, location_code)
 
-    # For locations with currents, verify the response details
-    if response.status_code == 200:
-        data = response.json()
-        assert location_config.name in data["location"]["name"]
-        assert location_config.swim_location in data["location"]["swim_location"]
+        # For locations with currents, verify the response details
+        if response.status_code == 200:
+            data = response.json()
+            assert location_config.name in data["location"]["name"]
+            assert location_config.swim_location in data["location"]["swim_location"]
 
-        # Test with a shift parameter
-        shift_response = api_client.get(f"/api/{location_code}/currents?shift=60")
-        validate_currents_response(shift_response, location_code)
-        if shift_response.status_code == 200:
-            shift_data = shift_response.json()
-            assert shift_data["navigation"]["shift"] == 60
+            # Test with a shift parameter
+            shift_response = await client.get(f"/api/{location_code}/currents?shift=60")
+            validate_currents_response(shift_response, location_code)
+            if shift_response.status_code == 200:
+                shift_data = shift_response.json()
+                assert shift_data["navigation"]["shift"] == 60
 
 
+@pytest.mark.asyncio
 @pytest.mark.integration
-def test_healthy_endpoint(api_client: TestClient) -> None:
+async def test_healthy_endpoint(test_app: fastapi.FastAPI) -> None:
     """Test the healthy API endpoint returns a valid response.
 
     The endpoint uses a lenient health check:
@@ -498,7 +503,10 @@ def test_healthy_endpoint(api_client: TestClient) -> None:
     This ensures single station outages don't mark the entire service unhealthy.
     For detailed per-feed status, use /api/status instead.
     """
-    response = api_client.get("/api/healthy")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=test_app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/healthy")
 
     # Verify response status code is either 200 (all healthy) or 503 (some unhealthy)
     assert response.status_code in [
@@ -518,10 +526,14 @@ def test_healthy_endpoint(api_client: TestClient) -> None:
         assert "detail" in data
 
 
+@pytest.mark.asyncio
 @pytest.mark.integration
-def test_get_current_tide_plot_nyc(api_client: TestClient) -> None:
+async def test_get_current_tide_plot_nyc(test_app: fastapi.FastAPI) -> None:
     """Test the GET /api/nyc/plots/current_tide endpoint."""
-    response = api_client.get("/api/nyc/plots/current_tide")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=test_app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/nyc/plots/current_tide")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/svg+xml"
@@ -532,10 +544,14 @@ def test_get_current_tide_plot_nyc(api_client: TestClient) -> None:
     assert "</svg>" in svg_content
 
 
+@pytest.mark.asyncio
 @pytest.mark.integration
-def test_get_live_temps_plot_nyc(api_client: TestClient) -> None:
+async def test_get_live_temps_plot_nyc(test_app: fastapi.FastAPI) -> None:
     """Test the GET /api/nyc/plots/live_temps endpoint."""
-    response = api_client.get("/api/nyc/plots/live_temps")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=test_app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/nyc/plots/live_temps")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/svg+xml"
@@ -545,14 +561,16 @@ def test_get_live_temps_plot_nyc(api_client: TestClient) -> None:
     assert "</svg>" in svg_content
 
 
+@pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.parametrize("period", ["2mo", "12mo"])
-def test_get_historic_temps_plot_nyc(api_client: TestClient, period: str) -> None:
+async def test_get_historic_temps_plot_nyc(
+    test_app: fastapi.FastAPI, period: str
+) -> None:
     """Test the GET /api/nyc/plots/historic_temps endpoint for different periods."""
     logging.info(f"[test_{period}] Starting {period} plot test")
 
-    app = cast(fastapi.FastAPI, api_client.app)
-    data_manager = app.state.data_managers["nyc"]
+    data_manager = test_app.state.data_managers["nyc"]
     cached = data_manager.get_plot(f"historic_temps_{period}")
     logging.info(
         f"[test_{period}] Plot cached: {cached is not None}, "
@@ -560,7 +578,10 @@ def test_get_historic_temps_plot_nyc(api_client: TestClient, period: str) -> Non
     )
 
     logging.info(f"[test_{period}] Making API request...")
-    response = api_client.get(f"/api/nyc/plots/historic_temps?period={period}")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=test_app), base_url="http://test"
+    ) as client:
+        response = await client.get(f"/api/nyc/plots/historic_temps?period={period}")
     logging.info(f"[test_{period}] Got response: {response.status_code}")
 
     assert response.status_code == 200

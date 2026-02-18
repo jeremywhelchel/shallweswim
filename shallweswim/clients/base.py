@@ -57,10 +57,49 @@ Error Hierarchy
 
 import abc
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import aiohttp
 import tenacity
+
+# =============================================================================
+# Shared Thread Pool Executor
+# =============================================================================
+# Used by NWIS and NDBC clients that wrap synchronous libraries (dataretrieval,
+# ndbc-api) in threads. Having our own executor allows us to control shutdown
+# behavior - particularly important for tests where we need to abandon stuck
+# threads without blocking teardown.
+#
+# The underlying libraries use `requests` internally without configurable
+# timeouts, so threads may block indefinitely on slow HTTP responses.
+# With our own executor, we can call shutdown(cancel_futures=True) to
+# abandon these threads cleanly.
+
+_blocking_executor: ThreadPoolExecutor | None = None
+
+
+def get_blocking_executor() -> ThreadPoolExecutor:
+    """Get or create the shared executor for blocking I/O operations."""
+    global _blocking_executor
+    if _blocking_executor is None:
+        _blocking_executor = ThreadPoolExecutor(
+            max_workers=8, thread_name_prefix="blocking-io"
+        )
+    return _blocking_executor
+
+
+def shutdown_blocking_executor(wait: bool = False, cancel_futures: bool = True) -> None:
+    """Shut down the shared blocking executor.
+
+    Args:
+        wait: If True, wait for all pending futures to complete.
+        cancel_futures: If True, cancel pending futures (Python 3.9+).
+    """
+    global _blocking_executor
+    if _blocking_executor is not None:
+        _blocking_executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+        _blocking_executor = None
 
 
 class BaseClientError(Exception):

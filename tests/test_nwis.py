@@ -80,24 +80,18 @@ def nwis_client(mock_session: MagicMock) -> NwisApi:
 @pytest.mark.asyncio
 async def test_temperature_success(nwis_client: NwisApi) -> None:
     """Test successful temperature fetch."""
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Set up the mock to return the proper DataFrame directly
-        mock_to_thread.return_value = create_mock_nwis_data(parameter_cd="00010")
+    # Mock nwis.get_record directly - this is what runs in the executor
+    with patch("shallweswim.clients.nwis.nwis.get_record") as mock_get_record:
+        mock_get_record.return_value = create_mock_nwis_data(parameter_cd="00010")
 
-        # Mock the dataretrieval.nwis module
-        with patch("dataretrieval.nwis.get_record") as mock_get_record:
-            # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
-            mock_get_record.return_value = None
-
-            # Call on instance
-            df = await nwis_client.temperature(
-                site_no="03292494",
-                begin_date=datetime.date(2025, 4, 19),
-                end_date=datetime.date(2025, 4, 19),
-                timezone="America/New_York",
-                location_code="sdf",
-            )
+        # Call on instance
+        df = await nwis_client.temperature(
+            site_no="03292494",
+            begin_date=datetime.date(2025, 4, 19),
+            end_date=datetime.date(2025, 4, 19),
+            timezone="America/New_York",
+            location_code="sdf",
+        )
 
     assert len(df) == 2
     assert "water_temp" in df.columns
@@ -110,25 +104,19 @@ async def test_temperature_success(nwis_client: NwisApi) -> None:
 @pytest.mark.asyncio
 async def test_temperature_celsius_param(nwis_client: NwisApi) -> None:
     """Test temperature fetch with parameter 00010 (Celsius)."""
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Set up the mock to return Celsius data
-        mock_to_thread.return_value = create_mock_nwis_data(parameter_cd="00010")
+    # Mock nwis.get_record directly - this is what runs in the executor
+    with patch("shallweswim.clients.nwis.nwis.get_record") as mock_get_record:
+        mock_get_record.return_value = create_mock_nwis_data(parameter_cd="00010")
 
-        # Mock the dataretrieval.nwis module
-        with patch("dataretrieval.nwis.get_record") as mock_get_record:
-            # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
-            mock_get_record.return_value = None
-
-            # Call on instance
-            df = await nwis_client.temperature(
-                site_no="03292494",
-                begin_date=datetime.date(2025, 4, 19),
-                end_date=datetime.date(2025, 4, 19),
-                timezone="America/New_York",
-                location_code="sdf",
-                parameter_cd="00010",  # Celsius parameter
-            )
+        # Call on instance
+        df = await nwis_client.temperature(
+            site_no="03292494",
+            begin_date=datetime.date(2025, 4, 19),
+            end_date=datetime.date(2025, 4, 19),
+            timezone="America/New_York",
+            location_code="sdf",
+            parameter_cd="00010",  # Celsius parameter
+        )
 
     assert len(df) == 2
     assert "water_temp" in df.columns
@@ -142,25 +130,19 @@ async def test_temperature_celsius_param(nwis_client: NwisApi) -> None:
 @pytest.mark.asyncio
 async def test_temperature_fahrenheit_param(nwis_client: NwisApi) -> None:
     """Test temperature fetch with parameter 00011 (Fahrenheit)."""
-    # Mock the asyncio.to_thread function
-    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        # Set up the mock to return Fahrenheit data
-        mock_to_thread.return_value = create_mock_nwis_data(parameter_cd="00011")
+    # Mock nwis.get_record directly - this is what runs in the executor
+    with patch("shallweswim.clients.nwis.nwis.get_record") as mock_get_record:
+        mock_get_record.return_value = create_mock_nwis_data(parameter_cd="00011")
 
-        # Mock the dataretrieval.nwis module
-        with patch("dataretrieval.nwis.get_record") as mock_get_record:
-            # The function is mocked via asyncio.to_thread, so this doesn't need to do anything
-            mock_get_record.return_value = None
-
-            # Call on instance
-            df = await nwis_client.temperature(
-                site_no="03292494",
-                begin_date=datetime.date(2025, 4, 19),
-                end_date=datetime.date(2025, 4, 19),
-                timezone="America/New_York",
-                location_code="sdf",
-                parameter_cd="00011",  # Fahrenheit parameter
-            )
+        # Call on instance
+        df = await nwis_client.temperature(
+            site_no="03292494",
+            begin_date=datetime.date(2025, 4, 19),
+            end_date=datetime.date(2025, 4, 19),
+            timezone="America/New_York",
+            location_code="sdf",
+            parameter_cd="00011",  # Fahrenheit parameter
+        )
 
     assert len(df) == 2
     assert "water_temp" in df.columns

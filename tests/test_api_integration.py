@@ -27,6 +27,7 @@ import pytest
 import pytest_asyncio
 
 from shallweswim import api, config
+from shallweswim.clients.base import shutdown_blocking_executor
 from shallweswim.types import CurrentDirection
 
 # Mark all tests in this file as integration tests
@@ -103,6 +104,11 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
         # Clean up all data managers after tests are complete
         for data_manager in app.state.data_managers.values():
             await data_manager.stop()
+
+        # Shut down the blocking I/O executor used by NWIS/NDBC clients.
+        # This abandons any threads still stuck in HTTP requests, preventing
+        # teardown from blocking indefinitely.
+        shutdown_blocking_executor()
 
         # Shut down the process pool
         pool.shutdown(wait=False)

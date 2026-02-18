@@ -8,6 +8,7 @@ References:
 import asyncio
 import datetime
 import logging
+from functools import partial
 from typing import Any
 
 # Third-party imports
@@ -21,6 +22,7 @@ from shallweswim.clients.base import (
     BaseClientError,
     RetryableClientError,
     StationUnavailableError,
+    get_blocking_executor,
 )
 from shallweswim.util import c_to_f
 
@@ -104,15 +106,20 @@ class NdbcApi(BaseApiClient):
             # because it doesn't seem thread-safe or designed for reuse across awaits.
             api = NdbcApiClient()
 
-            # Fetch the data using asyncio.to_thread to avoid blocking
-            # Wrap with wait_for to enforce timeout (ndbc-api has no timeout support)
+            # Fetch the data using our shared executor to avoid blocking.
+            # Using our own executor (vs asyncio.to_thread's default) allows us
+            # to control shutdown - important for tests where threads may be stuck.
+            loop = asyncio.get_running_loop()
             raw_result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    api.get_data,
-                    station_id=station_id,
-                    mode=mode,
-                    start_time=start_time,
-                    end_time=end_time,
+                loop.run_in_executor(
+                    get_blocking_executor(),
+                    partial(
+                        api.get_data,
+                        station_id=station_id,
+                        mode=mode,
+                        start_time=start_time,
+                        end_time=end_time,
+                    ),
                 ),
                 timeout=self.REQUEST_TIMEOUT,
             )

@@ -13,6 +13,7 @@ References:
 import asyncio
 import datetime
 import logging
+from functools import partial
 
 # Third-party imports
 import aiohttp
@@ -26,6 +27,7 @@ from shallweswim.clients.base import (
     BaseClientError,  # Import BaseClientError
     RetryableClientError,
     StationUnavailableError,
+    get_blocking_executor,
 )
 from shallweswim.util import c_to_f
 
@@ -97,17 +99,21 @@ class NwisApi(BaseApiClient):
 
         # --- Fetch phase (network errors caught here) ---
         try:
-            # Fetch the data using asyncio.to_thread to avoid blocking
-            # dataretrieval uses requests internally
-            # Wrap with wait_for to enforce timeout (dataretrieval has no timeout support)
+            # Fetch the data using our shared executor to avoid blocking.
+            # Using our own executor (vs asyncio.to_thread's default) allows us
+            # to control shutdown - important for tests where threads may be stuck.
+            loop = asyncio.get_running_loop()
             raw_result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    nwis.get_record,
-                    sites=sites,
-                    service=service,
-                    parameterCd=parameterCd,
-                    start=start,
-                    end=end,
+                loop.run_in_executor(
+                    get_blocking_executor(),
+                    partial(
+                        nwis.get_record,
+                        sites=sites,
+                        service=service,
+                        parameterCd=parameterCd,
+                        start=start,
+                        end=end,
+                    ),
                 ),
                 timeout=self.REQUEST_TIMEOUT,
             )

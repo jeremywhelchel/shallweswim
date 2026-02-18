@@ -591,22 +591,36 @@ class LocationDataManager:
         # Add exception handling to the task
         self._update_task.add_done_callback(self._handle_task_exception)
 
-    async def stop(self) -> None:
+    async def stop(self, timeout: float = 5.0) -> None:
         """Stop the background data fetching process.
 
         This cancels the background task if it's running and waits for it to finish.
         It's important to call this method when the LocationDataManager
         is no longer needed to prevent task leaks.
+
+        Args:
+            timeout: Max seconds to wait for task cancellation. If exceeded,
+                    the task is abandoned (thread may still be running but
+                    won't block shutdown).
         """
         if self._update_task and not self._update_task.done():
             self.log("Stopping data fetch task")
             self._update_task.cancel()
             try:
-                # Wait for the task to actually finish cancelling
-                await self._update_task
+                # Wait for the task to finish cancelling, but don't block forever.
+                # If the task is stuck in asyncio.to_thread(), the thread can't
+                # be interrupted - it will complete eventually but we shouldn't
+                # block teardown waiting for it.
+                await asyncio.wait_for(self._update_task, timeout=timeout)
             except asyncio.CancelledError:
                 # This is expected, signifies successful cancellation
                 self.log("Data fetch task successfully cancelled")
+            except TimeoutError:
+                # Task didn't finish in time - likely stuck in a blocking thread
+                self.log(
+                    f"Data fetch task did not finish within {timeout}s, abandoning",
+                    level=logging.WARNING,
+                )
             except Exception as e:
                 # Log any other unexpected error during task finalization
                 self.log(

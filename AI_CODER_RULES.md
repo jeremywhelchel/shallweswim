@@ -62,6 +62,34 @@ shallweswim/
 - Background update loop: Catch external errors, log them, continue loop to retry on next interval
 - Never silently swallow errors - always log at appropriate level (WARNING for expected, ERROR for unexpected)
 
+## Querying Production Logs
+
+Query Cloud Run logs using environment variables from `.env` (never use `gcloud auth`):
+
+```bash
+# Load env vars and query recent errors
+export $(grep -v '^#' .env | xargs) && gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND severity>=WARNING' \
+  --limit=50 --format='table(timestamp,severity,textPayload)'
+
+# Query specific time window
+export $(grep -v '^#' .env | xargs) && gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND timestamp>="2026-02-18T20:00:00Z" AND timestamp<="2026-02-18T21:00:00Z"' \
+  --limit=100 --format='table(timestamp,severity,textPayload)'
+
+# Get full JSON details for errors
+export $(grep -v '^#' .env | xargs) && gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND severity>=ERROR' \
+  --limit=20 --format=json
+
+# Filter by text content
+export $(grep -v '^#' .env | xargs) && gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND textPayload:"san"' \
+  --limit=30 --format='table(timestamp,textPayload)'
+```
+
+Required `.env` variables: `CLOUDSDK_CORE_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`
+
 ## Before Implementing
 
 - Check existing patterns in similar code before writing new code

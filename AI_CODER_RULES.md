@@ -58,8 +58,8 @@ shallweswim/
 ## Error Handling Philosophy
 
 - **Internal bugs (our code)**: Fail fast, log ERROR, let it crash - developers need to notice and fix
-- **External API failures (NOAA, USGS)**: Log ERROR for visibility, but continue/retry - transient issues self-heal
-- Background update loop: Catch external errors, log them, continue loop to retry on next interval
+- **External API failures (NOAA, USGS)**: Log WARNING for station unavailability, ERROR for unexpected - continue with scheduled retry
+- **Feed scheduling**: All fetch attempts (success or failure) schedule next attempt at expiration interval - prevents runaway retries
 - Never silently swallow errors - always log at appropriate level (WARNING for expected, ERROR for unexpected)
 
 ## Querying Production Logs

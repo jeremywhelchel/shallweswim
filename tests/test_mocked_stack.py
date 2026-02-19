@@ -560,13 +560,14 @@ async def test_all_feeds_expired_but_have_stale_data(
     # Data is loaded (fixture waits for ready)
     assert manager.has_data is True
 
-    # Manually expire all feeds by setting fetch_timestamp to past
+    # Manually expire all feeds by setting timestamps to past
     old_time = datetime.datetime.now(datetime.UTC).replace(
         tzinfo=None
     ) - datetime.timedelta(days=1)
     for feed in manager._feeds.values():
         if feed is not None:
             feed._fetch_timestamp = old_time
+            feed._next_fetch_after = old_time  # Used by is_expired
 
     # Verify feeds are now expired
     for feed in manager._feeds.values():

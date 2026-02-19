@@ -554,10 +554,11 @@ class LocationDataManager:
                             )
 
                 except Exception as e:
-                    # Log the exception but continue loop to retry on next interval
-                    # Feed stays stale until the next successful refresh
+                    # Unexpected error - log and continue loop
+                    # Note: StationUnavailableError is handled at the feed level
+                    # and doesn't propagate here. This catches other errors
+                    # (e.g., plot generation failures, unexpected API errors).
                     self.log(f"Error in data update loop: {e}", level=logging.ERROR)
-                    # Don't re-raise - allow loop to continue and retry
 
                 # Set the ready event after the first successful update
                 if not self._ready_event.is_set():

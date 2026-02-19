@@ -114,14 +114,26 @@ Background Task → Feed → ApiClient → External Service → Update Cache
 
 External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) may have temporary outages. The application handles these gracefully through principled error handling.
 
+### Feed Scheduling
+
+Feeds track two timestamps:
+
+- `_fetch_timestamp`: When data was successfully fetched (for `age` monitoring)
+- `_next_fetch_after`: When to attempt next fetch (for scheduling)
+
+Both success and failure update `_next_fetch_after`, preventing runaway retries:
+
+- **Success**: Set both `_fetch_timestamp` and `_next_fetch_after`
+- **StationUnavailableError**: Only set `_next_fetch_after` (data stays stale but won't retry immediately)
+- **Other errors**: Set `_next_fetch_after`, then propagate error for logging
+
 ### Two Code Paths
 
 **Background feed refresh** (populates data):
 
-- `StationUnavailableError` → WARNING log (no alert)
-- Other `BaseClientError` → ERROR log (alert)
-- Other exceptions → ERROR log (alert)
-- Feed stays stale, retries on next interval
+- `StationUnavailableError` → WARNING log (no alert), schedules retry at normal interval
+- Other `BaseClientError` → ERROR log (alert), schedules retry at normal interval
+- Other exceptions → ERROR log (alert), schedules retry at normal interval
 
 **API request handlers** (serves users):
 

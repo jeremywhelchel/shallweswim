@@ -58,7 +58,10 @@ class Feed(BaseModel, abc.ABC):
     expiration_interval: datetime.timedelta | None
 
     # Private fields - not included in serialization but still validated
-    _fetch_timestamp: datetime.datetime | None = None
+    _fetch_timestamp: datetime.datetime | None = None  # When data was fetched (for age)
+    _next_fetch_after: datetime.datetime | None = (
+        None  # When to try again (for scheduling)
+    )
     _data: pd.DataFrame | None = None
     # Event used to signal when data is ready
     _ready_event: asyncio.Event = asyncio.Event()
@@ -101,24 +104,19 @@ class Feed(BaseModel, abc.ABC):
 
     @property
     def is_expired(self) -> bool:
-        """Check if the feed data has expired and needs to be refreshed.
+        """Check if the feed should attempt a new fetch.
+
+        Uses _next_fetch_after for scheduling, which is set on both success
+        and failure. This prevents runaway retries when a station is unavailable.
 
         Returns:
-            True if data is expired or not yet fetched, False otherwise
+            True if we should attempt to fetch, False otherwise
         """
-        if not self._fetch_timestamp:
-            return True
+        if self._next_fetch_after is None:
+            return True  # Never attempted, should fetch
         if not self.expiration_interval:
-            return False
-
-        # Use age to calculate the age
-        age_td = self.age
-        # age will never return None here because we already checked self._fetch_timestamp
-        assert age_td is not None
-
-        # Check age directly against the configured interval
-        assert self.expiration_interval is not None  # Help mypy
-        return age_td > self.expiration_interval
+            return False  # No expiration configured, never expires
+        return utc_now() > self._next_fetch_after
 
     @property
     def is_healthy(self) -> bool:
@@ -235,7 +233,14 @@ class Feed(BaseModel, abc.ABC):
             return False
 
     async def update(self, clients: dict[str, BaseApiClient]) -> None:
-        """Update the data from this feed if it is expired."""
+        """Update the data from this feed if it is expired.
+
+        On success: updates _fetch_timestamp (for age tracking) and _next_fetch_after.
+        On failure: only updates _next_fetch_after to prevent runaway retries.
+
+        StationUnavailableError is handled gracefully - the feed schedules its next
+        attempt and doesn't propagate the error. Other errors are re-raised.
+        """
         if not self.is_expired:
             self.log(
                 f"Skipping update for non-expired {self.__class__.__name__}",
@@ -254,25 +259,30 @@ class Feed(BaseModel, abc.ABC):
             df = self._remove_outliers(df)
 
             self._data = df
-            self._fetch_timestamp = utc_now()
+            self._fetch_timestamp = utc_now()  # Track when data was fetched (for age)
             # Set the ready event to signal that data is available
             self._ready_event.set()
             self.log(f"Successfully updated {self.__class__.__name__}")
 
         except StationUnavailableError as e:
-            # Expected operational condition - log at WARNING (no GCP alerts)
+            # Expected operational condition - station has no data
+            # Log at WARNING (no GCP alerts), schedule next attempt, don't propagate
             # See ARCHITECTURE.md Section 5 for error handling documentation
             self.log(
                 f"Station unavailable for {self.__class__.__name__}: {e}",
                 logging.WARNING,
             )
             self._last_error = e
-            raise
+            # Don't raise - just schedule next attempt via finally block
         except Exception as e:
             # Unexpected error - log at ERROR (triggers GCP alerts)
             self.log(f"Error updating {self.__class__.__name__}: {e}", logging.ERROR)
             self._last_error = e
             raise
+        finally:
+            # Always schedule next fetch attempt to prevent runaway retries
+            if self.expiration_interval:
+                self._next_fetch_after = utc_now() + self.expiration_interval
 
     @abc.abstractmethod
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:

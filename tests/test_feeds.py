@@ -284,30 +284,39 @@ class TestFeedBase:
     """Tests for the base Feed class."""
 
     @pytest.mark.asyncio
-    async def test_is_expired_with_no_timestamp(self, concrete_feed: Feed) -> None:
-        """Test that a feed with no timestamp is considered expired."""
+    async def test_is_expired_with_no_next_fetch_after(
+        self, concrete_feed: Feed
+    ) -> None:
+        """Test that a feed with no _next_fetch_after is considered expired."""
+        assert concrete_feed._next_fetch_after is None
         assert concrete_feed.is_expired is True
 
     @pytest.mark.asyncio
     async def test_is_expired_with_no_interval(self, concrete_feed: Feed) -> None:
         """Test that a feed with no expiration interval is not expired."""
-        concrete_feed._fetch_timestamp = util.utc_now()
+        concrete_feed._next_fetch_after = util.utc_now() + datetime.timedelta(
+            minutes=10
+        )
         concrete_feed.expiration_interval = None
         assert concrete_feed.is_expired is False
 
     @pytest.mark.asyncio
-    async def test_is_expired_with_recent_timestamp(self, concrete_feed: Feed) -> None:
-        """Test that a feed with a recent timestamp is not expired."""
-        # Set a recent timestamp
-        concrete_feed._fetch_timestamp = util.utc_now() - datetime.timedelta(minutes=5)
+    async def test_is_expired_with_future_next_fetch_after(
+        self, concrete_feed: Feed
+    ) -> None:
+        """Test that a feed with future _next_fetch_after is not expired."""
+        # Set next fetch to 5 minutes in the future
+        concrete_feed._next_fetch_after = util.utc_now() + datetime.timedelta(minutes=5)
         concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
         assert concrete_feed.is_expired is False
 
     @pytest.mark.asyncio
-    async def test_is_expired_with_old_timestamp(self, concrete_feed: Feed) -> None:
-        """Test that a feed with an old timestamp is expired."""
-        # Set an old timestamp
-        concrete_feed._fetch_timestamp = util.utc_now() - datetime.timedelta(minutes=11)
+    async def test_is_expired_with_past_next_fetch_after(
+        self, concrete_feed: Feed
+    ) -> None:
+        """Test that a feed with past _next_fetch_after is expired."""
+        # Set next fetch to 1 minute in the past
+        concrete_feed._next_fetch_after = util.utc_now() - datetime.timedelta(minutes=1)
         concrete_feed.expiration_interval = datetime.timedelta(minutes=10)
         assert concrete_feed.is_expired is True
 
@@ -380,6 +389,58 @@ class TestFeedBase:
             assert fetch_called is True
             assert concrete_feed._data is not None
             assert concrete_feed._fetch_timestamp is not None
+            # Scheduling: _next_fetch_after should also be set
+            assert concrete_feed._next_fetch_after is not None
+
+    @pytest.mark.asyncio
+    async def test_update_sets_next_fetch_after_on_station_unavailable(
+        self, concrete_feed: Feed, mock_clients: dict[str, BaseApiClient]
+    ) -> None:
+        """Test that _next_fetch_after is set even when StationUnavailableError occurs.
+
+        This prevents runaway retry loops - the feed schedules its next
+        attempt and doesn't retry immediately.
+        """
+        from shallweswim.clients.base import StationUnavailableError
+
+        async def mock_fetch_unavailable(
+            clients: dict[str, BaseApiClient],
+        ) -> pd.DataFrame:
+            raise StationUnavailableError("Station has no data")
+
+        with patch.object(concrete_feed, "_fetch", mock_fetch_unavailable):
+            # Should NOT raise - StationUnavailableError is handled gracefully
+            await concrete_feed.update(clients=mock_clients)
+
+        # _next_fetch_after should be set (scheduling next attempt)
+        assert concrete_feed._next_fetch_after is not None
+        # _fetch_timestamp should NOT be set (no data was fetched)
+        assert concrete_feed._fetch_timestamp is None
+        # _last_error should capture the error
+        assert concrete_feed._last_error is not None
+        assert isinstance(concrete_feed._last_error, StationUnavailableError)
+
+    @pytest.mark.asyncio
+    async def test_update_sets_next_fetch_after_on_other_error(
+        self, concrete_feed: Feed, mock_clients: dict[str, BaseApiClient]
+    ) -> None:
+        """Test that _next_fetch_after is set even when other errors occur.
+
+        This ensures all errors schedule a retry, preventing runaway loops.
+        """
+
+        async def mock_fetch_error(clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+            raise ValueError("Some unexpected error")
+
+        with patch.object(concrete_feed, "_fetch", mock_fetch_error):
+            # Should raise - other errors are propagated
+            with pytest.raises(ValueError):
+                await concrete_feed.update(clients=mock_clients)
+
+        # _next_fetch_after should still be set (scheduling next attempt)
+        assert concrete_feed._next_fetch_after is not None
+        # _fetch_timestamp should NOT be set (no data was fetched)
+        assert concrete_feed._fetch_timestamp is None
 
     def test_validate_frame_with_valid_dataframe(self, concrete_feed: Feed) -> None:
         """Test that _validate_frame accepts a valid DataFrame."""
@@ -597,6 +658,8 @@ class TestFeedBase:
         # Set data and timestamp (using naive datetime)
         concrete_feed._data = valid_temp_dataframe
         concrete_feed._fetch_timestamp = util.utc_now()
+        # Set next fetch to future so is_expired is False
+        concrete_feed._next_fetch_after = util.utc_now() + datetime.timedelta(hours=1)
         concrete_feed._ready_event.set()
 
         # Get the status dictionary

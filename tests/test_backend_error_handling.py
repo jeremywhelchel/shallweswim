@@ -484,3 +484,193 @@ class TestReady:
         )
 
         assert manager.ready is True
+
+
+# =============================================================================
+# Runaway retry prevention tests
+# =============================================================================
+
+
+def create_test_feed(expiration_minutes: int = 10) -> Any:
+    """Create a test feed for runaway retry tests."""
+    import datetime
+
+    import pandas as pd
+    from pandera import DataFrameModel
+
+    from shallweswim.clients.base import BaseApiClient
+    from shallweswim.config import BaseFeedConfig
+    from shallweswim.core.feeds import Feed
+    from shallweswim.dataframe_models import WaterTempDataModel
+
+    class TestFeedConfig(BaseFeedConfig, frozen=True):
+        """Test configuration for TestFeed."""
+
+        @property
+        def citation(self) -> str:
+            return "Test Feed Citation"
+
+    class TestFeed(Feed):
+        """Concrete Feed for testing retry behavior."""
+
+        feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
+
+        @property
+        def data_model(self) -> type[DataFrameModel]:
+            """Return a simple data model for validation."""
+            return WaterTempDataModel  # type: ignore[return-value]
+
+        async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+            # Default implementation - tests override with mock
+            index = pd.date_range(start="2023-01-01", periods=3, freq="h")
+            return pd.DataFrame({"value": [1.0, 2.0, 3.0]}, index=index)
+
+    config = create_minimal_config()
+    return TestFeed(
+        location_config=config,
+        expiration_interval=datetime.timedelta(minutes=expiration_minutes),
+    )
+
+
+class TestRunawayRetryPrevention:
+    """Tests for runaway retry prevention.
+
+    Verifies the fix for the production bug where stations returning "no data"
+    caused 1500+ retries over 25 minutes because _fetch_timestamp wasn't set,
+    making is_expired return True immediately.
+
+    Key behaviors:
+    - StationUnavailableError: Handled gracefully, schedules retry, NOT propagated
+    - Other errors: Schedules retry, IS propagated
+    - Both: is_expired returns False immediately after (no runaway retry)
+    """
+
+    @pytest.mark.asyncio
+    async def test_station_unavailable_prevents_immediate_retry(self) -> None:
+        """StationUnavailableError → is_expired is False (no immediate retry).
+
+        This is the core fix for the runaway retry bug. When a station has no
+        data, we schedule the next fetch but don't mark as expired immediately.
+        """
+        feed = create_test_feed()
+
+        # Initially expired (never fetched)
+        assert feed.is_expired is True
+        assert feed._next_fetch_after is None
+
+        # Mock _fetch to raise StationUnavailableError
+        async def mock_fetch_unavailable(
+            clients: dict[str, Any],
+        ) -> None:
+            raise StationUnavailableError("Station 12345 has no data for period")
+
+        feed._fetch = mock_fetch_unavailable  # type: ignore[method-assign]
+
+        # Update should NOT raise
+        await feed.update(clients={})
+
+        # CRITICAL: is_expired should be False now (prevents runaway retry)
+        assert feed.is_expired is False, (
+            "Feed should NOT be expired immediately after StationUnavailableError. "
+            "This would cause runaway retries."
+        )
+
+        # Verify scheduling state
+        assert feed._next_fetch_after is not None, "Should schedule next attempt"
+        assert feed._fetch_timestamp is None, "No data fetched, timestamp not set"
+        assert isinstance(feed._last_error, StationUnavailableError)
+
+    @pytest.mark.asyncio
+    async def test_other_error_prevents_immediate_retry_but_propagates(self) -> None:
+        """Other errors → is_expired is False, but error IS propagated.
+
+        Unlike StationUnavailableError, other errors (network issues, parsing
+        failures) are propagated for visibility, but still schedule retry to
+        prevent runaway loops in the update loop.
+        """
+        feed = create_test_feed()
+
+        # Mock _fetch to raise a different error
+        async def mock_fetch_error(clients: dict[str, Any]) -> None:
+            raise BaseClientError("Unexpected API response format")
+
+        feed._fetch = mock_fetch_error  # type: ignore[method-assign]
+
+        # Update SHOULD raise (error is propagated)
+        with pytest.raises(BaseClientError):
+            await feed.update(clients={})
+
+        # CRITICAL: is_expired should still be False (prevents runaway retry)
+        assert feed.is_expired is False, (
+            "Feed should NOT be expired immediately after error. "
+            "This would cause runaway retries in update loop."
+        )
+
+        # Verify scheduling state
+        assert feed._next_fetch_after is not None, "Should schedule next attempt"
+        assert feed._fetch_timestamp is None, "No data fetched, timestamp not set"
+
+    @pytest.mark.asyncio
+    async def test_success_sets_both_timestamps(self) -> None:
+        """Successful fetch → both _fetch_timestamp and _next_fetch_after set.
+
+        On success, we track when data was fetched (for age monitoring) AND
+        when to try again (for scheduling).
+        """
+        import pandas as pd
+
+        feed = create_test_feed()
+
+        # Mock _fetch to return valid data (must match WaterTempDataModel schema)
+        async def mock_fetch_success(clients: dict[str, Any]) -> pd.DataFrame:
+            index = pd.date_range(start="2023-01-01", periods=3, freq="h", name="time")
+            return pd.DataFrame({"water_temp": [15.0, 16.0, 17.0]}, index=index)
+
+        feed._fetch = mock_fetch_success  # type: ignore[method-assign]
+
+        await feed.update(clients={})
+
+        # Both timestamps should be set
+        assert feed._fetch_timestamp is not None, "Should track when data was fetched"
+        assert feed._next_fetch_after is not None, "Should schedule next fetch"
+        assert feed.is_expired is False, "Should not be expired immediately"
+        assert feed._data is not None, "Should have data"
+
+    @pytest.mark.asyncio
+    async def test_error_does_not_affect_existing_data(self) -> None:
+        """Errors don't clear existing data - stale data is still served.
+
+        If we have cached data and a refresh fails, we keep serving the
+        stale data rather than returning nothing.
+        """
+        import datetime
+
+        import pandas as pd
+
+        from shallweswim import util
+
+        feed = create_test_feed()
+
+        # Set up existing data
+        index = pd.date_range(start="2023-01-01", periods=3, freq="h")
+        existing_data = pd.DataFrame({"value": [1.0, 2.0, 3.0]}, index=index)
+        feed._data = existing_data
+        feed._fetch_timestamp = util.utc_now()
+        # Set _next_fetch_after to past to make feed expired
+        feed._next_fetch_after = util.utc_now() - datetime.timedelta(hours=1)
+
+        assert feed.is_expired is True  # Ready for refresh
+
+        # Mock _fetch to raise error
+        async def mock_fetch_error(clients: dict[str, Any]) -> None:
+            raise StationUnavailableError("Station offline")
+
+        feed._fetch = mock_fetch_error  # type: ignore[method-assign]
+
+        await feed.update(clients={})
+
+        # Data should still be present (stale data preserved)
+        assert feed._data is not None, "Existing data should be preserved"
+        assert len(feed._data) == 3, "Data should not be modified"
+        # is_expired should be False (next attempt scheduled)
+        assert feed.is_expired is False

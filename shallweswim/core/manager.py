@@ -476,6 +476,7 @@ class LocationDataManager:
                         live_temps_data = (
                             live_temps_feed.values
                             if live_temps_feed is not None
+                            and live_temps_feed._data is not None
                             else None
                         )
                         temp_source_name = (
@@ -500,6 +501,7 @@ class LocationDataManager:
                         historic_temps_data = (
                             historic_temps_feed.values
                             if historic_temps_feed is not None
+                            and historic_temps_feed._data is not None
                             else None
                         )
                         temp_source_name = (

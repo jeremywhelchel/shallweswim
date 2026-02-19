@@ -50,7 +50,7 @@ def get_feed_data(
         AssertionError: If the feed data is not available
     """
     feed = feeds_dict.get(feed_name)
-    data = feed.values if feed is not None else None
+    data = feed.values if feed is not None and feed._data is not None else None
     assert data is not None
     return data
 

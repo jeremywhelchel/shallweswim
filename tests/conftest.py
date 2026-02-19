@@ -4,6 +4,9 @@ This file contains setup for integration tests that hit real NOAA CO-OPS API end
 as well as shared test fixtures including fake location configs for deterministic testing.
 """
 
+# Standard library imports
+import os
+
 # Third-party imports
 import pytest
 import pytz
@@ -129,3 +132,14 @@ def pytest_collection_modifyitems(
         for item in items:
             if "integration" in item.keywords:
                 item.add_marker(skip_integration)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Force exit on GitHub Actions to avoid pytest-asyncio cleanup hangs.
+
+    GitHub Actions has known issues with pytest cleanup hanging indefinitely
+    after tests complete. This only affects CI - local runs exit normally.
+    See: https://github.com/pytest-dev/pytest-asyncio/issues/222
+    """
+    if os.environ.get("GITHUB_ACTIONS"):
+        os._exit(exitstatus)

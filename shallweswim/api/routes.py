@@ -38,6 +38,7 @@ from shallweswim.core.feeds import (
     FEED_LIVE_TEMPS,
     FEED_TIDES,
 )
+from shallweswim.core.queries import DataUnavailableError
 
 # Data store for location data will be stored in app.state.data_managers
 
@@ -555,7 +556,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         try:
             # Get current prediction information
             current_info = app.state.data_managers[location].predict_flow_at_time(ts)
-        except ValueError as e:
+        except DataUnavailableError as e:
             raise HTTPException(status_code=503, detail=str(e)) from e
 
         # Get fwd/back shift values for navigation
@@ -576,7 +577,10 @@ def register_routes(app: fastapi.FastAPI) -> None:
         legacy_chart = None
         current_chart_filename = None
         if cfg.currents_source.has_static_charts:
-            chart_info = app.state.data_managers[location].get_chart_info(ts)
+            try:
+                chart_info = app.state.data_managers[location].get_chart_info(ts)
+            except DataUnavailableError as e:
+                raise HTTPException(status_code=503, detail=str(e)) from e
             legacy_chart = LegacyChartInfo(
                 hours_since_last_tide=round(chart_info.hours_since_last_tide, 1),
                 last_tide_type=chart_info.last_tide_type,

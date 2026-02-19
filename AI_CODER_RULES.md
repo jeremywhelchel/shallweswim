@@ -57,9 +57,17 @@ shallweswim/
 
 ## Error Handling Philosophy
 
+Two error types for data availability:
+
+| Error | Layer | When | Result |
+|-------|-------|------|--------|
+| `StationUnavailableError` | Backend (`clients/`) | NOAA/USGS returns no data | Schedules retry, swallowed |
+| `DataUnavailableError` | Core (`core/queries.py`) | Request for unavailable data | HTTP 503 |
+
 - **Internal bugs (our code)**: Fail fast, log ERROR, let it crash - developers need to notice and fix
 - **External API failures (NOAA, USGS)**: Log WARNING for station unavailability, ERROR for unexpected - continue with scheduled retry
 - **Feed scheduling**: All fetch attempts (success or failure) schedule next attempt at expiration interval - prevents runaway retries
+- **Data queries**: `get_feed_data()` raises `DataUnavailableError` (not assert) - API catches and returns 503
 - Never silently swallow errors - always log at appropriate level (WARNING for expected, ERROR for unexpected)
 
 ## Querying Production Logs

@@ -313,9 +313,13 @@ async def test_conditions_api(test_app: fastapi.FastAPI, location_code: str) -> 
     location_config = config.get(location_code)
     assert location_config is not None, f"Config for {location_code} not found"
 
-    # Check if data is ready for this location
+    # Check if data is available for this location
+    # Use has_data (not ready) because:
+    # - ready = feeds not expired (scheduling)
+    # - has_data = feeds have actual data to serve
+    # When a station is unavailable, ready=True (retry scheduled) but has_data=False
     data_manager = test_app.state.data_managers[location_code]
-    if not data_manager.ready:
+    if not data_manager.has_data:
         if location_config.test_required:
             pytest.fail(
                 f"Required location {location_code} has no data available (station outage?)"
@@ -352,12 +356,16 @@ async def test_conditions_api(test_app: fastapi.FastAPI, location_code: str) -> 
         )
 
     if has_live_temp:
+        # Temperature should be present in response (even if None when station unavailable)
         assert "temperature" in data, (
-            f"Temperature data missing for {location_code} which has live_enabled=True"
+            f"Temperature field missing for {location_code} which has live_enabled=True"
         )
-        assert "water_temp" in data["temperature"], (
-            f"Water temperature missing for {location_code}"
-        )
+        # If temperature data is available, validate it has required fields
+        # Note: data["temperature"] may be None if station is temporarily unavailable
+        if data["temperature"] is not None:
+            assert "water_temp" in data["temperature"], (
+                f"Water temperature missing for {location_code}"
+            )
     else:
         # If live_enabled is False, the API might still return temperature data if available,
         # but we shouldn't require it in our tests

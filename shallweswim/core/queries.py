@@ -30,6 +30,24 @@ from shallweswim.types import (
 )
 
 # =============================================================================
+# Exceptions
+# =============================================================================
+
+
+class DataUnavailableError(Exception):
+    """Raised when feed data is requested but not currently available.
+
+    This is an expected operational condition (not a bug) that occurs when:
+    - A station has no recent data (StationUnavailableError during fetch)
+    - Data hasn't been fetched yet (startup race)
+
+    API routes should catch this and return HTTP 503.
+    """
+
+    pass
+
+
+# =============================================================================
 # Helper functions
 # =============================================================================
 
@@ -37,7 +55,7 @@ from shallweswim.types import (
 def get_feed_data(
     feeds_dict: dict[str, feeds.Feed | None], feed_name: str
 ) -> pd.DataFrame:
-    """Get data from a feed and assert that it's available.
+    """Get data from a feed, raising if unavailable.
 
     Args:
         feeds_dict: Dictionary mapping feed names to Feed objects
@@ -47,12 +65,12 @@ def get_feed_data(
         The feed data as a pandas DataFrame
 
     Raises:
-        AssertionError: If the feed data is not available
+        DataUnavailableError: If the feed data is not available
     """
     feed = feeds_dict.get(feed_name)
-    data = feed.values if feed is not None and feed._data is not None else None
-    assert data is not None
-    return data
+    if feed is None or feed._data is None:
+        raise DataUnavailableError(f"Feed '{feed_name}' data not available")
+    return feed.values
 
 
 def get_latest_row(df: pd.DataFrame) -> pd.Series:

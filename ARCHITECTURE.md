@@ -85,8 +85,16 @@ Background Task → Feed → ApiClient → External Service → Update Cache
 
 ### Error Handling
 
-- **API Layer**: Catch internal exceptions and convert them to `HTTPException` with appropriate status codes (404, 503, etc.).
-- **Data Layer**: Fail fast. Use `AssertionError` for "impossible" states (e.g., missing app state). Raise `ValueError` or specific custom exceptions for operational errors (e.g., parsing failure).
+Two error types for data availability, at different layers:
+
+| Error | Layer | When | Result |
+|-------|-------|------|--------|
+| `StationUnavailableError` | Backend (`clients/`) | NOAA/USGS returns no data | Schedules retry, swallowed |
+| `DataUnavailableError` | Core (`core/queries.py`) | Request for unavailable data | HTTP 503 |
+
+- **API Layer**: Catch `DataUnavailableError` and convert to `HTTPException(503)`. Other exceptions become 500.
+- **Core Layer**: `get_feed_data()` raises `DataUnavailableError` when feed data is unavailable. This centralizes the check.
+- **Data Layer**: Fail fast. Use `AssertionError` for "impossible" states (e.g., missing app state).
 - **Feeds**: Feeds call API clients (which handle retries internally) and expose a "healthy" status property based on data freshness.
 
 ### Logging
@@ -141,7 +149,9 @@ Both success and failure update `_next_fetch_after`, preventing runaway retries:
 - Stale data → Serve it (better than 503 for users)
 - Other exceptions → 500 + ERROR log (bug)
 
-### Exception Classes (`clients/base.py`)
+### Exception Classes
+
+**Backend (`clients/base.py`)**:
 
 - **`StationUnavailableError`**: Use ONLY for confirmed "no data" conditions
 
@@ -155,6 +165,13 @@ Both success and failure update `_next_fetch_after`, preventing runaway retries:
 
 - **`RetryableClientError`**: Transient network issues (timeouts, connection errors)
   - Automatically retried by `BaseApiClient.request_with_retry()`
+
+**Core (`core/queries.py`)**:
+
+- **`DataUnavailableError`**: Feed data requested but not currently available
+  - Raised by `get_feed_data()` when `feed is None or feed._data is None`
+  - Expected operational condition (station outage or startup race)
+  - API routes catch this and return HTTP 503
 
 ### Client Timeouts
 

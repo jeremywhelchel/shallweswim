@@ -476,3 +476,100 @@ def test_invalid_location_returns_404(
     error_data = response.json()
     assert "detail" in error_data
     assert "not found" in error_data["detail"].lower()
+
+
+# =============================================================================
+# DataUnavailableError → HTTP 503 tests
+# =============================================================================
+
+
+def test_currents_endpoint_returns_503_when_data_unavailable(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Test that currents endpoint returns 503 when feed data is unavailable.
+
+    This tests the DataUnavailableError → HTTP 503 conversion in the API layer.
+    When a station has no data (e.g., StationUnavailableError during fetch),
+    querying for data raises DataUnavailableError, which should return 503.
+    """
+    from shallweswim.core.queries import DataUnavailableError
+
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+
+    # Mock predict_flow_at_time to raise DataUnavailableError
+    mock_manager.predict_flow_at_time.side_effect = DataUnavailableError(
+        "Feed 'currents' data not available"
+    )
+
+    response = test_client.get("/api/nyc/currents")
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    error_data = response.json()
+    assert "detail" in error_data
+    assert "currents" in error_data["detail"].lower()
+    assert "not available" in error_data["detail"].lower()
+
+
+def test_currents_endpoint_returns_503_when_chart_data_unavailable(
+    app: FastAPI, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Test that currents endpoint returns 503 when chart data is unavailable.
+
+    Even if current prediction succeeds, get_chart_info() can fail if tide
+    data is missing. This should also return 503.
+
+    This test requires has_static_charts=True to trigger the chart code path.
+    """
+    from shallweswim.core.queries import DataUnavailableError
+
+    # Create a config with has_static_charts=True
+    nyc_config_with_charts = LocationConfig(
+        code="nyc",
+        name="New York City",
+        swim_location="Test Swim Spot NYC",
+        swim_location_link="http://example.com/nyc",
+        description="Mock NYC description",
+        latitude=40.7128,
+        longitude=-74.0060,
+        timezone=pytz.timezone("US/Eastern"),
+        temp_source=CoopsTempFeedConfig(
+            station=8518750, name="The Battery", live_enabled=True
+        ),
+        tide_source=CoopsTideFeedConfig(station=8518750, name="The Battery"),
+        currents_source=CoopsCurrentsFeedConfig(
+            stations=["NYH1914"], name="Narrows North", has_static_charts=True
+        ),
+        enabled=True,
+    )
+
+    # Patch config.get to return our custom config
+    with patch("shallweswim.config.get") as mock_get:
+        mock_get.return_value = nyc_config_with_charts
+
+        mock_manager = app.state.data_managers["nyc"]
+
+        # Mock predict_flow_at_time to succeed
+        mock_dt = datetime.datetime(2025, 5, 4, 12, 0, 0)
+        mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
+            timestamp=mock_dt,
+            magnitude=0.5,
+            source_type=sw_types.DataSourceType.PREDICTION,
+            magnitude_pct=0.5,
+            direction=sw_types.CurrentDirection.FLOODING,
+            state_description="stable",
+        )
+
+        # Mock get_chart_info to raise DataUnavailableError
+        mock_manager.get_chart_info.side_effect = DataUnavailableError(
+            "Feed 'tides' data not available"
+        )
+
+        test_client = TestClient(app)
+        response = test_client.get("/api/nyc/currents")
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        error_data = response.json()
+        assert "detail" in error_data
+        assert "tides" in error_data["detail"].lower()
+        assert "not available" in error_data["detail"].lower()

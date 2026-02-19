@@ -110,6 +110,10 @@ Two error types for data availability, at different layers:
   - Other locations skip gracefully on data unavailability
   - Run with: `uv run pytest -m integration --run-integration`
 - **Fixtures**: Use `conftest.py` for shared fixtures.
+- **Warnings as Errors**: Pytest treats all warnings as errors (`filterwarnings = ["error"]`).
+  - New warnings fail tests immediately, forcing explicit decisions
+  - Known third-party warnings are filtered with comments explaining why
+  - Filtered warnings should be revisited periodically (check for upstream fixes)
 
 ## 4. Documentation
 

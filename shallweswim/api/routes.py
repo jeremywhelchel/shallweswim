@@ -650,7 +650,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 )
             feed = location_data_manager._feeds[feed_name]
 
-            # Attempt to access feed data, catching other potential errors
+            # Check if feed is configured and has data available
+            if feed is None or feed._data is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Feed '{feed_name}' data temporarily unavailable for location '{loc}'",
+                )
+
             df = feed.values
             logging.info(
                 f"Successfully retrieved and validated feed '{feed_name}' for location '{loc}'."

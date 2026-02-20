@@ -35,7 +35,7 @@ jobs:
       - name: Run integration tests
         env:
           MPLBACKEND: Agg
-        run: uv run pytest -v -m integration --run-integration --timeout=300 --log-cli-level=INFO --junitxml=integration-test-results.xml --reruns 3 --reruns-delay 5
+        run: uv run pytest -v -m integration --run-integration --timeout=300 --log-cli-level=INFO --junitxml=integration-test-results.xml --reruns 3 --reruns-delay 60
 
       - name: Upload test results on failure
         if: failure()

@@ -1,11 +1,11 @@
 name: Type Checking
-# Run basedpyright type checking on every push
+# Run pyrefly type checking on every push
 on: [push]
 
 jobs:
-  basedpyright:
+  pyrefly:
     runs-on: ubuntu-latest
-    name: Run basedpyright type checker
+    name: Run pyrefly type checker
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,5 +19,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      - name: Run basedpyright type checking
-        run: uv run basedpyright
+      - name: Run pyrefly type checking
+        run: uv run pyrefly check .

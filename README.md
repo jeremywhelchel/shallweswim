@@ -135,7 +135,7 @@ uv run pytest -v -k "not integration"
 uv run pytest -v -m integration --run-integration
 
 # Run type checking
-uv run basedpyright
+uv run pyrefly check .
 
 # Run linting
 uv run ruff check .
@@ -212,7 +212,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 GitHub Actions workflows automatically verify the following on every push:
 
 - **Unit Tests**: All unit tests pass
-- **Type Checking**: No type errors found by basedpyright
+- **Type Checking**: No type errors found by pyrefly
 - **Code Quality**: Ruff linting and formatting checks pass
 
 Additionally, a separate integration test workflow runs daily to ensure compatibility with external APIs.

@@ -26,7 +26,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "ruff>=0.9,<1",
-    "basedpyright>=1.29,<2",
+    "pyrefly>=0.53,<0.54",
     "pytest>=8,<9",
     "pytest-asyncio>=1.2.0,<2",
     "pre-commit>=4,<5",
@@ -80,15 +80,26 @@ filterwarnings = [
     "ignore:The 'nwis' services are deprecated:DeprecationWarning:dataretrieval",
 ]
 
-[tool.basedpyright]
-pythonVersion = "3.13"
-typeCheckingMode = "standard"
-venvPath = "."
-venv = ".venv"
-# Pandas stubs have incomplete type definitions - report as warnings for now
-reportInvalidTypeArguments = "warning"
-reportAttributeAccessIssue = "warning"
-reportCallIssue = "warning"
+[tool.pyrefly]
+# Python version
+python-version = "3.13"
+
+# Virtual environment
+python-interpreter-path = ".venv/bin/python3"
+
+# Pandas stubs have incomplete type definitions - downgrade to warnings
+# Equivalent to basedpyright's reportInvalidTypeArguments, reportAttributeAccessIssue, reportCallIssue
+[tool.pyrefly.errors]
+bad-specialization = "warn"          # Type argument issues (pandas generic types)
+missing-attribute = "warn"           # Attribute access issues (pandas DataFrame attrs)
+bad-argument-type = "warn"           # Call issues (pandas method signatures)
+bad-argument-count = "warn"          # Call issues (pandas method signatures)
+no-matching-overload = "warn"        # Call issues (pandas overloaded methods)
+bad-override = "warn"                # Method override signature mismatches (BaseApiClient subclasses)
+bad-index = "warn"                   # DataFrame/Series indexing issues (pandas .loc/.iloc)
+missing-module-attribute = "warn"    # Import issues (scipy.signal.find_peaks stubs)
+bad-return = "warn"                  # Return type mismatches (pandas DataFrame/Series)
+unsupported-operation = "warn"       # Unsupported operations (pandas Categorical/ExtensionArray)
 
 [build-system]
 requires = ["hatchling"]

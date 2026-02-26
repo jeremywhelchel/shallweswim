@@ -1,1 +1,1 @@
-AI_CODER_RULES.md
+AGENTS.md

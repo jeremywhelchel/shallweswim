@@ -33,6 +33,9 @@ from scipy.signal import find_peaks
 from shallweswim import config as config_lib
 from shallweswim import types, util
 
+# Re-export from util for backwards compatibility
+from shallweswim.util import get_current_chart_filename
+
 # Set default Seaborn theme settings for consistent plot appearance
 sns.set_theme()
 sns.axes_style("darkgrid")
@@ -700,52 +703,6 @@ class ArrowPosition:
     x: int  # x coordinate on the map
     y: int  # y coordinate on the map
     angle: int  # flood direction in degrees
-
-
-# Magnitude bins for discretizing current strengths
-# TODO: Something off with these. Likely should be using the midpoint or some such
-# Which image is representative for the full range?
-MAGNITUDE_BINS = [0, 10, 30, 45, 55, 70, 90, 100]
-
-
-def bin_magnitude(magnitude_pct: float) -> int:
-    """Convert a magnitude percentage to a binned value.
-
-    Maps a magnitude percentage (0.0-1.0) to one of the predefined bin values
-    in MAGNITUDE_BINS to determine which current chart to display.
-
-    Args:
-        magnitude_pct: Magnitude as a percentage (0.0-1.0)
-
-    Returns:
-        The bin value (integer from MAGNITUDE_BINS)
-
-    Raises:
-        AssertionError: If magnitude_pct is outside the valid range
-    """
-    assert magnitude_pct >= 0 and magnitude_pct <= 1.0, magnitude_pct
-    i = np.digitize([magnitude_pct * 100], MAGNITUDE_BINS, right=True)[0]
-    return int(MAGNITUDE_BINS[i])
-
-
-def get_current_chart_filename(
-    ef: str, magnitude_bin: int, location_code: str = "nyc"
-) -> str:
-    """Generate a filename for a current chart.
-
-    Args:
-        ef: Current direction (CurrentDirection.FLOODING.value or CurrentDirection.EBBING.value)
-        magnitude_bin: Binned magnitude value (from bin_magnitude)
-        location_code: The 3-letter location code (e.g., 'nyc')
-
-    Returns:
-        Path to the PNG file for the specified current conditions
-    """
-    # Make sure the path starts with /static/ to be properly accessible from any route
-    plot_filename = (
-        f"/static/plots/{location_code}/current_chart_{ef}_{magnitude_bin}.png"
-    )
-    return plot_filename
 
 
 def create_current_chart(ef: str, magnitude_bin: int, _: str = "") -> Figure:

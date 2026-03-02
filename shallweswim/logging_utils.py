@@ -7,8 +7,6 @@ including custom filters and handlers for different environments.
 import logging
 import os
 
-import google.cloud.logging  # type: ignore[import]
-
 # Determine project root for relative log paths (directory containing this file)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -66,6 +64,9 @@ def setup_logging() -> None:
 
     # If running in Google Cloud Run, use cloud logging
     if "K_SERVICE" in os.environ:
+        # Lazy import - only load when actually on Cloud Run
+        import google.cloud.logging  # type: ignore[import]
+
         # Setup Google Cloud logging
         # By default this captures all logs at INFO level and higher
         log_client = google.cloud.logging.Client()  # type: ignore[no-untyped-call]

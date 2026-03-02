@@ -17,7 +17,7 @@ from fastapi import HTTPException
 # Local imports
 from shallweswim import config as config_lib
 from shallweswim import data as data_lib
-from shallweswim import plot, types, util
+from shallweswim import types, util
 from shallweswim.api_types import (
     CurrentInfo,
     CurrentsResponse,
@@ -41,6 +41,18 @@ from shallweswim.core.feeds import (
 from shallweswim.core.queries import DataUnavailableError
 
 # Data store for location data will be stored in app.state.data_managers
+
+
+def _create_tide_current_plot(*args, **kwargs):  # type: ignore[no-untyped-def]
+    """Wrapper that lazily imports plot module for subprocess execution.
+
+    This avoids loading matplotlib/seaborn/scipy in the main process.
+    The heavy imports only happen in the subprocess pool worker.
+    """
+    from shallweswim import plot
+
+    return plot.create_tide_current_plot(*args, **kwargs)
+
 
 # Timeout for on-demand plot generation (seconds)
 # Shorter than background (60s) since user is waiting
@@ -371,7 +383,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             fig = await asyncio.wait_for(
                 loop.run_in_executor(
                     pool,
-                    plot.create_tide_current_plot,  # Function to run
+                    _create_tide_current_plot,  # Function to run (lazy imports plot)
                     tides_data,  # Argument 1
                     currents_data,  # Argument 2
                     ts,  # Argument 3
@@ -587,9 +599,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 chart_filename=chart_info.chart_filename,
                 map_title=chart_info.map_title,
             )
-            current_chart_filename = plot.get_current_chart_filename(
+            current_chart_filename = util.get_current_chart_filename(
                 current_info.direction.value,
-                plot.bin_magnitude(current_info.magnitude_pct),
+                util.bin_magnitude(current_info.magnitude_pct),
                 location_code=location,
             )
 

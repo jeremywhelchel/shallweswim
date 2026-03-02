@@ -9,7 +9,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy.signal import find_peaks
 
 from shallweswim import config as config_lib
 from shallweswim.core import feeds
@@ -141,6 +140,9 @@ def _process_local_magnitude_pct(
 
     # Find peaks in the magnitude data
     # Using a minimum height threshold to avoid detecting noise
+    # Lazy import to avoid loading scipy.signal at startup
+    from scipy.signal import find_peaks
+
     peaks, _ = find_peaks(magnitudes, height=0.1)
 
     if len(peaks) == 0:

@@ -12,7 +12,7 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 
 # Third-party imports
-from shallweswim import api_types, feeds, plot
+from shallweswim import api_types, feeds
 
 # Local imports
 from shallweswim import config as config_lib
@@ -25,6 +25,22 @@ from shallweswim.types import (
     TideInfo,
 )
 from shallweswim.util import utc_now
+
+
+# Lazy import wrappers for plot functions to avoid loading matplotlib/seaborn in main process
+def _generate_live_temp_plot(*args, **kwargs):  # type: ignore[no-untyped-def]
+    """Wrapper that lazily imports plot module for subprocess execution."""
+    from shallweswim import plot
+
+    return plot.generate_live_temp_plot(*args, **kwargs)
+
+
+def _generate_historic_temp_plots(*args, **kwargs):  # type: ignore[no-untyped-def]
+    """Wrapper that lazily imports plot module for subprocess execution."""
+    from shallweswim import plot
+
+    return plot.generate_historic_temp_plots(*args, **kwargs)
+
 
 # Constants
 # Default year to start historical temperature data collection
@@ -488,7 +504,7 @@ class LocationDataManager:
                             self.log("Submitting live temps plot generation.")
                             live_temps_task = loop.run_in_executor(
                                 self.process_pool,
-                                plot.generate_live_temp_plot,
+                                _generate_live_temp_plot,
                                 live_temps_data,
                                 self.config.code,
                                 temp_source_name,
@@ -516,7 +532,7 @@ class LocationDataManager:
                             self.log("Submitting historic temps plot generation.")
                             historic_temps_task = loop.run_in_executor(
                                 self.process_pool,
-                                plot.generate_historic_temp_plots,
+                                _generate_historic_temp_plots,
                                 historic_temps_data,
                                 self.config.code,
                                 temp_source_name,

@@ -1,0 +1,39 @@
+# Cloud Run service configuration
+# Deploy with: gcloud run services replace service.yaml --region=us-east4
+# Docs: https://cloud.google.com/run/docs/reference/yaml/v1
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: shallweswim
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "50"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      serviceAccountName: shallweswim@shallweswim.iam.gserviceaccount.com
+      containers:
+        - image: us-east4-docker.pkg.dev/shallweswim/gcr/shallweswim
+          ports:
+            - containerPort: 8080
+              name: http1
+          resources:
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          startupProbe:
+            httpGet:
+              path: /api/healthy?startup
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 6
+  traffic:
+    - percent: 100
+      latestRevision: true

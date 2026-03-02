@@ -32,15 +32,7 @@ steps:
     id: cloud_run_deploy
     entrypoint: gcloud
     args:
-      [
-        "run",
-        "deploy",
-        "${_SERVICE_NAME}",
-        "--image",
-        "${_IMAGE_NAME}",
-        "--region",
-        "${_REGION}",
-      ]
+      ["run", "services", "replace", "service.yaml", "--region", "${_REGION}"]
 
 options:
   dynamic_substitutions: true

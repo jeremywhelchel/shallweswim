@@ -25,6 +25,7 @@ from shallweswim.api_types import (
     LocationConditions,
     LocationInfo,
     LocationStatus,
+    LocationSummary,
     TemperatureInfo,
     TideEntry,
     TideInfo,
@@ -497,6 +498,40 @@ def register_routes(app: fastapi.FastAPI) -> None:
             code: manager.status for code, manager in app.state.data_managers.items()
         }
         return status_dict
+
+    @app.get("/api/locations", response_model=list[LocationSummary])
+    async def list_locations() -> list[LocationSummary]:
+        """API endpoint that returns a list of all configured swimming locations.
+
+        Returns a summary of each location including code, name, coordinates,
+        and whether data is currently available.
+
+        Returns:
+            List of LocationSummary objects for all configured locations
+        """
+        logging.info("[api] Processing locations list request")
+
+        locations = []
+        for code, cfg in config_lib.CONFIGS.items():
+            # Check if location has data available
+            has_data = False
+            if code in app.state.data_managers:
+                manager = app.state.data_managers[code]
+                if manager is not None:
+                    has_data = manager.has_data
+
+            locations.append(
+                LocationSummary(
+                    code=cfg.code,
+                    name=cfg.name,
+                    swim_location=cfg.swim_location,
+                    latitude=cfg.latitude,
+                    longitude=cfg.longitude,
+                    has_data=has_data,
+                )
+            )
+
+        return locations
 
     @app.get("/api/{location}/status", response_model=LocationStatus)
     async def location_status(location: str) -> LocationStatus:

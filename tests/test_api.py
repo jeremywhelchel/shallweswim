@@ -573,3 +573,44 @@ def test_currents_endpoint_returns_503_when_chart_data_unavailable(
         assert "detail" in error_data
         assert "tides" in error_data["detail"].lower()
         assert "not available" in error_data["detail"].lower()
+
+
+# =============================================================================
+# /api/locations endpoint tests
+# =============================================================================
+
+
+def test_list_locations_endpoint(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Test that /api/locations returns all configured locations with summary info."""
+    from shallweswim import config as config_lib
+    from shallweswim.api_types import LocationSummary
+
+    response = test_client.get("/api/locations")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert_json_serializable(data)
+
+    # Should be a list with all configured locations
+    assert isinstance(data, list)
+    assert len(data) == len(config_lib.CONFIGS)
+
+    # Validate each location with Pydantic
+    for loc_data in data:
+        try:
+            LocationSummary.model_validate(loc_data)
+        except Exception as e:
+            pytest.fail(f"Location failed Pydantic validation: {e}\nData: {loc_data}")
+
+    # Find NYC and verify fields match config
+    nyc_data = next((loc for loc in data if loc["code"] == "nyc"), None)
+    assert nyc_data is not None
+    nyc_config = config_lib.CONFIGS["nyc"]
+    assert nyc_data["name"] == nyc_config.name
+    assert nyc_data["swim_location"] == nyc_config.swim_location
+    assert nyc_data["latitude"] == nyc_config.latitude
+    assert nyc_data["longitude"] == nyc_config.longitude
+    # has_data should be True for nyc since it's in mock_data_managers with data
+    assert nyc_data["has_data"] is True

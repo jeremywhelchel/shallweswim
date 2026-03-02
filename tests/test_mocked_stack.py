@@ -469,6 +469,34 @@ async def test_status_with_mock_data(mock_api_client: TestClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_locations_endpoint(mock_api_client: TestClient) -> None:
+    """Locations endpoint returns list of configured locations."""
+    response = mock_api_client.get("/api/locations")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should be a list
+    assert isinstance(data, list)
+    assert len(data) > 0
+
+    # Find NYC in the list
+    nyc_data = next((loc for loc in data if loc["code"] == "nyc"), None)
+    assert nyc_data is not None
+
+    # Verify required fields
+    assert "code" in nyc_data
+    assert "name" in nyc_data
+    assert "swim_location" in nyc_data
+    assert "latitude" in nyc_data
+    assert "longitude" in nyc_data
+    assert "has_data" in nyc_data
+
+    # NYC should have data since mock_api_client waits for data
+    assert nyc_data["has_data"] is True
+
+
+@pytest.mark.asyncio
 async def test_feed_data_endpoint(mock_api_client: TestClient) -> None:
     """Raw feed data endpoint returns data."""
     response = mock_api_client.get("/api/nyc/data/tides")

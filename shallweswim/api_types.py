@@ -174,6 +174,19 @@ class LocationStatus(BaseModel):
     )
 
 
+class LocationSummary(BaseModel):
+    """Summary information for a swimming location."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(..., description="3-letter location code")
+    name: str = Field(..., description="City or region name")
+    swim_location: str = Field(..., description="Specific swimming spot name")
+    latitude: float = Field(..., description="Latitude in decimal degrees")
+    longitude: float = Field(..., description="Longitude in decimal degrees")
+    has_data: bool = Field(..., description="Whether the location can serve data")
+
+
 #############################################################
 # API RESPONSE MODELS - Complete response objects            #
 #############################################################

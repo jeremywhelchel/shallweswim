@@ -1,5 +1,6 @@
 # Cloud Run service configuration
 # Deploy with: gcloud run services replace service.yaml --region=us-east4
+# NOTE: ${IMAGE_TAG} is substituted by envsubst during Cloud Build
 # Docs: https://cloud.google.com/run/docs/reference/yaml/v1
 apiVersion: serving.knative.dev/v1
 kind: Service
@@ -18,7 +19,7 @@ spec:
       timeoutSeconds: 300
       serviceAccountName: shallweswim@shallweswim.iam.gserviceaccount.com
       containers:
-        - image: us-east4-docker.pkg.dev/shallweswim/gcr/shallweswim
+        - image: us-east4-docker.pkg.dev/shallweswim/gcr/shallweswim:${IMAGE_TAG}
           ports:
             - containerPort: 8080
               name: http1

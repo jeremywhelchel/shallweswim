@@ -14,13 +14,10 @@ steps:
     args:
       - -c
       - |
-        # Create a modern builder instance with docker-container driver
         docker buildx create --name builder --driver docker-container --use
-
-        # Build, cache, and push in one atomic operation
         docker buildx build \
           --platform linux/amd64 \
-          -t ${_IMAGE_NAME} \
+          -t ${_IMAGE_NAME}:${BUILD_ID} \
           --cache-from=type=registry,ref=${_IMAGE_NAME}:buildcache \
           --cache-to=type=registry,ref=${_IMAGE_NAME}:buildcache,mode=max \
           --push \
@@ -30,9 +27,12 @@ steps:
 
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     id: cloud_run_deploy
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      ["run", "services", "replace", "service.yaml", "--region", "${_REGION}"]
+      - -c
+      - |
+        sed "s|\$${IMAGE_TAG}|${BUILD_ID}|g" service.yaml > service-substituted.yaml
+        gcloud run services replace service-substituted.yaml --region=${_REGION}
 
 options:
   dynamic_substitutions: true

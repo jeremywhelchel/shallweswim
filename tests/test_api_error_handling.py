@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import pytz
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from shallweswim import types as sw_types
@@ -27,6 +26,7 @@ from shallweswim.config import (
 )
 from shallweswim.core.feeds import FEED_CURRENTS, FEED_TIDES
 from shallweswim.data import LocationDataManager
+from tests.helpers import create_test_app
 
 
 def create_nyc_config() -> LocationConfig:
@@ -87,7 +87,7 @@ def app_with_mock_manager() -> Any:
         Tuple of (app, mock_manager) where mock_manager can be configured
         for different test scenarios.
     """
-    app = FastAPI()
+    app = create_test_app()
     app.state.data_managers = {}
     register_routes(app)
 
@@ -282,7 +282,7 @@ def test_healthy_no_locations_returns_503() -> None:
 
     Service should be unhealthy if no locations are set up.
     """
-    app = FastAPI()
+    app = create_test_app()
     app.state.data_managers = {}  # No locations
     register_routes(app)
 
@@ -298,7 +298,7 @@ def test_healthy_no_location_has_data_returns_503() -> None:
 
     Service should be unhealthy if no location can serve data.
     """
-    app = FastAPI()
+    app = create_test_app()
     app.state.data_managers = {}
     register_routes(app)
 
@@ -326,7 +326,7 @@ def test_healthy_at_least_one_location_has_data_returns_200() -> None:
     This is a lenient check - single station outages shouldn't
     mark the entire service unhealthy.
     """
-    app = FastAPI()
+    app = create_test_app()
     app.state.data_managers = {}
     register_routes(app)
 
@@ -349,7 +349,7 @@ def test_healthy_at_least_one_location_has_data_returns_200() -> None:
 
 def test_healthy_all_locations_have_data_returns_200() -> None:
     """All locations have data → 200 (healthy)."""
-    app = FastAPI()
+    app = create_test_app()
     app.state.data_managers = {}
     register_routes(app)
 

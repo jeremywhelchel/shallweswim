@@ -3,6 +3,23 @@
 import json
 from typing import Any
 
+from fastapi import FastAPI
+from fastapi.responses import ORJSONResponse
+
+
+def create_test_app(**kwargs: Any) -> FastAPI:
+    """Create a FastAPI app configured for testing.
+
+    Uses ORJSONResponse to match production config (handles NaN -> null).
+
+    Args:
+        **kwargs: Additional arguments passed to FastAPI constructor.
+
+    Returns:
+        Configured FastAPI application.
+    """
+    return FastAPI(default_response_class=ORJSONResponse, **kwargs)
+
 
 def assert_json_serializable(obj: Any) -> None:
     """Assert that an object is JSON serializable.

@@ -13,7 +13,6 @@ import pandas as pd
 import pytest
 import pytz
 from fastapi import FastAPI, status
-from fastapi.responses import ORJSONResponse
 from fastapi.testclient import TestClient
 
 from shallweswim import types as sw_types
@@ -28,15 +27,13 @@ from shallweswim.config import (
     LocationConfig,
 )
 from shallweswim.data import LocationDataManager
-from tests.helpers import assert_json_serializable
+from tests.helpers import assert_json_serializable, create_test_app
 
 
 @pytest.fixture
 def app() -> FastAPI:
     """Create a FastAPI application for testing."""
-    # Use ORJSONResponse to match production config (handles NaN -> null)
-    app_instance = FastAPI(default_response_class=ORJSONResponse)
-    # Initialize app.state.data_managers
+    app_instance = create_test_app()
     app_instance.state.data_managers = {}
     register_routes(app_instance)
     return app_instance

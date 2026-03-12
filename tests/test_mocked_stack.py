@@ -39,6 +39,7 @@ from tests.conftest import (
     TEST_CONFIG_OBSERVATION_CURRENTS,
     TEST_CONFIG_PREDICTION_NO_CHARTS,
 )
+from tests.helpers import create_test_app
 
 
 def _mock_config_get(code: str):
@@ -237,7 +238,7 @@ async def mock_api_client() -> AsyncGenerator[TestClient]:
     """
     # Patch config.get to return our fake test configs
     with patch("shallweswim.config.get", _mock_config_get):
-        app = FastAPI()
+        app = create_test_app()
         app.state.data_managers = {}
         app.state.process_pool = ProcessPoolExecutor()
 
@@ -282,7 +283,7 @@ async def mock_api_client_with_controls() -> AsyncGenerator[
     """
     # Patch config.get to return our fake test configs
     with patch("shallweswim.config.get", _mock_config_get):
-        app = FastAPI()
+        app = create_test_app()
         app.state.data_managers = {}
         app.state.process_pool = ProcessPoolExecutor()
 
@@ -328,7 +329,7 @@ async def mock_api_client_no_wait() -> AsyncGenerator[
     """
     # Patch config.get to return our fake test configs
     with patch("shallweswim.config.get", _mock_config_get):
-        app = FastAPI()
+        app = create_test_app()
         app.state.data_managers = {}
         app.state.process_pool = ProcessPoolExecutor()
 
@@ -665,7 +666,7 @@ async def test_recovery_after_failure() -> None:
     """
     # Patch config.get to return our fake test configs
     with patch("shallweswim.config.get", _mock_config_get):
-        app = FastAPI()
+        app = create_test_app()
         app.state.data_managers = {}
         app.state.process_pool = ProcessPoolExecutor()
 
@@ -826,7 +827,7 @@ async def test_currents_endpoint_observation_source_returns_404() -> None:
     """
     # Patch config.get to return our fake test configs
     with patch("shallweswim.config.get", _mock_config_get):
-        app = FastAPI()
+        app = create_test_app()
         app.state.data_managers = {}
         app.state.process_pool = ProcessPoolExecutor()
 
@@ -867,7 +868,7 @@ async def test_currents_endpoint_prediction_no_charts_returns_null_charts() -> N
     has_static_charts=False, so legacy_chart and current_chart_filename should be null.
     """
     with patch("shallweswim.config.get", _mock_config_get):
-        app = FastAPI()
+        app = create_test_app()
         app.state.data_managers = {}
         app.state.process_pool = ProcessPoolExecutor()
 

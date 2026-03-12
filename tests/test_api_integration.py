@@ -29,6 +29,7 @@ import pytest_asyncio
 from shallweswim import api, config
 from shallweswim.clients.base import shutdown_blocking_executor
 from shallweswim.types import CurrentDirection
+from tests.helpers import create_test_app
 
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
@@ -57,7 +58,7 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
     """
 
     # Create a dedicated FastAPI app for API testing only
-    app = fastapi.FastAPI(title="ShallWeSwim API Test App")
+    app = create_test_app(title="ShallWeSwim API Test App")
 
     # Initialize app.state.data_managers
     app.state.data_managers = {}
@@ -155,9 +156,11 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
             assert "timestamp" in temp, "Missing temperature timestamp"
             assert "water_temp" in temp, "Missing water temperature value"
             assert "units" in temp, "Missing temperature units"
-            assert isinstance(temp["water_temp"], int | float), (
-                "Water temperature is not a number"
-            )
+            # water_temp can be null when upstream data has NaN (e.g., NDBC buoy gaps)
+            if temp["water_temp"] is not None:
+                assert isinstance(temp["water_temp"], int | float), (
+                    "Water temperature is not a number"
+                )
     elif "temperature" in data:
         # If temperature data is present even though live_enabled is False, validate it
         temp = data["temperature"]
@@ -165,9 +168,11 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
             assert "timestamp" in temp, "Missing temperature timestamp"
             assert "water_temp" in temp, "Missing water temperature value"
             assert "units" in temp, "Missing temperature units"
-            assert isinstance(temp["water_temp"], int | float), (
-                "Water temperature is not a number"
-            )
+            # water_temp can be null when upstream data has NaN (e.g., NDBC buoy gaps)
+            if temp["water_temp"] is not None:
+                assert isinstance(temp["water_temp"], int | float), (
+                    "Water temperature is not a number"
+                )
 
             # Always verify the timestamp is recent (within the last 3 hours)
             # Parse the timestamp - should be naive

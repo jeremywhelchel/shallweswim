@@ -24,6 +24,7 @@ import aiohttp
 import fastapi
 import uvicorn
 from fastapi import HTTPException, Request, Response, responses, templating
+from fastapi.responses import ORJSONResponse
 
 # Local imports
 from shallweswim import api, config
@@ -78,7 +79,7 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None]:
         # Context manager exits here, closing the session
 
 
-app = fastapi.FastAPI(lifespan=lifespan)
+app = fastapi.FastAPI(lifespan=lifespan, default_response_class=ORJSONResponse)
 
 
 # API response headers for preventing caching

@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 import pytz
 from fastapi import FastAPI, status
+from fastapi.responses import ORJSONResponse
 from fastapi.testclient import TestClient
 
 from shallweswim import types as sw_types
@@ -33,7 +34,8 @@ from tests.helpers import assert_json_serializable
 @pytest.fixture
 def app() -> FastAPI:
     """Create a FastAPI application for testing."""
-    app_instance = FastAPI()
+    # Use ORJSONResponse to match production config (handles NaN -> null)
+    app_instance = FastAPI(default_response_class=ORJSONResponse)
     # Initialize app.state.data_managers
     app_instance.state.data_managers = {}
     register_routes(app_instance)
@@ -614,3 +616,73 @@ def test_list_locations_endpoint(
     assert nyc_data["longitude"] == nyc_config.longitude
     # has_data should be True for nyc since it's in mock_data_managers with data
     assert nyc_data["has_data"] is True
+
+
+# =============================================================================
+# NaN HANDLING TESTS
+# =============================================================================
+
+
+def test_conditions_endpoint_handles_nan_in_current_data(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Test that /api/{location}/conditions handles NaN values from data layer.
+
+    This regression test ensures that numpy.nan values from pandas operations
+    don't cause JSON serialization errors. The bug manifested as:
+    ValueError: Out of range float values are not JSON compliant: nan
+
+    The fix uses ORJSONResponse which converts NaN to null automatically.
+    """
+    import numpy as np
+
+    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_dt = datetime.datetime(2026, 3, 12, 7, 9, 44)
+
+    # Mock temperature (required for the endpoint to work)
+    mock_manager.get_current_temperature.return_value = sw_types.TemperatureReading(
+        timestamp=mock_dt, temperature=65.0
+    )
+
+    # Mock tides
+    mock_manager.get_current_tide_info.return_value = sw_types.TideInfo(
+        past=[
+            sw_types.TideEntry(
+                time=mock_dt - datetime.timedelta(hours=6),
+                type=sw_types.TideCategory.LOW,
+                prediction=-0.5,
+            )
+        ],
+        next=[
+            sw_types.TideEntry(
+                time=mock_dt + datetime.timedelta(hours=6),
+                type=sw_types.TideCategory.HIGH,
+                prediction=1.2,
+            )
+        ],
+    )
+
+    # Mock current with NaN magnitude_pct (the actual bug scenario)
+    current_info_with_nan = sw_types.CurrentInfo(
+        timestamp=mock_dt,
+        source_type=sw_types.DataSourceType.PREDICTION,
+        direction=sw_types.CurrentDirection.FLOODING,
+        magnitude=1.5,
+        magnitude_pct=np.nan,  # This caused the original 500 error
+        state_description="getting stronger",
+    )
+    mock_manager.predict_flow_at_time.return_value = current_info_with_nan
+
+    # Call endpoint
+    response = test_client.get("/api/nyc/conditions")
+
+    # Should succeed (not 500)
+    assert response.status_code == status.HTTP_200_OK
+
+    # Should be valid JSON
+    data = response.json()
+    assert_json_serializable(data)
+
+    # NaN should be serialized as null
+    assert data["current"]["magnitude_pct"] is None
+    assert data["current"]["magnitude"] == 1.5

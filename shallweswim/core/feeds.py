@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 # Third-party imports
 import pandas as pd
-from pandera import DataFrameModel
+from pandera.pandas import DataFrameModel
 from pydantic import BaseModel, ConfigDict
 
 # Local imports

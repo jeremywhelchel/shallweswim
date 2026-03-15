@@ -496,7 +496,7 @@ def create_test_feed(expiration_minutes: int = 10) -> Any:
     import datetime
 
     import pandas as pd
-    from pandera import DataFrameModel
+    from pandera.pandas import DataFrameModel
 
     from shallweswim.clients.base import BaseApiClient
     from shallweswim.config import BaseFeedConfig

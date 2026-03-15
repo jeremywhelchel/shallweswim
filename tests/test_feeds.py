@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pandas as pd
 
 # Third-party imports
-import pandera as pa
 import pandera.errors
-import pandera.typing as pat
+import pandera.pandas as pa
+import pandera.typing.pandas as pat
 import pytest
 import pytz
 

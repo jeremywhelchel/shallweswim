@@ -4,13 +4,13 @@ import json
 from typing import Any
 
 from fastapi import FastAPI
-from fastapi.responses import ORJSONResponse
 
 
 def create_test_app(**kwargs: Any) -> FastAPI:
     """Create a FastAPI app configured for testing.
 
-    Uses ORJSONResponse to match production config (handles NaN -> null).
+    FastAPI 0.130+ uses Pydantic's native JSON serialization which handles
+    NaN -> null conversion automatically when response_model is set.
 
     Args:
         **kwargs: Additional arguments passed to FastAPI constructor.
@@ -18,7 +18,7 @@ def create_test_app(**kwargs: Any) -> FastAPI:
     Returns:
         Configured FastAPI application.
     """
-    return FastAPI(default_response_class=ORJSONResponse, **kwargs)
+    return FastAPI(**kwargs)
 
 
 def assert_json_serializable(obj: Any) -> None:

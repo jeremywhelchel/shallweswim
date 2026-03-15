@@ -629,7 +629,8 @@ def test_conditions_endpoint_handles_nan_in_current_data(
     don't cause JSON serialization errors. The bug manifested as:
     ValueError: Out of range float values are not JSON compliant: nan
 
-    The fix uses ORJSONResponse which converts NaN to null automatically.
+    FastAPI 0.130+ uses Pydantic's native JSON serialization which converts
+    NaN to null automatically when response_model is set.
     """
     import numpy as np
 

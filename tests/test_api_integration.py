@@ -567,6 +567,13 @@ async def test_get_current_tide_plot_nyc(test_app: fastapi.FastAPI) -> None:
 @pytest.mark.integration
 async def test_get_live_temps_plot_nyc(test_app: fastapi.FastAPI) -> None:
     """Test the GET /api/nyc/plots/live_temps endpoint."""
+    # Wait for plot to be generated (may take longer than initial data fetch)
+    data_manager = test_app.state.data_managers["nyc"]
+    for _ in range(60):
+        if data_manager.get_plot("live_temps") is not None:
+            break
+        await asyncio.sleep(1)
+
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=test_app), base_url="http://test"
     ) as client:
@@ -589,8 +596,15 @@ async def test_get_historic_temps_plot_nyc(
     """Test the GET /api/nyc/plots/historic_temps endpoint for different periods."""
     logging.info(f"[test_{period}] Starting {period} plot test")
 
+    # Wait for plot to be generated (may take longer than initial data fetch)
     data_manager = test_app.state.data_managers["nyc"]
-    cached = data_manager.get_plot(f"historic_temps_{period}")
+    plot_key = f"historic_temps_{period}"
+    for _ in range(60):
+        if data_manager.get_plot(plot_key) is not None:
+            break
+        await asyncio.sleep(1)
+
+    cached = data_manager.get_plot(plot_key)
     logging.info(
         f"[test_{period}] Plot cached: {cached is not None}, "
         f"size: {len(cached) if cached else 0}"

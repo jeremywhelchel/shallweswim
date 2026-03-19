@@ -567,9 +567,10 @@ async def test_get_current_tide_plot_nyc(test_app: fastapi.FastAPI) -> None:
 @pytest.mark.integration
 async def test_get_live_temps_plot_nyc(test_app: fastapi.FastAPI) -> None:
     """Test the GET /api/nyc/plots/live_temps endpoint."""
-    # Wait for plot to be generated (may take longer than initial data fetch)
+    # Wait for plot to be generated. On CI the process pool is shared across
+    # all locations (~8) and may be saturated, so wait longer than PLOT_TIMEOUT.
     data_manager = test_app.state.data_managers["nyc"]
-    for _ in range(60):
+    for _ in range(180):
         if data_manager.get_plot("live_temps") is not None:
             break
         await asyncio.sleep(1)
@@ -596,10 +597,11 @@ async def test_get_historic_temps_plot_nyc(
     """Test the GET /api/nyc/plots/historic_temps endpoint for different periods."""
     logging.info(f"[test_{period}] Starting {period} plot test")
 
-    # Wait for plot to be generated (may take longer than initial data fetch)
+    # Wait for plot to be generated. On CI the process pool is shared across
+    # all locations (~8) and may be saturated, so wait longer than PLOT_TIMEOUT.
     data_manager = test_app.state.data_managers["nyc"]
     plot_key = f"historic_temps_{period}"
-    for _ in range(60):
+    for _ in range(180):
         if data_manager.get_plot(plot_key) is not None:
             break
         await asyncio.sleep(1)

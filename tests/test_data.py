@@ -652,19 +652,11 @@ async def test_data_ready_property(
 
     # Directly set the feeds in the data manager
     data._feeds = {
-        "tides": tides_feed,
-        "live_temps": live_temps_feed,
-        "historic_temps": historic_temps_feed,
-        "currents": None,  # Not used in this test
+        feeds.FeedName.TIDES: tides_feed,
+        feeds.FeedName.LIVE_TEMPS: live_temps_feed,
+        feeds.FeedName.HISTORIC_TEMPS: historic_temps_feed,
+        feeds.FeedName.CURRENTS: None,  # Not used in this test
     }
-    # Ensure other potentially configured feeds are None if not in this test case
-    # Use a hardcoded list of all possible feed names
-    # Note: This used to use FeedName from typing.Literal, but we've simplified it
-    # to avoid type errors. The type ignore is for runtime NameError.
-    all_feed_names = ["tides", "currents", "live_temps", "historic_temps"]  # type: ignore[name-defined]
-    for feed_name in all_feed_names:
-        if feed_name not in data._feeds:
-            data._feeds[feed_name] = None
 
     # --- Test the ready property ---
     assert data.ready == expected_ready
@@ -711,10 +703,10 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
 
     # Set the mock feeds in the _feeds dictionary
     data._feeds = {
-        "tides": mock_feeds[0],
-        "currents": mock_feeds[1],
-        "live_temps": mock_feeds[2],
-        "historic_temps": None,  # Test with a None feed
+        feeds.FeedName.TIDES: mock_feeds[0],
+        feeds.FeedName.CURRENTS: mock_feeds[1],
+        feeds.FeedName.LIVE_TEMPS: mock_feeds[2],
+        feeds.FeedName.HISTORIC_TEMPS: None,  # Test with a None feed
     }
 
     # Get the status dictionary

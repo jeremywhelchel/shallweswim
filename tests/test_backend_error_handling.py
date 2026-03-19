@@ -19,7 +19,7 @@ import pytz
 from shallweswim.clients.base import BaseClientError, StationUnavailableError
 from shallweswim.config import LocationConfig
 from shallweswim.core import updater
-from shallweswim.core.feeds import FEED_TIDES
+from shallweswim.core.feeds import FEED_TIDES, FeedName
 from shallweswim.data import LocationDataManager
 
 
@@ -39,7 +39,7 @@ def create_minimal_config() -> LocationConfig:
     )
 
 
-def create_manager_with_feeds(feeds_dict: dict[str, Any]) -> LocationDataManager:
+def create_manager_with_feeds(feeds_dict: dict[FeedName, Any]) -> LocationDataManager:
     """Create a LocationDataManager with manually configured feeds.
 
     This bypasses the normal feed configuration to allow testing

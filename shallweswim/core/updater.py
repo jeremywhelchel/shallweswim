@@ -16,7 +16,9 @@ from shallweswim.clients.base import (
 from shallweswim.core import feeds
 
 
-def is_expired(feeds_dict: dict[str, feeds.Feed | None], dataset: str) -> bool:
+def is_expired(
+    feeds_dict: dict[feeds.FeedName, feeds.Feed | None], dataset: feeds.FeedName
+) -> bool:
     """Check if a dataset has expired and needs to be refreshed.
 
     Uses the feed's built-in expiration logic.
@@ -35,9 +37,9 @@ def is_expired(feeds_dict: dict[str, feeds.Feed | None], dataset: str) -> bool:
 
 
 async def update_dataset(
-    feeds_dict: dict[str, feeds.Feed | None],
+    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
     clients: dict[str, BaseApiClient],
-    dataset: str,
+    dataset: feeds.FeedName,
 ) -> None:
     """Update a specific dataset by fetching fresh data.
 

@@ -9,6 +9,7 @@ import abc
 import asyncio
 import datetime
 import logging
+from enum import StrEnum
 from typing import Any, Literal
 
 # Third-party imports
@@ -26,11 +27,33 @@ from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
 
-# Feed name constants - use these instead of string literals to prevent typos
-FEED_TIDES = "tides"
-FEED_CURRENTS = "currents"
-FEED_LIVE_TEMPS = "live_temps"
-FEED_HISTORIC_TEMPS = "historic_temps"
+
+class FeedName(StrEnum):
+    """Names of data feeds. Used as keys in feeds dicts throughout the app."""
+
+    TIDES = "tides"
+    CURRENTS = "currents"
+    LIVE_TEMPS = "live_temps"
+    HISTORIC_TEMPS = "historic_temps"
+
+
+class PlotName(StrEnum):
+    """Names of generated plot types. Used as keys in the plots dict."""
+
+    LIVE_TEMPS = "live_temps"
+    HISTORIC_TEMPS_2MO = "historic_temps_2mo"
+    HISTORIC_TEMPS_12MO = "historic_temps_12mo"
+
+
+# Convenience aliases for backwards compatibility
+FEED_TIDES = FeedName.TIDES
+FEED_CURRENTS = FeedName.CURRENTS
+FEED_LIVE_TEMPS = FeedName.LIVE_TEMPS
+FEED_HISTORIC_TEMPS = FeedName.HISTORIC_TEMPS
+
+PLOT_LIVE_TEMPS = PlotName.LIVE_TEMPS
+PLOT_HISTORIC_TEMPS_2MO = PlotName.HISTORIC_TEMPS_2MO
+PLOT_HISTORIC_TEMPS_12MO = PlotName.HISTORIC_TEMPS_12MO
 
 # Additional buffer before reporting data as expired
 # This gives the system time to refresh data without showing as expired

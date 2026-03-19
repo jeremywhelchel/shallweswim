@@ -38,6 +38,10 @@ from shallweswim.core.feeds import (
     FEED_CURRENTS,
     FEED_LIVE_TEMPS,
     FEED_TIDES,
+    PLOT_HISTORIC_TEMPS_2MO,
+    PLOT_HISTORIC_TEMPS_12MO,
+    PLOT_LIVE_TEMPS,
+    PlotName,
 )
 from shallweswim.core.queries import DataUnavailableError
 
@@ -290,7 +294,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         validate_location(location)
 
         data_manager = app.state.data_managers[location]
-        plot_bytes = data_manager.get_plot("live_temps")
+        plot_bytes = data_manager.get_plot(PLOT_LIVE_TEMPS)
 
         if plot_bytes is None:
             raise HTTPException(
@@ -320,14 +324,19 @@ def register_routes(app: fastapi.FastAPI) -> None:
         )
         validate_location(location)
 
-        if period not in ("2mo", "12mo"):
+        period_to_plot: dict[str, PlotName] = {
+            "2mo": PLOT_HISTORIC_TEMPS_2MO,
+            "12mo": PLOT_HISTORIC_TEMPS_12MO,
+        }
+        plot_name = period_to_plot.get(period)
+        if plot_name is None:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid period '{period}'. Must be '2mo' or '12mo'.",
             )
 
         data_manager = app.state.data_managers[location]
-        plot_bytes = data_manager.get_plot(f"historic_temps_{period}")
+        plot_bytes = data_manager.get_plot(plot_name)
 
         if plot_bytes is None:
             raise HTTPException(

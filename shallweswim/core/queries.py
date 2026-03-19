@@ -52,7 +52,7 @@ class DataUnavailableError(Exception):
 
 
 def get_feed_data(
-    feeds_dict: dict[str, feeds.Feed | None], feed_name: str
+    feeds_dict: dict[feeds.FeedName, feeds.Feed | None], feed_name: feeds.FeedName
 ) -> pd.DataFrame:
     """Get data from a feed, raising if unavailable.
 
@@ -176,7 +176,7 @@ def _process_local_magnitude_pct(
 
 
 def get_current_temperature(
-    feeds_dict: dict[str, feeds.Feed | None],
+    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
 ) -> TemperatureReading:
     """Get the most recent water temperature reading.
 
@@ -209,7 +209,7 @@ def get_current_temperature(
 
 
 def get_current_tide_info(
-    feeds_dict: dict[str, feeds.Feed | None],
+    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
     config: config_lib.LocationConfig,
 ) -> TideInfo:
     """Get the previous tide and upcoming tides relative to current time.
@@ -256,7 +256,7 @@ def get_current_tide_info(
 
 
 def get_chart_info(
-    feeds_dict: dict[str, feeds.Feed | None],
+    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
 ) -> LegacyChartInfo:
@@ -319,7 +319,7 @@ def get_chart_info(
 
 
 def get_current_flow_info(
-    feeds_dict: dict[str, feeds.Feed | None],
+    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
 ) -> CurrentInfo:
     """Get the latest observed current information.
 
@@ -351,7 +351,7 @@ def get_current_flow_info(
 
 
 def predict_flow_at_time(
-    feeds_dict: dict[str, feeds.Feed | None],
+    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
 ) -> CurrentInfo:

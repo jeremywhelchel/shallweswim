@@ -1,5 +1,5 @@
 # Pre-commit configuration for shallweswim
-# Philosophy: Fast hooks only. Type checking and tests run in CI.
+# Philosophy: Fast hooks only. Pyrefly type checking is <1s for the whole project.
 repos:
   # Basic file hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -34,3 +34,13 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  # Pyrefly - fast type checker (<1s for the whole project)
+  - repo: local
+    hooks:
+      - id: pyrefly
+        name: pyrefly type check
+        entry: uv run pyrefly check .
+        language: system
+        types: [python]
+        pass_filenames: false

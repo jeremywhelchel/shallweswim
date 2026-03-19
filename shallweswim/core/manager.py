@@ -48,7 +48,7 @@ DEFAULT_HISTORIC_TEMPS_START_YEAR = 2011
 
 # Timeout for plot generation in ProcessPoolExecutor (seconds)
 # Matplotlib can be slow, especially on first run (font cache, etc.)
-PLOT_TIMEOUT = 60.0
+PLOT_TIMEOUT = 120.0
 
 # Data expiration periods
 EXPIRATION_PERIODS = {
@@ -106,6 +106,16 @@ class LocationDataManager:
         # In-memory storage for generated plots (eliminates filesystem race condition)
         # Keys: "live_temps", "historic_temps_2mo", "historic_temps_12mo"
         self._plots: dict[str, bytes] = {}
+
+        # Track which plots need (re)generation, decoupled from feed expiration.
+        # Plots are marked stale when fresh feed data arrives, and cleared on
+        # successful generation. Missing plots are always regenerated regardless
+        # of this set. Existing plots continue to be served while stale.
+        self._stale_plots: set[str] = set()
+
+        # Track in-flight plot futures to avoid submitting duplicate tasks
+        # to the process pool while previous ones are still running.
+        self._pending_plot_futures: dict[str, asyncio.Future[Any]] = {}
 
     def _configure_live_temps_feed(self) -> feeds.Feed | None:
         """Configure the live temperature feed.
@@ -474,30 +484,66 @@ class LocationDataManager:
         try:
             while True:
                 try:
-                    plot_tasks = []  # Tasks for parallel execution
-
-                    # Check and update tides and currents separately
+                    # === Feed updates (respects feed scheduling semantics) ===
                     if self._expired("tides"):
                         await self._update_dataset("tides")
                     if self._expired("currents"):
                         await self._update_dataset("currents")
+                    if self._expired("live_temps"):
+                        await self._update_dataset("live_temps")
+                        if self._feeds.get("live_temps") is not None:
+                            self._stale_plots.add("live_temps")
+                    if self._expired("historic_temps"):
+                        await self._update_dataset("historic_temps")
+                        if self._feeds.get("historic_temps") is not None:
+                            self._stale_plots.add("historic_temps")
 
-                    # Track plot generation tasks with their types
+                    # === Plot generation (decoupled from feed expiration) ===
+                    # Generate if: plot is missing (first run / previous failure)
+                    # OR marked stale (fresh feed data arrived).
+                    # Existing plots continue to be served while stale.
+                    # Skip if a previous task is still in-flight to avoid
+                    # unbounded queue growth in the process pool.
+                    plot_tasks = []
                     live_temps_task: asyncio.Future[bytes] | None = None
                     historic_temps_task: asyncio.Future[dict[str, bytes]] | None = None
 
-                    if self._expired("live_temps"):
-                        await self._update_dataset("live_temps")
+                    # Clean up completed futures
+                    self._pending_plot_futures = {
+                        k: v
+                        for k, v in self._pending_plot_futures.items()
+                        if not v.done()
+                    }
+
+                    need_live_plot = (
+                        "live_temps" not in self._pending_plot_futures
+                        and (
+                            "live_temps" in self._stale_plots
+                            or self._plots.get("live_temps") is None
+                        )
+                    )
+                    need_historic_plot = (
+                        "historic_temps" not in self._pending_plot_futures
+                        and (
+                            "historic_temps" in self._stale_plots
+                            or self._plots.get("historic_temps_2mo") is None
+                            or self._plots.get("historic_temps_12mo") is None
+                        )
+                    )
+
+                    if need_live_plot or need_historic_plot:
+                        temp_source_name = (
+                            self.config.temp_source.name
+                            if self.config.temp_source
+                            else None
+                        )
+
+                    if need_live_plot:
                         live_temps_feed = self._feeds.get("live_temps")
                         live_temps_data = (
                             live_temps_feed.values
                             if live_temps_feed is not None
                             and live_temps_feed._data is not None
-                            else None
-                        )
-                        temp_source_name = (
-                            self.config.temp_source.name
-                            if self.config.temp_source
                             else None
                         )
                         if live_temps_data is not None and len(live_temps_data) >= 2:
@@ -509,20 +555,15 @@ class LocationDataManager:
                                 self.config.code,
                                 temp_source_name,
                             )
+                            self._pending_plot_futures["live_temps"] = live_temps_task
                             plot_tasks.append(live_temps_task)
 
-                    if self._expired("historic_temps"):
-                        await self._update_dataset("historic_temps")
+                    if need_historic_plot:
                         historic_temps_feed = self._feeds.get("historic_temps")
                         historic_temps_data = (
                             historic_temps_feed.values
                             if historic_temps_feed is not None
                             and historic_temps_feed._data is not None
-                            else None
-                        )
-                        temp_source_name = (
-                            self.config.temp_source.name
-                            if self.config.temp_source
                             else None
                         )
                         if (
@@ -537,6 +578,9 @@ class LocationDataManager:
                                 self.config.code,
                                 temp_source_name,
                             )
+                            self._pending_plot_futures["historic_temps"] = (
+                                historic_temps_task
+                            )
                             plot_tasks.append(historic_temps_task)
 
                     # Wait for any submitted plotting tasks to complete in parallel
@@ -550,6 +594,7 @@ class LocationDataManager:
                             # Store results in memory
                             if live_temps_task is not None:
                                 self._plots["live_temps"] = live_temps_task.result()
+                                self._stale_plots.discard("live_temps")
                             if historic_temps_task is not None:
                                 historic_results = historic_temps_task.result()
                                 self._plots["historic_temps_2mo"] = historic_results[
@@ -558,13 +603,14 @@ class LocationDataManager:
                                 self._plots["historic_temps_12mo"] = historic_results[
                                     "12mo"
                                 ]
+                                self._stale_plots.discard("historic_temps")
                             self.log(f"Completed {len(plot_tasks)} plot task(s).")
                         except TimeoutError:
                             self.log(
                                 f"Plot generation timed out after {PLOT_TIMEOUT}s",
                                 level=logging.ERROR,
                             )
-                            # Tasks will be retried on next update interval
+                            # Stale flags remain — retry after in-flight task completes
                         except Exception as e:
                             self.log(
                                 f"Error during parallel plot generation: {e}",

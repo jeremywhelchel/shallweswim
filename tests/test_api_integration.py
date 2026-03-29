@@ -13,6 +13,7 @@ import asyncio
 import logging
 import os
 import platform
+import threading
 from collections.abc import AsyncGenerator
 from concurrent.futures import ProcessPoolExecutor
 
@@ -119,9 +120,14 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
             await data_manager.stop()
 
         # Shut down the blocking I/O executor used by NWIS/NDBC clients.
-        # wait=True lets in-flight threads finish so sockets close cleanly
-        # (avoids sporadic ResourceWarning ExceptionGroup during GC).
-        shutdown_blocking_executor(wait=True)
+        # Can't use wait=True because NDBC/NWIS threads may be stuck on
+        # HTTP requests with no socket-level timeout (would block forever).
+        # Instead: cancel pending work, then give running threads a bounded
+        # grace period to finish and close sockets cleanly.
+        shutdown_blocking_executor()  # wait=False, cancel_futures=True
+        for t in threading.enumerate():
+            if t.name.startswith("blocking-io"):
+                t.join(timeout=5.0)
 
         # Shut down the process pool
         pool.shutdown(wait=False)

@@ -27,7 +27,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from shallweswim import api
+from shallweswim import api, feeds
 from shallweswim.clients.base import StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
@@ -261,14 +261,27 @@ async def mock_api_client() -> AsyncGenerator[TestClient]:
             app.state.data_managers[cfg.code].start()
 
             # Wait for data to load (should be fast with mocks)
-            await app.state.data_managers[cfg.code].wait_until_ready(timeout=10.0)
+            manager = app.state.data_managers[cfg.code]
+            await manager.wait_until_ready(timeout=10.0)
+
+            # Wait for fire-and-forget plot generation to complete.
+            # Plots are submitted to the process pool after feeds load
+            # and collected on subsequent loop iterations.
+            for _ in range(60):
+                has_live = manager.get_plot(feeds.PLOT_LIVE_TEMPS) is not None
+                has_historic = (
+                    manager.get_plot(feeds.PLOT_HISTORIC_TEMPS_12MO) is not None
+                )
+                if has_live and has_historic:
+                    break
+                await asyncio.sleep(0.5)
 
             api.register_routes(app)
 
             yield TestClient(app)
 
             # Cleanup
-            await app.state.data_managers[cfg.code].stop()
+            await manager.stop()
             app.state.process_pool.shutdown(wait=False)
 
 

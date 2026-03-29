@@ -186,12 +186,15 @@ All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIM
 
 Timeouts raise `RetryableClientError` and are automatically retried by `request_with_retry()`.
 
-### Plot Generation Timeouts
+### Plot Generation
 
-Plot generation runs in a `ProcessPoolExecutor` with timeouts to catch matplotlib hangs (common in CI due to font/backend issues):
+Plot generation runs in a `ProcessPoolExecutor` (bounded to `os.cpu_count()` workers) using a fire-and-forget pattern:
 
-- **Background plots** (`core/manager.py`): 60-second timeout. If exceeded, plots are skipped and retried on next update interval
-- **On-demand plots** (`api/routes.py`): 30-second timeout. If exceeded, returns HTTP 503 (user is waiting)
+- **Submit**: Each update loop iteration submits plot tasks to the pool via `loop.run_in_executor()` and returns immediately (no awaiting)
+- **Collect**: On the next iteration, completed futures are harvested and results stored. The async loop is never blocked by plot generation
+- **Guard**: `_pending_plot_futures` tracks in-flight work per feed — prevents duplicate submissions while a worker is still running
+- **Hard timeout** (`PLOT_HARD_TIMEOUT`, 300s): If a worker hasn't finished, tracking is dropped (orphaned worker cannot be killed — Python limitation) and the location can retry
+- **Key constraint**: `ProcessPoolExecutor` futures cannot be cancelled. Never use `asyncio.wait_for` or `asyncio.gather` on them — cancelled futures appear "done" but the worker keeps running, causing task stacking
 
 ### Logging Guidelines
 

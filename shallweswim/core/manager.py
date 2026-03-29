@@ -46,9 +46,11 @@ def _generate_historic_temp_plots(*args, **kwargs):  # type: ignore[no-untyped-d
 # Default year to start historical temperature data collection
 DEFAULT_HISTORIC_TEMPS_START_YEAR = 2011
 
-# Timeout for plot generation in ProcessPoolExecutor (seconds)
-# Matplotlib can be slow, especially on first run (font cache, etc.)
-PLOT_TIMEOUT = 120.0
+# Hard timeout for plot generation in ProcessPoolExecutor (seconds).
+# If a worker hasn't finished after this long, we assume it's hung and
+# drop tracking so the location can retry. The orphaned worker process
+# cannot be killed (Python limitation) but the pool continues working.
+PLOT_HARD_TIMEOUT = 300.0
 
 # Data expiration periods
 EXPIRATION_PERIODS: dict[feeds.FeedName, datetime.timedelta] = {
@@ -108,7 +110,10 @@ class LocationDataManager:
 
         # Track in-flight plot futures to avoid submitting duplicate tasks
         # to the process pool while previous ones are still running.
-        self._pending_plot_futures: dict[feeds.FeedName, asyncio.Future[Any]] = {}
+        # Stores (future, submitted_at) so we can detect hung workers.
+        self._pending_plot_futures: dict[
+            feeds.FeedName, tuple[asyncio.Future[Any], datetime.datetime]
+        ] = {}
 
         # Timestamp of when each plot was last generated, used to detect
         # when feed data is newer than the current plot.
@@ -485,7 +490,8 @@ class LocationDataManager:
 
         Existing plots continue to be served while regenerating.
         """
-        if feed_name in self._pending_plot_futures:
+        pending = self._pending_plot_futures.get(feed_name)
+        if pending is not None:
             return False
 
         # Missing plots always need generation
@@ -499,23 +505,75 @@ class LocationDataManager:
         generated_at = self._plot_generated_at.get(feed_name)
         return generated_at is None or feed._fetch_timestamp > generated_at
 
-    async def _generate_plots(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Submit and collect plot generation tasks.
+    def _generate_plots(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Submit and collect plot generation tasks (non-blocking).
 
         Plot generation is decoupled from feed expiration: plots are regenerated
         when missing (first run or previous failure) or when feed data is newer
         than the current plot. Existing plots continue to be served while stale.
-        In-flight futures are tracked to prevent unbounded process pool queue growth.
+
+        This method never awaits process pool results. It checks for completed
+        futures from previous iterations and submits new work if needed.
+        ProcessPoolExecutor futures cannot be cancelled (Python limitation),
+        so we never use asyncio.wait_for/gather on them — instead we poll
+        future.done() each loop tick.
         """
-        # Clean up completed futures
-        self._pending_plot_futures = {
-            k: v for k, v in self._pending_plot_futures.items() if not v.done()
-        }
+        self._collect_completed_plots()
+        self._submit_plot_tasks(loop)
 
-        plot_tasks: list[asyncio.Future[Any]] = []
-        live_temps_task: asyncio.Future[bytes] | None = None
-        historic_temps_task: asyncio.Future[dict[str, bytes]] | None = None
+    def _collect_completed_plots(self) -> None:
+        """Harvest results from completed plot futures.
 
+        For each pending future:
+        - Done with result: store plot bytes, update timestamp, remove from tracking
+        - Done with exception: log error, remove from tracking
+        - Still running past PLOT_HARD_TIMEOUT: log error, remove from tracking
+          (orphaned worker cannot be killed but location can retry)
+        - Still running within timeout: leave in tracking (blocks resubmission)
+        """
+        now = utc_now()
+        completed: list[feeds.FeedName] = []
+
+        for feed_name, (future, submitted_at) in self._pending_plot_futures.items():
+            if future.done():
+                completed.append(feed_name)
+                try:
+                    result = future.result()
+                except Exception as e:
+                    self.log(
+                        f"Plot generation failed for {feed_name}: {e}",
+                        level=logging.ERROR,
+                    )
+                    continue
+
+                # Store results based on feed type
+                if feed_name == feeds.FEED_LIVE_TEMPS:
+                    self._plots[feeds.PLOT_LIVE_TEMPS] = result
+                elif feed_name == feeds.FEED_HISTORIC_TEMPS:
+                    self._plots[feeds.PLOT_HISTORIC_TEMPS_2MO] = result["2mo"]
+                    self._plots[feeds.PLOT_HISTORIC_TEMPS_12MO] = result["12mo"]
+
+                self._plot_generated_at[feed_name] = now
+                self.log(f"Plot generation completed for {feed_name}.")
+
+            elif (now - submitted_at).total_seconds() > PLOT_HARD_TIMEOUT:
+                completed.append(feed_name)
+                self.log(
+                    f"Plot worker for {feed_name} stuck for "
+                    f">{PLOT_HARD_TIMEOUT}s, abandoning",
+                    level=logging.ERROR,
+                )
+
+        for feed_name in completed:
+            del self._pending_plot_futures[feed_name]
+
+    def _submit_plot_tasks(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Submit new plot generation tasks to the process pool if needed.
+
+        Checks each plot type and submits work for any that need regeneration.
+        Returns immediately — results are collected by _collect_completed_plots()
+        on the next loop iteration.
+        """
         need_live = self._needs_plot(feeds.FEED_LIVE_TEMPS, [feeds.PLOT_LIVE_TEMPS])
         need_historic = self._needs_plot(
             feeds.FEED_HISTORIC_TEMPS,
@@ -528,61 +586,33 @@ class LocationDataManager:
         temp_source_name = (
             self.config.temp_source.name if self.config.temp_source else None
         )
+        now = utc_now()
 
         if need_live:
             data = self._get_feed_data(feeds.FEED_LIVE_TEMPS, min_rows=2)
             if data is not None:
                 self.log("Submitting live temps plot generation.")
-                live_temps_task = loop.run_in_executor(
+                future = loop.run_in_executor(
                     self.process_pool,
                     _generate_live_temp_plot,
                     data,
                     self.config.code,
                     temp_source_name,
                 )
-                self._pending_plot_futures[feeds.FEED_LIVE_TEMPS] = live_temps_task
-                plot_tasks.append(live_temps_task)
+                self._pending_plot_futures[feeds.FEED_LIVE_TEMPS] = (future, now)
 
         if need_historic:
             data = self._get_feed_data(feeds.FEED_HISTORIC_TEMPS, min_rows=10)
             if data is not None:
                 self.log("Submitting historic temps plot generation.")
-                historic_temps_task = loop.run_in_executor(
+                future = loop.run_in_executor(
                     self.process_pool,
                     _generate_historic_temp_plots,
                     data,
                     self.config.code,
                     temp_source_name,
                 )
-                self._pending_plot_futures[feeds.FEED_HISTORIC_TEMPS] = (
-                    historic_temps_task
-                )
-                plot_tasks.append(historic_temps_task)
-
-        if not plot_tasks:
-            return
-
-        self.log(f"Waiting for {len(plot_tasks)} plot task(s)...")
-        now = utc_now()
-        try:
-            await asyncio.wait_for(asyncio.gather(*plot_tasks), timeout=PLOT_TIMEOUT)
-            if live_temps_task is not None:
-                self._plots[feeds.PLOT_LIVE_TEMPS] = live_temps_task.result()
-                self._plot_generated_at[feeds.FEED_LIVE_TEMPS] = now
-            if historic_temps_task is not None:
-                results = historic_temps_task.result()
-                self._plots[feeds.PLOT_HISTORIC_TEMPS_2MO] = results["2mo"]
-                self._plots[feeds.PLOT_HISTORIC_TEMPS_12MO] = results["12mo"]
-                self._plot_generated_at[feeds.FEED_HISTORIC_TEMPS] = now
-            self.log(f"Completed {len(plot_tasks)} plot task(s).")
-        except TimeoutError:
-            self.log(
-                f"Plot generation timed out after {PLOT_TIMEOUT}s",
-                level=logging.ERROR,
-            )
-            # In-flight futures remain — retry after they complete
-        except Exception as e:
-            self.log(f"Error during plot generation: {e}", level=logging.ERROR)
+                self._pending_plot_futures[feeds.FEED_HISTORIC_TEMPS] = (future, now)
 
     async def __update_loop(self) -> None:
         """Background task that refreshes feed data and regenerates plots.
@@ -606,7 +636,7 @@ class LocationDataManager:
                             self._feeds, self.clients, feed_name
                         )
 
-                    await self._generate_plots(loop)
+                    self._generate_plots(loop)
 
                 except Exception as e:
                     self.log(f"Error in data update loop: {e}", level=logging.ERROR)

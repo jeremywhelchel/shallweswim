@@ -46,8 +46,9 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None]:
     Yields:
         None when setup is complete
     """
-    # Create a process pool for CPU-bound tasks (e.g., plotting)
-    pool = ProcessPoolExecutor()
+    # Create a process pool for CPU-bound tasks (e.g., plotting).
+    # Bound to CPU count to prevent over-subscription on the machine.
+    pool = ProcessPoolExecutor(max_workers=os.cpu_count())
     app.state.process_pool = pool
 
     async with aiohttp.ClientSession() as session:

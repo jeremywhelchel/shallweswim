@@ -101,7 +101,7 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
         # module-scoped event loop drives process pool completion callbacks.
         nyc_manager = app.state.data_managers.get("nyc")
         if nyc_manager is not None:
-            for _ in range(60):
+            for _ in range(180):
                 has_live = nyc_manager.get_plot("live_temps") is not None
                 has_historic = nyc_manager.get_plot("historic_temps_12mo") is not None
                 if has_live and has_historic:
@@ -119,9 +119,9 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
             await data_manager.stop()
 
         # Shut down the blocking I/O executor used by NWIS/NDBC clients.
-        # This abandons any threads still stuck in HTTP requests, preventing
-        # teardown from blocking indefinitely.
-        shutdown_blocking_executor()
+        # wait=True lets in-flight threads finish so sockets close cleanly
+        # (avoids sporadic ResourceWarning ExceptionGroup during GC).
+        shutdown_blocking_executor(wait=True)
 
         # Shut down the process pool
         pool.shutdown(wait=False)

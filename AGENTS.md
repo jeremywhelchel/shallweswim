@@ -1,6 +1,6 @@
 # AI CODER RULES
 
-> **IMPORTANT:** `CLAUDE.md` and `GEMINI.md` are symlinks to this file. Do not delete or rename `AI_CODER_RULES.md` - edit it in place to update rules for all AI tools.
+> **IMPORTANT:** `CLAUDE.md` and `GEMINI.md` are symlinks to this file. Edit `AGENTS.md` in place to update rules for all AI tools.
 
 **For full documentation, see [README.md](README.md).** This file contains quick-reference rules for AI coders.
 
@@ -72,26 +72,26 @@ Two error types for data availability:
 
 ## Querying Production Logs
 
-Query Cloud Run logs using environment variables from `.env` (never use `gcloud auth`):
+Query Cloud Run logs (credentials loaded via `.envrc`/direnv — never use `gcloud auth`):
 
 ```bash
-# Load env vars and query recent errors
-export $(grep -v '^#' .env | xargs) && gcloud logging read \
+# Recent errors
+gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND severity>=WARNING' \
   --limit=50 --format='table(timestamp,severity,textPayload)'
 
-# Query specific time window
-export $(grep -v '^#' .env | xargs) && gcloud logging read \
+# Specific time window
+gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND timestamp>="2026-02-18T20:00:00Z" AND timestamp<="2026-02-18T21:00:00Z"' \
   --limit=100 --format='table(timestamp,severity,textPayload)'
 
-# Get full JSON details for errors
-export $(grep -v '^#' .env | xargs) && gcloud logging read \
+# Full JSON details for errors
+gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND severity>=ERROR' \
   --limit=20 --format=json
 
 # Filter by text content
-export $(grep -v '^#' .env | xargs) && gcloud logging read \
+gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND textPayload:"san"' \
   --limit=30 --format='table(timestamp,textPayload)'
 ```

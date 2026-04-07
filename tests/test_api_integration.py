@@ -10,6 +10,7 @@ Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
 
 # Standard library imports
 import asyncio
+import datetime
 import logging
 import os
 import platform
@@ -133,194 +134,98 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
         pool.shutdown(wait=False)
 
 
-def validate_conditions_response(response: httpx.Response, location_code: str) -> None:
-    """Validate the response from the conditions API endpoint.
+def _handle_unavailable(location_code: str, test_required: bool, reason: str) -> str:
+    """Handle unavailable feed data based on test_required.
 
-    This function dynamically validates the response based on the location's configuration.
+    For required locations, fails the test immediately.
+    For non-required locations, returns the reason to be collected by the caller.
     """
-    # Get location config to determine what should be present
-    location_config = config.get(location_code)
-    assert location_config is not None, f"Config for {location_code} not found"
+    if test_required:
+        pytest.fail(f"[{location_code}] {reason}")
+    return reason
 
-    assert response.status_code == 200
-    assert "application/json" in response.headers["content-type"]
 
-    # Parse JSON response
-    data = response.json()
+def _parse_naive_time(timestamp: str) -> datetime.datetime:
+    """Parse an ISO timestamp and strip timezone info for local-time comparison."""
+    dt = dateutil.parser.isoparse(timestamp)
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
+    return dt
 
-    # Validate top-level structure
-    assert "location" in data, "Missing location data"
 
-    # Validate temperature data if the location has a temperature source with live_enabled=True
-    has_temp_source = (
-        hasattr(location_config, "temp_source")
-        and location_config.temp_source is not None
+# --- Pure structure validators (no skip/fail logic) ---
+
+
+def validate_temperature_data(temp: dict) -> None:
+    """Validate the structure of temperature data."""
+    assert "timestamp" in temp, "Missing temperature timestamp"
+    assert "water_temp" in temp, "Missing water temperature value"
+    assert "units" in temp, "Missing temperature units"
+    if temp["water_temp"] is not None:
+        assert isinstance(temp["water_temp"], int | float), (
+            "Water temperature is not a number"
+        )
+
+
+def validate_tides_data(tides: dict, location_config: config.LocationConfig) -> None:
+    """Validate the structure and correctness of tides data."""
+    assert "past" in tides, "Missing past tides data"
+    assert "next" in tides, "Missing next tides data"
+    assert len(tides["past"]) > 0, "No past tides data"
+    assert len(tides["next"]) > 0, "No next tides data"
+
+    past_tide = tides["past"][0]
+    assert "time" in past_tide, "Missing tide time"
+    assert "type" in past_tide, "Missing tide type"
+    assert "prediction" in past_tide, "Missing tide prediction"
+    assert past_tide["type"] in [
+        "high",
+        "low",
+        "unknown",
+    ], f"Invalid tide type: {past_tide['type']}"
+
+    local_now = location_config.local_now()
+
+    for tide in tides["past"]:
+        tide_time = _parse_naive_time(tide["time"])
+        assert tide_time <= local_now, (
+            f"Past tide time {tide_time} is after local time {local_now}"
+        )
+    for tide in tides["next"]:
+        tide_time = _parse_naive_time(tide["time"])
+        assert tide_time >= local_now, (
+            f"Next tide time {tide_time} is before local time {local_now}"
+        )
+
+    all_tide_times = [tide["time"] for tide in tides["past"] + tides["next"]]
+    assert len(all_tide_times) == len(set(all_tide_times)), "Tide times are not unique"
+
+
+def validate_current_data(current_data: dict) -> None:
+    """Validate the structure of current data."""
+    assert "timestamp" in current_data
+    assert "magnitude" in current_data
+    assert "source_type" in current_data
+    assert isinstance(current_data["timestamp"], str)
+    assert isinstance(current_data["magnitude"], int | float)
+    assert isinstance(current_data["source_type"], str)
+    assert isinstance(current_data.get("direction"), str | type(None)), (
+        "Direction is not str or None"
+    )
+    if current_data.get("direction") is not None:
+        valid_directions = [direction.value for direction in CurrentDirection]
+        assert current_data["direction"] in valid_directions, (
+            f"Invalid current direction: {current_data['direction']}"
+        )
+    assert isinstance(current_data.get("magnitude_pct"), int | float | type(None)), (
+        "Magnitude pct is not number or None"
+    )
+    assert isinstance(current_data.get("state_description"), str | type(None)), (
+        "State description is not str or None"
     )
 
-    # Only check live_enabled if temp_source exists
-    has_live_temp = False
-    if has_temp_source and location_config.temp_source is not None:
-        has_live_temp = (
-            hasattr(location_config.temp_source, "live_enabled")
-            and location_config.temp_source.live_enabled is True
-        )
 
-    if has_live_temp:
-        assert "temperature" in data, (
-            f"Missing temperature data for {location_code} which has live_enabled=True"
-        )
-        temp = data["temperature"]
-        if temp is not None:
-            assert "timestamp" in temp, "Missing temperature timestamp"
-            assert "water_temp" in temp, "Missing water temperature value"
-            assert "units" in temp, "Missing temperature units"
-            # water_temp can be null when upstream data has NaN (e.g., NDBC buoy gaps)
-            if temp["water_temp"] is not None:
-                assert isinstance(temp["water_temp"], int | float), (
-                    "Water temperature is not a number"
-                )
-    elif "temperature" in data:
-        # If temperature data is present even though live_enabled is False, validate it
-        temp = data["temperature"]
-        if temp is not None:
-            assert "timestamp" in temp, "Missing temperature timestamp"
-            assert "water_temp" in temp, "Missing water temperature value"
-            assert "units" in temp, "Missing temperature units"
-            # water_temp can be null when upstream data has NaN (e.g., NDBC buoy gaps)
-            if temp["water_temp"] is not None:
-                assert isinstance(temp["water_temp"], int | float), (
-                    "Water temperature is not a number"
-                )
-
-            # Always verify the timestamp is recent (within the last 3 hours)
-            # Parse the timestamp - should be naive
-            temp_time = dateutil.parser.isoparse(temp["timestamp"])
-
-            # Make sure it's naive for comparison
-            if temp_time.tzinfo is not None:
-                temp_time = temp_time.replace(tzinfo=None)
-
-            # Get local now time (naive) from the location config
-            local_now = location_config.local_now()
-
-            # Calculate time difference
-            time_diff = local_now - temp_time
-
-            # Use a 3-hour window
-            assert time_diff.total_seconds() <= 3 * 3600, (
-                f"Temperature timestamp {temp_time} is more than 3 hours old "
-                f"(current time: {local_now}, difference: {time_diff})"
-            )
-
-    # Validate tides data if the location has a tide source
-    has_tide_source = (
-        hasattr(location_config, "tide_source")
-        and location_config.tide_source is not None
-    )
-    if has_tide_source:
-        assert "tides" in data, "Missing tides data"
-        tides = data["tides"]
-        if tides is not None:
-            assert "past" in tides, "Missing past tides data"
-            assert "next" in tides, "Missing next tides data"
-            assert len(tides["past"]) > 0, "No past tides data"
-            assert len(tides["next"]) > 0, "No next tides data"
-
-        # Validate tide entry structure
-        past_tide = tides["past"][0]
-        assert "time" in past_tide, "Missing tide time"
-        assert "type" in past_tide, "Missing tide type"
-        assert "prediction" in past_tide, "Missing tide prediction"
-        assert past_tide["type"] in [
-            "high",
-            "low",
-            "unknown",
-        ], f"Invalid tide type: {past_tide['type']}"
-
-    # Validate location details
-    location = data["location"]
-    assert location["code"] == location_code, (
-        f"Expected location code {location_code}, got {location['code']}"
-    )
-    assert "name" in location, "Missing location name"
-    assert "swim_location" in location, "Missing swim location"
-
-    # Additional validation for tides
-    if has_tide_source and "tides" in data:
-        # Get location config for timezone-aware comparisons
-        assert location_config is not None, f"Config for {location_code} not found"
-
-        # Assign tides variable again to ensure it's bound in this scope
-        tides = data["tides"]
-        assert tides is not None, "Tides data is None"
-
-        # Get the current time in the location's timezone as a naive datetime
-        # This matches how the NOAA API data is structured (local time, naive datetime)
-        local_now = location_config.local_now()
-
-        # Validate that past tides are actually in the past
-        for tide in tides["past"]:
-            tide_time = dateutil.parser.isoparse(tide["time"])
-            # Ensure the tide_time is naive for comparison
-            if tide_time.tzinfo is not None:
-                tide_time = tide_time.replace(tzinfo=None)
-            assert tide_time <= local_now, (
-                f"Past tide time {tide_time} is not in the past compared to local time {local_now}"
-            )
-
-        # Validate that future tides are actually in the future
-        for tide in tides["next"]:
-            tide_time = dateutil.parser.isoparse(tide["time"])
-            # Ensure the tide_time is naive for comparison
-            if tide_time.tzinfo is not None:
-                tide_time = tide_time.replace(tzinfo=None)
-            assert tide_time >= local_now, (
-                f"Next tide time {tide_time} is not in the future compared to local time {local_now}"
-            )
-
-        # Validate that all tide times are distinct
-        all_tide_times = [tide["time"] for tide in tides["past"] + tides["next"]]
-        assert len(all_tide_times) == len(set(all_tide_times)), (
-            "Tide times are not unique"
-        )
-
-    # === Validate current data ===
-    has_current_source = (
-        hasattr(location_config, "currents_source")
-        and location_config.currents_source is not None
-    )
-    assert "current" in data, "Missing current data key"
-    if has_current_source:
-        current_data = data["current"]
-        assert current_data is not None, "Current data should be present"
-        # Validate CurrentInfo structure
-        assert "timestamp" in current_data
-        assert "magnitude" in current_data
-        assert "source_type" in current_data
-        assert isinstance(current_data["timestamp"], str)
-        assert isinstance(current_data["magnitude"], int | float)
-        assert isinstance(current_data["source_type"], str)
-        # Optional fields can be None or the expected type
-        assert isinstance(current_data.get("direction"), str | type(None)), (
-            "Direction is not str or None"
-        )
-        if current_data.get("direction") is not None:
-            # Check if it's a valid enum value if not None
-            # We need to compare string values since the API returns strings
-            valid_directions = [direction.value for direction in CurrentDirection]
-            assert current_data["direction"] in valid_directions, (
-                f"Invalid current direction: {current_data['direction']}"
-            )
-        assert isinstance(
-            current_data.get("magnitude_pct"), int | float | type(None)
-        ), "Magnitude pct is not number or None"
-        assert isinstance(current_data.get("state_description"), str | type(None)), (
-            "State description is not str or None"
-        )
-    else:
-        assert data["current"] is None, "Current data should be null when no source"
-
-    # TODO: Add validation for other fields if needed
+# --- Test functions ---
 
 
 @pytest.mark.asyncio
@@ -329,85 +234,104 @@ def validate_conditions_response(response: httpx.Response, location_code: str) -
 async def test_conditions_api(test_app: fastapi.FastAPI, location_code: str) -> None:
     """Test the conditions API endpoint for all configured locations.
 
-    This test dynamically tests all locations in the configuration.
-    Locations with test_required=True must pass; others can skip on data unavailability.
+    Validates each feed independently and collects skip reasons. For required
+    locations (test_required=True), any missing feed fails immediately. For
+    non-required locations, the test skips only if *nothing* could be validated.
     """
-    # Get location config to determine what should be present
     location_config = config.get(location_code)
     assert location_config is not None, f"Config for {location_code} not found"
 
-    # Check if data is available for this location
-    # Use has_data (not ready) because:
-    # - ready = feeds not expired (scheduling)
-    # - has_data = feeds have actual data to serve
-    # When a station is unavailable, ready=True (retry scheduled) but has_data=False
+    # Gate: if the location has no data at all, skip/fail before hitting the API
     data_manager = test_app.state.data_managers[location_code]
     if not data_manager.has_data:
-        if location_config.test_required:
-            pytest.fail(
-                f"Required location {location_code} has no data available (station outage?)"
-            )
-        else:
-            pytest.skip(
-                f"Location {location_code} data unavailable - skipping (station outage?)"
-            )
+        _handle_unavailable(
+            location_code,
+            location_config.test_required,
+            "no data available (station outage?)",
+        )
+        pytest.skip(f"[{location_code}] no data available (station outage?)")
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=test_app), base_url="http://test"
     ) as client:
         response = await client.get(f"/api/{location_code}/conditions")
 
-    validate_conditions_response(response, location_code)
+    assert response.status_code == 200
+    assert "application/json" in response.headers["content-type"]
 
-    # Verify location-specific details
     data = response.json()
-    assert location_config.name in data["location"]["name"]
-    assert location_config.swim_location in data["location"]["swim_location"]
 
-    # Verify temperature data if the location has a temperature source with live_enabled=True
-    has_temp_source = (
-        hasattr(location_config, "temp_source")
-        and location_config.temp_source is not None
-    )
+    # Validate location details (always present regardless of feed status)
+    assert "location" in data, "Missing location data"
+    location = data["location"]
+    assert location["code"] == location_code
+    assert location_config.name in location["name"]
+    assert location_config.swim_location in location["swim_location"]
 
-    # Only check live_enabled if temp_source exists
-    has_live_temp = False
-    if has_temp_source and location_config.temp_source is not None:
-        has_live_temp = (
-            hasattr(location_config.temp_source, "live_enabled")
-            and location_config.temp_source.live_enabled is True
-        )
+    # Validate each feed independently, collecting skip reasons for non-required
+    skip_reasons: list[str] = []
 
-    if has_live_temp:
-        # Temperature should be present in response (even if None when station unavailable)
-        assert "temperature" in data, (
-            f"Temperature field missing for {location_code} which has live_enabled=True"
-        )
-        # If temperature data is available, validate it has required fields
-        # Note: data["temperature"] may be None if station is temporarily unavailable
-        if data["temperature"] is not None:
-            assert "water_temp" in data["temperature"], (
-                f"Water temperature missing for {location_code}"
+    # --- Temperature ---
+    if location_config.temp_source is not None:
+        if location_config.temp_source.live_enabled:
+            assert "temperature" in data, (
+                f"Missing temperature field for {location_code} with live_enabled=True"
             )
-    else:
-        # If live_enabled is False, the API might still return temperature data if available,
-        # but we shouldn't require it in our tests
-        pass
-
-    # Verify tides data if the location has a tide source
-    has_tide_source = (
-        hasattr(location_config, "tide_source")
-        and location_config.tide_source is not None
-    )
-    if has_tide_source:
-        assert "tides" in data
-        assert data["tides"] is not None
-    else:
-        # Field might be absent or set to None
-        if "tides" in data:
-            assert data["tides"] is None, (
-                f"Expected tides to be None for {location_code} which has no tide source"
+        temp = data.get("temperature")
+        if temp is None:
+            reason = _handle_unavailable(
+                location_code,
+                location_config.test_required,
+                "no temperature data",
             )
+            skip_reasons.append(reason)
+        else:
+            validate_temperature_data(temp)
+            # Check recency
+            temp_time = _parse_naive_time(temp["timestamp"])
+            local_now = location_config.local_now()
+            time_diff = local_now - temp_time
+            if time_diff.total_seconds() > 3 * 3600:
+                reason = _handle_unavailable(
+                    location_code,
+                    location_config.test_required,
+                    f"temperature stale ({time_diff} old)",
+                )
+                skip_reasons.append(reason)
+
+    # --- Tides ---
+    if location_config.tide_source is not None:
+        assert "tides" in data, "Missing tides data"
+        tides = data["tides"]
+        if tides is None:
+            reason = _handle_unavailable(
+                location_code,
+                location_config.test_required,
+                "no tides data",
+            )
+            skip_reasons.append(reason)
+        else:
+            validate_tides_data(tides, location_config)
+
+    # --- Currents ---
+    assert "current" in data, "Missing current data key"
+    if location_config.currents_source is not None:
+        current = data["current"]
+        if current is None:
+            reason = _handle_unavailable(
+                location_code,
+                location_config.test_required,
+                "no current data",
+            )
+            skip_reasons.append(reason)
+        else:
+            validate_current_data(current)
+    else:
+        assert data["current"] is None, "Current data should be null when no source"
+
+    # If every configured feed was unavailable, skip the test
+    if skip_reasons:
+        pytest.skip(f"[{location_code}] {'; '.join(skip_reasons)}")
 
 
 def validate_currents_response(response: httpx.Response, location_code: str) -> None:
@@ -419,14 +343,8 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
     location_config = config.get(location_code)
     assert location_config is not None, f"Config for {location_code} not found"
 
-    # Check if this location supports currents
-    has_currents_source = (
-        hasattr(location_config, "currents_source")
-        and location_config.currents_source is not None
-    )
-
     # If the location doesn't support currents, we expect a 404 response
-    if not has_currents_source:
+    if location_config.currents_source is None:
         assert response.status_code == 404, (
             f"Expected 404 for location without currents, got {response.status_code}"
         )

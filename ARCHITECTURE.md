@@ -106,8 +106,9 @@ Two error types for data availability, at different layers:
 
 - **Unit Tests**: Must run fast. Mock all external network calls using `unittest.mock` or `pytest-mock`.
 - **Integration Tests**: Marked with `@pytest.mark.integration`. These hit real external APIs and are run separately.
-  - Locations with `test_required=True` in config (e.g., NYC) must pass
-  - Other locations skip gracefully on data unavailability
+  - Each feed (temperature, tides, currents) is validated independently per location
+  - Locations with `test_required=True` (e.g., NYC): any missing or stale feed fails the test
+  - Other locations: unavailable feeds are collected as skip reasons; test skips if any feed is unavailable but never blocks validation of other feeds
   - Run with: `uv run pytest -m integration --run-integration`
 - **Fixtures**: Use `conftest.py` for shared fixtures.
 - **Warnings as Errors**: Pytest treats all warnings as errors (`filterwarnings = ["error"]`).

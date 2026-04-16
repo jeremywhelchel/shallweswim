@@ -27,7 +27,7 @@ dependencies = [
 dev = [
     "ruff>=0.9,<1",
     "pyrefly>=0.53,<0.54",
-    "pytest>=8,<9",
+    "pytest>=9.0.3,<10",
     "pytest-asyncio>=1.2.0,<2",
     "pre-commit>=4,<5",
     "types-pytz",

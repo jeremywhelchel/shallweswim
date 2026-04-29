@@ -1,4 +1,39 @@
 {
+  "permissions": {
+    "allow": [
+      "WebSearch",
+
+      "Bash(curl:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(sort:*)",
+
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git log:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(git stash:*)",
+
+      "Bash(uv lock:*)",
+      "Bash(uv pip index:*)",
+      "Bash(uv pip install:*)",
+      "Bash(uv pip list:*)",
+      "Bash(uv pip show:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv tree:*)",
+
+      "Bash(gcloud artifacts:*)",
+      "Bash(gcloud builds:*)",
+      "Bash(gcloud logging:*)",
+      "Bash(gcloud monitoring:*)",
+      "Bash(gcloud run:*)",
+
+      "Bash(rumdl config:*)",
+      "Bash(rumdl explain:*)",
+      "Bash(rumdl schema:*)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
@@ -6,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run pyrefly check .",
+            "command": "uv run --extra dev pyrefly check .",
             "timeout": 120
           }
         ]

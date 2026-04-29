@@ -143,3 +143,6 @@ TODO.md
 
 # Asset manifest for fingerprinting
 shallweswim/static/asset-manifest.json
+
+# Claude Code local settings
+.claude/settings.local.json

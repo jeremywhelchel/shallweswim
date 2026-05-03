@@ -74,7 +74,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component documentation, cod
 git clone https://github.com/jeremywhelchel/shallweswim.git
 cd shallweswim
 
-# Install dependencies
+# Install dependencies, including the default dev group
 uv sync
 
 # Run the development server
@@ -116,8 +116,8 @@ The application is hosted on Google Cloud Run:
 # Install uv (recommended method)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install dependencies (including dev dependencies)
-uv sync --all-extras
+# Install dependencies, including dev/test/tooling dependencies
+uv sync --dev
 
 # Set up pre-commit hooks
 uv run pre-commit install

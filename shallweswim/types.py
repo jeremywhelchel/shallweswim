@@ -19,6 +19,32 @@ class CurrentDirection(enum.Enum):
     EBBING = "ebbing"
 
 
+class CurrentPhase(enum.Enum):
+    """Compact current phase for API consumers and displays."""
+
+    FLOOD = "flood"
+    EBB = "ebb"
+    SLACK_BEFORE_FLOOD = "slack_before_flood"
+    SLACK_BEFORE_EBB = "slack_before_ebb"
+    SLACK = "slack"
+
+
+class CurrentStrength(enum.Enum):
+    """Cycle-relative current strength for displays."""
+
+    LIGHT = "light"
+    MODERATE = "moderate"
+    STRONG = "strong"
+
+
+class CurrentTrend(enum.Enum):
+    """Whether the current is building or easing."""
+
+    BUILDING = "building"
+    EASING = "easing"
+    STEADY = "steady"
+
+
 class TideCategory(enum.Enum):
     LOW = "low"
     HIGH = "high"
@@ -87,6 +113,13 @@ class CurrentInfo:
 
     # Current direction (e.g., flooding, ebbing) or None for unidirectional systems
     direction: CurrentDirection | None = None
+
+    # Compact phase for displays (e.g., flood, ebb, slack_before_flood)
+    phase: CurrentPhase | None = None
+
+    # Cycle-relative strength and trend for tidal predictions
+    strength: CurrentStrength | None = None
+    trend: CurrentTrend | None = None
 
     magnitude_pct: float | None = None
     state_description: str | None = None

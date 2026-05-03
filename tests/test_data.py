@@ -29,7 +29,14 @@ from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.data import LocationDataManager
 from shallweswim.feeds import Feed
-from shallweswim.types import CurrentDirection, CurrentInfo, DataSourceType
+from shallweswim.types import (
+    CurrentDirection,
+    CurrentInfo,
+    CurrentPhase,
+    CurrentStrength,
+    CurrentTrend,
+    DataSourceType,
+)
 
 # Local helpers
 from tests.helpers import assert_json_serializable
@@ -181,11 +188,11 @@ async def test_current_prediction_at_flood_peak(
 
     # Check the result
     assert result.direction == CurrentDirection.FLOODING  # Use Enum member
+    assert result.phase == CurrentPhase.FLOOD
+    assert result.strength == CurrentStrength.STRONG
+    assert result.trend == CurrentTrend.BUILDING
     assert pytest.approx(result.magnitude, 0.1) == 1.5
-    assert (
-        result.state_description is not None
-        and "at its strongest" in result.state_description
-    )
+    assert result.state_description == "strong flood and building"
 
 
 @pytest.mark.asyncio
@@ -260,11 +267,11 @@ async def test_current_prediction_at_ebb_peak(
 
     # Check the result
     assert result.direction == CurrentDirection.EBBING  # Use Enum member
+    assert result.phase == CurrentPhase.EBB
+    assert result.strength == CurrentStrength.STRONG
+    assert result.trend == CurrentTrend.BUILDING
     assert pytest.approx(result.magnitude, 0.1) == 1.5  # Magnitude is positive
-    assert (
-        result.state_description is not None
-        and "at its strongest" in result.state_description
-    )
+    assert result.state_description == "strong ebb and building"
     # Pool shutdown is handled by the process_pool fixture
 
 
@@ -278,11 +285,54 @@ async def test_current_prediction_at_slack(
     result = mock_data_with_currents.predict_flow_at_time(t)
 
     # Check the result
+    assert result.phase == CurrentPhase.SLACK_BEFORE_EBB
+    assert result.strength is None
+    assert result.trend is None
     assert result.magnitude < 0.2
-    assert (
-        result.state_description is not None
-        and "at its weakest (slack)" in result.state_description
+    assert result.state_description == "slack before ebb"
+
+
+@pytest.mark.asyncio
+async def test_current_prediction_at_slack_before_flood(
+    process_pool: ProcessPoolExecutor,
+) -> None:
+    """Slack phase indicates the next non-slack flood direction."""
+    config = create_test_location_config()
+    mock_clients = {
+        "coops": MagicMock(spec=CoopsApi),
+        "ndbc": MagicMock(spec=NdbcApi),
+        "nwis": MagicMock(spec=NwisApi),
+    }
+
+    with freeze_time("2025-04-22 12:00:00"):
+        data = LocationDataManager(
+            config,
+            clients=mock_clients,  # type: ignore[reportArgumentType]
+            process_pool=process_pool,
+        )
+
+    idx = pd.DatetimeIndex(
+        [
+            datetime.datetime(2025, 4, 22, 10, 0, 0),
+            datetime.datetime(2025, 4, 22, 11, 0, 0),
+            datetime.datetime(2025, 4, 22, 12, 0, 0),
+        ]
     )
+    mock_df = pd.DataFrame({"velocity": [-0.4, 0.0, 0.5]}, index=idx)
+
+    mock_currents_feed = MagicMock()
+    mock_currents_feed.values = mock_df
+    mock_currents_feed.is_expired = False
+    data._feeds["currents"] = mock_currents_feed
+
+    result = data.predict_flow_at_time(datetime.datetime(2025, 4, 22, 11, 0, 0))
+
+    assert result.phase == CurrentPhase.SLACK_BEFORE_FLOOD
+    assert result.direction == CurrentDirection.FLOODING
+    assert result.strength is None
+    assert result.trend is None
+    assert result.magnitude == 0.0
+    assert result.state_description == "slack before flood"
 
 
 @pytest.mark.asyncio
@@ -329,9 +379,10 @@ async def test_current_prediction_strengthening() -> None:
 
         # Check the result
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
+        assert result.trend == CurrentTrend.BUILDING
         assert (
             result.state_description is not None
-            and "getting stronger" in result.state_description
+            and "flood and building" in result.state_description
         )
     finally:
         # Clean up the process pool
@@ -382,9 +433,10 @@ async def test_current_prediction_weakening() -> None:
 
         # Check the result
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
+        assert result.trend == CurrentTrend.EASING
         assert (
             result.state_description is not None
-            and "getting weaker" in result.state_description
+            and "flood and easing" in result.state_description
         )
     finally:
         # Clean up the process pool
@@ -443,13 +495,9 @@ async def test_process_peaks_function() -> None:
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
         assert pytest.approx(result.magnitude, abs=0.1) == 1.5
 
-        # Check if it's marked as a strong current
-        # We're looking for either "at its strongest" or "getting stronger/weaker"
-        assert result.state_description is not None and (
-            "at its strongest" in result.state_description
-            or "getting stronger" in result.state_description
-            or "getting weaker" in result.state_description
-        )
+        assert result.strength == CurrentStrength.STRONG
+        assert result.trend == CurrentTrend.BUILDING
+        assert result.state_description == "strong flood and building"
     finally:
         # Clean up the process pool
         pool.shutdown(wait=False)  # Don't wait in tests
@@ -465,38 +513,50 @@ async def test_current_info_representation() -> None:
         timestamp=test_timestamp,
         source_type=DataSourceType.PREDICTION,
         direction=CurrentDirection.FLOODING,  # Use Enum member
+        phase=CurrentPhase.FLOOD,
+        strength=CurrentStrength.STRONG,
+        trend=CurrentTrend.BUILDING,
         magnitude=1.5,
         magnitude_pct=0.8,
-        state_description="getting stronger",
+        state_description="strong flood and building",
     )
     assert flood_info.direction == CurrentDirection.FLOODING  # Use Enum member
+    assert flood_info.phase == CurrentPhase.FLOOD
+    assert flood_info.strength == CurrentStrength.STRONG
+    assert flood_info.trend == CurrentTrend.BUILDING
     assert flood_info.magnitude == 1.5
     assert flood_info.magnitude_pct == 0.8
-    assert flood_info.state_description == "getting stronger"
+    assert flood_info.state_description == "strong flood and building"
     # Check that the string representation contains the important information
     flood_str = str(flood_info)
     assert "flooding" in flood_str.lower()
     assert "1.5" in flood_str
-    assert "getting stronger" in flood_str
+    assert "strong flood and building" in flood_str
 
     # Test with ebbing current
     ebb_info = CurrentInfo(
         timestamp=test_timestamp,
         source_type=DataSourceType.PREDICTION,
         direction=CurrentDirection.EBBING,  # Use Enum member
+        phase=CurrentPhase.EBB,
+        strength=CurrentStrength.MODERATE,
+        trend=CurrentTrend.EASING,
         magnitude=1.2,
         magnitude_pct=0.6,
-        state_description="getting weaker",
+        state_description="moderate ebb and easing",
     )
     assert ebb_info.direction == CurrentDirection.EBBING  # Use Enum member
+    assert ebb_info.phase == CurrentPhase.EBB
+    assert ebb_info.strength == CurrentStrength.MODERATE
+    assert ebb_info.trend == CurrentTrend.EASING
     assert ebb_info.magnitude == 1.2
     assert ebb_info.magnitude_pct == 0.6
-    assert ebb_info.state_description == "getting weaker"
+    assert ebb_info.state_description == "moderate ebb and easing"
     # Check that the string representation contains the important information
     ebb_str = str(ebb_info)
     assert "ebbing" in ebb_str.lower()
     assert "1.2" in ebb_str
-    assert "getting weaker" in ebb_str
+    assert "moderate ebb and easing" in ebb_str
 
 
 @pytest.mark.asyncio

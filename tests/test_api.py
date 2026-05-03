@@ -283,7 +283,10 @@ def test_get_location_conditions(
         source_type=sw_types.DataSourceType.PREDICTION,
         magnitude_pct=0.65,
         direction=sw_types.CurrentDirection.FLOODING,
-        state_description="getting stronger",
+        phase=sw_types.CurrentPhase.FLOOD,
+        strength=sw_types.CurrentStrength.MODERATE,
+        trend=sw_types.CurrentTrend.BUILDING,
+        state_description="moderate flood and building",
     )
 
     # --- 2. Mock Manager Methods and Attributes ---
@@ -364,7 +367,34 @@ def test_get_location_conditions(
     assert data["current"]["magnitude_pct"] == mock_current_info.magnitude_pct
     assert mock_current_info.direction is not None  # Help mypy
     assert data["current"]["direction"] == mock_current_info.direction.value
+    assert mock_current_info.phase is not None  # Help mypy
+    assert data["current"]["phase"] == mock_current_info.phase.value
+    assert mock_current_info.strength is not None  # Help mypy
+    assert data["current"]["strength"] == mock_current_info.strength.value
+    assert mock_current_info.trend is not None  # Help mypy
+    assert data["current"]["trend"] == mock_current_info.trend.value
     assert data["current"]["state_description"] == mock_current_info.state_description
+
+
+def test_openapi_documents_current_phase_enum(test_client: TestClient) -> None:
+    """OpenAPI schema exposes compact current phase enum values."""
+    response = test_client.get("/openapi.json")
+
+    assert response.status_code == status.HTTP_200_OK
+    schemas = response.json()["components"]["schemas"]
+
+    assert schemas["CurrentPhase"]["enum"] == [
+        "flood",
+        "ebb",
+        "slack_before_flood",
+        "slack_before_ebb",
+        "slack",
+    ]
+    assert schemas["CurrentStrength"]["enum"] == ["light", "moderate", "strong"]
+    assert schemas["CurrentTrend"]["enum"] == ["building", "easing", "steady"]
+    assert "phase" in schemas["CurrentInfo"]["properties"]
+    assert "strength" in schemas["CurrentInfo"]["properties"]
+    assert "trend" in schemas["CurrentInfo"]["properties"]
 
 
 def test_get_location_conditions_missing_data(
@@ -602,7 +632,10 @@ def test_currents_endpoint_returns_503_when_chart_data_unavailable(
             source_type=sw_types.DataSourceType.PREDICTION,
             magnitude_pct=0.5,
             direction=sw_types.CurrentDirection.FLOODING,
-            state_description="stable",
+            phase=sw_types.CurrentPhase.FLOOD,
+            strength=sw_types.CurrentStrength.MODERATE,
+            trend=sw_types.CurrentTrend.STEADY,
+            state_description="moderate flood and steady",
         )
 
         # Mock get_chart_info to raise DataUnavailableError
@@ -713,7 +746,10 @@ def test_conditions_endpoint_handles_nan_in_current_data(
         direction=sw_types.CurrentDirection.FLOODING,
         magnitude=1.5,
         magnitude_pct=np.nan,  # This caused the original 500 error
-        state_description="getting stronger",
+        phase=sw_types.CurrentPhase.FLOOD,
+        strength=sw_types.CurrentStrength.STRONG,
+        trend=sw_types.CurrentTrend.BUILDING,
+        state_description="strong flood and building",
     )
     mock_manager.predict_flow_at_time.return_value = current_info_with_nan
 

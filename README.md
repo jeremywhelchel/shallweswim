@@ -21,7 +21,7 @@
 
 - **Real-time conditions** from NOAA CO-OPS, NOAA NDBC, and USGS NWIS APIs
 - **Tide predictions** with high/low tide times and heights
-- **Current velocity** data with flood/ebb direction
+- **Current velocity** data with flood/ebb/slack phase, strength, trend, and absolute speed
 - **Water temperature trends** (48-hour, 2-month, and multi-year)
 - **Transit information** for NYC locations (subway status and alerts)
 - **Mobile-friendly interface** for on-the-go swimmers

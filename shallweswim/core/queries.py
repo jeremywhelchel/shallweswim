@@ -20,6 +20,9 @@ from shallweswim.core.feeds import (
 from shallweswim.types import (
     CurrentDirection,
     CurrentInfo,
+    CurrentPhase,
+    CurrentStrength,
+    CurrentTrend,
     DataSourceType,
     LegacyChartInfo,
     TemperatureReading,
@@ -49,6 +52,11 @@ class DataUnavailableError(Exception):
 # =============================================================================
 # Helper functions
 # =============================================================================
+
+
+SLACK_MAGNITUDE_THRESHOLD_KNOTS = 0.2
+LIGHT_CURRENT_MAX_PCT = 1 / 3
+MODERATE_CURRENT_MAX_PCT = 2 / 3
 
 
 def get_feed_data(
@@ -168,6 +176,111 @@ def _process_local_magnitude_pct(
             df.loc[idx, "local_mag_pct"] = min(local_pct, 1.0)  # Cap at 100%
 
     return df
+
+
+def _next_non_slack_direction(
+    df: pd.DataFrame,
+    t: datetime.datetime,
+) -> CurrentDirection | None:
+    """Find the next predicted flood/ebb direction above the slack threshold."""
+    future = df[(df.index > t) & (df["magnitude"] >= SLACK_MAGNITUDE_THRESHOLD_KNOTS)]
+    if future.empty:
+        return None
+
+    direction = future.iloc[0]["direction"]
+    if direction == CurrentDirection.FLOODING.value:
+        return CurrentDirection.FLOODING
+    if direction == CurrentDirection.EBBING.value:
+        return CurrentDirection.EBBING
+    return None
+
+
+def _phase_for_current(
+    df: pd.DataFrame,
+    row: pd.Series,
+) -> CurrentPhase:
+    """Return the compact current phase for a prediction row."""
+    magnitude = row["magnitude"]
+    direction_str = row["direction"]
+
+    if magnitude < SLACK_MAGNITUDE_THRESHOLD_KNOTS:
+        row_time = row.name
+        assert isinstance(row_time, datetime.datetime)
+        next_direction = _next_non_slack_direction(df, row_time)
+        match next_direction:
+            case CurrentDirection.FLOODING:
+                return CurrentPhase.SLACK_BEFORE_FLOOD
+            case CurrentDirection.EBBING:
+                return CurrentPhase.SLACK_BEFORE_EBB
+            case None:
+                return CurrentPhase.SLACK
+
+    if direction_str == CurrentDirection.FLOODING.value:
+        return CurrentPhase.FLOOD
+    if direction_str == CurrentDirection.EBBING.value:
+        return CurrentPhase.EBB
+    return CurrentPhase.SLACK
+
+
+def _strength_for_current(
+    phase: CurrentPhase,
+    magnitude_pct: float,
+) -> CurrentStrength | None:
+    """Return the display strength bucket for a non-slack tidal current."""
+    if phase in {
+        CurrentPhase.SLACK_BEFORE_FLOOD,
+        CurrentPhase.SLACK_BEFORE_EBB,
+        CurrentPhase.SLACK,
+    }:
+        return None
+    if pd.isna(magnitude_pct):
+        return None
+    if magnitude_pct < LIGHT_CURRENT_MAX_PCT:
+        return CurrentStrength.LIGHT
+    if magnitude_pct < MODERATE_CURRENT_MAX_PCT:
+        return CurrentStrength.MODERATE
+    return CurrentStrength.STRONG
+
+
+def _trend_for_current(
+    phase: CurrentPhase,
+    slope: float,
+) -> CurrentTrend | None:
+    """Return the display trend for a non-slack tidal current."""
+    if phase in {
+        CurrentPhase.SLACK_BEFORE_FLOOD,
+        CurrentPhase.SLACK_BEFORE_EBB,
+        CurrentPhase.SLACK,
+    }:
+        return None
+    if slope > 0:
+        return CurrentTrend.BUILDING
+    if slope < 0:
+        return CurrentTrend.EASING
+    return CurrentTrend.STEADY
+
+
+def _state_description_for_current(
+    phase: CurrentPhase,
+    strength: CurrentStrength | None,
+    trend: CurrentTrend | None,
+) -> str:
+    """Return a compact phrase for user-facing current state text."""
+    match phase:
+        case CurrentPhase.SLACK_BEFORE_FLOOD:
+            return "slack before flood"
+        case CurrentPhase.SLACK_BEFORE_EBB:
+            return "slack before ebb"
+        case CurrentPhase.SLACK:
+            return "slack"
+        case CurrentPhase.FLOOD | CurrentPhase.EBB:
+            base = phase.value
+            if strength is not None:
+                base = f"{strength.value} {base}"
+            if trend is None:
+                return base
+            return f"{base} and {trend.value}"
+    raise ValueError(f"Unhandled current phase: {phase}")
 
 
 # =============================================================================
@@ -373,9 +486,10 @@ def predict_flow_at_time(
     Returns:
         A CurrentInfo object containing:
             - direction: Direction of current (FLOODING or EBBING)
+            - phase: Compact phase (flood, ebb, slack_before_flood, slack_before_ebb, or slack)
             - magnitude: Magnitude of current in knots
             - magnitude_pct: Relative magnitude percentage (0.0-1.0) compared to local peaks
-            - state_description: Text description of current state
+            - state_description: Display-ready current state phrase
             - source_type: Always PREDICTION for this method
 
     Raises:
@@ -442,31 +556,29 @@ def predict_flow_at_time(
     # Get the row at or after the specified time
     row = get_row_at_time(df, t)
 
-    # Constants for determining current state
-    STRONG_THRESHOLD = 0.85
-    SLACK_THRESHOLD = 0.2
     magnitude = row["magnitude"]
     local_pct = row["local_mag_pct"]
-
-    # Determine state description
-    if magnitude < SLACK_THRESHOLD:
-        msg = "at its weakest (slack)"
-    elif local_pct > STRONG_THRESHOLD:
-        msg = "at its strongest"
-    elif row["slope"] < 0:
-        msg = "getting weaker"
-    elif row["slope"] > 0:
-        msg = "getting stronger"
-    else:
-        msg = "stable"
+    phase = _phase_for_current(df, row)
+    strength = _strength_for_current(phase, local_pct)
+    trend = _trend_for_current(phase, row["slope"])
+    state_description = _state_description_for_current(phase, strength, trend)
 
     direction_str = row["direction"]
+    if not direction_str:
+        if phase == CurrentPhase.SLACK_BEFORE_FLOOD:
+            direction_str = CurrentDirection.FLOODING.value
+        elif phase == CurrentPhase.SLACK_BEFORE_EBB:
+            direction_str = CurrentDirection.EBBING.value
+    direction = CurrentDirection(direction_str) if direction_str else None
 
     return CurrentInfo(
         timestamp=t,
         source_type=DataSourceType.PREDICTION,
-        direction=CurrentDirection(direction_str),
+        direction=direction,
+        phase=phase,
+        strength=strength,
+        trend=trend,
         magnitude=magnitude,  # type: ignore[arg-type]
         magnitude_pct=row["local_mag_pct"],  # type: ignore[arg-type]
-        state_description=msg,
+        state_description=state_description,
     )

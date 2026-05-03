@@ -181,6 +181,34 @@ Both success and failure update `_next_fetch_after`, preventing runaway retries:
   - Expected operational condition (station outage or startup race)
   - API routes catch this and return HTTP 503
 
+### Current Phase Semantics
+
+Tidal current API responses include structured fields for displays and API
+consumers:
+
+- `phase: "flood"` or `"ebb"` when the current is meaningfully moving
+- `phase: "slack_before_flood"` or `"slack_before_ebb"` when absolute current
+  magnitude is below `0.2` knots and the next non-slack prediction indicates
+  the upcoming direction
+- `phase: "slack"` when magnitude is below `0.2` knots and the next direction
+  cannot be inferred
+- `strength: "light"`, `"moderate"`, or `"strong"` for non-slack tidal
+  predictions, based on thirds of `magnitude_pct`
+- `trend: "building"`, `"easing"`, or `"steady"` for non-slack tidal
+  predictions, based on the directional slope of the prediction curve
+- `state_description`, a display-ready phrase such as
+  `"strong ebb and building"` or `"slack before flood"`
+
+The `direction` field remains `flooding`/`ebbing` for backwards compatibility
+and directional context. Consumers that need compact display text should prefer
+`phase`; consumers that need user-facing prose can use `state_description`.
+
+`magnitude` is absolute speed in knots. `magnitude_pct` is cycle-relative: it is
+normalized against the nearest local flood/ebb peak in the available prediction
+curve, not against a fixed theoretical maximum. A neap and spring tide can both
+report `magnitude_pct` near `1.0` while having different absolute `magnitude`
+values.
+
 ### Client Timeouts
 
 All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIMEOUT` in `clients/base.py`):

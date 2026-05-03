@@ -309,16 +309,8 @@ function updatePageWithConditions(data) {
   // --- Update Current ---
   console.log("Attempting to update current information...");
   const currentMagnitudeElement = document.getElementById("current-magnitude");
-  const currentDirectionElement = document.getElementById("current-direction");
-  const currentDirectionTextElement = document.getElementById(
-    "current-direction-text",
-  );
-  const currentStateMsgElement = document.getElementById("current-state-msg");
-  const currentStateMsgPrefix = document.getElementById(
-    "current-state-msg-prefix",
-  );
-  const currentStateMsgContainer = document.getElementById(
-    "current-state-msg-container",
+  const currentStateSummaryElement = document.getElementById(
+    "current-state-summary",
   );
   const currentDetailsLink = document.getElementById("current-details-link");
 
@@ -332,67 +324,29 @@ function updatePageWithConditions(data) {
         currentMagnitudeElement.textContent = magnitude;
       }
 
-      // Handle tidal vs. non-tidal systems
-      if (data.current.direction) {
-        // This is a tidal system with direction (ebb/flood)
-        if (currentDirectionTextElement) {
-          currentDirectionTextElement.textContent = ""; // Remove "flowing"
-        }
-        if (currentDirectionElement) {
-          currentDirectionElement.textContent =
-            data.current.direction.toLowerCase();
-        }
-        // Show the details link for tidal systems only
-        if (currentDetailsLink) {
-          currentDetailsLink.style.display = "";
-        }
-      } else {
-        // This is a non-tidal system (just flowing)
-        if (currentDirectionTextElement) {
-          currentDirectionTextElement.textContent = "flowing";
-        }
-        if (currentDirectionElement) {
-          currentDirectionElement.textContent = "";
-        }
-        // Hide the details link for non-tidal systems
-        if (currentDetailsLink) {
-          currentDetailsLink.style.display = "none";
-        }
+      if (currentStateSummaryElement) {
+        currentStateSummaryElement.textContent =
+          data.current.state_description ||
+          data.current.direction?.toLowerCase() ||
+          "flowing";
       }
 
-      // Update state message if available
-      if (
-        currentStateMsgElement &&
-        currentStateMsgPrefix &&
-        currentStateMsgContainer
-      ) {
-        if (data.current.state_description) {
-          currentStateMsgPrefix.textContent = " and ";
-          currentStateMsgElement.textContent = data.current.state_description;
-          currentStateMsgContainer.style.display = "";
-        } else {
-          // No state description, hide the container
-          currentStateMsgContainer.style.display = "none";
-        }
+      // Show the details link for tidal systems only
+      if (currentDetailsLink) {
+        currentDetailsLink.style.display = data.current.direction ? "" : "none";
       }
     } catch (error) {
       console.error(`Error processing current data: ${error.message}`);
       if (currentMagnitudeElement)
         currentMagnitudeElement.textContent = "Error";
-      if (currentDirectionElement) currentDirectionElement.textContent = "";
-      if (currentDirectionTextElement)
-        currentDirectionTextElement.textContent = "flowing";
-      if (currentStateMsgContainer)
-        currentStateMsgContainer.style.display = "none";
+      if (currentStateSummaryElement)
+        currentStateSummaryElement.textContent = "flowing";
     }
   } else {
     console.warn("Current data is missing or null.");
     if (currentMagnitudeElement) currentMagnitudeElement.textContent = "N/A";
-    if (currentDirectionElement) currentDirectionElement.textContent = "";
-    if (currentDirectionTextElement)
-      currentDirectionTextElement.textContent = "flowing";
-    if (currentStateMsgContainer)
-      currentStateMsgContainer.style.display = "none";
+    if (currentStateSummaryElement)
+      currentStateSummaryElement.textContent = "flowing";
   }
 
   // Log the update time in console for debugging
@@ -561,12 +515,7 @@ function updateCurrentsDisplay(data, locationCode) {
     timestampElement.textContent = new Date(data.timestamp).toLocaleString();
   }
 
-  // Update current direction, magnitude and state
-  const directionElement = document.getElementById("direction");
-  if (directionElement) {
-    directionElement.textContent = data.current.direction;
-  }
-
+  // Update current magnitude and state
   const magnitudeElement = document.getElementById("magnitude");
   if (magnitudeElement) {
     magnitudeElement.textContent = data.current.magnitude.toFixed(1);
@@ -574,7 +523,10 @@ function updateCurrentsDisplay(data, locationCode) {
 
   const stateElement = document.getElementById("state");
   if (stateElement) {
-    stateElement.textContent = data.current.state_description;
+    stateElement.textContent =
+      data.current.state_description ||
+      data.current.direction?.toLowerCase() ||
+      "flowing";
   }
 
   // Update navigation links

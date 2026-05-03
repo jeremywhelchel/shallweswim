@@ -76,7 +76,10 @@ def create_mock_current_info() -> sw_types.CurrentInfo:
         source_type=sw_types.DataSourceType.PREDICTION,
         magnitude_pct=0.65,
         direction=sw_types.CurrentDirection.FLOODING,
-        state_description="getting stronger",
+        phase=sw_types.CurrentPhase.FLOOD,
+        strength=sw_types.CurrentStrength.MODERATE,
+        trend=sw_types.CurrentTrend.BUILDING,
+        state_description="moderate flood and building",
     )
 
 

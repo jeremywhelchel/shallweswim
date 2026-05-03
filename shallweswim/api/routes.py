@@ -266,6 +266,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
             current_info = CurrentInfo(
                 timestamp=current_info_internal.timestamp.isoformat(),
                 direction=current_info_internal.direction,
+                phase=current_info_internal.phase,
+                strength=current_info_internal.strength,
+                trend=current_info_internal.trend,
                 magnitude=current_info_internal.magnitude,
                 magnitude_pct=current_info_internal.magnitude_pct,
                 state_description=current_info_internal.state_description,
@@ -642,6 +645,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
         current_prediction = CurrentInfo(
             timestamp=ts.isoformat(),
             direction=current_info.direction,
+            phase=current_info.phase,
+            strength=current_info.strength,
+            trend=current_info.trend,
             magnitude=round(current_info.magnitude, 1),
             magnitude_pct=current_info.magnitude_pct,
             state_description=current_info.state_description,
@@ -662,11 +668,15 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 chart_filename=chart_info.chart_filename,
                 map_title=chart_info.map_title,
             )
-            current_chart_filename = util.get_current_chart_filename(
-                current_info.direction.value,
-                util.bin_magnitude(current_info.magnitude_pct),
-                location_code=location,
-            )
+            if (
+                current_info.direction is not None
+                and current_info.magnitude_pct is not None
+            ):
+                current_chart_filename = util.get_current_chart_filename(
+                    current_info.direction.value,
+                    util.bin_magnitude(current_info.magnitude_pct),
+                    location_code=location,
+                )
 
         # Return structured response
         return CurrentsResponse(

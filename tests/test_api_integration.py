@@ -30,7 +30,12 @@ import pytest_asyncio
 
 from shallweswim import api, config
 from shallweswim.clients.base import shutdown_blocking_executor
-from shallweswim.types import CurrentDirection
+from shallweswim.types import (
+    CurrentDirection,
+    CurrentPhase,
+    CurrentStrength,
+    CurrentTrend,
+)
 from tests.helpers import create_test_app
 
 # Mark all tests in this file as integration tests
@@ -217,6 +222,21 @@ def validate_current_data(current_data: dict) -> None:
         assert current_data["direction"] in valid_directions, (
             f"Invalid current direction: {current_data['direction']}"
         )
+    if current_data.get("phase") is not None:
+        valid_phases = [phase.value for phase in CurrentPhase]
+        assert current_data["phase"] in valid_phases, (
+            f"Invalid current phase: {current_data['phase']}"
+        )
+    if current_data.get("strength") is not None:
+        valid_strengths = [strength.value for strength in CurrentStrength]
+        assert current_data["strength"] in valid_strengths, (
+            f"Invalid current strength: {current_data['strength']}"
+        )
+    if current_data.get("trend") is not None:
+        valid_trends = [trend.value for trend in CurrentTrend]
+        assert current_data["trend"] in valid_trends, (
+            f"Invalid current trend: {current_data['trend']}"
+        )
     assert isinstance(current_data.get("magnitude_pct"), int | float | type(None)), (
         "Magnitude pct is not number or None"
     )
@@ -379,6 +399,9 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
     current = data["current"]
     assert "timestamp" in current, "Missing current timestamp"
     assert "direction" in current, "Missing current direction"
+    assert "phase" in current, "Missing current phase"
+    assert "strength" in current, "Missing current strength"
+    assert "trend" in current, "Missing current trend"
     assert "magnitude" in current, "Missing current magnitude"
     assert "magnitude_pct" in current, "Missing current magnitude percentage"
     assert "state_description" in current, "Missing current state description"

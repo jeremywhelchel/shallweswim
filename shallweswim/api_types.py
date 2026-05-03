@@ -11,7 +11,14 @@ import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 # Local imports
-from shallweswim.types import CurrentDirection, DataSourceType, TideCategory
+from shallweswim.types import (
+    CurrentDirection,
+    CurrentPhase,
+    CurrentStrength,
+    CurrentTrend,
+    DataSourceType,
+    TideCategory,
+)
 
 #############################################################
 # API TYPES - Used for external API request/response models  #
@@ -109,13 +116,43 @@ class CurrentInfo(BaseModel):
         None,
         description="Direction of current (Enum: CurrentDirection, null if non-tidal)",
     )
+    phase: CurrentPhase | None = Field(
+        None,
+        description=(
+            "Compact current phase for displays. Tidal prediction values are "
+            "flood, ebb, slack_before_flood, slack_before_ebb, or slack. Slack "
+            "phases are assigned when absolute current magnitude is below 0.2 knots; "
+            "slack_before_* indicates the next non-slack direction predicted by the curve."
+        ),
+    )
+    strength: CurrentStrength | None = Field(
+        None,
+        description=(
+            "Cycle-relative current strength for non-slack tidal predictions "
+            "(light, moderate, or strong). Null for slack or non-tidal currents."
+        ),
+    )
+    trend: CurrentTrend | None = Field(
+        None,
+        description=(
+            "Current trend for non-slack tidal predictions "
+            "(building, easing, or steady). Null for slack or non-tidal currents."
+        ),
+    )
     magnitude: float = Field(..., description="Current strength in knots")
     magnitude_pct: float | None = Field(
-        None, description="Relative magnitude percentage (0.0-1.0, null if non-tidal)"
+        None,
+        description=(
+            "Relative current strength (0.0-1.0, null if non-tidal), normalized "
+            "against the nearest local flood/ebb peak in the available prediction curve."
+        ),
     )
     state_description: str | None = Field(
         None,
-        description="Human-readable description of current state (null if non-tidal)",
+        description=(
+            "Display-ready current state phrase, such as 'strong ebb and building' "
+            "or 'slack before flood' (null if non-tidal)."
+        ),
     )
     source_type: DataSourceType = Field(
         ...,

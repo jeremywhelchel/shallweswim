@@ -384,8 +384,17 @@ def register_routes(app: fastapi.FastAPI) -> None:
             )
 
         try:
-            tides_data = data_manager._feeds.get(FEED_TIDES).values  # type: ignore[union-attr]
-            currents_data = data_manager._feeds.get(FEED_CURRENTS).values  # type: ignore[union-attr]
+            tides_data = data_manager.get_feed_values(FEED_TIDES)
+            currents_data = data_manager.get_feed_values(FEED_CURRENTS)
+
+            if len(tides_data) < 2 or len(currents_data) < 2:
+                logging.warning(
+                    f"[{location}] Insufficient tide/current data for plot generation"
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"{cfg.name} tide/current data temporarily unavailable",
+                )
 
             # Offload plotting to the process pool with timeout
             pool = app.state.process_pool
@@ -408,9 +417,16 @@ def register_routes(app: fastapi.FastAPI) -> None:
             raise HTTPException(
                 status_code=503, detail="Plot generation timed out"
             ) from e
+        except DataUnavailableError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"{cfg.name} tide/current data temporarily unavailable",
+            ) from e
         except AssertionError as e:
-            # The function now raises assertions instead of returning None
-            raise HTTPException(status_code=404, detail=str(e)) from e
+            logging.exception(f"[{location}] Internal plot generation error")
+            raise HTTPException(
+                status_code=500, detail="Internal server error generating plot"
+            ) from e
 
         # Convert figure to SVG in a StringIO buffer
         svg_io = io.StringIO()
@@ -496,11 +512,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
         """
         logging.info("[api] Processing all locations status request")
 
-        # Check if data managers exist and are initialized
-        # This will raise AttributeError if app.state.data_managers doesn't exist
-        if not app.state.data_managers:
-            logging.warning("[api] No locations configured")
-            raise HTTPException(status_code=404, detail="No locations configured")
+        # Missing manager state means startup/config initialization failed.
+        if not hasattr(app.state, "data_managers") or not app.state.data_managers:
+            logging.error("[api] No location data managers initialized")
+            raise HTTPException(
+                status_code=500,
+                detail="Internal server error - no location data managers initialized",
+            )
 
         # Return status for each location
         status_dict = {
@@ -565,9 +583,10 @@ def register_routes(app: fastapi.FastAPI) -> None:
             location not in app.state.data_managers
             or not app.state.data_managers[location]
         ):
-            logging.warning(f"[{location}] Location not in data dictionary")
+            logging.error(f"[{location}] Configured location missing data manager")
             raise HTTPException(
-                status_code=404, detail=f"Location '{location}' not found in data"
+                status_code=500,
+                detail=f"Internal server error - location '{location}' data manager missing",
             )
 
         # Return the status dictionary for this location
@@ -686,38 +705,51 @@ def register_routes(app: fastapi.FastAPI) -> None:
             A DataFrame representing the validated timeseries data for the feed.
 
         Raises:
-            HTTPException(404): If the location or feed is not found or data is unavailable.
+            HTTPException(404): If the location or feed is not configured.
+            HTTPException(503): If the feed is configured but data is unavailable.
+            HTTPException(500): If app state is missing a manager for a configured location.
         """
         logging.info(f"Received request for feed '{feed_name}' at location '{loc}'")
         try:
-            # Check if location exists
-            if loc not in app.state.data_managers:
+            # Check if the location is configured.
+            if not config_lib.get(loc):
                 logging.warning(
                     f"Location '{loc}' not found for feed '{feed_name}' request."
                 )
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Location '{loc}' not found or data not loaded",
+                    detail=f"Location '{loc}' not found",
+                )
+
+            if (
+                not hasattr(app.state, "data_managers")
+                or loc not in app.state.data_managers
+            ):
+                logging.error(
+                    f"Configured location '{loc}' has no data manager for feed '{feed_name}' request."
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Internal server error - location '{loc}' data manager missing",
                 )
             location_data_manager = app.state.data_managers[loc]
 
             # Check if feed exists for the location
-            if feed_name not in location_data_manager._feeds:
+            if not location_data_manager.has_feed(feed_name):
                 logging.warning(f"Feed '{feed_name}' not found for location '{loc}'.")
                 raise HTTPException(
                     status_code=404,
                     detail=f"Feed '{feed_name}' not found for location '{loc}'.",
                 )
-            feed = location_data_manager._feeds[feed_name]
 
-            # Check if feed is configured and has data available
-            if feed is None or feed._data is None:
+            try:
+                df = location_data_manager.get_feed_values(feed_name)
+            except DataUnavailableError as e:
                 raise HTTPException(
                     status_code=503,
                     detail=f"Feed '{feed_name}' data temporarily unavailable for location '{loc}'",
-                )
+                ) from e
 
-            df = feed.values
             logging.info(
                 f"Successfully retrieved and validated feed '{feed_name}' for location '{loc}'."
             )

@@ -12,6 +12,8 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 
 # Third-party imports
+import pandas as pd
+
 from shallweswim import api_types, feeds
 
 # Local imports
@@ -301,6 +303,51 @@ class LocationDataManager:
         feed = self._feeds.get(feed_name)
         return feed is not None and feed._data is not None
 
+    def has_feed(self, feed_name: feeds.FeedName | str) -> bool:
+        """Check if a feed name is known for this manager.
+
+        Args:
+            feed_name: Name of the feed to check.
+
+        Returns:
+            True if the feed name is part of this manager's feed set, even if
+            the feed is not configured for this location.
+        """
+        try:
+            normalized_feed_name = feeds.FeedName(feed_name)
+        except ValueError:
+            return False
+        return normalized_feed_name in self._feeds
+
+    def get_feed_values(self, feed_name: feeds.FeedName | str) -> pd.DataFrame:
+        """Get feed data by name.
+
+        Args:
+            feed_name: Name of the feed to retrieve.
+
+        Returns:
+            Feed data as a DataFrame.
+
+        Raises:
+            KeyError: If the feed name is unknown.
+            DataUnavailableError: If the feed is known but has no data.
+        """
+        try:
+            normalized_feed_name = feeds.FeedName(feed_name)
+        except ValueError as e:
+            raise KeyError(feed_name) from e
+
+        if normalized_feed_name not in self._feeds:
+            raise KeyError(feed_name)
+
+        feed = self._feeds[normalized_feed_name]
+        if feed is None or feed._data is None:
+            raise queries.DataUnavailableError(
+                f"Feed '{normalized_feed_name}' data not available"
+            )
+
+        return feed.values
+
     @property
     def status(self) -> api_types.LocationStatus:
         """Get a Pydantic model with the status of all configured feeds.
@@ -471,10 +518,10 @@ class LocationDataManager:
         Returns:
             The feed's DataFrame values, or None if unavailable/too small.
         """
-        feed = self._feeds.get(feed_name)
-        if feed is None or feed._data is None:
+        try:
+            values = self.get_feed_values(feed_name)
+        except (KeyError, queries.DataUnavailableError):
             return None
-        values = feed.values
         if values is not None and len(values) >= min_rows:
             return values
         return None

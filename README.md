@@ -184,7 +184,7 @@ For production deployments, set up external monitoring on `/api/status` to alert
 
 - **404 Not Found**: Requested resource doesn't exist for this location
 - **503 Service Unavailable**: External station has no data (expected, retry later)
-- **500 Internal Server Error**: Bug in our code (needs immediate attention)
+- **500 Internal Server Error**: Bug in our code or app initialization state (needs immediate attention)
 
 ## API Documentation
 

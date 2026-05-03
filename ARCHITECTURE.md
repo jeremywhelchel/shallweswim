@@ -150,8 +150,11 @@ Both success and failure update `_next_fetch_after`, preventing runaway retries:
 
 **API request handlers** (serves users):
 
+- Requested location/feed/capability is not configured → 404
 - No data available → 503 + WARNING log
+- Partial location data available → 200 with unavailable fields set to `null`
 - Stale data → Serve it (better than 503 for users)
+- Missing/empty app manager state for configured locations → 500 + ERROR log
 - Other exceptions → 500 + ERROR log (bug)
 
 ### Exception Classes
@@ -214,6 +217,8 @@ Plot generation runs in a `ProcessPoolExecutor` (bounded to `os.cpu_count()` wor
 - Returns **503** only if NO location can serve any data
 - Used by Cloud Run for routing decisions
 - Single station outages do NOT trigger 503
+- Missing/empty location manager state returns **503** here because the
+  health endpoint answers "can this instance serve traffic?"
 
 ### Monitoring (`/api/status`)
 
@@ -221,6 +226,9 @@ Plot generation runs in a `ProcessPoolExecutor` (bounded to `os.cpu_count()` wor
 - Shows `is_healthy`, `is_expired`, `age_seconds` per feed
 - Use external monitoring (GCP Cloud Monitoring) to alert on stale data
 - Recommended: Alert if `is_healthy: false` persists > 30 minutes for critical feeds
+- Missing/empty location manager state returns **500** because `/api/status`
+  is diagnostic; no managers after startup indicates an internal
+  initialization/configuration bug, not an upstream station outage.
 
 ## 6. Feed Lifecycle
 

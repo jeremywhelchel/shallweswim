@@ -12,6 +12,7 @@ import logging
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 import pytz
 from fastapi.testclient import TestClient
@@ -257,6 +258,24 @@ def test_plot_missing_currents_returns_503(app_with_mock_manager: Any) -> None:
     assert "tide/current data temporarily unavailable" in response.json()["detail"]
 
 
+def test_plot_insufficient_rows_returns_503(app_with_mock_manager: Any) -> None:
+    """Plot endpoint with too few rows returns 503.
+
+    The feeds have data objects, but there is not enough tide/current data to
+    render a meaningful plot. This is a data availability problem, not a 404.
+    """
+    app, mock_manager = app_with_mock_manager
+    mock_manager.has_data = True
+    mock_manager.has_feed_data.return_value = True
+    mock_manager.get_feed_values.return_value = pd.DataFrame({"value": [1]})
+
+    client = TestClient(app)
+    response = client.get("/api/nyc/plots/current_tide")
+
+    assert response.status_code == 503
+    assert "tide/current data temporarily unavailable" in response.json()["detail"]
+
+
 # =============================================================================
 # /api/{location}/plots/historic_temps endpoint tests
 # =============================================================================
@@ -291,6 +310,38 @@ def test_healthy_no_locations_returns_503() -> None:
 
     assert response.status_code == 503
     assert "no locations configured" in response.json()["detail"]
+
+
+def test_status_no_locations_returns_500() -> None:
+    """No location managers for /api/status → 500.
+
+    The status endpoint is diagnostic. If no managers exist after startup, that
+    means app initialization failed, not that a requested resource is missing.
+    """
+    app = create_test_app()
+    app.state.data_managers = {}
+    register_routes(app)
+
+    client = TestClient(app)
+    response = client.get("/api/status")
+
+    assert response.status_code == 500
+    assert "no location data managers initialized" in response.json()["detail"]
+
+
+def test_location_status_configured_location_missing_manager_returns_500() -> None:
+    """Configured location with no manager is an internal initialization error."""
+    app = create_test_app()
+    app.state.data_managers = {}
+    register_routes(app)
+
+    with patch("shallweswim.config.get") as mock_get:
+        mock_get.return_value = create_nyc_config()
+        client = TestClient(app)
+        response = client.get("/api/nyc/status")
+
+    assert response.status_code == 500
+    assert "data manager missing" in response.json()["detail"]
 
 
 def test_healthy_no_location_has_data_returns_503() -> None:

@@ -26,6 +26,8 @@ from shallweswim.config import (
     CoopsTideFeedConfig,
     LocationConfig,
 )
+from shallweswim.core.feeds import FEED_TIDES
+from shallweswim.core.queries import DataUnavailableError
 from shallweswim.data import LocationDataManager
 from tests.helpers import assert_json_serializable, create_test_app
 
@@ -90,6 +92,20 @@ def mock_data_managers(
     nyc_data = MagicMock(spec=LocationDataManager)
     nyc_data.config = nyc_config
     nyc_data._feeds = {}  # Initialize _feeds attribute
+
+    def nyc_has_feed(feed_name: str) -> bool:
+        return feed_name in nyc_data._feeds
+
+    def nyc_get_feed_values(feed_name: str) -> pd.DataFrame:
+        if feed_name not in nyc_data._feeds:
+            raise KeyError(feed_name)
+        feed = nyc_data._feeds[feed_name]
+        if feed is None:
+            raise DataUnavailableError(f"Feed '{feed_name}' data not available")
+        return feed.values
+
+    nyc_data.has_feed.side_effect = nyc_has_feed
+    nyc_data.get_feed_values.side_effect = nyc_get_feed_values
     nyc_data.status = LocationStatus(
         feeds={
             "tides": FeedStatus(
@@ -120,6 +136,11 @@ def mock_data_managers(
 
     sf_data = MagicMock(spec=LocationDataManager)
     sf_data.config = sf_config
+    sf_data._feeds = {}
+    sf_data.has_feed.side_effect = lambda feed_name: feed_name in sf_data._feeds
+    sf_data.get_feed_values.side_effect = lambda feed_name: (
+        sf_data._feeds[feed_name].values
+    )
     sf_data.status = LocationStatus(
         feeds={
             "tides": FeedStatus(
@@ -379,18 +400,12 @@ def test_get_feed_data_success(
     assert isinstance(test_client.app, FastAPI)  # Help mypy
     mock_data_managers_dict = test_client.app.state.data_managers
 
-    # Ensure the _feeds dictionary exists and add a mock feed
-    if (
-        not hasattr(mock_data_managers_dict["nyc"], "_feeds")
-        or mock_data_managers_dict["nyc"]._feeds is None
-    ):
-        mock_data_managers_dict["nyc"]._feeds = {}
-    mock_data_managers_dict["nyc"]._feeds["testfeed"] = MagicMock(
+    mock_data_managers_dict["nyc"]._feeds[FEED_TIDES] = MagicMock(
         values=mock_feed_data, name=mock_feed_name
     )
 
     # Call the API endpoint
-    response = test_client.get("/api/nyc/data/testfeed")
+    response = test_client.get(f"/api/nyc/data/{FEED_TIDES}")
 
     # Assert the response
     assert response.status_code == status.HTTP_200_OK
@@ -412,10 +427,41 @@ def test_get_feed_data_location_not_found(
     """Test the feed data endpoint with an invalid location."""
     response = test_client.get("/api/invalid_loc/data/testfeed")
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert (
-        "Location 'invalid_loc' not found or data not loaded"
-        in response.json()["detail"]
+    assert "Location 'invalid_loc' not found" in response.json()["detail"]
+
+
+def test_get_feed_data_configured_location_missing_manager_returns_500() -> None:
+    """Configured location with no data manager is an internal init error."""
+    app = create_test_app()
+    app.state.data_managers = {}
+    register_routes(app)
+
+    config = LocationConfig(
+        code="nyc",
+        name="New York City",
+        swim_location="Test Swim Spot NYC",
+        swim_location_link="http://example.com/nyc",
+        description="Mock NYC description",
+        latitude=40.7128,
+        longitude=-74.0060,
+        timezone=pytz.timezone("US/Eastern"),
+        temp_source=CoopsTempFeedConfig(
+            station=8518750, name="The Battery", live_enabled=True
+        ),
+        tide_source=CoopsTideFeedConfig(station=8518750, name="The Battery"),
+        currents_source=CoopsCurrentsFeedConfig(
+            stations=["NYH1914"], name="Narrows North"
+        ),
+        enabled=True,
     )
+
+    with patch("shallweswim.config.get") as mock_get:
+        mock_get.return_value = config
+        client = TestClient(app)
+        response = client.get("/api/nyc/data/tides")
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert "data manager missing" in response.json()["detail"]
 
 
 def test_get_feed_data_feed_not_found(

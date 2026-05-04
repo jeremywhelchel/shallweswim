@@ -49,9 +49,7 @@ def create_mock_ndbc_data(mode: str = "stdmet") -> pd.DataFrame:
 @pytest.fixture
 def ndbc_client() -> NdbcApi:
     """Provides an NdbcApi instance for testing."""
-    # Session isn't used by ndbc_api, but pass None or a dummy object if BaseApiClient requires it
-    client = NdbcApi(session=None)  # Pass None or a dummy session
-    return client
+    return NdbcApi(session=None)
 
 
 # Mock data fixtures

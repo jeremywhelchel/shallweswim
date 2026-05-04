@@ -26,22 +26,9 @@ from shallweswim.clients.base import (
 )
 from shallweswim.util import c_to_f
 
-# TODO: Refactor NdbcApi to align with BaseApiClient pattern.
-# Currently, NdbcApi uses classmethods instead of instance methods and doesn't
-# utilize the shared aiohttp session from BaseApiClient. This is because the
-# underlying `ndbc-api` library handles its own synchronous HTTP requests.
-# API calls are wrapped in `asyncio.to_thread` to avoid blocking the event loop.
-# If `ndbc-api` becomes async or we replace it, this client should be updated
-# to instantiate with a session and use instance methods like other clients.
-
 
 class NdbcApiError(BaseClientError):
     """Base error for NOAA NDBC API calls."""
-
-
-# NdbcConnectionError removed, use RetryableClientError
-# class NdbcConnectionError(NdbcApiError):
-#     """Error connecting to NOAA NDBC API."""
 
 
 class NdbcDataError(NdbcApiError):
@@ -51,15 +38,17 @@ class NdbcDataError(NdbcApiError):
 class NdbcApi(BaseApiClient):
     """NOAA NDBC API client using the ndbc-api library.
 
-    Wraps the synchronous ndbc-api library calls using asyncio.to_thread and
-    integrates with the BaseApiClient's retry mechanism.
+    The third-party ndbc-api client performs its own synchronous HTTP requests,
+    so this wrapper does not use the shared aiohttp session directly. It still
+    follows the BaseApiClient fetch/validation split and runs blocking calls in
+    the shared executor so retries, logging, and shutdown behavior stay
+    consistent with the other clients.
     """
 
     @property
     def client_type(self) -> str:
         return "ndbc"
 
-    # Add __init__ to conform to BaseApiClient, even if session isn't used by ndbc-api
     def __init__(self, session: Any) -> None:
         """Initialize the NDBC client.
 
@@ -159,9 +148,8 @@ class NdbcApi(BaseApiClient):
 
         return raw_result
 
-    # Change from @classmethod to instance method
     async def temperature(
-        self,  # Changed from cls
+        self,
         station_id: str,
         begin_date: datetime.date,
         end_date: datetime.date,
@@ -253,7 +241,7 @@ class NdbcApi(BaseApiClient):
                 raise NdbcDataError(error_msg)
 
             # Convert UTC timestamps to local timezone
-            temp_df = self._fix_time(temp_df, timezone)  # Changed from cls._fix_time
+            temp_df = self._fix_time(temp_df, timezone)
 
             # Sort by time to ensure chronological order
             temp_df.sort_index(inplace=True)
@@ -271,10 +259,7 @@ class NdbcApi(BaseApiClient):
             # Raise as NdbcDataError as it indicates an issue with the data format/content
             raise NdbcDataError(error_msg) from e
 
-    # Change from @classmethod to instance method
-    def _fix_time(
-        self, df: pd.DataFrame, timezone: str
-    ) -> pd.DataFrame:  # Changed from cls
+    def _fix_time(self, df: pd.DataFrame, timezone: str) -> pd.DataFrame:
         """Convert UTC timestamps to local timezone.
 
         Args:
@@ -297,6 +282,3 @@ class NdbcApi(BaseApiClient):
         df.index.name = "time"
 
         return df
-
-
-# ... rest of the code remains the same ...

@@ -461,7 +461,8 @@ def create_app() -> fastapi.FastAPI:
         FastAPI application instance
     """
     # Get the asset manifest path from parsed arguments if available
-    assert _parsed_args is not None
+    if _parsed_args is None:
+        raise RuntimeError("Application arguments have not been parsed")
     asset_manifest = _parsed_args.asset_manifest
 
     logging.info(f"create_app() called, asset_manifest = {asset_manifest}")

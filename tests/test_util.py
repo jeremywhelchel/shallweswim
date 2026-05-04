@@ -83,6 +83,13 @@ def test_pivot_year() -> None:
         assert bool(got[("water_temp", year)].isin([50, np.nan]).all())
 
 
+def test_pivot_year_rejects_non_datetime_index() -> None:
+    df = pd.DataFrame({"water_temp": [50]}, index=pd.Index(["2025-01-01"]))
+
+    with pytest.raises(TypeError, match="DataFrame index must be a DatetimeIndex"):
+        util.pivot_year(df)
+
+
 def test_latest_time_value() -> None:
     """Test that latest_time_value correctly extracts the timestamp from a DataFrame."""
     # No longer testing None input as the function now requires a non-None input
@@ -100,6 +107,12 @@ def test_latest_time_value() -> None:
     df_tz = pd.DataFrame({"value": range(len(dates_tz))}, index=dates_tz)
     with pytest.raises(ValueError, match="Index contains timezone info"):
         util.latest_time_value(df_tz)
+
+
+@pytest.mark.parametrize("magnitude_pct", [-0.1, 1.1])
+def test_bin_magnitude_rejects_out_of_range_values(magnitude_pct: float) -> None:
+    with pytest.raises(ValueError, match="magnitude_pct must be between"):
+        util.bin_magnitude(magnitude_pct)
 
 
 # Test data setup for summarize_dataframe

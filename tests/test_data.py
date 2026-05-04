@@ -27,6 +27,7 @@ from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
+from shallweswim.core.queries import DataUnavailableError, get_current_tide_info
 from shallweswim.data import LocationDataManager
 from shallweswim.feeds import Feed
 from shallweswim.types import (
@@ -333,6 +334,63 @@ async def test_current_prediction_at_slack_before_flood(
     assert result.trend is None
     assert result.magnitude == 0.0
     assert result.state_description == "slack before flood"
+
+
+@pytest.mark.asyncio
+async def test_current_prediction_rejects_timezone_aware_input(
+    mock_data_with_currents: LocationDataManager,
+) -> None:
+    """Current predictions require naive local datetimes."""
+    t = datetime.datetime(2025, 4, 22, 11, 0, 0, tzinfo=datetime.UTC)
+
+    with pytest.raises(ValueError, match="Input datetime must be naive"):
+        mock_data_with_currents.predict_flow_at_time(t)
+
+
+@pytest.mark.asyncio
+async def test_current_prediction_rejects_timezone_aware_feed_data(
+    mock_data_with_currents: LocationDataManager,
+    mock_current_data: pd.DataFrame,
+) -> None:
+    """Current prediction data must use naive local datetimes."""
+    mock_currents_feed = MagicMock()
+    mock_currents_feed._data = mock_current_data
+    mock_currents_feed.values = mock_current_data.tz_localize("UTC")
+    mock_currents_feed.is_expired = False
+    mock_data_with_currents._feeds["currents"] = mock_currents_feed
+
+    with pytest.raises(
+        DataUnavailableError,
+        match="Current prediction DataFrame should use naive datetimes",
+    ):
+        mock_data_with_currents.predict_flow_at_time(
+            datetime.datetime(2025, 4, 22, 11, 0, 0)
+        )
+
+
+def test_tide_info_rejects_timezone_aware_feed_data(
+    mock_config: config_lib.LocationConfig,
+) -> None:
+    """Tide data must use naive local datetimes."""
+    tides_df = pd.DataFrame(
+        {
+            "time": [datetime.datetime(2025, 4, 22, 10, 0, 0)],
+            "type": ["high"],
+            "prediction": [4.2],
+        },
+        index=pd.DatetimeIndex(
+            [datetime.datetime(2025, 4, 22, 10, 0, 0)], tz=datetime.UTC
+        ),
+    )
+    mock_tides_feed = MagicMock()
+    mock_tides_feed._data = tides_df
+    mock_tides_feed.values = tides_df
+
+    with pytest.raises(
+        DataUnavailableError,
+        match="Tide DataFrame should use naive datetimes",
+    ):
+        get_current_tide_info({feeds.FEED_TIDES: mock_tides_feed}, mock_config)
 
 
 @pytest.mark.asyncio
@@ -786,6 +844,23 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
 
 
 # --- Tests for LocationDataManager.wait_until_ready ---
+
+
+@pytest.mark.asyncio
+async def test_start_rejects_duplicate_running_task(
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+) -> None:
+    """Starting the same manager twice reports a lifecycle error."""
+    config = create_test_location_config(code="tst")
+    data = LocationDataManager(config, clients=mock_clients, process_pool=process_pool)  # type: ignore[arg-type]
+
+    data.start()
+    try:
+        with pytest.raises(RuntimeError, match="Data update task already running"):
+            data.start()
+    finally:
+        await data.stop(timeout=0.1)
 
 
 @pytest.fixture

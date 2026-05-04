@@ -75,9 +75,8 @@ def fps_to_knots(speed_fps: float) -> float:
 def pivot_year(df: pd.DataFrame) -> pd.DataFrame:
     """Move year dimension to columns."""
     # Access year from DatetimeIndex in a way compatible with pandas 2.x
-    assert isinstance(df.index, pd.DatetimeIndex), (
-        "DataFrame index must be a DatetimeIndex"
-    )
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise TypeError("DataFrame index must be a DatetimeIndex")
     df = df.assign(year=df.index.to_series().dt.year)
     df.index = pd.to_datetime(
         # Use 2020-indexing because it's a leap year
@@ -194,9 +193,10 @@ def bin_magnitude(magnitude_pct: float) -> int:
         The bin value (integer from MAGNITUDE_BINS)
 
     Raises:
-        AssertionError: If magnitude_pct is outside the valid range
+        ValueError: If magnitude_pct is outside the valid range
     """
-    assert magnitude_pct >= 0 and magnitude_pct <= 1.0, magnitude_pct
+    if magnitude_pct < 0 or magnitude_pct > 1.0:
+        raise ValueError(f"magnitude_pct must be between 0.0 and 1.0: {magnitude_pct}")
     i = np.digitize([magnitude_pct * 100], MAGNITUDE_BINS, right=True)[0]
     return int(MAGNITUDE_BINS[i])
 

@@ -105,11 +105,12 @@ def save_fig(
         fmt: Format to save in ('svg', 'png', etc.)
 
     Raises:
-        AssertionError: If a string path doesn't start with 'static/'
+        ValueError: If a string path doesn't start with 'static/'
     """
     # If running outside the 'shallweswim' directory, prepend it to all paths
     if isinstance(dst, str):
-        assert dst.startswith("static/"), dst
+        if not dst.startswith("static/"):
+            raise ValueError(f"Plot path must start with 'static/': {dst}")
         logging.info(f"[{location_code}] Saving plot to {dst} in {fmt} format")
         if not os.path.exists("static/") and os.path.exists("shallweswim/static/"):
             dst = f"shallweswim/{dst}"
@@ -292,10 +293,8 @@ def generate_live_temp_plot(
     Returns:
         bytes: The plot as SVG bytes
     """
-    # Assert we have sufficient data
-    assert live_temps is not None and len(live_temps) >= 2, (
-        "Insufficient temperature data for plotting"
-    )
+    if len(live_temps) < 2:
+        raise ValueError("Insufficient temperature data for plotting")
 
     logging.info(f"[{location_code}] Generating live temperature plot")
     try:
@@ -421,10 +420,8 @@ def generate_historic_temp_plots(
             - "2mo": 2-month centered plot
             - "12mo": Full year plot
     """
-    # Assert we have sufficient data
-    assert hist_temps is not None and len(hist_temps) >= 10, (
-        "Insufficient historical temperature data for plotting"
-    )
+    if len(hist_temps) < 10:
+        raise ValueError("Insufficient historical temperature data for plotting")
 
     logging.info(f"[{location_code}] Generating historic temperature plots")
     logging.debug(
@@ -435,14 +432,16 @@ def generate_historic_temp_plots(
         # Create monthly plot
         logging.debug(f"[{location_code}] Creating 2-month historic plot")
         monthly_fig = create_historic_monthly_plot(hist_temps, station_name)
-        assert monthly_fig is not None, "Failed to create historic monthly plot"
+        if monthly_fig is None:
+            raise RuntimeError("Failed to create historic monthly plot")
         monthly_bytes = fig_to_bytes(monthly_fig)
         logging.info(f"[{location_code}] 2-month historic plot generated successfully")
 
         # Create yearly plot
         logging.debug(f"[{location_code}] Creating yearly historic plot")
         yearly_fig = create_historic_yearly_plot(hist_temps, station_name)
-        assert yearly_fig is not None, "Failed to create historic yearly plot"
+        if yearly_fig is None:
+            raise RuntimeError("Failed to create historic yearly plot")
         yearly_bytes = fig_to_bytes(yearly_fig)
         logging.info(f"[{location_code}] Yearly historic plot generated successfully")
 
@@ -480,11 +479,10 @@ def create_tide_current_plot(
     Returns:
         Figure object with the plot, or None if data is not available
     """
-    # Assert that we have sufficient data
-    assert tides is not None and len(tides) >= 2, "Insufficient tide data for plotting"
-    assert currents is not None and len(currents) >= 2, (
-        "Insufficient current data for plotting"
-    )
+    if len(tides) < 2:
+        raise ValueError("Insufficient tide data for plotting")
+    if len(currents) < 2:
+        raise ValueError("Insufficient current data for plotting")
 
     # Select a window of data around the current time
     start_time = location_config.local_now() - datetime.timedelta(hours=3)
@@ -720,10 +718,11 @@ def create_current_chart(ef: str, magnitude_bin: int, _: str = "") -> Figure:
         Figure object with the current chart
 
     Raises:
-        AssertionError: If magnitude_bin is outside the valid range
+        ValueError: If magnitude_bin is outside the valid range
         ValueError: If ef is an invalid CurrentDirection
     """
-    assert (magnitude_bin >= 0) and (magnitude_bin <= 100), magnitude_bin
+    if magnitude_bin < 0 or magnitude_bin > 100:
+        raise ValueError(f"magnitude_bin must be between 0 and 100: {magnitude_bin}")
     magnitude_pct = magnitude_bin / 100
 
     fig = Figure(figsize=CURRENT_CHART_SIZE)  # Dimensions: 2596 x 967
@@ -811,7 +810,8 @@ def generate_and_save_current_chart(
 
         # Create and save the figure
         fig = create_current_chart(ef, magnitude_bin)
-        assert fig is not None, "Failed to create current chart"
+        if fig is None:
+            raise RuntimeError("Failed to create current chart")
         save_fig(fig, plot_filename, fmt="png", location_code=location_code)
         logging.info(
             f"[{location_code}] Current chart ({ef}, {magnitude_bin}) generated successfully"

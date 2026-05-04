@@ -96,14 +96,17 @@ async def initialize_location_data(
         Dictionary mapping location codes to initialized LocationDataManager objects
 
     Raises:
-        AssertionError: If a location's configuration cannot be found or if required data isn't loaded
+        RuntimeError: If required app startup state is missing.
+        ValueError: If a requested location code is not configured.
     """
     # Retrieve the shared session from app state
-    assert hasattr(app.state, "http_session"), "HTTP session not found in app state"
+    if not hasattr(app.state, "http_session") or app.state.http_session is None:
+        raise RuntimeError("HTTP session not found in app state")
     session: aiohttp.ClientSession = app.state.http_session
 
     # Retrieve the process pool from app state
-    assert hasattr(app.state, "process_pool"), "Process pool not found in app state"
+    if not hasattr(app.state, "process_pool") or app.state.process_pool is None:
+        raise RuntimeError("Process pool not found in app state")
     process_pool = app.state.process_pool
 
     # Create API client instances using the shared session
@@ -122,7 +125,8 @@ async def initialize_location_data(
     for code in location_codes:
         # Get location config
         cfg = config_lib.get(code)
-        assert cfg is not None, f"Config for location '{code}' not found"
+        if cfg is None:
+            raise ValueError(f"Config for location '{code}' not found")
 
         # Initialize data for this location, passing clients and process pool
         app.state.data_managers[code] = data_lib.LocationDataManager(
@@ -205,7 +209,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         current_info = None
 
         # Prepare temperature information if available
-        # Check both config AND data availability to prevent AssertionError
+        # Check both config AND data availability before querying feed-backed data.
         if (
             cfg.temp_source is not None
             and cfg.temp_source.live_enabled
@@ -425,7 +429,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 status_code=503,
                 detail=f"{cfg.name} tide/current data temporarily unavailable",
             ) from e
-        except AssertionError as e:
+        except (RuntimeError, ValueError) as e:
             logging.exception(f"[{location}] Internal plot generation error")
             raise HTTPException(
                 status_code=500, detail="Internal server error generating plot"

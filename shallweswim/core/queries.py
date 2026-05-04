@@ -106,6 +106,14 @@ def get_row_at_time(df: pd.DataFrame, t: datetime.datetime) -> pd.Series:
     return df.loc[df.index.asof(t)]
 
 
+def _require_naive_datetime_index(df: pd.DataFrame, context: str) -> None:
+    """Validate that a query input frame uses local naive datetimes."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise DataUnavailableError(f"{context} DataFrame must use a DatetimeIndex")
+    if df.index.tz is not None:
+        raise DataUnavailableError(f"{context} DataFrame should use naive datetimes")
+
+
 def record_to_tide_entry(record: dict[str, Any]) -> TideEntry:
     """Convert a record dictionary to a TideEntry object."""
     return TideEntry(
@@ -205,7 +213,10 @@ def _phase_for_current(
 
     if magnitude < SLACK_MAGNITUDE_THRESHOLD_KNOTS:
         row_time = row.name
-        assert isinstance(row_time, datetime.datetime)
+        if not isinstance(row_time, datetime.datetime):
+            raise DataUnavailableError(
+                "Current prediction row index must contain datetimes"
+            )
         next_direction = _next_non_slack_direction(df, row_time)
         match next_direction:
             case CurrentDirection.FLOODING:
@@ -305,7 +316,7 @@ def get_current_temperature(
             - temperature: float representing the water temperature in degrees Celsius
 
     Raises:
-        AssertionError: If no temperature data is available or the feed is not configured
+        DataUnavailableError: If no temperature data is available or the feed is not configured
     """
     # Get live temperature data from the feed
     live_temps_data = get_feed_data(feeds_dict, FEED_LIVE_TEMPS)
@@ -341,7 +352,7 @@ def get_current_tide_info(
             - next: List of TideEntry objects with the next two upcoming tides
 
     Raises:
-        AssertionError: If tide data feed is missing or not properly configured
+        DataUnavailableError: If tide data feed is missing or not properly configured
     """
     # Get tides data from the feed
     tides_data = get_feed_data(feeds_dict, FEED_TIDES)
@@ -351,7 +362,7 @@ def get_current_tide_info(
     now_ts = pd.Timestamp(now)
 
     # Ensure DataFrame has no timezone info for consistent comparison
-    assert tides_data.index.tz is None, "Tide DataFrame should use naive datetimes"  # type: ignore[attr-defined]
+    _require_naive_datetime_index(tides_data, "Tide")
 
     # Extract past and future tide data
     past_tides_df = tides_data[:now_ts].tail(1)
@@ -392,7 +403,7 @@ def get_chart_info(
             - map_title: Formatted title for the map display
 
     Raises:
-        AssertionError: If tide data is not available
+        DataUnavailableError: If tide data is not available
     """
     if not t:
         t = config.local_now()
@@ -447,7 +458,7 @@ def get_current_flow_info(
         of the most recent current observation
 
     Raises:
-        AssertionError: If current data is not available or not properly loaded
+        DataUnavailableError: If current data is not available or not properly loaded
     """
     # Get currents data from the feed
     currents_data = get_feed_data(feeds_dict, FEED_CURRENTS)
@@ -493,7 +504,8 @@ def predict_flow_at_time(
             - source_type: Always PREDICTION for this method
 
     Raises:
-        AssertionError: If current data is not available or input datetime has timezone info
+        DataUnavailableError: If current data is not available or not properly loaded.
+        ValueError: If input datetime has timezone info.
     """
     if not t:
         t = config.local_now()
@@ -550,8 +562,9 @@ def predict_flow_at_time(
     )
 
     # Ensure we're using a naive datetime for DataFrame slicing
-    assert t.tzinfo is None, "Input datetime must be naive"
-    assert df.index.tz is None, "DataFrame should use naive datetimes"  # type: ignore[attr-defined]
+    if t.tzinfo is not None:
+        raise ValueError("Input datetime must be naive")
+    _require_naive_datetime_index(df, "Current prediction")
 
     # Get the row at or after the specified time
     row = get_row_at_time(df, t)

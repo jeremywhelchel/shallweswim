@@ -291,8 +291,8 @@ class LocationDataManager:
     def has_feed_data(self, feed_name: feeds.FeedName) -> bool:
         """Check if a specific feed has data available.
 
-        Use this to check before calling query functions that assert data exists.
-        This prevents AssertionError for expected conditions (no data yet).
+        Use this to check before calling query functions that require data.
+        This prevents DataUnavailableError for expected conditions (no data yet).
 
         Args:
             feed_name: Name of the feed to check (use constants from feeds module)
@@ -703,13 +703,13 @@ class LocationDataManager:
         and processes new data.
 
         Raises:
-            AssertionError: If a task for this location is already running
+            RuntimeError: If a task for this location is already running.
         """
         task_name = f"DataUpdateTask_{self.config.code}"
         # Check if task already exists
         for task in asyncio.all_tasks():
             if task.get_name() == task_name and not task.done():
-                raise AssertionError("Data update task already running")
+                raise RuntimeError("Data update task already running")
 
         self.log("Starting data fetch task")
         self._update_task = asyncio.create_task(self.__update_loop())
@@ -764,7 +764,7 @@ class LocationDataManager:
             A TemperatureReading object with timestamp and temperature
 
         Raises:
-            AssertionError: If no temperature data is available
+            DataUnavailableError: If no temperature data is available.
         """
         return queries.get_current_temperature(self._feeds)
 
@@ -775,7 +775,7 @@ class LocationDataManager:
             A TideInfo object with past and next tide entries
 
         Raises:
-            AssertionError: If tide data feed is missing
+            DataUnavailableError: If tide data feed is missing.
         """
         return queries.get_current_tide_info(self._feeds, self.config)
 
@@ -789,7 +789,7 @@ class LocationDataManager:
             A LegacyChartInfo object with chart filename and metadata
 
         Raises:
-            AssertionError: If tide data is not available
+            DataUnavailableError: If tide data is not available.
         """
         return queries.get_chart_info(self._feeds, self.config, t)
 
@@ -800,7 +800,7 @@ class LocationDataManager:
             A CurrentInfo object with the most recent current observation
 
         Raises:
-            AssertionError: If current data is not available
+            DataUnavailableError: If current data is not available.
         """
         return queries.get_current_flow_info(self._feeds)
 
@@ -825,7 +825,8 @@ class LocationDataManager:
             A CurrentInfo object with current prediction
 
         Raises:
-            AssertionError: If current data is not available
+            DataUnavailableError: If current data is not available.
+            ValueError: If the requested time has timezone info.
         """
         return queries.predict_flow_at_time(self._feeds, self.config, t)
 

@@ -161,8 +161,8 @@ class Feed(BaseModel, abc.ABC):
 
         age_td = self.age
         # Healthy if age is within the expiration interval plus the health check buffer
-        assert self.expiration_interval is not None  # Help mypy
-        assert age_td is not None  # Help mypy
+        if age_td is None:
+            return False
         return age_td <= (self.expiration_interval + HEALTH_CHECK_BUFFER)
 
     @property
@@ -664,8 +664,9 @@ class CoopsCurrentsFeed(CurrentsFeed):
             # Get Coops client instance
             coops_client: CoopsApi = clients["coops"]  # type: ignore
 
-            # We know self.station is set in __init__ if it wasn't provided
-            assert self.station is not None, "Station must be set"
+            # We know self.station is set in __init__ if it wasn't provided.
+            if self.station is None:
+                raise ValueError("Station must be set")
 
             # Fetch data from NOAA CO-OPS API using the client instance
             df = await coops_client.currents(

@@ -384,7 +384,10 @@ class NwisApi(BaseApiClient):
             DataFrame with local timezone timestamps (naive datetimes)
         """
 
-        assert df.index.tzinfo is not None
+        if not isinstance(df.index, pd.DatetimeIndex) or df.index.tz is None:
+            raise NwisApiError(
+                "NWIS timestamps must be timezone-aware before conversion"
+            )
 
         # Convert to the location's timezone
         df.index = df.index.tz_convert(timezone)

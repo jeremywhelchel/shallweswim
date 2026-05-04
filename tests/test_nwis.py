@@ -348,3 +348,18 @@ async def test_fix_time(nwis_client: NwisApi) -> None:
     ]
     expected_index = pd.DatetimeIndex(expected_times, name="time")
     pd.testing.assert_index_equal(result_df.index, expected_index)
+
+
+@pytest.mark.asyncio
+async def test_fix_time_rejects_naive_timestamps(nwis_client: NwisApi) -> None:
+    """_fix_time requires timestamps that still carry source timezone info."""
+    index = pd.DatetimeIndex(
+        [
+            pd.Timestamp("2025-04-19 14:00:00"),
+            pd.Timestamp("2025-04-19 20:00:00"),
+        ]
+    )
+    df = pd.DataFrame({"water_temp": [59.9, 61.2]}, index=index)
+
+    with pytest.raises(NwisApiError, match="NWIS timestamps must be timezone-aware"):
+        nwis_client._fix_time(df, "America/New_York")

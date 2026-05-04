@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from shallweswim import types as sw_types
 
 # Local imports
-from shallweswim.api import register_routes
+from shallweswim.api import initialize_location_data, register_routes
 from shallweswim.api_types import FeedStatus, LocationConditions, LocationStatus
 from shallweswim.config import (
     CoopsCurrentsFeedConfig,
@@ -416,6 +416,39 @@ def test_get_location_conditions_missing_data(
     # Expect a ValueError because the API should fail fast when data is missing
     with pytest.raises(ValueError):
         test_client.get("/api/nyc/conditions")
+
+
+@pytest.mark.asyncio
+async def test_initialize_location_data_missing_http_session() -> None:
+    """Startup initialization fails explicitly when HTTP session state is missing."""
+    app = create_test_app()
+    app.state.process_pool = MagicMock()
+
+    with pytest.raises(RuntimeError, match="HTTP session not found"):
+        await initialize_location_data(["nyc"], app)
+
+
+@pytest.mark.asyncio
+async def test_initialize_location_data_missing_process_pool() -> None:
+    """Startup initialization fails explicitly when process pool state is missing."""
+    app = create_test_app()
+    app.state.http_session = MagicMock()
+
+    with pytest.raises(RuntimeError, match="Process pool not found"):
+        await initialize_location_data(["nyc"], app)
+
+
+@pytest.mark.asyncio
+async def test_initialize_location_data_unknown_location() -> None:
+    """Startup initialization reports invalid location codes without assert."""
+    app = create_test_app()
+    app.state.http_session = MagicMock()
+    app.state.process_pool = MagicMock()
+
+    with patch("shallweswim.config.get") as mock_get:
+        mock_get.return_value = None
+        with pytest.raises(ValueError, match="Config for location 'bad' not found"):
+            await initialize_location_data(["bad"], app)
 
 
 def test_get_feed_data_success(

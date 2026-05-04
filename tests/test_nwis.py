@@ -10,13 +10,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiohttp
 import pandas as pd
 import pytest
+import requests
+from dataretrieval.utils import NoSitesError
 
 from shallweswim.clients.base import (
     ClientConnectionError,
+    RetryableClientError,
+    StationUnavailableError,
 )
 
 # Local imports
-from shallweswim.clients.nwis import NwisApi, NwisDataError
+from shallweswim.clients.nwis import NwisApi, NwisApiError, NwisDataError
 
 
 def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:
@@ -172,6 +176,87 @@ async def test_api_error(nwis_client: NwisApi) -> None:
                 end_date=datetime.date(2025, 4, 19),
                 timezone="America/New_York",
                 location_code="sdf",
+            )
+
+
+@pytest.mark.asyncio
+async def test_execute_request_retries_content_decoding_errors(
+    nwis_client: NwisApi,
+) -> None:
+    """Protocol/decode failures from dataretrieval requests are transient."""
+    with patch("shallweswim.clients.nwis.nwis.get_record") as mock_get_record:
+        mock_get_record.side_effect = requests.exceptions.ContentDecodingError(
+            "bad gzip"
+        )
+
+        with pytest.raises(RetryableClientError, match="ContentDecodingError"):
+            await nwis_client._execute_request(
+                sites="01463500",
+                service="iv",
+                parameterCd=["00010"],
+                start="2025-04-19",
+                end="2025-04-20",
+                location_code="test",
+            )
+
+
+@pytest.mark.asyncio
+async def test_execute_request_retries_dataretrieval_service_unavailable(
+    nwis_client: NwisApi,
+) -> None:
+    """dataretrieval wraps USGS 5xx responses as ValueError; retry them."""
+    with patch("shallweswim.clients.nwis.nwis.get_record") as mock_get_record:
+        mock_get_record.side_effect = ValueError(
+            "Service Unavailable: 503 Service Unavailable. The service at "
+            "https://waterservices.usgs.gov may be down or experiencing issues."
+        )
+
+        with pytest.raises(RetryableClientError, match="Transient NWIS service error"):
+            await nwis_client._execute_request(
+                sites="01463500",
+                service="iv",
+                parameterCd=["00010"],
+                start="2025-04-19",
+                end="2025-04-20",
+                location_code="test",
+            )
+
+
+@pytest.mark.asyncio
+async def test_execute_request_maps_no_sites_to_station_unavailable(
+    nwis_client: NwisApi,
+) -> None:
+    """Known dataretrieval no-sites responses are expected no-data conditions."""
+    with patch("shallweswim.clients.nwis.nwis.get_record") as mock_get_record:
+        mock_get_record.side_effect = NoSitesError("https://example.test")
+
+        with pytest.raises(StationUnavailableError, match="returned no data"):
+            await nwis_client._execute_request(
+                sites="01463500",
+                service="iv",
+                parameterCd=["00010"],
+                start="2025-04-19",
+                end="2025-04-20",
+                location_code="test",
+            )
+
+
+@pytest.mark.asyncio
+async def test_execute_request_keeps_unexpected_value_errors_terminal(
+    nwis_client: NwisApi,
+) -> None:
+    """Non-transient dataretrieval ValueErrors stay terminal API errors."""
+    with patch("shallweswim.clients.nwis.nwis.get_record") as mock_get_record:
+        mock_get_record.side_effect = ValueError("Bad Request, check parameters")
+
+        with pytest.raises(NwisApiError, match="Bad Request"):
+            await nwis_client._execute_request(
+                sites="01463500",
+                service="iv",
+                parameterCd=["00010"],
+                start="2025-04-19",
+                end="2025-04-20",
+                location_code="test",
             )
 
 

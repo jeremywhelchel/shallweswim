@@ -165,14 +165,23 @@ Both success and failure update `_next_fetch_after`, preventing runaway retries:
 
   - NDBC returns empty dict `{}`
   - COOPS returns "No data was found"
+  - USGS NWIS/dataretrieval returns a known no-sites/no-data response
   - Empty DataFrame for time range
 
 - **`*DataError`**: Unexpected data format, parsing failures
 
   - May indicate API changed - needs investigation
 
-- **`RetryableClientError`**: Transient network issues (timeouts, connection errors)
+- **`RetryableClientError`**: Transient network/service issues
+
+  - Timeouts and connection errors
+  - Broken protocol responses such as chunked transfer or content decoding errors
+  - Retryable HTTP statuses: `429`, `500`, `502`, `503`, `504`
+  - USGS NWIS/dataretrieval `Service Unavailable` wrappers for upstream `5xx`
   - Automatically retried by `BaseApiClient.request_with_retry()`
+
+- **`*ApiError`**: Unexpected client/library/API failures that are not known
+  transient conditions and are not confirmed no-data responses
 
 **Core (`core/queries.py`)**:
 

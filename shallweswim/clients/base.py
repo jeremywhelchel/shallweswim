@@ -12,7 +12,8 @@ Subclasses MUST structure `_execute_request` with TWO SEPARATE PHASES:
 1. **FETCH PHASE** (inside try/except):
    - Perform the actual API call or library function
    - Catch ONLY network/connection errors here
-   - Raise RetryableClientError for transient errors (timeouts, connection refused)
+   - Raise RetryableClientError for transient errors (timeouts, connection refused,
+     protocol/decode failures, retryable HTTP statuses)
    - Raise client-specific *ApiError for unexpected fetch failures
 
 2. **VALIDATION PHASE** (OUTSIDE try/except):
@@ -61,6 +62,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import aiohttp
+import requests
 import tenacity
 
 # =============================================================================
@@ -128,6 +130,30 @@ class StationUnavailableError(BaseClientError):
     """
 
 
+RETRYABLE_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+RETRYABLE_REQUESTS_EXCEPTIONS = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    requests.exceptions.ReadTimeout,
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.ContentDecodingError,
+)
+
+
+def is_retryable_http_status(status_code: int) -> bool:
+    """Return whether an HTTP status usually represents a transient failure."""
+    return status_code in RETRYABLE_HTTP_STATUSES
+
+
+def is_retryable_dataretrieval_error(error: ValueError) -> bool:
+    """Return whether a dataretrieval ValueError wraps a transient HTTP failure."""
+    message = str(error)
+    return any(
+        f"Service Unavailable: {status}" in message for status in (500, 502, 503)
+    )
+
+
 class BaseApiClient(abc.ABC):
     """Abstract base class for API clients with built-in retry logic."""
 
@@ -189,7 +215,7 @@ class BaseApiClient(abc.ABC):
 
         1. FETCH PHASE (inside try/except):
            - Perform API call
-           - Catch network errors → raise RetryableClientError
+           - Catch transient network/protocol/HTTP errors → raise RetryableClientError
            - Catch other fetch errors → raise *ApiError
 
         2. VALIDATION PHASE (OUTSIDE try/except - this is critical!):

@@ -13,6 +13,7 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 # Local imports
+from shallweswim.clients.base import RetryableClientError
 from shallweswim.clients.coops import (
     CoopsApi,
     CoopsConnectionError,
@@ -182,6 +183,55 @@ async def test_connection_error(coops_client: CoopsApi) -> None:
                 station=9414290,
                 location_code="test_conn_error",
             )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [429, 500, 502, 503, 504])
+async def test_execute_request_retries_transient_http_statuses(
+    coops_client: CoopsApi, status_code: int
+) -> None:
+    """Transient CO-OPS HTTP statuses are classified as retryable."""
+
+    class MockResponse:
+        status = status_code
+
+        async def __aenter__(self) -> "MockResponse":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def text(self) -> str:
+            return ""
+
+    cast(MagicMock, coops_client._session.get).return_value = MockResponse()
+
+    with pytest.raises(RetryableClientError, match=f"HTTP error {status_code}"):
+        await coops_client._execute_request("https://example.test", "test")
+
+
+@pytest.mark.asyncio
+async def test_execute_request_keeps_non_retryable_http_statuses_terminal(
+    coops_client: CoopsApi,
+) -> None:
+    """Client/request errors stay non-retryable for CO-OPS."""
+
+    class MockResponse:
+        status = 404
+
+        async def __aenter__(self) -> "MockResponse":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def text(self) -> str:
+            return ""
+
+    cast(MagicMock, coops_client._session.get).return_value = MockResponse()
+
+    with pytest.raises(CoopsConnectionError, match="HTTP error 404"):
+        await coops_client._execute_request("https://example.test", "test")
 
 
 @pytest.mark.asyncio

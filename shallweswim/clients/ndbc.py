@@ -13,11 +13,11 @@ from typing import Any
 
 # Third-party imports
 import pandas as pd
-import requests  # For exception handling, assuming ndbc-api uses it
 from ndbc_api import NdbcApi as NdbcApiClient  # Alias to avoid name clash
 
 # Local imports
 from shallweswim.clients.base import (
+    RETRYABLE_REQUESTS_EXCEPTIONS,
     BaseApiClient,
     BaseClientError,
     RetryableClientError,
@@ -127,11 +127,7 @@ class NdbcApi(BaseApiClient):
             # Convert timeout to our retryable error type
             error_msg = f"Request timed out after {self.REQUEST_TIMEOUT}s for NDBC station {station_id}"
             raise RetryableClientError(error_msg) from e
-        except (
-            requests.exceptions.ConnectionError,
-            requests.exceptions.Timeout,
-            requests.exceptions.ReadTimeout,
-        ) as e:
+        except RETRYABLE_REQUESTS_EXCEPTIONS as e:
             # Convert known transient requests errors (assuming ndbc-api uses requests)
             error_msg = f"Network error during NDBC request for station {station_id}: {e.__class__.__name__}: {e}"
             raise RetryableClientError(error_msg) from e

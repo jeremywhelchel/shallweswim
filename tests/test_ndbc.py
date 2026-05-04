@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 # Third-party imports
 import pandas as pd
 import pytest
+import requests
 
 from shallweswim.clients.base import RetryableClientError
 
@@ -172,6 +173,46 @@ async def test_api_error(
                 begin_date=datetime.date(2025, 4, 19),
                 end_date=datetime.date(2025, 4, 19),
                 timezone="America/New_York",
+            )
+
+
+@pytest.mark.asyncio
+async def test_execute_request_retries_content_decoding_errors(
+    ndbc_client: NdbcApi,
+) -> None:
+    """Protocol/decode failures from requests are transient for NDBC."""
+    with patch("shallweswim.clients.ndbc.NdbcApiClient") as mock_api_class:
+        mock_api_class.return_value.get_data.side_effect = (
+            requests.exceptions.ContentDecodingError("bad gzip")
+        )
+
+        with pytest.raises(RetryableClientError, match="ContentDecodingError"):
+            await ndbc_client._execute_request(
+                station_id="44013",
+                mode="stdmet",
+                start_time="2025-04-19",
+                end_time="2025-04-20",
+                location_code="test",
+            )
+
+
+@pytest.mark.asyncio
+async def test_execute_request_retries_chunked_encoding_errors(
+    ndbc_client: NdbcApi,
+) -> None:
+    """Broken chunked responses from requests are transient for NDBC."""
+    with patch("shallweswim.clients.ndbc.NdbcApiClient") as mock_api_class:
+        mock_api_class.return_value.get_data.side_effect = (
+            requests.exceptions.ChunkedEncodingError("broken chunk")
+        )
+
+        with pytest.raises(RetryableClientError, match="ChunkedEncodingError"):
+            await ndbc_client._execute_request(
+                station_id="44013",
+                mode="stdmet",
+                start_time="2025-04-19",
+                end_time="2025-04-20",
+                location_code="test",
             )
 
 

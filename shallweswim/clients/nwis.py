@@ -19,15 +19,17 @@ from functools import partial
 import aiohttp
 import dataretrieval.nwis as nwis
 import pandas as pd
-import requests
+from dataretrieval.utils import NoSitesError
 
 # Local imports
 from shallweswim.clients.base import (
+    RETRYABLE_REQUESTS_EXCEPTIONS,
     BaseApiClient,
     BaseClientError,  # Import BaseClientError
     RetryableClientError,
     StationUnavailableError,
     get_blocking_executor,
+    is_retryable_dataretrieval_error,
 )
 from shallweswim.util import c_to_f
 
@@ -123,15 +125,23 @@ class NwisApi(BaseApiClient):
                 f"Request timed out after {self.REQUEST_TIMEOUT}s for NWIS site {sites}"
             )
             raise RetryableClientError(error_msg) from e
-        except (
-            # dataretrieval uses requests internally, so catch requests exceptions
-            requests.exceptions.ConnectionError,  # Includes SSLError
-            requests.exceptions.Timeout,
-            requests.exceptions.ReadTimeout,
-        ) as e:
+        except RETRYABLE_REQUESTS_EXCEPTIONS as e:
             # Convert known transient network errors to our retryable type
             error_msg = f"Network error during NWIS request for site {sites}: {e.__class__.__name__}: {e}"
             raise RetryableClientError(error_msg) from e
+        except NoSitesError as e:
+            error_msg = (
+                f"NWIS site {sites} returned no data for params {parameterCd}: {e}"
+            )
+            self.log(error_msg, level=logging.WARNING, location_code=location_code)
+            raise StationUnavailableError(error_msg) from e
+        except ValueError as e:
+            if is_retryable_dataretrieval_error(e):
+                error_msg = f"Transient NWIS service error for site {sites}: {e}"
+                raise RetryableClientError(error_msg) from e
+            error_msg = f"Unexpected error during NWIS fetch for site {sites}: {e.__class__.__name__}: {e}"
+            self.log(error_msg, level=logging.ERROR, location_code=location_code)
+            raise NwisApiError(error_msg) from e
         except Exception as e:
             # Catch other potential errors from dataretrieval within the thread
             error_msg = f"Unexpected error during NWIS fetch for site {sites}: {e.__class__.__name__}: {e}"

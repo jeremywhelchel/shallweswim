@@ -17,6 +17,7 @@ from shallweswim.clients.base import (
     BaseClientError,
     RetryableClientError,
     StationUnavailableError,
+    is_retryable_http_status,
 )
 from shallweswim.types import (
     TIDE_TYPE_CATEGORIES,
@@ -146,12 +147,13 @@ class CoopsApi(BaseApiClient):
             timeout = aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT)
             async with self._session.get(url, timeout=timeout) as response:
                 if response.status != 200:
-                    # Treat non-200 responses as non-retryable connection errors
                     error_msg = f"HTTP error {response.status} for {url}"
+                    if is_retryable_http_status(response.status):
+                        raise RetryableClientError(error_msg)
+
                     self.log(
                         error_msg, level=logging.ERROR, location_code=location_code
                     )
-                    # Raise specific connection error, not retryable
                     raise CoopsConnectionError(error_msg)
 
                 # Read CSV data if status is OK

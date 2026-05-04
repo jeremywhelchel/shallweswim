@@ -65,7 +65,7 @@ Two error types for data availability:
 | `DataUnavailableError` | Core (`core/queries.py`) | Request for unavailable data | HTTP 503 |
 
 - **Internal bugs (our code)**: Fail fast, log ERROR, let it crash - developers need to notice and fix
-- **External API failures (NOAA, USGS)**: Log WARNING for station unavailability, ERROR for unexpected - continue with scheduled retry
+- **External API failures (NOAA, USGS)**: Retry transient network/protocol failures and HTTP `429`/`5xx`; log WARNING for station unavailability, ERROR for unexpected - continue with scheduled retry
 - **Feed scheduling**: All fetch attempts (success or failure) schedule next attempt at expiration interval - prevents runaway retries
 - **Data queries**: `get_feed_data()` raises `DataUnavailableError` (not assert) - API catches and returns 503
 - Never silently swallow errors - always log at appropriate level (WARNING for expected, ERROR for unexpected)

@@ -110,6 +110,7 @@ Two error types for data availability, at different layers:
   - Locations with `test_required=True` (e.g., NYC): any missing or stale feed fails the test
   - Other locations: unavailable feeds are collected as skip reasons; test skips if any feed is unavailable but never blocks validation of other feeds
   - Run with: `uv run pytest -m integration --run-integration`
+  - Teardown intentionally uses bounded waits for blocking external-API worker threads. Earlier unbounded cleanup caused GitHub Actions integration jobs to stall when live NOAA/USGS/NDBC calls hung. Local full-suite integration runs may finish all tests and still report unclosed socket `ResourceWarning`s during pytest teardown; preserve bounded cleanup unless CI behavior is revalidated.
 - **Fixtures**: Use `conftest.py` for shared fixtures.
 - **Warnings as Errors**: Pytest treats all warnings as errors (`filterwarnings = ["error"]`).
   - New warnings fail tests immediately, forcing explicit decisions

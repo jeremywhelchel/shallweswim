@@ -5,7 +5,7 @@ These tests use FastAPI's TestClient to test only the API endpoints with real da
 They verify that the API endpoints return correctly structured data from the
 real NOAA endpoints for the configured locations, without testing any HTML or UI components.
 
-Run with: poetry run pytest tests/test_api_integration.py -v --run-integration
+Run with: uv run pytest tests/test_api_integration.py -v --run-integration
 """
 
 # Standard library imports
@@ -126,10 +126,16 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
             await data_manager.stop()
 
         # Shut down the blocking I/O executor used by NWIS/NDBC clients.
-        # Can't use wait=True because NDBC/NWIS threads may be stuck on
-        # HTTP requests with no socket-level timeout (would block forever).
-        # Instead: cancel pending work, then give running threads a bounded
-        # grace period to finish and close sockets cleanly.
+        #
+        # This is intentionally bounded. Earlier teardown variants waited for
+        # every blocking I/O thread to finish, which caused GitHub Actions
+        # integration jobs to stall when a live external API call hung below
+        # our async layer. The current behavior favors reliable CI completion:
+        # cancel queued work, give active blocking-io threads a short grace
+        # period to close sockets, then continue teardown. Local full-suite
+        # integration runs may still report unclosed socket ResourceWarnings
+        # after all tests pass; do not switch back to unbounded executor waits
+        # without first proving the scheduled GitHub Actions job cannot hang.
         shutdown_blocking_executor()  # wait=False, cancel_futures=True
         for t in threading.enumerate():
             if t.name.startswith("blocking-io"):

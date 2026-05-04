@@ -155,6 +155,13 @@ uv run pytest --cov=shallweswim --cov-report=html
 
 Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS) and may occasionally fail if services are experiencing issues or data is temporarily unavailable.
 
+Integration test teardown intentionally uses bounded waits for blocking live-API
+worker threads. This avoids GitHub Actions stalls that happened when teardown
+waited indefinitely on stuck external HTTP calls. A local full-suite integration
+run can pass all tests and still exit nonzero from unclosed socket
+`ResourceWarning`s during pytest teardown; treat that as a known tradeoff unless
+the scheduled GitHub Actions integration job starts failing.
+
 ### Testing Philosophy
 
 The test suite uses a three-tier strategy:

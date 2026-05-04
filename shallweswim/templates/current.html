@@ -104,11 +104,13 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
   </div>
 </div>
 
-<h2>Current Map</h2>
-<div>
-  <img class="plot" id="current-chart" src="" alt="Area current chart" />
-  <p>The size of the arrows approximate the strength of the current</p>
-</div>
+<section id="current-map-section">
+  <h2>Current Map</h2>
+  <div>
+    <img class="plot" id="current-chart" src="" alt="Area current chart" />
+    <p>The size of the arrows approximate the strength of the current</p>
+  </div>
+</section>
 
 <h2>Tide Current Projection</h2>
 <img class="plot" id="tide-current-plot" src="" alt="Tide and Current plot" />
@@ -122,16 +124,19 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
   flooding. A negative current value indicates the current is ebbing.
 </p>
 
-<h2 id="legacy-map-title">Legacy Map</h2>
-<div>
-  <p>
-    Many years ago, the US Department of Commerce published hourly tides for the
-    NY harbor. These charts are displayed based on time since the last tide.
-  </p>
-</div>
-<div>
-  <img class="plot" id="legacy-chart" src="" alt="Historic area tide chart" />
-</div>
+<section id="legacy-map-section">
+  <h2 id="legacy-map-title">Legacy Map</h2>
+  <div>
+    <p>
+      Many years ago, the US Department of Commerce published hourly tides for
+      the NY harbor. These charts are displayed based on time since the last
+      tide.
+    </p>
+  </div>
+  <div>
+    <img class="plot" id="legacy-chart" src="" alt="Historic area tide chart" />
+  </div>
+</section>
 
 <!-- Chart functions moved to main.js -->
 

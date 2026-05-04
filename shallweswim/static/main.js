@@ -553,9 +553,22 @@ function updateCurrentsDisplay(data, locationCode) {
  */
 function updateCharts(data) {
   // Update current chart
+  const currentMapSection = document.getElementById("current-map-section");
   const currentChart = document.getElementById("current-chart");
-  if (currentChart) {
-    currentChart.src = data.current_chart_filename;
+  if (data.current_chart_filename) {
+    if (currentMapSection) {
+      currentMapSection.hidden = false;
+    }
+    if (currentChart) {
+      currentChart.src = data.current_chart_filename;
+    }
+  } else {
+    if (currentMapSection) {
+      currentMapSection.hidden = true;
+    }
+    if (currentChart) {
+      currentChart.removeAttribute("src");
+    }
   }
 
   // Update tide current plot
@@ -565,15 +578,29 @@ function updateCharts(data) {
   }
 
   // Update legacy chart
+  const legacyMapSection = document.getElementById("legacy-map-section");
   const legacyChart = document.getElementById("legacy-chart");
-  if (legacyChart) {
-    legacyChart.src = `/static/tidecharts/${data.legacy_chart.chart_filename}`;
-  }
-
-  // Update legacy map title
   const legacyMapTitle = document.getElementById("legacy-map-title");
-  if (legacyMapTitle) {
-    legacyMapTitle.textContent = `Legacy Map - ${data.legacy_chart.map_title}`;
+  if (data.legacy_chart?.chart_filename) {
+    if (legacyMapSection) {
+      legacyMapSection.hidden = false;
+    }
+    if (legacyChart) {
+      legacyChart.src = `/static/tidecharts/${data.legacy_chart.chart_filename}`;
+    }
+    if (legacyMapTitle) {
+      legacyMapTitle.textContent = `Legacy Map - ${data.legacy_chart.map_title}`;
+    }
+  } else {
+    if (legacyMapSection) {
+      legacyMapSection.hidden = true;
+    }
+    if (legacyChart) {
+      legacyChart.removeAttribute("src");
+    }
+    if (legacyMapTitle) {
+      legacyMapTitle.textContent = "Legacy Map";
+    }
   }
 }
 

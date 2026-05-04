@@ -18,13 +18,14 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
+from typing import cast
 
 # Third-party imports
 import matplotlib.dates as md
 import matplotlib.image as mpimg
 import numpy as np
 import pandas as pd
-import seaborn as sns
+import seaborn as sns  # type: ignore[import]
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from scipy.signal import find_peaks
@@ -333,7 +334,8 @@ def create_historic_monthly_plot(
     end_date = pd.to_datetime(ref_date + datetime.timedelta(days=30))
 
     # Get the water_temp column and apply 24-hour rolling mean
-    df = year_df["water_temp"].loc[start_date:end_date].rolling(24, center=True).mean()
+    water_temp_by_year = cast(pd.DataFrame, year_df["water_temp"])
+    df = water_temp_by_year.loc[start_date:end_date].rolling(24, center=True).mean()
 
     # Create the 2-month plot
     fig = create_standard_figure()
@@ -372,12 +374,12 @@ def create_historic_yearly_plot(
 
     # Get the water_temp column, apply 24-hour rolling mean
     # and handle NaN values as in the original implementation
+    water_temp_by_year = cast(pd.DataFrame, year_df["water_temp"])
+    rolling_mean = water_temp_by_year.rolling(24, center=True).mean()
     df = (
-        year_df["water_temp"]
-        .rolling(24, center=True)
-        .mean()
-        # Kludge to prevent seaborn from connecting over nan gaps
-        .fillna(np.inf)  # type: ignore[attr-defined] # pyright thinks mean() returns ndarray, but it's a pandas Series
+        rolling_mean
+        # Kludge to prevent seaborn from connecting over nan gaps.
+        .fillna(np.inf)
         # Some years may have 0 data at this filtering level. All-NA columns
         # will cause plotting errors, so we remove them here.
         .dropna(axis=1, how="all")
@@ -586,7 +588,7 @@ def create_tide_current_plot(
 
         # For ebb currents, we're looking for minima, so negate the values to find peaks
         # and use the same peak finding algorithm
-        neg_ebb_vel = -ebb_vel.values  # Make negative values positive to find peaks
+        neg_ebb_vel = -ebb_vel.to_numpy(dtype=float)  # Make values positive for peaks
         peaks, _ = find_peaks(neg_ebb_vel, prominence=0.3)
 
         # Add markers and labels for each peak (which are actually valleys in original data)

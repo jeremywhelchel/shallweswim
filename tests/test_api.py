@@ -421,7 +421,7 @@ def test_get_location_conditions_missing_data(
 def test_get_feed_data_success(
     test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
 ) -> None:
-    """Test the /api/{location}/data/{feed_type} endpoint for a successful fetch."""
+    """Debug feed data endpoint returns raw feed cache data."""
     # Define mock feed data
     mock_feed_data = pd.DataFrame({"value": [1, 2, 3]})
     mock_feed_name = "MockFeed"
@@ -449,6 +449,15 @@ def test_get_feed_data_success(
         assert key.isdigit()  # Check if key looks like an index
         assert isinstance(value_dict, dict)
         assert "value" in value_dict
+
+
+def test_feed_data_endpoint_excluded_from_openapi(test_client: TestClient) -> None:
+    """Raw feed data is a debug endpoint, not public OpenAPI surface."""
+    response = test_client.get("/openapi.json")
+    assert response.status_code == status.HTTP_200_OK
+
+    paths = response.json()["paths"]
+    assert "/api/{loc}/data/{feed_name}" not in paths
 
 
 def test_get_feed_data_location_not_found(

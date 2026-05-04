@@ -698,21 +698,25 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
     @app.get(
         "/api/{loc}/data/{feed_name}",
+        include_in_schema=False,
         # TODO: Re-enable response_model=pa_typing.DataFrame[TimeSeriesDataModel]
         # Removed due to FastAPI ResponseValidationError when validating specific
         # feed DataFrames (e.g., WaterTempDataModel) against the generic TimeSeriesDataModel.
         # Internal validation happens in feed.values anyway.
     )
-    async def get_feed_data(loc: str, feed_name: str):  # type: ignore[no-untyped-def]
+    async def get_debug_feed_data(loc: str, feed_name: str):  # type: ignore[no-untyped-def]
         # Originally returned pd.DataFrame, now dict for consistent serialization
-        """Retrieve the timeseries data for a specific *feed* at a given *location*.
+        """Debug endpoint for raw cached feed data at a given location.
+
+        This endpoint is intentionally excluded from OpenAPI because it exposes
+        internal feed cache shape rather than a stable public API contract.
 
         Args:
             loc: The location code (e.g., 'nyc').
-            feed_name: The data feed name (e.g., 'tides', 'live_temps', 'wind').
+            feed_name: The data feed name (e.g., 'tides', 'live_temps').
 
         Returns:
-            A DataFrame representing the validated timeseries data for the feed.
+            A dict representation of the validated feed DataFrame.
 
         Raises:
             HTTPException(404): If the location or feed is not configured.

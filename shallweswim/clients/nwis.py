@@ -214,9 +214,7 @@ class NwisApi(BaseApiClient):
         try:
             # Find the temperature column in the result
             # The exact column name format can vary, so we need to search for the parameter code
-            temp_columns = [
-                col for col in raw_result.columns if str(parameter_cd) in str(col)
-            ]
+            temp_columns = [col for col in raw_result.columns if parameter_cd in col]
 
             if not temp_columns:
                 error_msg = f"No water temperature data (parameter {parameter_cd}) available for NWIS site {site_no}"
@@ -317,9 +315,7 @@ class NwisApi(BaseApiClient):
 
             # Post-processing similar to temperature method
             # Find the data column based on parameter code
-            data_columns = [
-                col for col in raw_result.columns if str(parameter_cd) in str(col)
-            ]
+            data_columns = [col for col in raw_result.columns if parameter_cd in col]
 
             if not data_columns:
                 error_msg = f"No current data (parameter {parameter_cd}) available for NWIS site {site_no}"
@@ -389,11 +385,10 @@ class NwisApi(BaseApiClient):
                 "NWIS timestamps must be timezone-aware before conversion"
             )
 
-        # Convert to the location's timezone
-        df.index = df.index.tz_convert(timezone)
-
-        # Finally, make the timestamps naive again (remove timezone info)
-        df.index = df.index.tz_localize(None)
+        # Convert to the location's timezone and then make the timestamps naive again.
+        datetime_index = df.index
+        local_index = datetime_index.tz_convert(timezone)
+        df.index = local_index.tz_localize(None)
 
         # Rename the index to 'time' to match our convention
         df.index.name = "time"

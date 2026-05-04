@@ -3,7 +3,7 @@
 
 import logging
 
-from shallweswim import plot
+from shallweswim import plot, util
 from shallweswim.types import CurrentDirection
 
 if __name__ == "__main__":
@@ -13,5 +13,5 @@ if __name__ == "__main__":
         CurrentDirection.FLOODING.value,
         CurrentDirection.EBBING.value,
     ]:
-        for magnitude_bin in plot.MAGNITUDE_BINS:
+        for magnitude_bin in util.MAGNITUDE_BINS:
             plot.generate_and_save_current_chart(ef, magnitude_bin)

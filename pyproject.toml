@@ -97,10 +97,8 @@ missing-attribute = "warn"           # Attribute access issues (pandas DataFrame
 bad-argument-type = "warn"           # Call issues (pandas method signatures)
 bad-argument-count = "warn"          # Call issues (pandas method signatures)
 no-matching-overload = "warn"        # Call issues (pandas overloaded methods)
-bad-override = "warn"                # Method override signature mismatches (BaseApiClient subclasses)
 bad-index = "warn"                   # DataFrame/Series indexing issues (pandas .loc/.iloc)
 missing-module-attribute = "warn"    # Import issues (scipy.signal.find_peaks stubs)
-bad-return = "warn"                  # Return type mismatches (pandas DataFrame/Series)
 unsupported-operation = "warn"       # Unsupported operations (pandas Categorical/ExtensionArray)
 
 [build-system]

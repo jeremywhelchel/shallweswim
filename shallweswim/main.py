@@ -17,6 +17,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine
 from concurrent.futures import ProcessPoolExecutor
 from typing import (
     Any,
+    cast,
 )
 
 # Third-party imports
@@ -368,7 +369,7 @@ def static_url(file_path: str) -> str:
 
 
 # Register the static_url function with Jinja2
-templates.env.globals["static_url"] = static_url
+cast(Any, templates.env.globals)["static_url"] = static_url
 
 
 # ======================================================================

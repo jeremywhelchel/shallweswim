@@ -77,10 +77,11 @@ def pivot_year(df: pd.DataFrame) -> pd.DataFrame:
     # Access year from DatetimeIndex in a way compatible with pandas 2.x
     if not isinstance(df.index, pd.DatetimeIndex):
         raise TypeError("DataFrame index must be a DatetimeIndex")
-    df = df.assign(year=df.index.to_series().dt.year)
+    datetime_index = pd.DatetimeIndex(df.index)
+    df = df.assign(year=datetime_index.to_series().dt.year)
     df.index = pd.to_datetime(
         # Use 2020-indexing because it's a leap year
-        df.index.to_series().dt.strftime("2020-%m-%d %H:%M:%S")
+        datetime_index.to_series().dt.strftime("2020-%m-%d %H:%M:%S")
     )
     result = df.set_index("year", append=True).unstack("year")
     return cast(pd.DataFrame, result)

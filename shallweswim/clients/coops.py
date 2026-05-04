@@ -5,7 +5,7 @@ import datetime
 import io
 import logging
 import urllib.parse
-from typing import ClassVar, Literal, TypedDict, cast
+from typing import ClassVar, Literal, TypedDict
 
 # Third-party imports
 import aiohttp
@@ -256,7 +256,7 @@ class CoopsApi(BaseApiClient):
                 ["prediction", "type"]
             ]
         )
-        return cast(pd.DataFrame, df)
+        return df
 
     async def currents(
         self,
@@ -327,7 +327,7 @@ class CoopsApi(BaseApiClient):
                 # With sparse data, fall back to linear interpolation
                 currents = resampled.interpolate(method="linear")
 
-        return cast(pd.DataFrame, currents)
+        return currents
 
     async def temperature(
         self,
@@ -395,7 +395,7 @@ class CoopsApi(BaseApiClient):
             )  # Metadata columns we don't use
         )
 
-        return cast(pd.DataFrame, df)
+        return df
 
     def _FixTime(self, df: pd.DataFrame, time_col: str = "Date Time") -> pd.DataFrame:
         """Fix timestamp column in NOAA CO-OPS API response.

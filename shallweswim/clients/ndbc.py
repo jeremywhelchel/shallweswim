@@ -270,14 +270,14 @@ class NdbcApi(BaseApiClient):
         Returns:
             DataFrame with local timezone timestamps (naive datetimes)
         """
-        # First, make the timestamps timezone-aware (UTC)
-        df.index = df.index.tz_localize("UTC")
-
-        # Then convert to the location's timezone
-        df.index = df.index.tz_convert(timezone)
-
-        # Finally, make the timestamps naive again (remove timezone info)
-        df.index = df.index.tz_localize(None)
+        # First, make the timestamps timezone-aware (UTC), convert to the
+        # location's timezone, then make them naive again.
+        df.index = (
+            pd.DatetimeIndex(df.index)
+            .tz_localize("UTC")
+            .tz_convert(timezone)
+            .tz_localize(None)
+        )
 
         # Rename the index to 'time' to match our convention
         df.index.name = "time"

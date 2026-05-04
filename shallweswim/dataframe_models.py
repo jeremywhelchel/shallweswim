@@ -23,7 +23,7 @@ class TimeSeriesDataModel(pa.DataFrameModel):
 
     @pa.check("time", error="Index not sorted")
     def check_index_monotonic(cls, idx: pd.Index) -> bool:
-        return bool(idx.is_monotonic_increasing)
+        return idx.is_monotonic_increasing
 
     @pa.check("time", error="Index must be timezone naive")
     def check_index_tz_naive(cls, idx: pd.Index) -> bool:

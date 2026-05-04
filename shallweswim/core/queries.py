@@ -5,7 +5,7 @@ about temperature, tides, and currents.
 """
 
 import datetime
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -103,7 +103,7 @@ def get_row_at_time(df: pd.DataFrame, t: datetime.datetime) -> pd.Series:
         The row closest to the specified time as a pandas Series
     """
     # All times should be assumed to be naive
-    return df.loc[df.index.asof(t)]
+    return cast(pd.Series, df.loc[df.index.asof(t)])
 
 
 def _require_naive_datetime_index(df: pd.DataFrame, context: str) -> None:
@@ -373,8 +373,12 @@ def get_current_tide_info(
     next_tide_dicts = next_tides_df.reset_index().to_dict(orient="records")
 
     # Convert DataFrame records to TideEntry objects using the helper function
-    past_tides = [record_to_tide_entry(record) for record in past_tide_dicts]
-    next_tides = [record_to_tide_entry(record) for record in next_tide_dicts]
+    past_tides = [
+        record_to_tide_entry(cast(dict[str, Any], record)) for record in past_tide_dicts
+    ]
+    next_tides = [
+        record_to_tide_entry(cast(dict[str, Any], record)) for record in next_tide_dicts
+    ]
 
     return TideInfo(past=past_tides, next=next_tides)
 

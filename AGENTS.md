@@ -70,20 +70,45 @@ Two error types for data availability:
 - **Data queries**: `get_feed_data()` raises `DataUnavailableError` (not assert) - API catches and returns 503
 - Never silently swallow errors - always log at appropriate level (WARNING for expected, ERROR for unexpected)
 
-## Querying Production Logs
+## Querying Production Health
 
-Query Cloud Run logs (credentials loaded via `.envrc`/direnv — never use `gcloud auth`):
+Use `gcloud` with credentials loaded via `.envrc`/direnv — never use `gcloud auth`.
+
+Check Cloud Run service status and the latest serving revision:
 
 ```bash
-# Recent errors
+gcloud run services describe shallweswim \
+  --region=us-east4 \
+  --format='yaml(status.url,status.conditions,status.traffic,status.latestReadyRevisionName,status.latestCreatedRevisionName)'
+```
+
+For log investigations after a deploy, prefer filtering to the latest ready revision so older
+revisions do not obscure current health:
+
+```bash
+# Current revision 5xx request errors
 gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND severity>=WARNING' \
-  --limit=50 --format='table(timestamp,severity,textPayload)'
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND resource.labels.revision_name="REVISION_NAME" AND httpRequest.status>=500' \
+  --limit=50 \
+  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestMethod,httpRequest.requestUrl,httpRequest.latency,httpRequest.userAgent)'
+
+# Current revision 4xx request warnings (often bot/probe noise)
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND resource.labels.revision_name="REVISION_NAME" AND httpRequest.status>=400 AND httpRequest.status<500' \
+  --limit=30 \
+  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestMethod,httpRequest.requestUrl,httpRequest.latency,httpRequest.userAgent)'
+
+# Uptime check results (/api/healthy and alias /api/health are equivalent)
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND httpRequest.userAgent:"GoogleStackdriverMonitoring-UptimeChecks"' \
+  --limit=20 \
+  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestMethod,httpRequest.requestUrl,httpRequest.latency,resource.labels.revision_name)'
 
 # Specific time window
 gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND timestamp>="2026-02-18T20:00:00Z" AND timestamp<="2026-02-18T21:00:00Z"' \
-  --limit=100 --format='table(timestamp,severity,textPayload)'
+  --limit=100 \
+  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestUrl,textPayload)'
 
 # Full JSON details for errors
 gcloud logging read \
@@ -95,6 +120,11 @@ gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND textPayload:"san"' \
   --limit=30 --format='table(timestamp,textPayload)'
 ```
+
+Cloud Run request logs store status, URL, latency, and user agent under `httpRequest`; `textPayload`
+is often empty for those entries. Cloud Run also reports many `4xx` responses as `WARNING`, so
+`severity>=WARNING` alone is noisy and commonly includes bot scans for paths such as `/wp`,
+`/wordpress`, and `/api/health`.
 
 Required `.env` variables: `CLOUDSDK_CORE_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`
 

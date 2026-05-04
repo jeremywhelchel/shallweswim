@@ -182,7 +182,7 @@ The test suite uses a three-tier strategy:
 
 External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) occasionally experience outages. The application handles these gracefully:
 
-- **Health check (`/api/healthy`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
+- **Health check (`/api/healthy`, alias `/api/health`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
 - **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, and `age_seconds`. Use this for granular monitoring and alerting.
 
 For production deployments, set up external monitoring on `/api/status` to alert when critical feeds become unhealthy. See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed station outage handling strategy.

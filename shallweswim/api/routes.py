@@ -444,6 +444,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             content=svg_io.getvalue(), media_type="image/svg+xml"
         )
 
+    @app.get("/api/health", status_code=200)
     @app.get("/api/healthy", status_code=200)
     async def healthy_status() -> bool:
         """API endpoint for service health check (used by Cloud Run).

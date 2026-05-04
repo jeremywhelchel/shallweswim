@@ -257,7 +257,7 @@ Plot generation runs in a `ProcessPoolExecutor` (bounded to `os.cpu_count()` wor
   - Triggers GCP alerts
   - Indicates potential bug or API change
 
-### Health Check (`/api/healthy`)
+### Health Check (`/api/healthy`, `/api/health`)
 
 - Returns **200** if at least 1 location has data (fresh or stale)
 - Returns **503** only if NO location can serve any data

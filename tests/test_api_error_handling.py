@@ -401,6 +401,23 @@ def test_healthy_at_least_one_location_has_data_returns_200() -> None:
     assert response.json() is True
 
 
+def test_health_alias_at_least_one_location_has_data_returns_200() -> None:
+    """/api/health is an alias for /api/healthy."""
+    app = create_test_app()
+    app.state.data_managers = {}
+    register_routes(app)
+
+    mock_manager = MagicMock(spec=LocationDataManager)
+    mock_manager.has_data = True
+    app.state.data_managers["nyc"] = mock_manager
+
+    client = TestClient(app)
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json() is True
+
+
 def test_healthy_all_locations_have_data_returns_200() -> None:
     """All locations have data → 200 (healthy)."""
     app = create_test_app()

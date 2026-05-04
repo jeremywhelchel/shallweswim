@@ -243,7 +243,9 @@ class CoopsApi(BaseApiClient):
         # Construct URL and call using request_with_retry
         url_params = dict(self.BASE_PARAMS, **params)
         url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
-        raw_df: pd.DataFrame = await self.request_with_retry(location_code, url)
+        raw_df = await self.request_with_retry(
+            location_code, self._execute_request, url
+        )
 
         # Existing processing logic
         df = (
@@ -296,7 +298,9 @@ class CoopsApi(BaseApiClient):
         # Construct URL and call using request_with_retry
         url_params = dict(self.BASE_PARAMS, **params)
         url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
-        raw_df: pd.DataFrame = await self.request_with_retry(location_code, url)
+        raw_df = await self.request_with_retry(
+            location_code, self._execute_request, url
+        )
 
         # Existing processing logic (using raw_df as input)
         currents = raw_df.pipe(self._FixTime, time_col="Time").rename(
@@ -373,7 +377,9 @@ class CoopsApi(BaseApiClient):
         # Construct URL and call using request_with_retry
         url_params = dict(self.BASE_PARAMS, **params)
         url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
-        raw_df: pd.DataFrame = await self.request_with_retry(location_code, url)
+        raw_df = await self.request_with_retry(
+            location_code, self._execute_request, url
+        )
 
         # Existing processing logic
         df = (

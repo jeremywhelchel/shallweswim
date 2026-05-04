@@ -199,9 +199,9 @@ class NwisApi(BaseApiClient):
         param_list = [parameter_cd] if isinstance(parameter_cd, str) else parameter_cd
 
         # Call the execution logic via the retry wrapper
-        raw_result: pd.DataFrame = await self.request_with_retry(
-            location_code,  # First arg for request_with_retry
-            # Remaining positional args for the implicit self._execute_request:
+        raw_result = await self.request_with_retry(
+            location_code,
+            self._execute_request,
             site_no,
             "iv",
             param_list,
@@ -305,14 +305,14 @@ class NwisApi(BaseApiClient):
         end_date_str = end_date.strftime("%Y-%m-%d")
 
         try:
-            # Use request_with_retry which calls _execute_request internally
-            raw_result: pd.DataFrame = await self.request_with_retry(
+            raw_result = await self.request_with_retry(
+                location_code=location_code,
+                execute_request=self._execute_request,
                 sites=site_no,
                 service="iv",  # Instantaneous values
                 parameterCd=[parameter_cd],
                 start=start_date_str,
                 end=end_date_str,
-                location_code=location_code,
             )
 
             # Post-processing similar to temperature method

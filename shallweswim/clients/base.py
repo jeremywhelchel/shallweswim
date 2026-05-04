@@ -2,8 +2,10 @@
 
 Architecture
 ------------
-All API clients inherit from BaseApiClient and implement `_execute_request`.
-The base class provides retry logic via `request_with_retry`.
+All API clients inherit from BaseApiClient and use `request_with_retry` to wrap
+their concrete request helper. The helper is usually named `_execute_request`,
+but it is intentionally not part of the base class contract because each
+external service needs a different request signature.
 
 Implementation Pattern for _execute_request
 -------------------------------------------
@@ -56,10 +58,10 @@ Error Hierarchy
   - *DataError (per client): Unexpected response format
 """
 
-import abc
 import logging
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, TypeVar
 
 import aiohttp
 import requests
@@ -154,8 +156,11 @@ def is_retryable_dataretrieval_error(error: ValueError) -> bool:
     )
 
 
-class BaseApiClient(abc.ABC):
-    """Abstract base class for API clients with built-in retry logic."""
+ResponseT = TypeVar("ResponseT")
+
+
+class BaseApiClient:
+    """Base class for API clients with built-in retry logic."""
 
     # Tenacity configuration
     MAX_RETRIES: int = 4  # Total attempts = MAX_RETRIES + 1
@@ -168,10 +173,9 @@ class BaseApiClient(abc.ABC):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @property
-    @abc.abstractmethod
     def client_type(self) -> str:
         """Return a string identifier for the client type (e.g., 'coops', 'nwis')."""
-        pass
+        return self.__class__.__name__.lower()
 
     def log(
         self,
@@ -186,8 +190,7 @@ class BaseApiClient(abc.ABC):
 
     def _log_retry(self, retry_state: tenacity.RetryCallState) -> None:
         """Log retry attempts using tenacity's state and the instance's log method."""
-        # Extract location_code from the arguments passed to the wrapped function
-        # This assumes 'location_code' is passed as a keyword argument to request_with_retry
+        # Extract location_code from the arguments passed to the wrapped function.
         location_code = retry_state.kwargs.get("location_code", "unknown")
         attempt_num = retry_state.attempt_number
         exception = retry_state.outcome.exception() if retry_state.outcome else None
@@ -207,56 +210,27 @@ class BaseApiClient(abc.ABC):
             location_code=location_code,
         )
 
-    @abc.abstractmethod
-    async def _execute_request(self, *args: Any, **kwargs: Any) -> Any:
-        """Perform the client-specific API request. See module docstring for pattern.
-
-        IMPORTANT: Structure this method with TWO SEPARATE PHASES:
-
-        1. FETCH PHASE (inside try/except):
-           - Perform API call
-           - Catch transient network/protocol/HTTP errors → raise RetryableClientError
-           - Catch other fetch errors → raise *ApiError
-
-        2. VALIDATION PHASE (OUTSIDE try/except - this is critical!):
-           - Check for "no data" → raise StationUnavailableError (WARNING)
-           - Check for bad format → raise *DataError (ERROR)
-
-        The validation phase MUST be outside try/except so that
-        StationUnavailableError propagates without being caught by
-        a generic `except Exception` handler.
-
-        Args:
-            *args: Client-specific positional arguments.
-            **kwargs: Must include 'location_code' for logging.
-
-        Returns:
-            The successfully retrieved data (typically pd.DataFrame).
-
-        Raises:
-            RetryableClientError: Transient network error (will be retried).
-            StationUnavailableError: Station has no data (expected, WARNING).
-            *ApiError: Unexpected error during fetch (ERROR).
-            *DataError: Unexpected response format (ERROR).
-        """
-        pass
-
     async def request_with_retry(
-        self, location_code: str, *args: Any, **kwargs: Any
-    ) -> Any:
+        self,
+        location_code: str,
+        execute_request: Callable[..., Awaitable[ResponseT]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> ResponseT:
         """Executes the client-specific request with retry logic using tenacity.
 
         Args:
             location_code: The location code for logging.
-            *args: Positional arguments to pass to _execute_request.
-            **kwargs: Keyword arguments to pass to _execute_request.
+            execute_request: Client-specific async request helper to call.
+            *args: Positional arguments to pass to execute_request.
+            **kwargs: Keyword arguments to pass to execute_request.
 
         Returns:
-            The result of the _execute_request on success.
+            The result of execute_request on success.
 
         Raises:
             RetryableClientError: If the request fails after all retries due to transient issues.
-            Exception: Any non-retryable exception raised by _execute_request.
+            Exception: Any non-retryable exception raised by execute_request.
         """
 
         # Define the retry strategy using tenacity
@@ -270,11 +244,11 @@ class BaseApiClient(abc.ABC):
             reraise=True,  # Re-raise the last exception if all retries fail
         )
 
-        # Apply the decorator dynamically to the _execute_request call
+        # Apply the decorator dynamically to the concrete request helper.
         # We need to wrap it in an inner async function to apply the decorator correctly
         # Pass location_code explicitly for the logger
-        async def decorated_execute(*inner_args: Any, **inner_kwargs: Any) -> Any:
-            return await self._execute_request(*inner_args, **inner_kwargs)
+        async def decorated_execute(*inner_args: Any, **inner_kwargs: Any) -> ResponseT:
+            return await execute_request(*inner_args, **inner_kwargs)
 
         # Add location_code to kwargs if not already present, for the logger
         if "location_code" not in kwargs:
@@ -282,7 +256,9 @@ class BaseApiClient(abc.ABC):
 
         try:
             # Call the decorated execution function
-            result: Any = await retry_decorator(decorated_execute)(*args, **kwargs)
+            result: ResponseT = await retry_decorator(decorated_execute)(
+                *args, **kwargs
+            )
             return result
         except RetryableClientError as e:
             # Log final failure after all retries
@@ -294,7 +270,7 @@ class BaseApiClient(abc.ABC):
             )
             raise  # Re-raise the final RetryableClientError
         except StationUnavailableError:
-            # Expected operational condition - already logged as WARNING in _execute_request
+            # Expected operational condition - already logged as WARNING by the request helper.
             # Just propagate to _handle_task_exception which logs at WARNING level
             raise
         except Exception as e:

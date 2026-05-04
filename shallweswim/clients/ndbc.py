@@ -182,8 +182,9 @@ class NdbcApi(BaseApiClient):
         end_date_str = end_date.strftime("%Y-%m-%d")
 
         # Call the execution logic via the retry wrapper
-        raw_df: pd.DataFrame = await self.request_with_retry(
+        raw_df = await self.request_with_retry(
             location_code=location_code,
+            execute_request=self._execute_request,
             station_id=station_id,
             mode=mode,
             start_time=begin_date_str,

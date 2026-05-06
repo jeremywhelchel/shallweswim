@@ -27,7 +27,7 @@ import uvicorn
 from fastapi import HTTPException, Request, Response, responses, templating
 
 # Local imports
-from shallweswim import api, config
+from shallweswim import api, canonical, config
 
 # Local imports
 from shallweswim.assets import AssetManager, FingerprintStaticFiles, load_asset_manifest
@@ -91,6 +91,22 @@ NO_CACHE_HEADERS = {
 }
 
 
+@app.middleware("http")
+async def redirect_duplicate_hosts(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Redirect duplicate production hostnames to the canonical apex host."""
+    redirect_url = canonical.canonical_redirect_url(
+        hostname=request.url.hostname,
+        path=request.url.path,
+        query=request.url.query,
+    )
+    if redirect_url:
+        return responses.RedirectResponse(redirect_url, status_code=301)
+
+    return await call_next(request)
+
+
 # Add a response header modifier for API routes
 @app.middleware("http")
 async def add_cache_control_headers(
@@ -150,6 +166,7 @@ async def view_all_locations(request: fastapi.Request) -> responses.HTMLResponse
         name="all_locations.html",
         context={
             "all_locations": config.CONFIGS,
+            "canonical_url": canonical.canonical_url("/all"),
         },
     )
 
@@ -174,7 +191,6 @@ STATIC_FILES = [
     ("/apple-touch-icon.png", "/static/apple-touch-icon.png"),
     ("/apple-touch-icon-precomposed.png", "/static/apple-touch-icon.png"),
     ("/manifest.json", "/static/manifest.json"),
-    ("/robots.txt", "/static/robots.txt"),
 ]
 
 # Register each static file route individually
@@ -190,6 +206,24 @@ for path, target in STATIC_FILES:
 
     # Register the route with FastAPI
     app.get(path)(create_static_route(target))
+
+
+@app.get("/robots.txt")
+async def robots_txt() -> responses.PlainTextResponse:
+    """Serve crawler directives for the canonical site."""
+    return responses.PlainTextResponse(canonical.robots_txt())
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml() -> responses.Response:
+    """Serve a sitemap of canonical, indexable pages."""
+    urls = [canonical.canonical_url("/all")]
+    urls.extend(
+        canonical.canonical_url(f"/{loc_code}") for loc_code in sorted(config.CONFIGS)
+    )
+    return responses.Response(
+        content=canonical.sitemap_xml(urls), media_type="application/xml"
+    )
 
 
 # ======================================================================
@@ -225,6 +259,7 @@ async def location_index(
         context={
             "config": cfg,
             "all_locations": config.CONFIGS,
+            "canonical_url": canonical.canonical_url(f"/{cfg.code}"),
         },
     )
 
@@ -255,6 +290,7 @@ async def location_embed(
         name="embed.html",
         context={
             "config": cfg,
+            "canonical_url": canonical.canonical_url(f"/{cfg.code}/embed"),
         },
     )
 
@@ -323,6 +359,7 @@ async def location_currents(
             "config": cfg,
             "shift": shift,
             "shifted_time": formatted_time,
+            "canonical_url": canonical.canonical_url(f"/{cfg.code}/currents"),
         },
     )
 
@@ -449,7 +486,7 @@ parser.add_argument(
 )
 
 
-_parsed_args = parser.parse_args()
+_parsed_args, _unknown_args = parser.parse_known_args()
 
 
 def create_app() -> fastapi.FastAPI:
@@ -472,6 +509,8 @@ def create_app() -> fastapi.FastAPI:
 
 if __name__ == "__main__":
     """Run the application directly with uvicorn when executed as a script."""
+    _parsed_args = parser.parse_args()
+
     # Set up logging first, before any logging calls
     setup_logging()
     logging.info("***********************************************")

@@ -9,8 +9,10 @@
       name="description"
       content="{% block description %}{{ config.description|default('Swimming conditions') }}{% endblock %}"
     />
-
-    {% block stylesheets %}
+    {% if canonical_url %}
+    <link rel="canonical" href="{{ canonical_url }}" />
+    <meta property="og:url" content="{{ canonical_url }}" />
+    {% endif %} {% block stylesheets %}
     <link
       rel="stylesheet"
       type="text/css"

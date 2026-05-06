@@ -266,6 +266,14 @@ Plot generation runs in a `ProcessPoolExecutor` (bounded to `os.cpu_count()` wor
 - Missing/empty location manager state returns **503** here because the
   health endpoint answers "can this instance serve traffic?"
 
+### Canonical Routes
+
+- Canonical production host is `https://shallweswim.today`
+- `www.shallweswim.today` redirects to the apex host with a permanent redirect
+- `/` redirects to `/nyc`; location pages are the canonical indexable pages
+- `/robots.txt` advertises `/sitemap.xml`
+- `/sitemap.xml` lists `/all` and enabled location pages
+
 ### Monitoring (`/api/status`)
 
 - Returns detailed status for all locations/feeds

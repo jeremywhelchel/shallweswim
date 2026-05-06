@@ -6,6 +6,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shall We Swim? - Water Temperatures at All Locations</title>
+    {% if canonical_url %}
+    <link rel="canonical" href="{{ canonical_url }}" />
+    <meta property="og:url" content="{{ canonical_url }}" />
+    {% endif %}
     <link
       href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap"
       rel="stylesheet"

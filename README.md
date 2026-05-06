@@ -104,6 +104,14 @@ The application is hosted on Google Cloud Run:
 ./build_and_deploy.sh
 ```
 
+### Canonical URLs
+
+The canonical production host is `https://shallweswim.today`. The app redirects
+`www.shallweswim.today` to the apex host, exposes canonical tags on HTML pages,
+and serves `/robots.txt` plus `/sitemap.xml` for crawler discovery. The root path
+redirects to `/nyc`, so Search Console may report `/` and HTTP/www variants as
+"Page with redirect"; the location pages are the indexable canonical URLs.
+
 ## Development
 
 **Documentation**

@@ -80,10 +80,11 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
 </div>
 
 <h2>Current Prediction</h2>
+<div class="note" id="currents-status" hidden></div>
 <div class="current-info">
-  At <span id="timestamp">loading time...</span>, we estimate the current is
-  <b><span id="state">loading</span></b> at
-  <b><span id="magnitude">0.0</span> knots</b>.
+  At <span id="timestamp">...</span>, we estimate the current is
+  <b><span id="state">...</span></b> at
+  <b><span id="magnitude">...</span> knots</b>.
 
   <div class="direction-info">
     {% if config.code == "nyc" %}

@@ -117,6 +117,10 @@ def test_currents_page_renders_without_empty_image_sources() -> None:
     assert response.status_code == 200
     assert 'locationCode: "nyc"' in response.text
     assert 'src="/static/main.js"' in response.text
+    assert 'id="currents-status" hidden' in response.text
+    assert 'id="timestamp">...</span>' in response.text
+    assert 'id="state">...</span>' in response.text
+    assert 'id="magnitude">...</span>' in response.text
     assert 'id="current-chart"' in response.text
     assert 'id="tide-current-plot"' in response.text
     assert 'id="legacy-chart"' in response.text

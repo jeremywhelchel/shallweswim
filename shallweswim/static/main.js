@@ -29,6 +29,7 @@ let conditionsRefreshTimer = null;
 let conditionsFetchInFlight = false;
 let conditionsLoaded = false;
 let deferredPlotsStarted = false;
+let currentsLoaded = false;
 let pageInitialized = false;
 let currentShiftParam = null;
 
@@ -563,6 +564,8 @@ async function fetchCurrentsData(location, shift = null) {
     return;
   }
 
+  showCurrentsLoading();
+
   try {
     console.log(
       `Fetching currents data for ${location}${shift ? ` with shift ${shift}` : ""}...`,
@@ -582,10 +585,14 @@ async function fetchCurrentsData(location, shift = null) {
     updateCurrentsDisplay(data, location);
   } catch (error) {
     console.error("Error fetching currents data:", error);
+    showCurrentsError();
   }
 }
 
 function updateCurrentsDisplay(data, location) {
+  currentsLoaded = true;
+  clearCurrentsStatus();
+
   setText("timestamp", formatTimestamp(data.timestamp) || "unavailable");
 
   const magnitude = Number.parseFloat(data.current?.magnitude);
@@ -612,6 +619,44 @@ function updateCurrentsDisplay(data, location) {
   }
 
   updateCharts(data);
+}
+
+function showCurrentsLoading() {
+  if (!currentsLoaded) {
+    clearCurrentsStatus();
+  }
+}
+
+function showCurrentsError() {
+  if (currentsLoaded) {
+    setCurrentsStatus(
+      "Could not refresh current prediction. Showing last loaded data.",
+    );
+    return;
+  }
+
+  setText("timestamp", "unavailable");
+  setText("state", "unavailable");
+  setText("magnitude", "N/A");
+  setCurrentsStatus(
+    "Unable to load current prediction. Please try again later.",
+  );
+}
+
+function setCurrentsStatus(message) {
+  const statusElement = document.getElementById("currents-status");
+  if (statusElement) {
+    statusElement.textContent = message;
+    statusElement.hidden = false;
+  }
+}
+
+function clearCurrentsStatus() {
+  const statusElement = document.getElementById("currents-status");
+  if (statusElement) {
+    statusElement.textContent = "";
+    statusElement.hidden = true;
+  }
 }
 
 function updateCharts(data) {

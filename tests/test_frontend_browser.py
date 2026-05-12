@@ -78,12 +78,44 @@ def _conditions_payload() -> dict[str, Any]:
     }
 
 
+def _currents_payload() -> dict[str, Any]:
+    return {
+        "location": {"code": "nyc", "name": "New York"},
+        "timestamp": "2026-05-12T11:15:00-04:00",
+        "current": {
+            "timestamp": "2026-05-12T11:15:00-04:00",
+            "direction": "EBB",
+            "phase": "ebb",
+            "strength": "moderate",
+            "trend": "building",
+            "magnitude": 1.2,
+            "magnitude_pct": 0.5,
+            "state_description": "moderate ebb and building",
+            "source_type": "prediction",
+        },
+        "legacy_chart": {
+            "hours_since_last_tide": 1.1,
+            "last_tide_type": "high",
+            "chart_filename": "legacy-current.svg",
+            "map_title": "NY Harbor",
+        },
+        "current_chart_filename": "/static/current-map.svg",
+        "navigation": {
+            "shift": 0,
+            "next_hour": 60,
+            "prev_hour": -60,
+            "current_api_url": "/api/nyc/currents",
+            "plot_url": "/api/nyc/plots/current_tide?shift=0",
+        },
+    }
+
+
 @pytest.fixture
 def browser_smoke_server() -> Generator[BrowserSmokeServer]:
     """Serve a small app with real templates/static assets and mocked API data."""
     app = fastapi.FastAPI()
     app.mount("/static", StaticFiles(directory="shallweswim/static"), name="static")
-    request_counts = {"conditions": 0, "plots": 0}
+    request_counts = {"conditions": 0, "currents": 0, "plots": 0}
     request_order: list[str] = []
 
     @app.get("/nyc")
@@ -101,11 +133,32 @@ def browser_smoke_server() -> Generator[BrowserSmokeServer]:
             },
         )
 
+    @app.get("/nyc/currents")
+    async def currents_page(request: fastapi.Request) -> responses.HTMLResponse:
+        cfg = config.get("nyc")
+        if not cfg:
+            raise RuntimeError("NYC config missing")
+        return templates.TemplateResponse(
+            request=request,
+            name="current.html",
+            context={
+                "config": cfg,
+                "all_locations": config.CONFIGS,
+                "canonical_url": canonical.canonical_url("/nyc/currents"),
+            },
+        )
+
     @app.get("/api/nyc/conditions")
     async def conditions() -> dict[str, Any]:
         request_counts["conditions"] += 1
         request_order.append("conditions")
         return _conditions_payload()
+
+    @app.get("/api/nyc/currents")
+    async def currents() -> dict[str, Any]:
+        request_counts["currents"] += 1
+        request_order.append("currents")
+        return _currents_payload()
 
     @app.get("/api/nyc/plots/{_plot_name}")
     async def plot_placeholder(_plot_name: str) -> responses.Response:
@@ -182,6 +235,18 @@ def _block_external_and_fail_conditions(route: Route) -> None:
     if request.url.startswith("http://127.0.0.1:") and request.url.endswith(
         "/api/nyc/conditions"
     ):
+        route.fulfill(status=503, body="Service unavailable")
+    elif request.url.startswith("http://127.0.0.1:"):
+        route.continue_()
+    else:
+        route.abort()
+
+
+def _block_external_and_fail_currents(route: Route) -> None:
+    request = route.request
+    if request.url.startswith("http://127.0.0.1:") and urlparse(
+        request.url
+    ).path.endswith("/api/nyc/currents"):
         route.fulfill(status=503, body="Service unavailable")
     elif request.url.startswith("http://127.0.0.1:"):
         route.continue_()
@@ -317,6 +382,108 @@ def test_deferred_plot_loading_shows_unavailable_after_retries(
         expect(
             page.locator('img[data-src="/api/nyc/plots/live_temps"] + .plot-status')
         ).to_have_text("Plot unavailable")
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_currents_page_updates_prediction(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """The currents page loads mocked prediction data and clears status text."""
+    playwright, browser = _launch_chromium()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", _block_external_requests)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc/currents")
+
+        expect(page.locator("#timestamp")).to_contain_text("5/12/2026")
+        expect(page.locator("#state")).to_have_text("moderate ebb and building")
+        expect(page.locator("#magnitude")).to_have_text("1.2")
+        expect(page.locator("#currents-status")).to_be_hidden()
+        expect(page.locator("#prev-hour-link")).to_have_attribute(
+            "href", re.compile(r"/nyc/currents\?shift=-60$")
+        )
+        expect(page.locator("#next-hour-link")).to_have_attribute(
+            "href", re.compile(r"/nyc/currents\?shift=60$")
+        )
+
+        assert browser_smoke_server.request_counts["currents"] == 1
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_initial_currents_failure_shows_unavailable_state(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """A failed first currents load does not leave placeholders spinning."""
+    playwright, browser = _launch_chromium()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", _block_external_and_fail_currents)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc/currents")
+
+        expect(page.locator("#currents-status")).to_have_text(
+            "Unable to load current prediction. Please try again later."
+        )
+        expect(page.locator("#timestamp")).to_have_text("unavailable")
+        expect(page.locator("#state")).to_have_text("unavailable")
+        expect(page.locator("#magnitude")).to_have_text("N/A")
+
+        assert browser_smoke_server.request_counts["currents"] == 0
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_currents_refresh_failure_keeps_loaded_data(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """A currents refresh failure keeps prior values and marks them as stale."""
+    playwright, browser = _launch_chromium()
+    current_attempts = 0
+
+    def route_currents_once_then_fail(route: Route) -> None:
+        nonlocal current_attempts
+        request = route.request
+        if request.url.startswith("http://127.0.0.1:") and urlparse(
+            request.url
+        ).path.endswith("/api/nyc/currents"):
+            current_attempts += 1
+            if current_attempts == 1:
+                route.continue_()
+            else:
+                route.fulfill(status=503, body="Service unavailable")
+        elif request.url.startswith("http://127.0.0.1:"):
+            route.continue_()
+        else:
+            route.abort()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", route_currents_once_then_fail)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc/currents")
+
+        expect(page.locator("#state")).to_have_text("moderate ebb and building")
+        expect(page.locator("#magnitude")).to_have_text("1.2")
+        expect(page.locator("#currents-status")).to_be_hidden()
+
+        page.evaluate("fetchCurrentsData('nyc')")
+
+        expect(page.locator("#currents-status")).to_have_text(
+            "Could not refresh current prediction. Showing last loaded data."
+        )
+        expect(page.locator("#state")).to_have_text("moderate ebb and building")
+        expect(page.locator("#magnitude")).to_have_text("1.2")
+
+        assert browser_smoke_server.request_counts["currents"] == 1
+        assert current_attempts == 2
     finally:
         browser.close()
         playwright.stop()

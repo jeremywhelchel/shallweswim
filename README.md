@@ -142,6 +142,10 @@ uv run pytest -v -k "not integration"
 # Run integration tests (connects to external APIs)
 uv run pytest -v -m integration --run-integration
 
+# Run optional browser smoke tests (requires Playwright browser dependencies)
+uv run playwright install chromium
+uv run pytest tests/test_frontend_browser.py -v --run-browser
+
 # Run type checking
 uv run pyrefly check .
 
@@ -161,7 +165,29 @@ uv run pytest --cov=shallweswim
 uv run pytest --cov=shallweswim --cov-report=html
 ```
 
-Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS) and may occasionally fail if services are experiencing issues or data is temporarily unavailable.
+Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser smoke tests are also opt-in; they use Playwright to run a real Chromium browser against a local mocked app and are skipped unless `--run-browser` is passed.
+
+#### Optional Browser Smoke Tests
+
+Browser smoke tests exercise the frontend JavaScript in a real Chromium browser.
+They are not part of the default test run.
+
+```bash
+# Install the Playwright Chromium browser binary
+uv run playwright install chromium
+
+# If your Linux container/VM is missing browser system libraries, install them too
+uv run playwright install-deps chromium
+
+# Run the optional browser smoke test
+uv run pytest tests/test_frontend_browser.py -v --run-browser
+```
+
+`playwright install-deps chromium` modifies system packages with `apt` on Linux,
+so run it only in a development container/VM or CI image where that is expected.
+If you prefer explicit package installation in a Dockerfile or GitHub Actions
+step, Playwright's Chromium dependency warning lists the needed packages for the
+current image.
 
 Integration test teardown intentionally uses bounded waits for blocking live-API
 worker threads. This avoids GitHub Actions stalls that happened when teardown
@@ -179,6 +205,7 @@ The test suite uses a three-tier strategy:
 | **Unit** | `test_*.py` (most) | Mocked | Fake test configs | Yes |
 | **E2E Stack** | `test_mocked_stack.py` | Mocked | Fake test configs | Yes |
 | **Integration** | `test_*_integration.py` | Real NOAA/USGS | Real configs | No (`--run-integration`) |
+| **Browser Smoke** | `test_frontend_browser.py` | Mocked | Real templates/static assets | No (`--run-browser`) |
 
 **Key principles:**
 

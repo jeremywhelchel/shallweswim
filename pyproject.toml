@@ -42,6 +42,7 @@ dev = [
     "types-python-dateutil",
     "types-pytz",
     "types-requests",
+    "playwright>=1.59.0",
 ]
 
 [tool.ruff]

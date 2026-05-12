@@ -112,12 +112,21 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Run integration tests that hit live NOAA CO-OPS APIs",
     )
+    parser.addoption(
+        "--run-browser",
+        action="store_true",
+        default=False,
+        help="Run browser smoke tests that require Playwright browser binaries",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     """Configure custom pytest markers."""
     config.addinivalue_line(
         "markers", "integration: mark test as hitting live NOAA CO-OPS API service"
+    )
+    config.addinivalue_line(
+        "markers", "browser: mark test as requiring a real browser via Playwright"
     )
 
 
@@ -132,6 +141,12 @@ def pytest_collection_modifyitems(
         for item in items:
             if "integration" in item.keywords:
                 item.add_marker(skip_integration)
+
+    if not config.getoption("--run-browser"):
+        skip_browser = pytest.mark.skip(reason="Need --run-browser option to run")
+        for item in items:
+            if "browser" in item.keywords:
+                item.add_marker(skip_browser)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

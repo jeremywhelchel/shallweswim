@@ -22,6 +22,7 @@ const TRANSIT_STATUS_COLORS = {
   "Good Service": "status-green",
   "Not Scheduled": "status-white",
   "No Data": "status-white",
+  Unavailable: "status-white",
 };
 
 let locationCode = getConfiguredLocationCode();
@@ -32,6 +33,10 @@ let deferredPlotsStarted = false;
 let currentsLoaded = false;
 let pageInitialized = false;
 let currentShiftParam = null;
+const transitLoaded = {
+  B: false,
+  Q: false,
+};
 
 //=============================================================================
 // YOUTUBE WEBCAM EMBED
@@ -508,6 +513,35 @@ function displayValue(element, value) {
   container.style.display = "block";
 }
 
+function clearTrainAlerts(train) {
+  displayValue(`${train}_delay`, null);
+  displayValue(`${train}_service_change`, null);
+  displayValue(`${train}_service_irregularity`, null);
+}
+
+function setTrainStatus(train, status) {
+  const statusElement = document.getElementById(`${train}_status`);
+  if (!statusElement) {
+    return;
+  }
+
+  statusElement.textContent = status;
+  statusElement.className = TRANSIT_STATUS_COLORS[status] || "status-white";
+}
+
+function updateTrainUnavailable(train) {
+  if (transitLoaded[train]) {
+    console.warn(
+      `Could not refresh ${train} train status; keeping prior data.`,
+    );
+    return;
+  }
+
+  setTrainStatus(train, "Unavailable");
+  setText(`${train}_destination`, "unavailable");
+  clearTrainAlerts(train);
+}
+
 function getTrainStatus(train) {
   const t = train;
   fetch(`https://goodservice.io/api/routes/${train}`)
@@ -527,15 +561,11 @@ function getTrainStatus(train) {
         statusStr = data.direction_statuses.south;
       }
 
-      const statusClass = TRANSIT_STATUS_COLORS[statusStr] || "status-white";
-      const statusElement = document.getElementById(`${t}_status`);
-      if (statusElement) {
-        statusElement.textContent = statusStr;
-        statusElement.className = statusClass;
-      }
+      setTrainStatus(t, statusStr);
+      clearTrainAlerts(t);
 
       if (data.status !== "Not Scheduled") {
-        setText(`${t}_destination`, data.destinations?.south?.[0] || "...");
+        setText(`${t}_destination`, data.destinations?.south?.[0] || "unknown");
         displayValue(`${t}_delay`, data.delay_summaries?.south);
 
         const changes = [
@@ -550,8 +580,12 @@ function getTrainStatus(train) {
           data.service_irregularity_summaries?.south,
         );
       }
+      transitLoaded[t] = true;
     })
-    .catch((error) => console.error(error));
+    .catch((error) => {
+      console.warn(error);
+      updateTrainUnavailable(t);
+    });
 }
 
 //=============================================================================

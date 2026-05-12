@@ -226,6 +226,10 @@ responses with backoff while plots are still being generated. If a plot remains
 unavailable after retries, only that plot shows `Plot unavailable`; the rest of
 the page remains usable.
 
+NYC transit status loads independently from swim conditions and plots. If the
+third-party transit feed is unavailable on first load, each train card shows an
+unavailable state instead of leaving placeholder text on screen.
+
 ### Testing Philosophy
 
 The test suite uses a three-tier strategy:

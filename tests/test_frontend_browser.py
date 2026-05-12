@@ -110,6 +110,17 @@ def _currents_payload() -> dict[str, Any]:
     }
 
 
+def _transit_payload(status: str = "Good Service") -> dict[str, Any]:
+    return {
+        "status": status,
+        "direction_statuses": {"south": status},
+        "destinations": {"south": ["Coney Island-Stillwell Av"]},
+        "delay_summaries": {"south": []},
+        "service_change_summaries": {"both": "", "south": ""},
+        "service_irregularity_summaries": {"south": []},
+    }
+
+
 @pytest.fixture
 def browser_smoke_server() -> Generator[BrowserSmokeServer]:
     """Serve a small app with real templates/static assets and mocked API data."""
@@ -254,6 +265,26 @@ def _block_external_and_fail_currents(route: Route) -> None:
         route.abort()
 
 
+def _mock_transit_success(route: Route) -> None:
+    request = route.request
+    if request.url.startswith("https://goodservice.io/api/routes/"):
+        route.fulfill(json=_transit_payload())
+    elif request.url.startswith("http://127.0.0.1:"):
+        route.continue_()
+    else:
+        route.abort()
+
+
+def _mock_transit_failure(route: Route) -> None:
+    request = route.request
+    if request.url.startswith("https://goodservice.io/api/routes/"):
+        route.fulfill(status=503, body="Transit unavailable")
+    elif request.url.startswith("http://127.0.0.1:"):
+        route.continue_()
+    else:
+        route.abort()
+
+
 def test_location_page_updates_conditions_once(
     browser_smoke_server: BrowserSmokeServer,
 ) -> None:
@@ -278,6 +309,54 @@ def test_location_page_updates_conditions_once(
         expect(page.locator("#conditions-status")).to_be_hidden()
 
         assert browser_smoke_server.request_counts["conditions"] == 1
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_transit_status_updates_when_goodservice_responds(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """NYC transit cards render train status independently from conditions."""
+    playwright, browser = _launch_chromium()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", _mock_transit_success)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
+
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        expect(page.locator("#Q_status")).to_have_text("Good Service")
+        expect(page.locator("#Q_destination")).to_have_text("Coney Island-Stillwell Av")
+        expect(page.locator("#B_status")).to_have_text("Good Service")
+        expect(page.locator("#B_destination")).to_have_text("Coney Island-Stillwell Av")
+        expect(page.locator("#Q_delay_div")).to_be_hidden()
+        expect(page.locator("#B_delay_div")).to_be_hidden()
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_transit_failure_shows_unavailable_state(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """A failed transit lookup does not leave train cards stuck on placeholders."""
+    playwright, browser = _launch_chromium()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", _mock_transit_failure)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
+
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        expect(page.locator("#Q_status")).to_have_text("Unavailable")
+        expect(page.locator("#Q_destination")).to_have_text("unavailable")
+        expect(page.locator("#B_status")).to_have_text("Unavailable")
+        expect(page.locator("#B_destination")).to_have_text("unavailable")
+        expect(page.locator("#Q_delay_div")).to_be_hidden()
+        expect(page.locator("#B_delay_div")).to_be_hidden()
     finally:
         browser.close()
         playwright.stop()

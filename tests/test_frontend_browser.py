@@ -4,6 +4,7 @@ Run with:
     uv run pytest tests/test_frontend_browser.py -v --run-browser
 """
 
+import re
 import socket
 import threading
 import time
@@ -40,6 +41,7 @@ class BrowserSmokeServer:
 
     base_url: str
     request_counts: dict[str, int]
+    request_order: list[str]
     server: uvicorn.Server
     thread: threading.Thread
 
@@ -81,7 +83,8 @@ def browser_smoke_server() -> Generator[BrowserSmokeServer]:
     """Serve a small app with real templates/static assets and mocked API data."""
     app = fastapi.FastAPI()
     app.mount("/static", StaticFiles(directory="shallweswim/static"), name="static")
-    request_counts = {"conditions": 0}
+    request_counts = {"conditions": 0, "plots": 0}
+    request_order: list[str] = []
 
     @app.get("/nyc")
     async def location_page(request: fastapi.Request) -> responses.HTMLResponse:
@@ -101,11 +104,20 @@ def browser_smoke_server() -> Generator[BrowserSmokeServer]:
     @app.get("/api/nyc/conditions")
     async def conditions() -> dict[str, Any]:
         request_counts["conditions"] += 1
+        request_order.append("conditions")
         return _conditions_payload()
 
     @app.get("/api/nyc/plots/{_plot_name}")
     async def plot_placeholder(_plot_name: str) -> responses.Response:
-        return responses.Response(status_code=204)
+        request_counts["plots"] += 1
+        request_order.append("plot")
+        return responses.Response(
+            content=(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">'
+                '<rect width="8" height="8" fill="blue"/></svg>'
+            ),
+            media_type="image/svg+xml",
+        )
 
     port = _free_port()
     server_config = uvicorn.Config(
@@ -136,6 +148,7 @@ def browser_smoke_server() -> Generator[BrowserSmokeServer]:
     yield BrowserSmokeServer(
         base_url=base_url,
         request_counts=request_counts,
+        request_order=request_order,
         server=server,
         thread=thread,
     )
@@ -200,6 +213,75 @@ def test_location_page_updates_conditions_once(
         expect(page.locator("#conditions-status")).to_be_hidden()
 
         assert browser_smoke_server.request_counts["conditions"] == 1
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_deferred_plots_load_after_conditions(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """Temperature plots wait until the first conditions request has completed."""
+    playwright, browser = _launch_chromium()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", _block_external_requests)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
+
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        live_plot = page.locator('img[data-src="/api/nyc/plots/live_temps"]')
+        expect(live_plot).to_have_attribute(
+            "src", re.compile(r"/api/nyc/plots/live_temps$")
+        )
+
+        assert browser_smoke_server.request_order[0] == "conditions"
+        assert browser_smoke_server.request_counts["conditions"] == 1
+        assert browser_smoke_server.request_counts["plots"] >= 1
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_deferred_plot_loading_retries_transient_failures(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """A cold-start plot 503 is retried instead of sticking as a broken image."""
+    playwright, browser = _launch_chromium()
+    live_plot_attempts = 0
+
+    def fail_first_live_plot_request(route: Route) -> None:
+        nonlocal live_plot_attempts
+        request = route.request
+        if request.url.startswith("http://127.0.0.1:") and request.url.endswith(
+            "/api/nyc/plots/live_temps"
+        ):
+            live_plot_attempts += 1
+            if live_plot_attempts == 1:
+                route.fulfill(status=503, body="Plot warming up")
+            else:
+                route.continue_()
+        elif request.url.startswith("http://127.0.0.1:"):
+            route.continue_()
+        else:
+            route.abort()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", fail_first_live_plot_request)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
+
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        live_plot = page.locator('img[data-src="/api/nyc/plots/live_temps"]')
+        expect(live_plot).to_have_attribute(
+            "src", re.compile(r"/api/nyc/plots/live_temps$")
+        )
+        expect(live_plot).to_have_attribute("data-status", "loaded")
+
+        assert live_plot_attempts >= 2
+        assert browser_smoke_server.request_counts["plots"] >= 1
     finally:
         browser.close()
         playwright.stop()

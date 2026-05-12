@@ -77,6 +77,22 @@ def test_location_page_renders_frontend_bootstrap() -> None:
     assert 'id="current-state-summary">...</span>' in response.text
 
 
+def test_location_page_defers_temperature_plot_loading() -> None:
+    """Temperature plot images do not race conditions during initial HTML parse."""
+    client = TestClient(app)
+
+    response = client.get("/nyc")
+
+    assert response.status_code == 200
+    assert 'class="plot deferred-plot"' in response.text
+    assert 'data-src="/api/nyc/plots/live_temps"' in response.text
+    assert 'data-src="/api/nyc/plots/historic_temps?period=2mo"' in response.text
+    assert 'data-src="/api/nyc/plots/historic_temps?period=12mo"' in response.text
+    assert ' src="/api/nyc/plots/live_temps"' not in response.text
+    assert ' src="/api/nyc/plots/historic_temps?period=2mo"' not in response.text
+    assert ' src="/api/nyc/plots/historic_temps?period=12mo"' not in response.text
+
+
 def test_location_page_renders_windy_embed_with_layout_dimensions() -> None:
     """Windy embed dimensions match the responsive iframe's desktop layout."""
     client = TestClient(app)

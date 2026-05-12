@@ -9,6 +9,7 @@
 //=============================================================================
 
 const REFRESH_INTERVAL = 60000; // 60 seconds
+const DEFERRED_PLOT_RETRY_DELAYS = [1000, 3000, 7000];
 
 const TRANSIT_STATUS_COLORS = {
   Delay: "status-red",
@@ -25,6 +26,7 @@ let locationCode = getConfiguredLocationCode();
 let conditionsRefreshTimer = null;
 let conditionsFetchInFlight = false;
 let conditionsLoaded = false;
+let deferredPlotsStarted = false;
 let pageInitialized = false;
 let currentShiftParam = null;
 
@@ -181,7 +183,16 @@ async function fetchAndUpdateConditions(location) {
     showConditionsError();
   } finally {
     conditionsFetchInFlight = false;
+    startDeferredPlotLoading();
   }
+}
+
+function startDeferredPlotLoading() {
+  if (deferredPlotsStarted) {
+    return;
+  }
+  deferredPlotsStarted = true;
+  loadDeferredPlots();
 }
 
 function showConditionsLoading() {
@@ -363,6 +374,44 @@ function clearConditionsStatus() {
     statusElement.textContent = "";
     statusElement.hidden = true;
   }
+}
+
+//=============================================================================
+// DEFERRED PLOT LOADING
+//=============================================================================
+
+function loadDeferredPlots() {
+  const plots = document.querySelectorAll("img.deferred-plot[data-src]");
+  plots.forEach((plot) => {
+    loadDeferredPlot(plot);
+  });
+}
+
+function loadDeferredPlot(plot, attempt = 0) {
+  const src = plot.dataset.src;
+  if (!src || plot.dataset.loaded === "true") {
+    return;
+  }
+
+  plot.dataset.status = "loading";
+
+  const probe = new Image();
+  probe.onload = () => {
+    plot.src = src;
+    plot.dataset.loaded = "true";
+    plot.dataset.status = "loaded";
+  };
+  probe.onerror = () => {
+    const retryDelay = DEFERRED_PLOT_RETRY_DELAYS[attempt];
+    if (retryDelay === undefined) {
+      plot.dataset.status = "unavailable";
+      return;
+    }
+
+    plot.dataset.status = "retrying";
+    window.setTimeout(() => loadDeferredPlot(plot, attempt + 1), retryDelay);
+  };
+  probe.src = src;
 }
 
 function setText(id, value) {

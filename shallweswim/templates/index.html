@@ -73,19 +73,19 @@ block content %} {% if config.code == 'nyc' %}
 <h2>Temperature Trends</h2>
 {% if config.temp_source.live_enabled %}
 <img
-  class="plot"
-  src="/api/{{ config.code }}/plots/live_temps"
+  class="plot deferred-plot"
+  data-src="/api/{{ config.code }}/plots/live_temps"
   alt="Live temperature plot"
 />
 {% endif %} {% if config.temp_source.historic_enabled %}
 <img
-  class="plot"
-  src="/api/{{ config.code }}/plots/historic_temps?period=2mo"
+  class="plot deferred-plot"
+  data-src="/api/{{ config.code }}/plots/historic_temps?period=2mo"
   alt="2 month temperature plot, all years"
 />
 <img
-  class="plot"
-  src="/api/{{ config.code }}/plots/historic_temps?period=12mo"
+  class="plot deferred-plot"
+  data-src="/api/{{ config.code }}/plots/historic_temps?period=12mo"
   alt="12 month temperature plot, all years"
 />
 {% endif %} {% endif %} {% if config.code == 'nyc' %}

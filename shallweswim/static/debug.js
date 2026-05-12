@@ -346,7 +346,7 @@ console.error = function (...args) {
 };
 
 // Track global errors
-window.addEventListener("error", function (event) {
+window.addEventListener("error", (event) => {
   logError("Uncaught error", {
     message: event.message,
     filename: event.filename,
@@ -357,7 +357,7 @@ window.addEventListener("error", function (event) {
 });
 
 // Track unhandled promise rejections
-window.addEventListener("unhandledrejection", function (event) {
+window.addEventListener("unhandledrejection", (event) => {
   logError("Unhandled Promise rejection", event.reason);
 });
 

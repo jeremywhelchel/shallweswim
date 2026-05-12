@@ -18,6 +18,13 @@ repos:
       - id: prettier
         types_or: [yaml, json, html, css, javascript]
 
+  # Biome for JavaScript linting
+  - repo: https://github.com/biomejs/pre-commit
+    rev: v2.3.6
+    hooks:
+      - id: biome-lint
+        files: ^shallweswim/static/.*\.js$
+
   # Rumdl for Markdown (Rust-based, protects wiki links)
   - repo: local
     hooks:

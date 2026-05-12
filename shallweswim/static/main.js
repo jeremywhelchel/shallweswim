@@ -565,7 +565,7 @@ function makeSnow() {
   const script = document.createElement("script");
   script.id = "particles-js-script";
   script.src = "https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js";
-  script.onload = function () {
+  script.onload = () => {
     particlesJS("snow", {
       particles: {
         number: {

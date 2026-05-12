@@ -86,7 +86,7 @@ def test_location_page_renders_windy_embed_with_layout_dimensions() -> None:
     assert "width=950" in response.text
     assert "height=350" in response.text
     assert "overlay=waves" in response.text
-    assert "product=ecmwf" in response.text
+    assert "product=ecmwfWaves" in response.text
 
 
 def test_currents_page_renders_without_empty_image_sources() -> None:

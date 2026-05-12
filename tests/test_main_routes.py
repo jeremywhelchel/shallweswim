@@ -74,6 +74,21 @@ def test_location_page_renders_frontend_bootstrap() -> None:
     assert 'id="current-magnitude"' in response.text
 
 
+def test_location_page_renders_windy_embed_with_layout_dimensions() -> None:
+    """Windy embed dimensions match the responsive iframe's desktop layout."""
+    client = TestClient(app)
+
+    response = client.get("/nyc")
+
+    assert response.status_code == 200
+    assert 'class="windyframe"' in response.text
+    assert "https://embed.windy.com/embed2.html" in response.text
+    assert "width=950" in response.text
+    assert "height=350" in response.text
+    assert "overlay=waves" in response.text
+    assert "product=ecmwf" in response.text
+
+
 def test_currents_page_renders_without_empty_image_sources() -> None:
     """Currents page defers chart image sources until API data is loaded."""
     client = TestClient(app)

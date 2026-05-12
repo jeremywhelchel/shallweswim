@@ -287,6 +287,41 @@ def test_deferred_plot_loading_retries_transient_failures(
         playwright.stop()
 
 
+def test_deferred_plot_loading_shows_unavailable_after_retries(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """A plot that never becomes ready gets a quiet per-plot unavailable note."""
+    playwright, browser = _launch_chromium()
+
+    def fail_live_plot_request(route: Route) -> None:
+        request = route.request
+        if request.url.startswith("http://127.0.0.1:") and request.url.endswith(
+            "/api/nyc/plots/live_temps"
+        ):
+            route.fulfill(status=503, body="Plot unavailable")
+        elif request.url.startswith("http://127.0.0.1:"):
+            route.continue_()
+        else:
+            route.abort()
+
+    try:
+        page: Page = browser.new_page()
+        page.add_init_script("window.SWS_DEFERRED_PLOT_RETRY_DELAYS = [10];")
+        page.route("**/*", fail_live_plot_request)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
+
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        live_plot = page.locator('img[data-src="/api/nyc/plots/live_temps"]')
+        expect(live_plot).to_have_attribute("data-status", "unavailable")
+        expect(
+            page.locator('img[data-src="/api/nyc/plots/live_temps"] + .plot-status')
+        ).to_have_text("Plot unavailable")
+    finally:
+        browser.close()
+        playwright.stop()
+
+
 def test_initial_conditions_failure_shows_unavailable_state(
     browser_smoke_server: BrowserSmokeServer,
 ) -> None:

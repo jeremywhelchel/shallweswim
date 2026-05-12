@@ -83,6 +83,12 @@ h6 {
   display: block;
 }
 
+.plot-status {
+  max-width: 980px;
+  margin: 4px 0 12px;
+  color: #666;
+}
+
 /* Webcam container */
 .webcamdiv {
   position: relative;

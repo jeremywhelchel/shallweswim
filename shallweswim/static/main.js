@@ -9,7 +9,9 @@
 //=============================================================================
 
 const REFRESH_INTERVAL = 60000; // 60 seconds
-const DEFERRED_PLOT_RETRY_DELAYS = [1000, 3000, 7000];
+const DEFERRED_PLOT_RETRY_DELAYS = window.SWS_DEFERRED_PLOT_RETRY_DELAYS || [
+  1000, 3000, 7000,
+];
 
 const TRANSIT_STATUS_COLORS = {
   Delay: "status-red",
@@ -400,11 +402,13 @@ function loadDeferredPlot(plot, attempt = 0) {
     plot.src = src;
     plot.dataset.loaded = "true";
     plot.dataset.status = "loaded";
+    hideDeferredPlotStatus(plot);
   };
   probe.onerror = () => {
     const retryDelay = DEFERRED_PLOT_RETRY_DELAYS[attempt];
     if (retryDelay === undefined) {
       plot.dataset.status = "unavailable";
+      showDeferredPlotStatus(plot, "Plot unavailable");
       return;
     }
 
@@ -412,6 +416,31 @@ function loadDeferredPlot(plot, attempt = 0) {
     window.setTimeout(() => loadDeferredPlot(plot, attempt + 1), retryDelay);
   };
   probe.src = src;
+}
+
+function showDeferredPlotStatus(plot, message) {
+  const statusElement = getDeferredPlotStatusElement(plot);
+  statusElement.textContent = message;
+  statusElement.hidden = false;
+}
+
+function hideDeferredPlotStatus(plot) {
+  const statusElement = getDeferredPlotStatusElement(plot);
+  statusElement.textContent = "";
+  statusElement.hidden = true;
+}
+
+function getDeferredPlotStatusElement(plot) {
+  const nextElement = plot.nextElementSibling;
+  if (nextElement?.classList.contains("plot-status")) {
+    return nextElement;
+  }
+
+  const statusElement = document.createElement("div");
+  statusElement.className = "plot-status note";
+  statusElement.hidden = true;
+  plot.insertAdjacentElement("afterend", statusElement);
+  return statusElement;
 }
 
 function setText(id, value) {

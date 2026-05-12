@@ -62,29 +62,28 @@
   <body {% block body_attributes %}{% endblock %}>
     {% block header %}{% endblock %} {% block tides_temperature %}
     <div class="infobox">
+      <div class="note" id="conditions-status" hidden></div>
       {% if config.temp_source and config.temp_source.live_enabled %}
       <div class="current">
-        The water is currently <strong id="water-temp">Loading...</strong>
+        The water is currently <strong id="water-temp">...</strong>
       </div>
-      <div class="note" id="temp-station-info">
-        at <span id="temp-station-name">loading</span>.
-      </div>
+      <div class="note" id="temp-station-info">...</div>
       {% endif %} {% if config.tide_source %}
       <div class="tides" id="tides-section">
         <p>
           Last <strong id="past-tide-type">...</strong> tide was
-          <strong id="past-tide-date">loading</strong> at
-          <strong id="past-tide-time">loading</strong>
+          <strong id="past-tide-date">...</strong> at
+          <strong id="past-tide-time">...</strong>
         </p>
         <p>
           Next <strong id="next-tide-0-type">...</strong> tide is
-          <strong id="next-tide-0-date">loading</strong> at
-          <strong id="next-tide-0-time">loading</strong>
+          <strong id="next-tide-0-date">...</strong> at
+          <strong id="next-tide-0-time">...</strong>
         </p>
         <p>
           Following <strong id="next-tide-1-type">...</strong> tide is
-          <strong id="next-tide-1-date">loading</strong> at
-          <strong id="next-tide-1-time">loading</strong>
+          <strong id="next-tide-1-date">...</strong> at
+          <strong id="next-tide-1-time">...</strong>
         </p>
       </div>
       {% endif %} {% if config.currents_source %}
@@ -93,10 +92,10 @@
           Current estimate:
           <span id="current-flow-text">
             <!-- This will be populated by JavaScript based on the current data -->
-            <strong><span id="current-state-summary">flowing</span></strong>
+            <strong><span id="current-state-summary">...</span></strong>
             at
           </span>
-          <strong id="current-magnitude">Loading...</strong> knots.
+          <strong id="current-magnitude">...</strong> knots.
           <!-- Tidal current indicator will be shown/hidden by JavaScript -->
           <span id="current-details-link" style="display: none">
             <a

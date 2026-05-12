@@ -24,6 +24,7 @@ const TRANSIT_STATUS_COLORS = {
 let locationCode = getConfiguredLocationCode();
 let conditionsRefreshTimer = null;
 let conditionsFetchInFlight = false;
+let conditionsLoaded = false;
 let pageInitialized = false;
 let currentShiftParam = null;
 
@@ -162,6 +163,7 @@ async function fetchAndUpdateConditions(location) {
   }
 
   conditionsFetchInFlight = true;
+  showConditionsLoading();
 
   try {
     console.log(`Fetching conditions data for ${location}...`);
@@ -182,23 +184,34 @@ async function fetchAndUpdateConditions(location) {
   }
 }
 
+function showConditionsLoading() {
+  if (!conditionsLoaded) {
+    clearConditionsStatus();
+  }
+}
+
 function showConditionsError() {
-  const tempElement = document.getElementById("water-temp");
-  if (tempElement && tempElement.textContent === "Loading...") {
-    tempElement.textContent = "Data unavailable";
+  if (conditionsLoaded) {
+    setConditionsStatus(
+      "Could not refresh latest conditions. Showing last loaded data.",
+    );
+    return;
   }
 
-  const tempStationElement = document.getElementById("temp-station-info");
-  if (tempStationElement) {
-    tempStationElement.textContent =
-      "Unable to retrieve current data. Please try again later.";
-  }
+  updateTemperatureUnavailable();
+  updateTidesUnavailable();
+  updateCurrentUnavailable();
+  setConditionsStatus(
+    "Unable to load latest conditions. Please try again later.",
+  );
 }
 
 function updatePageWithConditions(data) {
   updateTemperature(data);
   updateTides(data.tides);
   updateCurrent(data.current);
+  conditionsLoaded = true;
+  clearConditionsStatus();
 
   console.log(
     "Page updated with fresh data from API at",
@@ -216,13 +229,7 @@ function updateTemperature(data) {
   }
 
   if (!temperature || temperature.water_temp === null) {
-    if (tempElement) {
-      tempElement.textContent = "Data unavailable";
-    }
-    if (tempStationElement) {
-      tempStationElement.textContent =
-        "Current water temperature is unavailable.";
-    }
+    updateTemperatureUnavailable();
     return;
   }
 
@@ -238,6 +245,16 @@ function updateTemperature(data) {
       stationName,
       temperature.timestamp,
     );
+  }
+}
+
+function updateTemperatureUnavailable() {
+  setText("water-temp", "Unavailable");
+
+  const tempStationElement = document.getElementById("temp-station-info");
+  if (tempStationElement) {
+    tempStationElement.textContent =
+      "Current water temperature is unavailable.";
   }
 }
 
@@ -272,7 +289,7 @@ function updateTides(tides) {
   }
 
   if (!tides) {
-    clearTideDisplay();
+    updateTidesUnavailable();
     return;
   }
 
@@ -284,12 +301,12 @@ function updateTides(tides) {
 }
 
 function updateTideRow(prefix, tide) {
-  setText(`${prefix}-type`, tide?.type || "");
-  setText(`${prefix}-date`, tide ? formatDate(tide.time) : "");
-  setText(`${prefix}-time`, tide ? formatTime(tide.time) : "");
+  setText(`${prefix}-type`, tide?.type || "Unavailable");
+  setText(`${prefix}-date`, tide ? formatDate(tide.time) : "Unavailable");
+  setText(`${prefix}-time`, tide ? formatTime(tide.time) : "Unavailable");
 }
 
-function clearTideDisplay() {
+function updateTidesUnavailable() {
   updateTideRow("past-tide", null);
   updateTideRow("next-tide-0", null);
   updateTideRow("next-tide-1", null);
@@ -303,11 +320,7 @@ function updateCurrent(current) {
   const currentDetailsLink = document.getElementById("current-details-link");
 
   if (!current) {
-    setElementText(currentMagnitudeElement, "N/A");
-    setElementText(currentStateSummaryElement, "flowing");
-    if (currentDetailsLink) {
-      currentDetailsLink.style.display = "none";
-    }
+    updateCurrentUnavailable();
     return;
   }
 
@@ -323,6 +336,32 @@ function updateCurrent(current) {
 
   if (currentDetailsLink) {
     currentDetailsLink.style.display = current.direction ? "" : "none";
+  }
+}
+
+function updateCurrentUnavailable() {
+  setText("current-magnitude", "N/A");
+  setText("current-state-summary", "unavailable");
+
+  const currentDetailsLink = document.getElementById("current-details-link");
+  if (currentDetailsLink) {
+    currentDetailsLink.style.display = "none";
+  }
+}
+
+function setConditionsStatus(message) {
+  const statusElement = document.getElementById("conditions-status");
+  if (statusElement) {
+    statusElement.textContent = message;
+    statusElement.hidden = false;
+  }
+}
+
+function clearConditionsStatus() {
+  const statusElement = document.getElementById("conditions-status");
+  if (statusElement) {
+    statusElement.textContent = "";
+    statusElement.hidden = true;
   }
 }
 

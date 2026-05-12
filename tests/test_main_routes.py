@@ -69,9 +69,12 @@ def test_location_page_renders_frontend_bootstrap() -> None:
     assert response.status_code == 200
     assert 'locationCode: "nyc"' in response.text
     assert 'src="/static/main.js"' in response.text
+    assert 'id="conditions-status" hidden' in response.text
     assert 'id="water-temp"' in response.text
     assert 'id="tides-section"' in response.text
+    assert 'id="past-tide-type">...</strong>' in response.text
     assert 'id="current-magnitude"' in response.text
+    assert 'id="current-state-summary">...</span>' in response.text
 
 
 def test_location_page_renders_windy_embed_with_layout_dimensions() -> None:

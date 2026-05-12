@@ -18,8 +18,15 @@ import requests
 import uvicorn
 from fastapi import responses
 from fastapi.staticfiles import StaticFiles
+from playwright.sync_api import (
+    Browser,
+    Page,
+    Playwright,
+    Route,
+    expect,
+    sync_playwright,
+)
 from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import Page, Route, expect, sync_playwright
 
 from shallweswim import canonical, config
 from shallweswim.main import templates
@@ -145,7 +152,7 @@ def _block_external_requests(route: Route) -> None:
         route.abort()
 
 
-def _launch_chromium() -> Any:
+def _launch_chromium() -> tuple[Playwright, Browser]:
     playwright = sync_playwright().start()
     try:
         browser = playwright.chromium.launch()
@@ -155,6 +162,18 @@ def _launch_chromium() -> Any:
             pytest.skip(f"Playwright host dependencies are missing: {exc}")
         raise
     return playwright, browser
+
+
+def _block_external_and_fail_conditions(route: Route) -> None:
+    request = route.request
+    if request.url.startswith("http://127.0.0.1:") and request.url.endswith(
+        "/api/nyc/conditions"
+    ):
+        route.fulfill(status=503, body="Service unavailable")
+    elif request.url.startswith("http://127.0.0.1:"):
+        route.continue_()
+    else:
+        route.abort()
 
 
 def test_location_page_updates_conditions_once(
@@ -178,8 +197,97 @@ def test_location_page_updates_conditions_once(
             "strong ebb and easing"
         )
         expect(page.locator("#current-magnitude")).to_have_text("1.4")
+        expect(page.locator("#conditions-status")).to_be_hidden()
 
         assert browser_smoke_server.request_counts["conditions"] == 1
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_initial_conditions_failure_shows_unavailable_state(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """A failed first conditions load does not leave placeholders spinning."""
+    playwright, browser = _launch_chromium()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", _block_external_and_fail_conditions)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
+
+        expect(page.locator("#conditions-status")).to_have_text(
+            "Unable to load latest conditions. Please try again later."
+        )
+        expect(page.locator("#water-temp")).to_have_text("Unavailable")
+        expect(page.locator("#temp-station-info")).to_have_text(
+            "Current water temperature is unavailable."
+        )
+        expect(page.locator("#past-tide-type")).to_have_text("Unavailable")
+        expect(page.locator("#past-tide-date")).to_have_text("Unavailable")
+        expect(page.locator("#past-tide-time")).to_have_text("Unavailable")
+        expect(page.locator("#next-tide-0-type")).to_have_text("Unavailable")
+        expect(page.locator("#next-tide-1-type")).to_have_text("Unavailable")
+        expect(page.locator("#current-state-summary")).to_have_text("unavailable")
+        expect(page.locator("#current-magnitude")).to_have_text("N/A")
+
+        assert browser_smoke_server.request_counts["conditions"] == 0
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_conditions_refresh_failure_keeps_loaded_data(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """A refresh failure keeps prior values and marks them as stale."""
+    playwright, browser = _launch_chromium()
+    condition_attempts = 0
+
+    def route_conditions_once_then_fail(route: Route) -> None:
+        nonlocal condition_attempts
+        request = route.request
+        if request.url.startswith("http://127.0.0.1:") and request.url.endswith(
+            "/api/nyc/conditions"
+        ):
+            condition_attempts += 1
+            if condition_attempts == 1:
+                route.continue_()
+            else:
+                route.fulfill(status=503, body="Service unavailable")
+        elif request.url.startswith("http://127.0.0.1:"):
+            route.continue_()
+        else:
+            route.abort()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", route_conditions_once_then_fail)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
+
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        expect(page.locator("#past-tide-type")).to_have_text("high")
+        expect(page.locator("#current-state-summary")).to_have_text(
+            "strong ebb and easing"
+        )
+        expect(page.locator("#conditions-status")).to_be_hidden()
+
+        page.evaluate("fetchAndUpdateConditions('nyc')")
+
+        expect(page.locator("#conditions-status")).to_have_text(
+            "Could not refresh latest conditions. Showing last loaded data."
+        )
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        expect(page.locator("#past-tide-type")).to_have_text("high")
+        expect(page.locator("#current-state-summary")).to_have_text(
+            "strong ebb and easing"
+        )
+        expect(page.locator("#current-magnitude")).to_have_text("1.4")
+
+        assert browser_smoke_server.request_counts["conditions"] == 1
+        assert condition_attempts == 2
     finally:
         browser.close()
         playwright.stop()

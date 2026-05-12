@@ -213,6 +213,19 @@ The debug script is loaded on all pages so it can passively capture fetch and
 error state in `window.SWS_DEBUG_STATE`, but it stays visually hidden and avoids
 debug console logging unless `?debug=1` is present.
 
+#### Frontend Loading Behavior
+
+The app intentionally serves HTML before every feed and generated plot is ready.
+This keeps local startup and production cold starts non-blocking. Location pages
+load the primary condition text first with `/api/<location>/conditions`; visible
+placeholders use quiet `...` text until data arrives.
+
+Temperature trend plots are deferred until after the first conditions request.
+The browser then loads each plot independently and retries transient `503`
+responses with backoff while plots are still being generated. If a plot remains
+unavailable after retries, only that plot shows `Plot unavailable`; the rest of
+the page remains usable.
+
 ### Testing Philosophy
 
 The test suite uses a three-tier strategy:

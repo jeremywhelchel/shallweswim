@@ -234,6 +234,8 @@ block content %} {% if config.code == 'nyc' %}
 
 <!-- Initialize Feather icons -->
 <script>
-  feather.replace();
+  if (window.feather) {
+    feather.replace();
+  }
 </script>
 {% endblock %}

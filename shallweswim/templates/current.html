@@ -104,16 +104,16 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
   </div>
 </div>
 
-<section id="current-map-section">
+<section id="current-map-section" hidden>
   <h2>Current Map</h2>
   <div>
-    <img class="plot" id="current-chart" src="" alt="Area current chart" />
+    <img class="plot" id="current-chart" alt="Area current chart" />
     <p>The size of the arrows approximate the strength of the current</p>
   </div>
 </section>
 
 <h2>Tide Current Projection</h2>
-<img class="plot" id="tide-current-plot" src="" alt="Tide and Current plot" />
+<img class="plot" id="tide-current-plot" alt="Tide and Current plot" />
 <p>
   The currents here <i>lead</i> the tide by about 2 hours. The max flood current
   is 2 hours ahead of high tide, and the max ebb current is 2 hours ahead of low
@@ -124,7 +124,7 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
   flooding. A negative current value indicates the current is ebbing.
 </p>
 
-<section id="legacy-map-section">
+<section id="legacy-map-section" hidden>
   <h2 id="legacy-map-title">Legacy Map</h2>
   <div>
     <p>
@@ -134,7 +134,7 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
     </p>
   </div>
   <div>
-    <img class="plot" id="legacy-chart" src="" alt="Historic area tide chart" />
+    <img class="plot" id="legacy-chart" alt="Historic area tide chart" />
   </div>
 </section>
 

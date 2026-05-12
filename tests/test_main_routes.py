@@ -58,3 +58,56 @@ def test_location_page_has_canonical_url() -> None:
         f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/nyc"'
         in response.text
     )
+
+
+def test_location_page_renders_frontend_bootstrap() -> None:
+    """Location pages include the app script and data placeholders."""
+    client = TestClient(app)
+
+    response = client.get("/nyc")
+
+    assert response.status_code == 200
+    assert 'locationCode: "nyc"' in response.text
+    assert 'src="/static/main.js"' in response.text
+    assert 'id="water-temp"' in response.text
+    assert 'id="tides-section"' in response.text
+    assert 'id="current-magnitude"' in response.text
+
+
+def test_currents_page_renders_without_empty_image_sources() -> None:
+    """Currents page defers chart image sources until API data is loaded."""
+    client = TestClient(app)
+
+    response = client.get("/nyc/currents")
+
+    assert response.status_code == 200
+    assert 'locationCode: "nyc"' in response.text
+    assert 'src="/static/main.js"' in response.text
+    assert 'id="current-chart"' in response.text
+    assert 'id="tide-current-plot"' in response.text
+    assert 'id="legacy-chart"' in response.text
+    assert 'src=""' not in response.text
+
+
+def test_all_locations_page_renders_widgets() -> None:
+    """All-locations page renders one frontend widget per enabled location."""
+    client = TestClient(app)
+
+    response = client.get("/all")
+
+    assert response.status_code == 200
+    assert "/api/${locationCode}/conditions" in response.text
+    for loc_code in config.CONFIGS:
+        assert f'data-location="{loc_code}"' in response.text
+
+
+def test_widget_page_renders_standalone_widget() -> None:
+    """Standalone widget page includes its location and API loader."""
+    client = TestClient(app)
+
+    response = client.get("/nyc/widget")
+
+    assert response.status_code == 200
+    assert 'data-location="nyc"' in response.text
+    assert 'id="widget-water-temp"' in response.text
+    assert "/api/${locationCode}/conditions" in response.text

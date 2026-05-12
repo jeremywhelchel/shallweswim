@@ -196,6 +196,23 @@ run can pass all tests and still exit nonzero from unclosed socket
 `ResourceWarning`s during pytest teardown; treat that as a known tradeoff unless
 the scheduled GitHub Actions integration job starts failing.
 
+#### Frontend Debug Mode
+
+Location pages include a lightweight browser debug tool for diagnosing frontend
+loading issues. Add `?debug=1` to a location URL to enable the visible debug UI:
+
+```text
+http://localhost:12345/nyc?debug=1
+```
+
+When enabled, a small debug button appears in the lower-right corner. Click it to
+open a panel with browser details, selected DOM state, recent API calls, and
+recent frontend errors. The panel can copy the captured debug data for sharing.
+
+The debug script is loaded on all pages so it can passively capture fetch and
+error state in `window.SWS_DEBUG_STATE`, but it stays visually hidden and avoids
+debug console logging unless `?debug=1` is present.
+
 ### Testing Philosophy
 
 The test suite uses a three-tier strategy:

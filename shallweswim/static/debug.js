@@ -5,8 +5,16 @@
  * It logs important events and can be activated by users with issues.
  */
 
-// Debug state
-const debugState = {
+// Check if debugging is enabled via URL parameter
+function isDebugEnabled() {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get("debug") === "1";
+}
+
+const debugEnabled = isDebugEnabled();
+
+// Debug state survives accidental duplicate script loads.
+const debugState = window.SWS_DEBUG_STATE || {
   logs: [],
   browserInfo: {
     // Basic browser info
@@ -23,10 +31,12 @@ const debugState = {
   domState: {},
   errors: [],
 };
+window.SWS_DEBUG_STATE = debugState;
 
-// Store original console functions
-const originalConsoleError = console.error;
+// Store original browser APIs so wrappers cannot stack.
+const originalConsoleError = console.error.swsOriginal || console.error;
 const originalConsoleLog = console.log;
+const originalFetch = window.fetch.swsOriginal || window.fetch;
 
 // Add a log entry with timestamp
 function logDebug(category, message, data = null) {
@@ -37,11 +47,13 @@ function logDebug(category, message, data = null) {
     data: data ? JSON.stringify(data).substring(0, 500) : null, // Truncate large data
   };
   debugState.logs.push(entry);
-  // Use original console.log to avoid recursion if console.log is also patched
-  originalConsoleLog.apply(console, [
-    `[DEBUG:${category}] ${message}`,
-    data || "",
-  ]);
+  if (debugEnabled) {
+    // Use original console.log to avoid recursion if console.log is also patched
+    originalConsoleLog.apply(console, [
+      `[DEBUG:${category}] ${message}`,
+      data || "",
+    ]);
+  }
 
   // Update UI if the debug panel is visible
   updateDebugPanel();
@@ -57,8 +69,6 @@ function logError(message, error) {
     stack: error?.stack,
   };
   debugState.errors.push(entry);
-  // Use original console.error to prevent recursion
-  originalConsoleError.apply(console, [`[ERROR] ${message}`, error]);
 
   // Update UI if the debug panel is visible
   updateDebugPanel();
@@ -206,52 +216,81 @@ function updateDebugPanel() {
   const panel = document.getElementById("sws-debug-content");
   if (!panel) return;
 
-  let html = `<h3>Debug Info (${new Date().toLocaleTimeString()})</h3>`;
+  panel.replaceChildren();
 
-  // Browser info
-  html += `<h4>Browser Information</h4>`;
-  html += `<p>User Agent: ${debugState.browserInfo.userAgent}</p>`;
-  html += `<p>Window Size: ${debugState.browserInfo.windowDimensions}</p>`;
-  html += `<p>Online: ${debugState.browserInfo.onLine}</p>`;
+  appendHeading(panel, `Debug Info (${new Date().toLocaleTimeString()})`, 3);
 
-  // DOM state
-  html += `<h4>DOM State</h4>`;
-  html += `<pre>${JSON.stringify(debugState.domState, null, 2)}</pre>`;
+  appendHeading(panel, "Browser Information", 4);
+  appendParagraph(panel, `User Agent: ${debugState.browserInfo.userAgent}`);
+  appendParagraph(
+    panel,
+    `Window Size: ${debugState.browserInfo.windowDimensions}`,
+  );
+  appendParagraph(panel, `Online: ${debugState.browserInfo.onLine}`);
 
-  // Most recent errors (max 3)
+  appendHeading(panel, "DOM State", 4);
+  appendPreformatted(panel, JSON.stringify(debugState.domState, null, 2));
+
   if (debugState.errors.length > 0) {
-    html += `<h4>Recent Errors</h4>`;
+    appendHeading(panel, "Recent Errors", 4);
     const recentErrors = debugState.errors.slice(-3);
     recentErrors.forEach((err) => {
-      html += `<div style="color: #ff6666; margin-bottom: 5px;">`;
-      html += `${err.timestamp}: ${err.message} - ${err.errorName}: ${err.errorMessage}`;
-      html += `</div>`;
+      appendStatusLine(
+        panel,
+        `${err.timestamp}: ${err.message} - ${err.errorName}: ${err.errorMessage}`,
+        false,
+      );
     });
   }
 
-  // Most recent API calls (max 3)
   if (debugState.apiCalls.length > 0) {
-    html += `<h4>Recent API Calls</h4>`;
+    appendHeading(panel, "Recent API Calls", 4);
     const recentCalls = debugState.apiCalls.slice(-3);
     recentCalls.forEach((call) => {
-      html += `<div style="color: ${call.success ? "#66ff66" : "#ff6666"}; margin-bottom: 5px;">`;
-      html += `${call.timestamp}: ${call.url} - ${call.success ? "SUCCESS" : "FAILED"}`;
-      html += `</div>`;
+      appendStatusLine(
+        panel,
+        `${call.timestamp}: ${call.url} - ${call.success ? "SUCCESS" : "FAILED"}`,
+        call.success,
+      );
     });
   }
 
-  // Most recent logs (max 10)
   if (debugState.logs.length > 0) {
-    html += `<h4>Recent Logs</h4>`;
+    appendHeading(panel, "Recent Logs", 4);
     const recentLogs = debugState.logs.slice(-10);
     recentLogs.forEach((log) => {
-      html += `<div style="margin-bottom: 3px;">`;
-      html += `${log.timestamp} [${log.category}]: ${log.message}`;
-      html += `</div>`;
+      const line = document.createElement("div");
+      line.style.marginBottom = "3px";
+      line.textContent = `${log.timestamp} [${log.category}]: ${log.message}`;
+      panel.append(line);
     });
   }
+}
 
-  panel.innerHTML = html;
+function appendHeading(container, text, level) {
+  const heading = document.createElement(`h${level}`);
+  heading.textContent = text;
+  container.append(heading);
+}
+
+function appendParagraph(container, text) {
+  const paragraph = document.createElement("p");
+  paragraph.textContent = text;
+  container.append(paragraph);
+}
+
+function appendPreformatted(container, text) {
+  const pre = document.createElement("pre");
+  pre.textContent = text;
+  container.append(pre);
+}
+
+function appendStatusLine(container, text, success) {
+  const line = document.createElement("div");
+  line.style.color = success ? "#66ff66" : "#ff6666";
+  line.style.marginBottom = "5px";
+  line.textContent = text;
+  container.append(line);
 }
 
 // Create debug toggle button
@@ -289,90 +328,105 @@ function addDebugButton() {
   }
 }
 
-// Monkey patch the fetch API to track calls
-const originalFetch = window.fetch;
-window.fetch = function (...args) {
-  const url = args[0] instanceof Request ? args[0].url : args[0];
-  logDebug("FETCH", `Making fetch request to: ${url}`);
-
-  return originalFetch
-    .apply(this, args)
-    .then((response) => {
-      const success = response.ok;
-      if (success) {
-        logDebug("FETCH", `Successful fetch from: ${url}`);
-        // Clone the response so we can both use it and read its body
-        const clone = response.clone();
-        clone
-          .json()
-          .then((data) => {
-            trackApiCall(url, true, data, null);
-          })
-          .catch((_err) => {
-            // Not JSON or other issue
-            trackApiCall(url, true, { nonJsonResponse: true }, null);
-          });
-      } else {
-        logError(
-          `Fetch error: ${url} returned ${response.status}`,
-          new Error(`HTTP ${response.status}`),
-        );
-        trackApiCall(url, false, null, new Error(`HTTP ${response.status}`));
-      }
-      return response;
-    })
-    .catch((error) => {
-      logError(`Fetch failed: ${url}`, error);
-      trackApiCall(url, false, null, error);
-      throw error;
-    });
-};
-
-// Monkey patch console.error to catch JS errors
-console.error = function (...args) {
-  // Check if this is an error object
-  const errorObjects = args.filter((arg) => arg instanceof Error);
-  if (errorObjects.length > 0) {
-    errorObjects.forEach((error) => {
-      logError("Console error", error);
-    });
-  } else {
-    // Regular console.error call
-    logError("Console error", { message: args.join(" ") });
+function installFetchTracking() {
+  if (window.fetch.swsDebugWrapped) {
+    return;
   }
 
-  // Call the original
-  originalConsoleError.apply(this, args);
-};
+  const trackedFetch = function (...args) {
+    const url = args[0] instanceof Request ? args[0].url : args[0];
+    logDebug("FETCH", `Making fetch request to: ${url}`);
 
-// Track global errors
-window.addEventListener("error", (event) => {
-  logError("Uncaught error", {
-    message: event.message,
-    filename: event.filename,
-    lineno: event.lineno,
-    colno: event.colno,
-    error: event.error,
+    return originalFetch
+      .apply(this, args)
+      .then((response) => {
+        const success = response.ok;
+        if (success) {
+          logDebug("FETCH", `Successful fetch from: ${url}`);
+          // Clone the response so we can both use it and read its body
+          const clone = response.clone();
+          clone
+            .json()
+            .then((data) => {
+              trackApiCall(url, true, data, null);
+            })
+            .catch((_err) => {
+              // Not JSON or other issue
+              trackApiCall(url, true, { nonJsonResponse: true }, null);
+            });
+        } else {
+          logError(
+            `Fetch error: ${url} returned ${response.status}`,
+            new Error(`HTTP ${response.status}`),
+          );
+          trackApiCall(url, false, null, new Error(`HTTP ${response.status}`));
+        }
+        return response;
+      })
+      .catch((error) => {
+        logError(`Fetch failed: ${url}`, error);
+        trackApiCall(url, false, null, error);
+        throw error;
+      });
+  };
+
+  trackedFetch.swsDebugWrapped = true;
+  trackedFetch.swsOriginal = originalFetch;
+  window.fetch = trackedFetch;
+}
+
+function installConsoleErrorTracking() {
+  if (console.error.swsDebugWrapped) {
+    return;
+  }
+
+  const trackedConsoleError = function (...args) {
+    // Check if this is an error object
+    const errorObjects = args.filter((arg) => arg instanceof Error);
+    if (errorObjects.length > 0) {
+      errorObjects.forEach((error) => {
+        logError("Console error", error);
+      });
+    } else {
+      // Regular console.error call
+      logError("Console error", { message: args.join(" ") });
+    }
+
+    // Call the original
+    originalConsoleError.apply(this, args);
+  };
+
+  trackedConsoleError.swsDebugWrapped = true;
+  trackedConsoleError.swsOriginal = originalConsoleError;
+  console.error = trackedConsoleError;
+}
+
+function installGlobalErrorTracking() {
+  if (window.SWS_DEBUG_ERROR_TRACKING_INSTALLED) {
+    return;
+  }
+
+  window.addEventListener("error", (event) => {
+    logError("Uncaught error", {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error,
+    });
   });
-});
 
-// Track unhandled promise rejections
-window.addEventListener("unhandledrejection", (event) => {
-  logError("Unhandled Promise rejection", event.reason);
-});
+  window.addEventListener("unhandledrejection", (event) => {
+    logError("Unhandled Promise rejection", event.reason);
+  });
 
-// Check if debugging is enabled via URL parameter
-function isDebugEnabled() {
-  const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.get("debug") === "1";
+  window.SWS_DEBUG_ERROR_TRACKING_INSTALLED = true;
 }
 
 // Initialization function
 function initDebugger() {
   // Only initialize if debug is enabled
-  if (!isDebugEnabled()) {
-    // Just set up error tracking without UI elements
-    console.log("Debug mode disabled. Add ?debug=1 to URL to enable debugger.");
+  if (!debugEnabled) {
     return;
   }
 
@@ -402,6 +456,10 @@ function initDebugger() {
     setTimeout(captureDomState, 3000);
   });
 }
+
+installFetchTracking();
+installConsoleErrorTracking();
+installGlobalErrorTracking();
 
 // Initialize the debugger (will check internally if debug is enabled)
 initDebugger();

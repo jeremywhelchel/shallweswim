@@ -293,6 +293,65 @@ def test_conditions_refresh_failure_keeps_loaded_data(
         playwright.stop()
 
 
+def test_debug_tool_is_quiet_without_debug_parameter(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """The debug script passively tracks data without visible UI or console noise."""
+    playwright, browser = _launch_chromium()
+    console_messages: list[str] = []
+
+    try:
+        page: Page = browser.new_page()
+        page.on("console", lambda message: console_messages.append(message.text))
+        page.route("**/*", _block_external_requests)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
+
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        expect(page.locator("#sws-debug-btn")).to_have_count(0)
+        expect(page.locator("#sws-debug-panel")).to_have_count(0)
+
+        debug_api_call_count = page.evaluate("window.SWS_DEBUG_STATE.apiCalls.length")
+        assert debug_api_call_count >= 1
+        assert not any(message.startswith("[DEBUG:") for message in console_messages)
+        assert "Debug mode disabled. Add ?debug=1 to URL to enable debugger." not in (
+            console_messages
+        )
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_debug_tool_panel_opens_with_debug_parameter(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """The opt-in debug UI opens and renders captured state safely."""
+    playwright, browser = _launch_chromium()
+
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", _block_external_requests)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc?debug=1")
+
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        debug_button = page.locator("#sws-debug-btn")
+        expect(debug_button).to_be_visible()
+        expect(page.locator("#sws-debug-panel")).to_have_count(0)
+
+        debug_button.click()
+
+        debug_panel = page.locator("#sws-debug-panel")
+        expect(debug_panel).to_be_visible()
+        expect(debug_panel).to_contain_text("Debug Info")
+        expect(debug_panel).to_contain_text("Browser Information")
+        expect(debug_panel).to_contain_text("Recent API Calls")
+        expect(debug_panel).to_contain_text("/api/nyc/conditions")
+    finally:
+        browser.close()
+        playwright.stop()
+
+
 def test_windy_embed_uses_expected_parameters_and_layout(
     browser_smoke_server: BrowserSmokeServer,
 ) -> None:

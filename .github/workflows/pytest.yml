@@ -1,6 +1,9 @@
 name: Unit Tests
-# Run unit tests on every push to verify code functionality
-on: [push]
+# Run deterministic unit tests on pushes, PRs, and manual dispatches.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   unit-tests:

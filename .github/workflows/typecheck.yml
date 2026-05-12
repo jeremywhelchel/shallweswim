@@ -1,6 +1,9 @@
 name: Type Checking
-# Run pyrefly type checking on every push
-on: [push]
+# Run deterministic type checks on pushes, PRs, and manual dispatches.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   pyrefly:

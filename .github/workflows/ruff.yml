@@ -1,6 +1,9 @@
 name: Ruff
-# Run ruff linter and formatter checks on every push
-on: [push]
+# Run deterministic Ruff checks on pushes, PRs, and manual dispatches.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   ruff:

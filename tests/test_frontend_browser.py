@@ -10,6 +10,7 @@ import time
 from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import fastapi
 import pytest
@@ -144,36 +145,82 @@ def _block_external_requests(route: Route) -> None:
         route.abort()
 
 
+def _launch_chromium() -> Any:
+    playwright = sync_playwright().start()
+    try:
+        browser = playwright.chromium.launch()
+    except PlaywrightError as exc:
+        playwright.stop()
+        if "Host system is missing dependencies" in str(exc):
+            pytest.skip(f"Playwright host dependencies are missing: {exc}")
+        raise
+    return playwright, browser
+
+
 def test_location_page_updates_conditions_once(
     browser_smoke_server: BrowserSmokeServer,
 ) -> None:
     """The main page loads mocked API data and updates condition placeholders."""
-    with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch()
-        except PlaywrightError as exc:
-            if "Host system is missing dependencies" in str(exc):
-                pytest.skip(f"Playwright host dependencies are missing: {exc}")
-            raise
+    playwright, browser = _launch_chromium()
 
-        try:
-            page: Page = browser.new_page()
-            page.route("**/*", _block_external_requests)
+    try:
+        page: Page = browser.new_page()
+        page.route("**/*", _block_external_requests)
 
-            page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
 
-            expect(page.locator("#water-temp")).to_have_text("53.1°F")
-            expect(page.locator("#temp-station-info")).to_contain_text(
-                "The Battery, NY"
-            )
-            expect(page.locator("#past-tide-type")).to_have_text("high")
-            expect(page.locator("#next-tide-0-type")).to_have_text("low")
-            expect(page.locator("#next-tide-1-type")).to_have_text("high")
-            expect(page.locator("#current-state-summary")).to_have_text(
-                "strong ebb and easing"
-            )
-            expect(page.locator("#current-magnitude")).to_have_text("1.4")
+        expect(page.locator("#water-temp")).to_have_text("53.1°F")
+        expect(page.locator("#temp-station-info")).to_contain_text("The Battery, NY")
+        expect(page.locator("#past-tide-type")).to_have_text("high")
+        expect(page.locator("#next-tide-0-type")).to_have_text("low")
+        expect(page.locator("#next-tide-1-type")).to_have_text("high")
+        expect(page.locator("#current-state-summary")).to_have_text(
+            "strong ebb and easing"
+        )
+        expect(page.locator("#current-magnitude")).to_have_text("1.4")
 
-            assert browser_smoke_server.request_counts["conditions"] == 1
-        finally:
-            browser.close()
+        assert browser_smoke_server.request_counts["conditions"] == 1
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_windy_embed_uses_expected_parameters_and_layout(
+    browser_smoke_server: BrowserSmokeServer,
+) -> None:
+    """The Windy iframe keeps our expected URL contract and responsive layout."""
+    playwright, browser = _launch_chromium()
+
+    try:
+        page: Page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.route("**/*", _block_external_requests)
+
+        page.goto(f"{browser_smoke_server.base_url}/nyc")
+
+        windy_frame = page.locator("iframe.windyframe")
+        expect(windy_frame).to_have_count(1)
+        expect(windy_frame).to_have_attribute("title", "Windy forecast")
+
+        src = windy_frame.get_attribute("src")
+        assert src is not None
+        parsed_src = urlparse(src)
+        query = parse_qs(parsed_src.query, keep_blank_values=True)
+
+        assert parsed_src.scheme == "https"
+        assert parsed_src.netloc == "embed.windy.com"
+        assert parsed_src.path == "/embed2.html"
+        assert query["overlay"] == ["waves"]
+        assert query["product"] == ["ecmwfWaves"]
+        assert query["detail"] == ["true"]
+        assert query["width"] == ["950"]
+        assert query["height"] == ["350"]
+        assert query["metricTemp"] == ["°F"]
+
+        box = windy_frame.bounding_box()
+        assert box is not None
+        assert box["width"] <= 950
+        assert box["width"] > 900
+        assert box["height"] == 350
+    finally:
+        browser.close()
+        playwright.stop()

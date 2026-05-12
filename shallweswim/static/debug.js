@@ -308,7 +308,7 @@ window.fetch = function (...args) {
           .then((data) => {
             trackApiCall(url, true, data, null);
           })
-          .catch((err) => {
+          .catch((_err) => {
             // Not JSON or other issue
             trackApiCall(url, true, { nonJsonResponse: true }, null);
           });

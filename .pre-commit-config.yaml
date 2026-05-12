@@ -11,19 +11,20 @@ repos:
       - id: check-added-large-files
       - id: check-merge-conflict
 
-  # Prettier for non-Python files (excluding Markdown)
+  # Prettier for template/config files Biome does not own here
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: "v4.0.0-alpha.8"
     hooks:
       - id: prettier
-        types_or: [yaml, json, html, css, javascript]
+        types_or: [yaml, json, html]
+        exclude: ^shallweswim/static/manifest\.json$
 
-  # Biome for JavaScript linting
+  # Biome for frontend linting and formatting
   - repo: https://github.com/biomejs/pre-commit
     rev: v2.3.6
     hooks:
-      - id: biome-lint
-        files: ^shallweswim/static/.*\.js$
+      - id: biome-check
+        files: ^shallweswim/static/.*\.(jsx?|tsx?|cjs|mjs|jsonc?|css|graphql|gql|vue|svelte|astro)$
 
   # Rumdl for Markdown (Rust-based, protects wiki links)
   - repo: local

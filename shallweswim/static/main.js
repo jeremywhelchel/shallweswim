@@ -31,7 +31,7 @@ let currentShiftParam = null;
 // YOUTUBE WEBCAM EMBED
 //=============================================================================
 
-function onYouTubeIframeAPIReady() {
+window.onYouTubeIframeAPIReady = function onYouTubeIframeAPIReady() {
   console.log("Creating player");
   new YT.Player("bbcam_player", {
     playerVars: {
@@ -49,7 +49,7 @@ function onYouTubeIframeAPIReady() {
     },
   });
   console.log("Created player");
-}
+};
 
 function onYTPlayerReady(event) {
   console.log("onPlayerReady");

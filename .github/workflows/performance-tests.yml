@@ -32,6 +32,10 @@ jobs:
           PERFORMANCE_RESULTS_PATH: performance-results.json
         run: uv run pytest tests/performance -v --run-performance --junitxml=performance-test-results.xml
 
+      - name: Show performance results
+        if: always()
+        run: cat performance-results.json
+
       - name: Upload performance results
         if: always()
         uses: actions/upload-artifact@v6

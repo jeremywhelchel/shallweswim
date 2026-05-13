@@ -96,24 +96,11 @@ h6 {
 
 /* Webcam container */
 .webcamdiv {
+  width: 100%;
+  max-width: var(--embed-max-width);
+  aspect-ratio: 16 / 9;
   position: relative;
   overflow: hidden;
-  /* Base styles with responsive sizing in media queries */
-}
-
-/* Responsive webcam sizing */
-@media (max-width: 600px) {
-  .webcamdiv {
-    max-width: var(--embed-max-width);
-    height: 220px; /* Height for phones */
-  }
-}
-
-@media (min-width: 601px) {
-  .webcamdiv {
-    max-width: var(--embed-max-width);
-    height: 534px; /* Height for desktop */
-  }
 }
 
 /* Webcam iframe */

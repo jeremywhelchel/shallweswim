@@ -262,7 +262,15 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert nyc["metadata"]["code"] == "nyc"
     assert nyc["metadata"]["features"]["temperature"] is True
     assert nyc["metadata"]["features"]["webcam"] is True
+    assert data["source_code_link"]["url"].endswith("/shallweswim")
     assert nyc["integrations"]["youtube_live"]["channel_id"]
+    assert nyc["integrations"]["webcam_alternative"]["label"] == (
+        "Earth Cam Coney Island"
+    )
+    assert nyc["integrations"]["webcam_source"]["description"] == (
+        "thanks to David K and Karol L"
+    )
+    assert nyc["integrations"]["transit_source"]["url"] == "https://goodservice.io"
     assert nyc["integrations"]["transit_routes"][0]["goodservice_route_id"] == "B"
 
 

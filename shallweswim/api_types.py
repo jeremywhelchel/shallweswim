@@ -295,6 +295,18 @@ class YouTubeLiveConfig(BaseModel):
     watch_url: str = Field(..., description="YouTube live watch URL")
 
 
+class AppPresentationLink(BaseModel):
+    """Presentation link metadata for the frontend."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(..., description="User-facing link label")
+    url: str = Field(..., description="Link URL")
+    description: str | None = Field(
+        None, description="Optional presentation text associated with the link"
+    )
+
+
 class TransitRouteConfig(BaseModel):
     """Transit route metadata for frontend status cards."""
 
@@ -315,6 +327,15 @@ class AppExternalIntegrations(BaseModel):
     )
     transit_routes: list[TransitRouteConfig] = Field(
         default_factory=list, description="Transit routes to show for a location"
+    )
+    webcam_alternative: AppPresentationLink | None = Field(
+        None, description="Alternative webcam link"
+    )
+    webcam_source: AppPresentationLink | None = Field(
+        None, description="Webcam source or citation link"
+    )
+    transit_source: AppPresentationLink | None = Field(
+        None, description="Transit source or citation link"
     )
 
 
@@ -338,6 +359,9 @@ class AppBootstrapResponse(BaseModel):
     location_order: list[str] = Field(..., description="Ordered location codes")
     manifest: AppManifestMetadata = Field(
         ..., description="Installable app manifest metadata"
+    )
+    source_code_link: AppPresentationLink = Field(
+        ..., description="Project source code link"
     )
     locations: dict[str, AppBootstrapLocation] = Field(
         ..., description="Per-location frontend bootstrap metadata"

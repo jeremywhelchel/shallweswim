@@ -25,6 +25,7 @@ from shallweswim.api_types import (
     AppFeatureFlags,
     AppLocationMetadata,
     AppManifestMetadata,
+    AppPresentationLink,
     AppSourceCitations,
     CurrentInfo,
     CurrentsResponse,
@@ -79,6 +80,9 @@ APP_BACKGROUND_COLOR = "#fcffff"
 
 NYC_YOUTUBE_CHANNEL_ID = "UChh9yX1PSFFreQFmnnIPGuQ"
 NYC_TRANSIT_ROUTE_IDS = ("B", "Q")
+NYC_EARTHCAM_URL = "https://www.earthcam.com/usa/newyork/coneyisland/?cam=coneyisland"
+GOODSERVICE_URL = "https://goodservice.io"
+GITHUB_SOURCE_URL = "https://github.com/jeremywhelchel/shallweswim"
 
 # Filter the specific Pydantic serialization warning globally for production
 # Note: Tests might handle this separately (e.g., via pytest markers/config)
@@ -205,6 +209,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         youtube_live = None
         transit_routes: list[TransitRouteConfig] = []
+        webcam_alternative = None
+        webcam_source = None
+        transit_source = None
         if cfg.code == "nyc":
             youtube_live = YouTubeLiveConfig(
                 channel_id=NYC_YOUTUBE_CHANNEL_ID,
@@ -226,6 +233,21 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 )
                 for route_id in NYC_TRANSIT_ROUTE_IDS
             ]
+            webcam_alternative = AppPresentationLink(
+                label="Earth Cam Coney Island",
+                url=NYC_EARTHCAM_URL,
+                description="Great view, including the amusement park.",
+            )
+            webcam_source = AppPresentationLink(
+                label="Webcam",
+                url=f"https://www.youtube.com/channel/{NYC_YOUTUBE_CHANNEL_ID}/live",
+                description="thanks to David K and Karol L",
+            )
+            transit_source = AppPresentationLink(
+                label="goodservice.io",
+                url=GOODSERVICE_URL,
+                description="MTA train status provided by:",
+            )
 
         return AppBootstrapLocation(
             metadata=AppLocationMetadata(
@@ -257,6 +279,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
             integrations=AppExternalIntegrations(
                 youtube_live=youtube_live,
                 transit_routes=transit_routes,
+                webcam_alternative=webcam_alternative,
+                webcam_source=webcam_source,
+                transit_source=transit_source,
             ),
         )
 
@@ -277,6 +302,11 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 display="standalone",
                 theme_color=APP_THEME_COLOR,
                 background_color=APP_BACKGROUND_COLOR,
+            ),
+            source_code_link=AppPresentationLink(
+                label="jeremywhelchel/shallweswim",
+                url=GITHUB_SOURCE_URL,
+                description="Site source on github:",
             ),
             locations={
                 code: app_location_bootstrap(cfg)

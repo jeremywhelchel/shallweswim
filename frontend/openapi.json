@@ -57,6 +57,10 @@
             "description": "Short application name",
             "title": "Short Name",
             "type": "string"
+          },
+          "source_code_link": {
+            "$ref": "#/components/schemas/AppPresentationLink",
+            "description": "Project source code link"
           }
         },
         "required": [
@@ -65,6 +69,7 @@
           "default_location_code",
           "location_order",
           "manifest",
+          "source_code_link",
           "locations"
         ],
         "title": "AppBootstrapResponse",
@@ -81,6 +86,39 @@
             },
             "title": "Transit Routes",
             "type": "array"
+          },
+          "transit_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppPresentationLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Transit source or citation link"
+          },
+          "webcam_alternative": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppPresentationLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Alternative webcam link"
+          },
+          "webcam_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppPresentationLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Webcam source or citation link"
           },
           "youtube_live": {
             "anyOf": [
@@ -267,6 +305,40 @@
           "background_color"
         ],
         "title": "AppManifestMetadata",
+        "type": "object"
+      },
+      "AppPresentationLink": {
+        "additionalProperties": false,
+        "description": "Presentation link metadata for the frontend.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional presentation text associated with the link",
+            "title": "Description"
+          },
+          "label": {
+            "description": "User-facing link label",
+            "title": "Label",
+            "type": "string"
+          },
+          "url": {
+            "description": "Link URL",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "url"
+        ],
+        "title": "AppPresentationLink",
         "type": "object"
       },
       "AppSourceCitations": {

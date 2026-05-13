@@ -647,6 +647,8 @@ export interface components {
              * @description Short application name
              */
             short_name: string;
+            /** @description Project source code link */
+            source_code_link: components["schemas"]["AppPresentationLink"];
         };
         /**
          * AppExternalIntegrations
@@ -658,6 +660,12 @@ export interface components {
              * @description Transit routes to show for a location
              */
             transit_routes?: components["schemas"]["TransitRouteConfig"][];
+            /** @description Transit source or citation link */
+            transit_source?: components["schemas"]["AppPresentationLink"] | null;
+            /** @description Alternative webcam link */
+            webcam_alternative?: components["schemas"]["AppPresentationLink"] | null;
+            /** @description Webcam source or citation link */
+            webcam_source?: components["schemas"]["AppPresentationLink"] | null;
             /** @description YouTube live embed configuration */
             youtube_live?: components["schemas"]["YouTubeLiveConfig"] | null;
         };
@@ -792,6 +800,27 @@ export interface components {
              * @description Theme color
              */
             theme_color: string;
+        };
+        /**
+         * AppPresentationLink
+         * @description Presentation link metadata for the frontend.
+         */
+        AppPresentationLink: {
+            /**
+             * Description
+             * @description Optional presentation text associated with the link
+             */
+            description?: string | null;
+            /**
+             * Label
+             * @description User-facing link label
+             */
+            label: string;
+            /**
+             * Url
+             * @description Link URL
+             */
+            url: string;
         };
         /**
          * AppSourceCitations

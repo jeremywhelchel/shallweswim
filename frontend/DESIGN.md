@@ -647,6 +647,153 @@ frontend bootstrap endpoint.
 - match current loading/unavailable/stale-data behavior
 - add mobile and desktop Playwright smoke coverage
 
+#### Milestone 2 Implementation Spec
+
+Milestone 2 should make the React app useful for the default NYC location while
+staying close to the current Jinja/HTML experience. Bias toward parity with the
+existing site unless React gives a clearly simpler implementation with the same
+user-facing behavior.
+
+Route scope:
+
+- `/app` and `/app/nyc` should both render the real NYC location page. `/app`
+  should preserve the URL rather than redirecting.
+- `/app/nyc/currents` remains a placeholder unless the implementer needs a small
+  shared component for the current-detail link. The full currents page stays in
+  Milestone 4.
+- `/app/locations` remains a placeholder in this milestone.
+- Unsupported location codes can continue using placeholder or not-found
+  behavior until Milestone 3 generalizes location pages.
+
+Data dependencies:
+
+- Use `/api/app/bootstrap` for app name, default location, location navigation,
+  NYC display metadata, feature flags, citations, YouTube config, and transit
+  route config.
+- Use `/api/nyc/conditions` for water temperature, tide timing, and current
+  estimate.
+- Use existing plot image endpoints directly:
+  - `/api/nyc/plots/live_temps`
+  - `/api/nyc/plots/historic_temps?period=2mo`
+  - `/api/nyc/plots/historic_temps?period=12mo`
+- Use direct GoodService fetches for NYC transit routes from bootstrap:
+  `https://goodservice.io/api/routes/{goodservice_route_id}`.
+- Do not add raw chart-data endpoints, a backend transit proxy, or new backend
+  feed logic for this milestone unless direct browser transit access proves
+  impossible.
+
+Page content and ordering should match the current NYC page:
+
+1. Header with `shall we swim today?` and the configured swim-location link.
+2. Conditions summary:
+   - water temperature: `The water is currently {water_temp}{degree symbol}{units}`
+   - station note: `at {station_name} as of {formatted timestamp}.`
+   - last tide, next tide, and following tide rows
+   - current estimate: `{state_description or direction} at {magnitude} knots`
+   - show a detail link to `/app/nyc/currents` only when current direction is
+     available
+3. Forecast section with the Windy iframe.
+4. Live Webcam section with the YouTube live embed and the existing EarthCam
+   alternative link.
+5. Temperature Trends section with the three existing plot images when enabled.
+6. Transit Status section with B and Q train cards.
+7. Sources section with configured temperature/tide/current citations plus NYC
+   webcam, GoodService, GitHub, and location navigation entries.
+
+Formatting rules:
+
+- Format tide dates as weekday, month, and day, matching the current frontend.
+- Format tide times and station timestamps with 12-hour US English display.
+- Format current magnitude to one decimal place when numeric.
+- Use `Unavailable`, `N/A`, and `unavailable` text consistently with the current
+  JavaScript behavior for first-load failures.
+- Citation HTML is trusted repository-controlled content from bootstrap and may
+  be rendered as HTML in this milestone. Keep that rendering isolated in a small
+  component so it can be replaced with structured citation rendering later.
+
+Runtime behavior:
+
+- Fetch conditions immediately on page load and refetch every 60 seconds.
+- Avoid overlapping condition requests for the same location; TanStack Query
+  should be configured so it does not create concurrent duplicate fetches.
+- On first condition failure, render unavailable states for temperature, tide,
+  and current areas and show:
+  `Unable to load latest conditions. Please try again later.`
+- On refresh failure after a successful load, keep prior data visible and show:
+  `Could not refresh latest conditions. Showing last loaded data.`
+- Start deferred plot image loading only after the first conditions request has
+  settled, whether it succeeds or fails.
+- Probe plot image loads before displaying `src`; retry failures after 1s, 3s,
+  and 7s; then show `Plot unavailable` for that plot without breaking the rest
+  of the page.
+- Fetch transit independently from swim conditions and refetch every 60 seconds.
+- On first transit failure, show `Unavailable`, destination `unavailable`, and no
+  alert detail rows for that train. On later failures, keep the previously loaded
+  transit data visible.
+
+External integration parity:
+
+- Windy should use the same iframe URL shape as the current `windy_iframe`
+  template macro, with location latitude/longitude, `overlay=waves`,
+  `product=ecmwfWaves`, `message=true`, `marker=true`, `calendar=now`,
+  `detail=true`, and Fahrenheit temperature units.
+- YouTube should use the bootstrap embed URL and preserve the current player
+  parameters: `enablejsapi=1`, `controls=0`, `playsinline=1`,
+  `iv_load_policy=3`, and `rel=0`. Load the official iframe API only if needed
+  to mute and attempt autoplay.
+- Transit status should preserve the current GoodService southbound behavior:
+  prefer `direction_statuses.south`, treat route-level `Not Scheduled`
+  specially, show `destinations.south[0]`, and render south/both delay, service
+  change, and service irregularity summaries when present.
+- Preserve the current status color mapping semantically, though the React/Tailwind
+  class names do not need to match the old CSS names.
+
+Suggested component boundaries:
+
+- `LocationPage`
+- `ConditionsSummary`
+- `TideSummary`
+- `CurrentSummary`
+- `WindyEmbed`
+- `YouTubeLiveEmbed`
+- `DeferredPlotImage`
+- `TemperaturePlots`
+- `TransitStatusSection`
+- `TransitRouteCard`
+- `SourcesList`
+- `LocationNav`
+
+Suggested hooks/clients:
+
+- `useAppBootstrap`
+- `useLocationConditions(locationCode)`
+- `useDeferredImage(src, enabled)`
+- `useTransitRoute(routeConfig)`
+
+Acceptance checks:
+
+- Existing backend unit tests still pass.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
+  `pnpm check:api`, and `pnpm test:e2e` pass.
+- Add unit/component tests for formatting helpers and at least the conditions
+  summary unavailable/success states.
+- Add Playwright smoke tests for `/app` and `/app/nyc` on mobile and desktop
+  that verify the real NYC page renders the header, conditions summary, Windy
+  section, webcam section, temperature trends, transit section, and sources.
+- Add Playwright coverage that `/app` does not redirect away from `/app`.
+- Mock external GoodService and bootstrap/conditions responses in browser tests
+  so CI does not depend on third-party services.
+
+Non-goals:
+
+- Do not redesign the product or replace backend-generated plots with client
+  charting.
+- Do not implement full `/app/:locationCode` generalization beyond what is
+  naturally needed for NYC.
+- Do not implement the full currents detail page.
+- Do not add service workers or offline data caching.
+- Do not add the existing-site adoption banner yet.
+
 ### Milestone 3: Generalize Location Pages
 
 - support `/app/:locationCode`

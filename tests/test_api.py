@@ -246,6 +246,26 @@ def test_all_locations_status_endpoint(
     assert status_data["sfo"]["feeds"]["tides"]["location"] == "sfo"
 
 
+def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
+    """Frontend bootstrap endpoint returns presentation metadata."""
+    response = test_client.get("/api/app/bootstrap")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["app_name"] == "Shall We Swim"
+    assert data["short_name"] == "Swim"
+    assert data["default_location_code"] == "nyc"
+    assert "nyc" in data["location_order"]
+    assert data["manifest"]["start_url"] == "/app"
+
+    nyc = data["locations"]["nyc"]
+    assert nyc["metadata"]["code"] == "nyc"
+    assert nyc["metadata"]["features"]["temperature"] is True
+    assert nyc["metadata"]["features"]["webcam"] is True
+    assert nyc["integrations"]["youtube_live"]["channel_id"]
+    assert nyc["integrations"]["transit_routes"][0]["goodservice_route_id"] == "B"
+
+
 def test_get_location_conditions(
     test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
 ) -> None:

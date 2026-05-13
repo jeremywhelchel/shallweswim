@@ -29,7 +29,9 @@
 
 ## Architecture
 
-Shall We Swim is a FastAPI application with a modular architecture.
+Shall We Swim is a FastAPI application with a modular architecture. The current
+Jinja-rendered site remains the primary experience, and a new React/Vite app is
+being developed incrementally under `/app`.
 
 ### Runtime Model
 
@@ -65,6 +67,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component documentation, cod
 ### Prerequisites
 
 - Python 3.13
+- Node 24 LTS for frontend development
 - [uv](https://github.com/astral-sh/uv) for dependency management
 - Docker (optional, for containerized deployment)
 
@@ -83,6 +86,63 @@ uv run python -m shallweswim.main --port=12345
 ```
 
 Then visit <http://localhost:12345> in your browser.
+
+### Frontend App Development
+
+The React app lives in `frontend/` and consumes the same-origin FastAPI JSON API.
+Use the pinned `pnpm` version from `frontend/package.json` through Corepack.
+
+Preferred package-manager path:
+
+```bash
+corepack enable
+corepack pnpm@10.18.3 --dir frontend install
+```
+
+Fallback when Corepack is unavailable:
+
+```bash
+npx --yes pnpm@10.18.3 --dir frontend install
+```
+
+Avoid global package-manager installs in repo docs and project setup:
+
+```bash
+npm install -g pnpm
+npm install -g corepack
+```
+
+Corepack keeps the package-manager version tied to the project. The `npx`
+fallback is explicit and does not persist a global `pnpm` install. Global
+installs conflict with the project's no-global-state rule and can interfere with
+existing Yarn, pnpm, or Corepack shims.
+
+```bash
+# Export the backend OpenAPI contract and generate TypeScript API types
+uv run python -m shallweswim.scripts.export_openapi > frontend/openapi.json
+corepack pnpm@10.18.3 --dir frontend install
+corepack pnpm@10.18.3 --dir frontend generate-api
+
+# Run the Vite dev server
+corepack pnpm@10.18.3 --dir frontend dev
+
+# Build the static app shell served by FastAPI under /app
+corepack pnpm@10.18.3 --dir frontend build
+```
+
+If your Node installation does not provide Corepack, use an ephemeral pinned
+`pnpm` invocation instead of installing package managers globally:
+
+```bash
+npx --yes pnpm@10.18.3 --dir frontend install
+npx --yes pnpm@10.18.3 --dir frontend generate-api
+npx --yes pnpm@10.18.3 --dir frontend dev
+npx --yes pnpm@10.18.3 --dir frontend build
+```
+
+The production Docker image builds `frontend/dist` and FastAPI serves it under
+`/app`. Local FastAPI requests to `/app` return a clear not-built response until
+the frontend has been built.
 
 ### Run with Docker
 
@@ -146,6 +206,18 @@ uv run pytest -v -m integration --run-integration
 # Run optional browser smoke tests (requires Playwright browser dependencies)
 uv run playwright install chromium
 uv run pytest tests/test_frontend_browser.py -v --run-browser
+
+# Run frontend checks
+corepack pnpm@10.18.3 --dir frontend typecheck
+corepack pnpm@10.18.3 --dir frontend test
+corepack pnpm@10.18.3 --dir frontend test:e2e:install
+corepack pnpm@10.18.3 --dir frontend test:e2e
+
+# Same checks without Corepack, using ephemeral pinned pnpm
+npx --yes pnpm@10.18.3 --dir frontend typecheck
+npx --yes pnpm@10.18.3 --dir frontend test
+npx --yes pnpm@10.18.3 --dir frontend test:e2e:install
+npx --yes pnpm@10.18.3 --dir frontend test:e2e
 
 # Run optional performance guardrails
 uv run pytest tests/performance -v --run-performance

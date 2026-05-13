@@ -4,5 +4,32 @@
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!frontend/openapi.json",
+      "!frontend/pnpm-lock.yaml",
+      "!frontend/src/api/generated.ts",
+      "!frontend/dist",
+      "!frontend/node_modules",
+      "!frontend/test-results",
+      "!frontend/playwright-report"
+    ]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noUnknownAtRules": "off"
+      }
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always"
+    }
   }
 }

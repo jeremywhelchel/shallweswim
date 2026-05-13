@@ -224,6 +224,126 @@ class LocationSummary(BaseModel):
     has_data: bool = Field(..., description="Whether the location can serve data")
 
 
+class AppFeatureFlags(BaseModel):
+    """Presentation feature flags for a location in the React app."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    temperature: bool = Field(..., description="Whether to show temperature UI")
+    tides: bool = Field(..., description="Whether to show tide UI")
+    currents: bool = Field(..., description="Whether to show current UI")
+    webcam: bool = Field(..., description="Whether to show webcam UI")
+    transit: bool = Field(..., description="Whether to show transit UI")
+    windy: bool = Field(..., description="Whether to show Windy forecast UI")
+
+
+class AppSourceCitations(BaseModel):
+    """Trusted HTML source citations for a location."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    temperature: str | None = Field(
+        None, description="Trusted HTML citation for temperature data"
+    )
+    tides: str | None = Field(None, description="Trusted HTML citation for tide data")
+    currents: str | None = Field(
+        None, description="Trusted HTML citation for current data"
+    )
+
+
+class AppLocationMetadata(BaseModel):
+    """Presentation metadata for a swimming location."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(..., description="3-letter location code")
+    name: str = Field(..., description="City or region name")
+    nav_label: str = Field(..., description="Short label for location navigation")
+    swim_location: str = Field(..., description="Specific swimming spot name")
+    swim_location_link: str = Field(..., description="URL for the swimming spot")
+    description: str = Field(..., description="Description of the swimming location")
+    latitude: float = Field(..., description="Latitude in decimal degrees")
+    longitude: float = Field(..., description="Longitude in decimal degrees")
+    timezone: str = Field(..., description="IANA timezone name")
+    features: AppFeatureFlags = Field(..., description="Enabled presentation features")
+    citations: AppSourceCitations = Field(
+        ..., description="Trusted HTML citations for configured data sources"
+    )
+
+
+class AppManifestMetadata(BaseModel):
+    """Installable web app manifest metadata exposed to the frontend."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., description="Full web app name")
+    short_name: str = Field(..., description="Short web app name")
+    start_url: str = Field(..., description="Manifest start URL")
+    scope: str = Field(..., description="Manifest scope")
+    display: str = Field(..., description="Manifest display mode")
+    theme_color: str = Field(..., description="Theme color")
+    background_color: str = Field(..., description="Background color")
+
+
+class YouTubeLiveConfig(BaseModel):
+    """YouTube live embed configuration for a frontend integration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    channel_id: str = Field(..., description="YouTube channel ID")
+    embed_url: str = Field(..., description="YouTube live embed URL")
+    watch_url: str = Field(..., description="YouTube live watch URL")
+
+
+class TransitRouteConfig(BaseModel):
+    """Transit route metadata for frontend status cards."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(..., description="User-facing route label")
+    goodservice_route_id: str = Field(..., description="GoodService route ID")
+    icon_url: str | None = Field(None, description="Optional route icon URL")
+
+
+class AppExternalIntegrations(BaseModel):
+    """External presentation integrations used by the React app."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    youtube_live: YouTubeLiveConfig | None = Field(
+        None, description="YouTube live embed configuration"
+    )
+    transit_routes: list[TransitRouteConfig] = Field(
+        default_factory=list, description="Transit routes to show for a location"
+    )
+
+
+class AppBootstrapLocation(BaseModel):
+    """Complete frontend bootstrap data for one location."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    metadata: AppLocationMetadata
+    integrations: AppExternalIntegrations
+
+
+class AppBootstrapResponse(BaseModel):
+    """Frontend bootstrap payload for app presentation configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    app_name: str = Field(..., description="Full application name")
+    short_name: str = Field(..., description="Short application name")
+    default_location_code: str = Field(..., description="Default location code")
+    location_order: list[str] = Field(..., description="Ordered location codes")
+    manifest: AppManifestMetadata = Field(
+        ..., description="Installable app manifest metadata"
+    )
+    locations: dict[str, AppBootstrapLocation] = Field(
+        ..., description="Per-location frontend bootstrap metadata"
+    )
+
+
 #############################################################
 # API RESPONSE MODELS - Complete response objects            #
 #############################################################

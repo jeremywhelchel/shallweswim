@@ -19,6 +19,13 @@ from shallweswim import config as config_lib
 from shallweswim import data as data_lib
 from shallweswim import types, util
 from shallweswim.api_types import (
+    AppBootstrapLocation,
+    AppBootstrapResponse,
+    AppExternalIntegrations,
+    AppFeatureFlags,
+    AppLocationMetadata,
+    AppManifestMetadata,
+    AppSourceCitations,
     CurrentInfo,
     CurrentsResponse,
     LegacyChartInfo,
@@ -29,6 +36,8 @@ from shallweswim.api_types import (
     TemperatureInfo,
     TideEntry,
     TideInfo,
+    TransitRouteConfig,
+    YouTubeLiveConfig,
 )
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
@@ -62,6 +71,14 @@ def _create_tide_current_plot(*args, **kwargs):  # type: ignore[no-untyped-def]
 # Timeout for on-demand plot generation (seconds)
 # Shorter than background (60s) since user is waiting
 PLOT_TIMEOUT = 30.0
+APP_NAME = "Shall We Swim"
+APP_SHORT_NAME = "Swim"
+DEFAULT_LOCATION_CODE = "nyc"
+APP_THEME_COLOR = "#000099"
+APP_BACKGROUND_COLOR = "#fcffff"
+
+NYC_YOUTUBE_CHANNEL_ID = "UChh9yX1PSFFreQFmnnIPGuQ"
+NYC_TRANSIT_ROUTE_IDS = ("B", "Q")
 
 # Filter the specific Pydantic serialization warning globally for production
 # Note: Tests might handle this separately (e.g., via pytest markers/config)
@@ -168,6 +185,104 @@ def register_routes(app: fastapi.FastAPI) -> None:
             logging.warning(f"[{loc}] Bad location request")
             raise HTTPException(status_code=404, detail=f"Location '{loc}' not found")
         return cfg
+
+    def timezone_name(cfg: config_lib.LocationConfig) -> str:
+        """Return a stable IANA timezone name for a location config."""
+        zone = getattr(cfg.timezone, "zone", None)
+        if isinstance(zone, str):
+            return zone
+        return str(cfg.timezone)
+
+    def app_location_bootstrap(
+        cfg: config_lib.LocationConfig,
+    ) -> AppBootstrapLocation:
+        """Build presentation bootstrap metadata for a location."""
+        temp_enabled = cfg.temp_source is not None and cfg.temp_source.live_enabled
+        tides_enabled = cfg.tide_source is not None
+        currents_enabled = cfg.currents_source is not None
+        webcam_enabled = cfg.code == "nyc"
+        transit_enabled = cfg.code == "nyc"
+
+        youtube_live = None
+        transit_routes: list[TransitRouteConfig] = []
+        if cfg.code == "nyc":
+            youtube_live = YouTubeLiveConfig(
+                channel_id=NYC_YOUTUBE_CHANNEL_ID,
+                embed_url=(
+                    "https://www.youtube.com/embed/live_stream"
+                    f"?channel={NYC_YOUTUBE_CHANNEL_ID}"
+                    "&enablejsapi=1&controls=0&playsinline=1"
+                    "&iv_load_policy=3&rel=0"
+                ),
+                watch_url=(
+                    f"https://www.youtube.com/channel/{NYC_YOUTUBE_CHANNEL_ID}/live"
+                ),
+            )
+            transit_routes = [
+                TransitRouteConfig(
+                    label=route_id,
+                    goodservice_route_id=route_id,
+                    icon_url=f"/static/{route_id}-train.svg",
+                )
+                for route_id in NYC_TRANSIT_ROUTE_IDS
+            ]
+
+        return AppBootstrapLocation(
+            metadata=AppLocationMetadata(
+                code=cfg.code,
+                name=cfg.name,
+                nav_label=cfg.name,
+                swim_location=cfg.swim_location,
+                swim_location_link=cfg.swim_location_link,
+                description=cfg.description,
+                latitude=cfg.latitude,
+                longitude=cfg.longitude,
+                timezone=timezone_name(cfg),
+                features=AppFeatureFlags(
+                    temperature=temp_enabled,
+                    tides=tides_enabled,
+                    currents=currents_enabled,
+                    webcam=webcam_enabled,
+                    transit=transit_enabled,
+                    windy=True,
+                ),
+                citations=AppSourceCitations(
+                    temperature=cfg.temp_source.citation if cfg.temp_source else None,
+                    tides=cfg.tide_source.citation if cfg.tide_source else None,
+                    currents=(
+                        cfg.currents_source.citation if cfg.currents_source else None
+                    ),
+                ),
+            ),
+            integrations=AppExternalIntegrations(
+                youtube_live=youtube_live,
+                transit_routes=transit_routes,
+            ),
+        )
+
+    @app.get("/api/app/bootstrap", response_model=AppBootstrapResponse)
+    async def app_bootstrap() -> AppBootstrapResponse:
+        """Return non-secret presentation metadata for the React app."""
+        location_order = list(config_lib.CONFIGS.keys())
+        return AppBootstrapResponse(
+            app_name=APP_NAME,
+            short_name=APP_SHORT_NAME,
+            default_location_code=DEFAULT_LOCATION_CODE,
+            location_order=location_order,
+            manifest=AppManifestMetadata(
+                name=APP_NAME,
+                short_name=APP_SHORT_NAME,
+                start_url="/app",
+                scope="/app/",
+                display="standalone",
+                theme_color=APP_THEME_COLOR,
+                background_color=APP_BACKGROUND_COLOR,
+            ),
+            locations={
+                code: app_location_bootstrap(cfg)
+                for code, cfg in config_lib.CONFIGS.items()
+            },
+        )
 
     @app.get("/api/{location}/conditions", response_model=LocationConditions)
     async def location_conditions(location: str) -> LocationConditions:

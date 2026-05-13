@@ -32,6 +32,7 @@ shallweswim/
 └── util.py              # Shared utilities
 
 tests/                   # Unit and integration tests
+frontend/                # React/Vite app source and frontend build tooling
 templates/               # Jinja2 HTML templates
 static/                  # CSS, JS, images
 ```
@@ -41,6 +42,10 @@ static/                  # CSS, JS, images
 ### Modular Design
 
 - **API (`api/routes.py`)**: Contains _only_ route handlers and request validation. Delegates business logic to `core/`.
+- **Frontend app (`frontend/`)**: React/Vite/TypeScript app mounted under `/app`.
+  It consumes the FastAPI JSON API and generated OpenAPI types. It must not own
+  NOAA/USGS fetching, feed orchestration, caching, plotting logic, or station
+  configuration.
 - **Core Manager (`core/manager.py`)**: `LocationDataManager` is the facade for all data operations per location. It coordinates multiple `Feed`s and manages the background update loop.
 - **Core Queries (`core/queries.py`)**: Standalone functions for querying feed data (temperature, tide info, current predictions).
 - **Core Updater (`core/updater.py`)**: Helper functions for the background update loop (expiration checks, dataset updates, exception handling).
@@ -74,6 +79,32 @@ Known tech debt: `/api/{location}/plots/current_tide` still renders a Matplotlib
 SVG per request in the process pool. It should eventually cache or precompute
 common hourly `shift` values, while preserving on-demand fallback behavior for
 less common shifts.
+
+### Frontend App Serving
+
+The React app is built to static files in `frontend/dist` with Vite
+`base: "/app/"`. FastAPI serves:
+
+- `/app`, `/app/`, and app-owned nested routes from `frontend/dist/index.html`
+  with `Cache-Control: no-cache, must-revalidate`
+- `/app/assets/...` from Vite hashed assets with immutable one-year caching
+- `/app/manifest.webmanifest` with app-shell cache semantics
+
+Local development may leave `frontend/dist` absent; `/app` then returns a clear
+not-built response. Production/container startup passes
+`--require-frontend-dist` and fails loudly if the built shell is missing.
+
+The frontend contract is generated from FastAPI OpenAPI:
+
+```bash
+uv run python -m shallweswim.scripts.export_openapi > frontend/openapi.json
+corepack pnpm@10.18.3 --dir frontend generate-api
+```
+
+`/api/app/bootstrap` exposes non-secret presentation metadata for the React app.
+It may include display labels, feature flags, trusted citation HTML, and external
+embed configuration, but should not expose station IDs or feed internals unless
+there is an explicit frontend need and approval.
 
 ### Configuration
 

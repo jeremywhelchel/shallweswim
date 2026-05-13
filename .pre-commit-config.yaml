@@ -17,21 +17,22 @@ repos:
     hooks:
       - id: prettier
         types_or: [yaml, json, html]
-        exclude: ^shallweswim/static/manifest\.json$
+        exclude: ^(shallweswim/static/manifest\.json|frontend/(openapi\.json|pnpm-lock\.yaml))$
 
   # Biome for frontend linting and formatting
   - repo: https://github.com/biomejs/pre-commit
     rev: v2.3.6
     hooks:
       - id: biome-check
-        files: ^shallweswim/static/.*\.(jsx?|tsx?|cjs|mjs|jsonc?|css|graphql|gql|vue|svelte|astro)$
+        files: ^(shallweswim/static|frontend)/.*\.(jsx?|tsx?|cjs|mjs|jsonc?|css|graphql|gql|vue|svelte|astro)$
+        exclude: ^frontend/(node_modules|dist|test-results|playwright-report)/
 
   # Rumdl for Markdown (Rust-based, protects wiki links)
   - repo: local
     hooks:
       - id: rumdl
         name: rumdl markdown linter
-        entry: rumdl check . --fix
+        entry: uv run rumdl check . --fix
         language: system
         types: [markdown]
 

@@ -1,0 +1,1771 @@
+{
+  "components": {
+    "schemas": {
+      "AppBootstrapLocation": {
+        "additionalProperties": false,
+        "description": "Complete frontend bootstrap data for one location.",
+        "properties": {
+          "integrations": {
+            "$ref": "#/components/schemas/AppExternalIntegrations"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/AppLocationMetadata"
+          }
+        },
+        "required": [
+          "metadata",
+          "integrations"
+        ],
+        "title": "AppBootstrapLocation",
+        "type": "object"
+      },
+      "AppBootstrapResponse": {
+        "additionalProperties": false,
+        "description": "Frontend bootstrap payload for app presentation configuration.",
+        "properties": {
+          "app_name": {
+            "description": "Full application name",
+            "title": "App Name",
+            "type": "string"
+          },
+          "default_location_code": {
+            "description": "Default location code",
+            "title": "Default Location Code",
+            "type": "string"
+          },
+          "location_order": {
+            "description": "Ordered location codes",
+            "items": {
+              "type": "string"
+            },
+            "title": "Location Order",
+            "type": "array"
+          },
+          "locations": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AppBootstrapLocation"
+            },
+            "description": "Per-location frontend bootstrap metadata",
+            "title": "Locations",
+            "type": "object"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/AppManifestMetadata",
+            "description": "Installable app manifest metadata"
+          },
+          "short_name": {
+            "description": "Short application name",
+            "title": "Short Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_name",
+          "short_name",
+          "default_location_code",
+          "location_order",
+          "manifest",
+          "locations"
+        ],
+        "title": "AppBootstrapResponse",
+        "type": "object"
+      },
+      "AppExternalIntegrations": {
+        "additionalProperties": false,
+        "description": "External presentation integrations used by the React app.",
+        "properties": {
+          "transit_routes": {
+            "description": "Transit routes to show for a location",
+            "items": {
+              "$ref": "#/components/schemas/TransitRouteConfig"
+            },
+            "title": "Transit Routes",
+            "type": "array"
+          },
+          "youtube_live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/YouTubeLiveConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "YouTube live embed configuration"
+          }
+        },
+        "title": "AppExternalIntegrations",
+        "type": "object"
+      },
+      "AppFeatureFlags": {
+        "additionalProperties": false,
+        "description": "Presentation feature flags for a location in the React app.",
+        "properties": {
+          "currents": {
+            "description": "Whether to show current UI",
+            "title": "Currents",
+            "type": "boolean"
+          },
+          "temperature": {
+            "description": "Whether to show temperature UI",
+            "title": "Temperature",
+            "type": "boolean"
+          },
+          "tides": {
+            "description": "Whether to show tide UI",
+            "title": "Tides",
+            "type": "boolean"
+          },
+          "transit": {
+            "description": "Whether to show transit UI",
+            "title": "Transit",
+            "type": "boolean"
+          },
+          "webcam": {
+            "description": "Whether to show webcam UI",
+            "title": "Webcam",
+            "type": "boolean"
+          },
+          "windy": {
+            "description": "Whether to show Windy forecast UI",
+            "title": "Windy",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "temperature",
+          "tides",
+          "currents",
+          "webcam",
+          "transit",
+          "windy"
+        ],
+        "title": "AppFeatureFlags",
+        "type": "object"
+      },
+      "AppLocationMetadata": {
+        "additionalProperties": false,
+        "description": "Presentation metadata for a swimming location.",
+        "properties": {
+          "citations": {
+            "$ref": "#/components/schemas/AppSourceCitations",
+            "description": "Trusted HTML citations for configured data sources"
+          },
+          "code": {
+            "description": "3-letter location code",
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "description": "Description of the swimming location",
+            "title": "Description",
+            "type": "string"
+          },
+          "features": {
+            "$ref": "#/components/schemas/AppFeatureFlags",
+            "description": "Enabled presentation features"
+          },
+          "latitude": {
+            "description": "Latitude in decimal degrees",
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "Longitude in decimal degrees",
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "description": "City or region name",
+            "title": "Name",
+            "type": "string"
+          },
+          "nav_label": {
+            "description": "Short label for location navigation",
+            "title": "Nav Label",
+            "type": "string"
+          },
+          "swim_location": {
+            "description": "Specific swimming spot name",
+            "title": "Swim Location",
+            "type": "string"
+          },
+          "swim_location_link": {
+            "description": "URL for the swimming spot",
+            "title": "Swim Location Link",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "IANA timezone name",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "nav_label",
+          "swim_location",
+          "swim_location_link",
+          "description",
+          "latitude",
+          "longitude",
+          "timezone",
+          "features",
+          "citations"
+        ],
+        "title": "AppLocationMetadata",
+        "type": "object"
+      },
+      "AppManifestMetadata": {
+        "additionalProperties": false,
+        "description": "Installable web app manifest metadata exposed to the frontend.",
+        "properties": {
+          "background_color": {
+            "description": "Background color",
+            "title": "Background Color",
+            "type": "string"
+          },
+          "display": {
+            "description": "Manifest display mode",
+            "title": "Display",
+            "type": "string"
+          },
+          "name": {
+            "description": "Full web app name",
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "description": "Manifest scope",
+            "title": "Scope",
+            "type": "string"
+          },
+          "short_name": {
+            "description": "Short web app name",
+            "title": "Short Name",
+            "type": "string"
+          },
+          "start_url": {
+            "description": "Manifest start URL",
+            "title": "Start Url",
+            "type": "string"
+          },
+          "theme_color": {
+            "description": "Theme color",
+            "title": "Theme Color",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "short_name",
+          "start_url",
+          "scope",
+          "display",
+          "theme_color",
+          "background_color"
+        ],
+        "title": "AppManifestMetadata",
+        "type": "object"
+      },
+      "AppSourceCitations": {
+        "additionalProperties": false,
+        "description": "Trusted HTML source citations for a location.",
+        "properties": {
+          "currents": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Trusted HTML citation for current data",
+            "title": "Currents"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Trusted HTML citation for temperature data",
+            "title": "Temperature"
+          },
+          "tides": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Trusted HTML citation for tide data",
+            "title": "Tides"
+          }
+        },
+        "title": "AppSourceCitations",
+        "type": "object"
+      },
+      "CurrentDirection": {
+        "enum": [
+          "flooding",
+          "ebbing"
+        ],
+        "title": "CurrentDirection",
+        "type": "string"
+      },
+      "CurrentInfo": {
+        "additionalProperties": false,
+        "description": "Current prediction/observation information for API responses.",
+        "properties": {
+          "direction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentDirection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Direction of current (Enum: CurrentDirection, null if non-tidal)"
+          },
+          "magnitude": {
+            "description": "Current strength in knots",
+            "title": "Magnitude",
+            "type": "number"
+          },
+          "magnitude_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Relative current strength (0.0-1.0, null if non-tidal), normalized against the nearest local flood/ebb peak in the available prediction curve.",
+            "title": "Magnitude Pct"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentPhase"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Compact current phase for displays. Tidal prediction values are flood, ebb, slack_before_flood, slack_before_ebb, or slack. Slack phases are assigned when absolute current magnitude is below 0.2 knots; slack_before_* indicates the next non-slack direction predicted by the curve."
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/DataSourceType",
+            "description": "Indicates if data is prediction or observation (Enum: DataSourceType)"
+          },
+          "state_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Display-ready current state phrase, such as 'strong ebb and building' or 'slack before flood' (null if non-tidal).",
+            "title": "State Description"
+          },
+          "strength": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentStrength"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cycle-relative current strength for non-slack tidal predictions (light, moderate, or strong). Null for slack or non-tidal currents."
+          },
+          "timestamp": {
+            "description": "ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentTrend"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current trend for non-slack tidal predictions (building, easing, or steady). Null for slack or non-tidal currents."
+          }
+        },
+        "required": [
+          "timestamp",
+          "magnitude",
+          "source_type"
+        ],
+        "title": "CurrentInfo",
+        "type": "object"
+      },
+      "CurrentPhase": {
+        "description": "Compact current phase for API consumers and displays.",
+        "enum": [
+          "flood",
+          "ebb",
+          "slack_before_flood",
+          "slack_before_ebb",
+          "slack"
+        ],
+        "title": "CurrentPhase",
+        "type": "string"
+      },
+      "CurrentStrength": {
+        "description": "Cycle-relative current strength for displays.",
+        "enum": [
+          "light",
+          "moderate",
+          "strong"
+        ],
+        "title": "CurrentStrength",
+        "type": "string"
+      },
+      "CurrentTrend": {
+        "description": "Whether the current is building or easing.",
+        "enum": [
+          "building",
+          "easing",
+          "steady"
+        ],
+        "title": "CurrentTrend",
+        "type": "string"
+      },
+      "CurrentsResponse": {
+        "additionalProperties": false,
+        "description": "Complete response for currents API endpoint.",
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/CurrentInfo"
+          },
+          "current_chart_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Filename of the current chart image (only for locations with chart assets)",
+            "title": "Current Chart Filename"
+          },
+          "legacy_chart": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LegacyChartInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Legacy chart info (only for locations with chart assets)"
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationInfo"
+          },
+          "navigation": {
+            "additionalProperties": true,
+            "description": "Navigation parameters for time shifting",
+            "title": "Navigation",
+            "type": "object"
+          },
+          "timestamp": {
+            "description": "ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "location",
+          "timestamp",
+          "current",
+          "navigation"
+        ],
+        "title": "CurrentsResponse",
+        "type": "object"
+      },
+      "DataFrameSummary": {
+        "additionalProperties": false,
+        "description": "Provides summary statistics for a time-series DataFrame.",
+        "properties": {
+          "column_names": {
+            "description": "List of column names.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Column Names",
+            "type": "array"
+          },
+          "index_frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inferred frequency of the DataFrame index (e.g., 'H', 'D', 'T'). None if irregular.",
+            "title": "Index Frequency"
+          },
+          "index_newest": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Newest timestamp in the DataFrame index (timezone-naive). None if empty/non-datetime index.",
+            "title": "Index Newest"
+          },
+          "index_oldest": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oldest timestamp in the DataFrame index (timezone-naive). None if empty/non-datetime index.",
+            "title": "Index Oldest"
+          },
+          "length": {
+            "description": "Number of rows in the DataFrame.",
+            "title": "Length",
+            "type": "integer"
+          },
+          "memory_usage_bytes": {
+            "description": "Total memory usage of the DataFrame in bytes (including index, deep=True).",
+            "title": "Memory Usage Bytes",
+            "type": "integer"
+          },
+          "missing_values": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Dictionary mapping column names to the count of missing values.",
+            "title": "Missing Values",
+            "type": "object"
+          },
+          "width": {
+            "description": "Number of columns in the DataFrame.",
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "length",
+          "width",
+          "column_names",
+          "missing_values",
+          "memory_usage_bytes"
+        ],
+        "title": "DataFrameSummary",
+        "type": "object"
+      },
+      "DataSourceType": {
+        "description": "Indicates whether data is based on a prediction or an observation.",
+        "enum": [
+          "prediction",
+          "observation"
+        ],
+        "title": "DataSourceType",
+        "type": "string"
+      },
+      "FeedStatus": {
+        "additionalProperties": false,
+        "description": "Represents the status of a single data feed.",
+        "properties": {
+          "age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data age in seconds at the time of status check",
+            "title": "Age Seconds"
+          },
+          "data_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DataFrameSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Summary statistics of the feed's DataFrame, if available"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last error message encountered by the feed, if any",
+            "title": "Error"
+          },
+          "expiration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Configured expiration time in seconds for the feed",
+            "title": "Expiration Seconds"
+          },
+          "fetch_timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timestamp of the last successful data fetch (naive UTC)",
+            "title": "Fetch Timestamp"
+          },
+          "is_expired": {
+            "description": "Whether the data is considered expired",
+            "title": "Is Expired",
+            "type": "boolean"
+          },
+          "is_healthy": {
+            "description": "Whether the data is recent enough to be considered healthy",
+            "title": "Is Healthy",
+            "type": "boolean"
+          },
+          "location": {
+            "description": "Location code associated with the feed",
+            "title": "Location",
+            "type": "string"
+          },
+          "name": {
+            "description": "Class name of the Feed",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "location",
+          "is_expired",
+          "is_healthy"
+        ],
+        "title": "FeedStatus",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LegacyChartInfo": {
+        "additionalProperties": false,
+        "description": "Information about legacy tide charts for API responses.",
+        "properties": {
+          "chart_filename": {
+            "description": "Filename of the legacy chart",
+            "title": "Chart Filename",
+            "type": "string"
+          },
+          "hours_since_last_tide": {
+            "description": "Hours since the last tide event",
+            "title": "Hours Since Last Tide",
+            "type": "number"
+          },
+          "last_tide_type": {
+            "$ref": "#/components/schemas/TideCategory",
+            "description": "Type of last tide (Enum: TideCategory)"
+          },
+          "map_title": {
+            "description": "Title for the legacy map",
+            "title": "Map Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hours_since_last_tide",
+          "last_tide_type",
+          "chart_filename",
+          "map_title"
+        ],
+        "title": "LegacyChartInfo",
+        "type": "object"
+      },
+      "LocationConditions": {
+        "additionalProperties": false,
+        "description": "Complete response for location conditions endpoint.\n\nFields are conditionally included based on the location's configuration:\n- temperature: Only included if the location has a temperature source with live_enabled=True\n- tides: Only included if the location has a tide source\n- current: Only included if the location has a current source",
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current information (if available)"
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationInfo"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TemperatureInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Water temperature information (if available)"
+          },
+          "tides": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TideInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tide information (if available)"
+          }
+        },
+        "required": [
+          "location"
+        ],
+        "title": "LocationConditions",
+        "type": "object"
+      },
+      "LocationInfo": {
+        "additionalProperties": false,
+        "description": "Location information for API responses.",
+        "properties": {
+          "code": {
+            "description": "Location code (e.g., 'nyc')",
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name of the location",
+            "title": "Name",
+            "type": "string"
+          },
+          "swim_location": {
+            "description": "Specific swimming location",
+            "title": "Swim Location",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "swim_location"
+        ],
+        "title": "LocationInfo",
+        "type": "object"
+      },
+      "LocationStatus": {
+        "description": "Represents the status of all feeds for a specific location.",
+        "properties": {
+          "feeds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FeedStatus"
+            },
+            "description": "Dictionary mapping feed names to their FeedStatus objects.",
+            "title": "Feeds",
+            "type": "object"
+          }
+        },
+        "required": [
+          "feeds"
+        ],
+        "title": "LocationStatus",
+        "type": "object"
+      },
+      "LocationSummary": {
+        "additionalProperties": false,
+        "description": "Summary information for a swimming location.",
+        "properties": {
+          "code": {
+            "description": "3-letter location code",
+            "title": "Code",
+            "type": "string"
+          },
+          "has_data": {
+            "description": "Whether the location can serve data",
+            "title": "Has Data",
+            "type": "boolean"
+          },
+          "latitude": {
+            "description": "Latitude in decimal degrees",
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "Longitude in decimal degrees",
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "description": "City or region name",
+            "title": "Name",
+            "type": "string"
+          },
+          "swim_location": {
+            "description": "Specific swimming spot name",
+            "title": "Swim Location",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "swim_location",
+          "latitude",
+          "longitude",
+          "has_data"
+        ],
+        "title": "LocationSummary",
+        "type": "object"
+      },
+      "TemperatureInfo": {
+        "additionalProperties": false,
+        "description": "Water temperature information for API responses.",
+        "properties": {
+          "station_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human-readable name of the temperature station",
+            "title": "Station Name"
+          },
+          "timestamp": {
+            "description": "ISO 8601 formatted timestamp of the reading (in location's local timezone)",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "units": {
+            "default": "F",
+            "description": "Temperature units (F for Fahrenheit)",
+            "title": "Units",
+            "type": "string"
+          },
+          "water_temp": {
+            "description": "Water temperature in degrees",
+            "title": "Water Temp",
+            "type": "number"
+          }
+        },
+        "required": [
+          "timestamp",
+          "water_temp"
+        ],
+        "title": "TemperatureInfo",
+        "type": "object"
+      },
+      "TideCategory": {
+        "enum": [
+          "low",
+          "high"
+        ],
+        "title": "TideCategory",
+        "type": "string"
+      },
+      "TideEntry": {
+        "additionalProperties": false,
+        "description": "Individual tide information for API responses.",
+        "properties": {
+          "prediction": {
+            "description": "Height of tide in feet",
+            "title": "Prediction",
+            "type": "number"
+          },
+          "time": {
+            "description": "ISO 8601 formatted timestamp of the tide event (in location's local timezone)",
+            "title": "Time",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TideCategory",
+            "description": "Type of tide (Enum: TideCategory)"
+          }
+        },
+        "required": [
+          "time",
+          "type",
+          "prediction"
+        ],
+        "title": "TideEntry",
+        "type": "object"
+      },
+      "TideInfo": {
+        "additionalProperties": false,
+        "description": "Collection of tide information for API responses.",
+        "properties": {
+          "next": {
+            "description": "Upcoming tides",
+            "items": {
+              "$ref": "#/components/schemas/TideEntry"
+            },
+            "title": "Next",
+            "type": "array"
+          },
+          "past": {
+            "description": "Recently occurred tides",
+            "items": {
+              "$ref": "#/components/schemas/TideEntry"
+            },
+            "title": "Past",
+            "type": "array"
+          }
+        },
+        "required": [
+          "past",
+          "next"
+        ],
+        "title": "TideInfo",
+        "type": "object"
+      },
+      "TransitRouteConfig": {
+        "additionalProperties": false,
+        "description": "Transit route metadata for frontend status cards.",
+        "properties": {
+          "goodservice_route_id": {
+            "description": "GoodService route ID",
+            "title": "Goodservice Route Id",
+            "type": "string"
+          },
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional route icon URL",
+            "title": "Icon Url"
+          },
+          "label": {
+            "description": "User-facing route label",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "goodservice_route_id"
+        ],
+        "title": "TransitRouteConfig",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "YouTubeLiveConfig": {
+        "additionalProperties": false,
+        "description": "YouTube live embed configuration for a frontend integration.",
+        "properties": {
+          "channel_id": {
+            "description": "YouTube channel ID",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "embed_url": {
+            "description": "YouTube live embed URL",
+            "title": "Embed Url",
+            "type": "string"
+          },
+          "watch_url": {
+            "description": "YouTube live watch URL",
+            "title": "Watch Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "embed_url",
+          "watch_url"
+        ],
+        "title": "YouTubeLiveConfig",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "description": "Redirect root path to default location (NYC).\n\nTODO: Use cookies to redirect to last used or saved location.",
+        "operationId": "root_index__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Root Index"
+      }
+    },
+    "/all": {
+      "get": {
+        "description": "Serve a landing page showing all swimming locations with their current water temperatures.\n\nArgs:\n    request: FastAPI request object\n\nReturns:\n    HTML response with all locations and their water temperatures",
+        "operationId": "view_all_locations_all_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "View All Locations"
+      }
+    },
+    "/api/app/bootstrap": {
+      "get": {
+        "description": "Return non-secret presentation metadata for the React app.",
+        "operationId": "app_bootstrap_api_app_bootstrap_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppBootstrapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "App Bootstrap"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "description": "API endpoint for service health check (used by Cloud Run).\n\nReturns 200 if at least one location can serve data (fresh or stale).\nReturns 503 only if NO location has any data available.\n\nThis lenient check ensures single station outages don't mark the entire\nservice unhealthy. For detailed per-feed health status, use /api/status.\n\nReturns:\n    True if service can serve at least one location\n    Status code 200 if healthy, 503 if not healthy",
+        "operationId": "healthy_status_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Healthy Status Api Health Get",
+                  "type": "boolean"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthy Status"
+      }
+    },
+    "/api/healthy": {
+      "get": {
+        "description": "API endpoint for service health check (used by Cloud Run).\n\nReturns 200 if at least one location can serve data (fresh or stale).\nReturns 503 only if NO location has any data available.\n\nThis lenient check ensures single station outages don't mark the entire\nservice unhealthy. For detailed per-feed health status, use /api/status.\n\nReturns:\n    True if service can serve at least one location\n    Status code 200 if healthy, 503 if not healthy",
+        "operationId": "healthy_status_api_healthy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Healthy Status Api Healthy Get",
+                  "type": "boolean"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthy Status"
+      }
+    },
+    "/api/locations": {
+      "get": {
+        "description": "API endpoint that returns a list of all configured swimming locations.\n\nReturns a summary of each location including code, name, coordinates,\nand whether data is currently available.\n\nReturns:\n    List of LocationSummary objects for all configured locations",
+        "operationId": "list_locations_api_locations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LocationSummary"
+                  },
+                  "title": "Response List Locations Api Locations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Locations"
+      }
+    },
+    "/api/status": {
+      "get": {
+        "description": "API endpoint that returns status information for all configured locations.\n\nReturns:\n    Dictionary mapping location codes to their status dictionaries\n\nRaises:\n    HTTPException: If no locations are configured",
+        "operationId": "all_locations_status_api_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/LocationStatus"
+                  },
+                  "title": "Response All Locations Status Api Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "All Locations Status"
+      }
+    },
+    "/api/{location}/conditions": {
+      "get": {
+        "description": "API endpoint that returns tide and temperature data for a specific location.\n\nArgs:\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    JSON response with tide and temperature information\n\nRaises:\n    HTTPException: If the location is not configured",
+        "operationId": "location_conditions_api__location__conditions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationConditions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Conditions"
+      }
+    },
+    "/api/{location}/currents": {
+      "get": {
+        "description": "API endpoint that returns current predictions for a specific location.\n\nArgs:\n    location: Location code (e.g., 'nyc')\n    shift: Time shift in minutes from current time (optional)\n\nReturns:\n    CurrentsResponse object with current prediction details\n\nRaises:\n    HTTPException: If the location is not configured or doesn't support currents",
+        "operationId": "location_currents_api__location__currents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "shift",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Shift",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Currents"
+      }
+    },
+    "/api/{location}/plots/current_tide": {
+      "get": {
+        "description": "Generate and serve a tide and current plot for the specified location.\n\nArgs:\n    location: Location code (e.g., \"nyc\", \"san\")\n    shift: Time shift in minutes from current time\n\nReturns:\n    SVG image response with tide and current visualization",
+        "operationId": "get_current_tide_plot_api__location__plots_current_tide_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "shift",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Shift",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Current Tide Plot"
+      }
+    },
+    "/api/{location}/plots/historic_temps": {
+      "get": {
+        "description": "Serve a historic temperature plot for the specified location.\n\nArgs:\n    location: Location code (e.g., \"nyc\", \"sfo\")\n    period: Time period - \"2mo\" for 2-month or \"12mo\" for full year\n\nReturns:\n    SVG image response with historic temperature visualization",
+        "operationId": "get_historic_temps_plot_api__location__plots_historic_temps_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "2mo",
+              "title": "Period",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Historic Temps Plot"
+      }
+    },
+    "/api/{location}/plots/live_temps": {
+      "get": {
+        "description": "Serve the live temperature plot for the specified location.\n\nArgs:\n    location: Location code (e.g., \"nyc\", \"sfo\")\n\nReturns:\n    SVG image response with live temperature visualization",
+        "operationId": "get_live_temps_plot_api__location__plots_live_temps_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Live Temps Plot"
+      }
+    },
+    "/api/{location}/status": {
+      "get": {
+        "description": "API endpoint that returns status information for a specific location.\n\nArgs:\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    Status dictionary for the specified location\n\nRaises:\n    HTTPException: If the location is not configured",
+        "operationId": "location_status_api__location__status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Status"
+      }
+    },
+    "/apple-touch-icon-precomposed.png": {
+      "get": {
+        "operationId": "static_route_apple_touch_icon_precomposed_png_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Static Route"
+      }
+    },
+    "/apple-touch-icon.png": {
+      "get": {
+        "operationId": "static_route_apple_touch_icon_png_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Static Route"
+      }
+    },
+    "/embed": {
+      "get": {
+        "description": "Redirect /embed to the default location embed page (NYC).\n\nReturns:\n    Redirect response to the NYC embed page",
+        "operationId": "root_embed_redirect_embed_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Root Embed Redirect"
+      }
+    },
+    "/favicon.ico": {
+      "get": {
+        "operationId": "static_route_favicon_ico_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Static Route"
+      }
+    },
+    "/manifest.json": {
+      "get": {
+        "operationId": "static_route_manifest_json_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Static Route"
+      }
+    },
+    "/robots.txt": {
+      "get": {
+        "description": "Serve crawler directives for the canonical site.",
+        "operationId": "robots_txt_robots_txt_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Robots Txt"
+      }
+    },
+    "/sitemap.xml": {
+      "get": {
+        "description": "Serve a sitemap of canonical, indexable pages.",
+        "operationId": "sitemap_xml_sitemap_xml_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sitemap Xml"
+      }
+    },
+    "/{location}": {
+      "get": {
+        "description": "Serve the main page for a specific location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    HTML response with location-specific configuration\n\nRaises:\n    HTTPException: If the location is not configured",
+        "operationId": "location_index__location__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Index"
+      }
+    },
+    "/{location}/currents": {
+      "get": {
+        "description": "Serve the water current visualization page for the specified location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., \"nyc\", \"san\")\n    shift: Time shift in minutes from current time\n\nReturns:\n    HTML response with current water conditions",
+        "operationId": "location_currents__location__currents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "shift",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Shift",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Currents"
+      }
+    },
+    "/{location}/embed": {
+      "get": {
+        "description": "Serve the embed view for a specific location for embedding in other websites.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    HTML response with location-specific embed\n\nRaises:\n    HTTPException: If the location is not configured",
+        "operationId": "location_embed__location__embed_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Embed"
+      }
+    },
+    "/{location}/widget": {
+      "get": {
+        "description": "Serve a widget view for a specific location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    HTML response with location-specific widget\n\nRaises:\n    HTTPException: If the location is not configured",
+        "operationId": "location_widget__location__widget_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Widget"
+      }
+    }
+  }
+}

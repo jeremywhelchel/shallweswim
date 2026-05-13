@@ -169,7 +169,7 @@ build rather than introduce a separate deploy pipeline.
 Expected Docker changes:
 
 - add a frontend build stage using an exact Node major LTS image
-- enable/pin `pnpm` through Corepack or an equivalent explicit install
+- enable/pin `pnpm` through Corepack or an equivalent non-global invocation
 - pin the frontend package manager in `frontend/package.json` with the
   `packageManager` field
 - copy `frontend/package.json`, `frontend/pnpm-lock.yaml`, and frontend config
@@ -194,7 +194,7 @@ delegates the build to `docker buildx build`. The Dockerfile should own the
 frontend build steps.
 
 Initial choice: pin a current Node LTS major image rather than `node:lts-slim`.
-For example, use `node:22-slim` while Node 22 is the active LTS line, and update
+Use `node:24-slim` while Node 24 is the active LTS line, and update
 deliberately when changing Node major versions.
 
 ## Initial Decisions
@@ -317,7 +317,7 @@ steps only.
 Expected local tooling:
 
 ```text
-Node 22 LTS
+Node 24 LTS
 pnpm
 Vite
 TypeScript
@@ -358,6 +358,7 @@ pnpm build         # TypeScript check plus Vite production build
 pnpm typecheck     # tsc --noEmit
 pnpm generate-api  # Generate TS API types/client from frontend/openapi.json
 pnpm test          # Frontend unit/component tests
+pnpm test:e2e:install  # Install Playwright Chromium into frontend/node_modules
 pnpm test:e2e      # Playwright browser tests
 ```
 
@@ -405,6 +406,61 @@ Initial rules:
 - add dependency update automation later, likely Dependabot or Renovate
 - run frontend build/type/test checks in CI before deploy
 - keep Node/pnpm as build-time dependencies only; no Node runtime in production
+
+## GitHub Actions
+
+Milestones 0 and 1 should include a dedicated frontend GitHub Actions workflow.
+Do not punt frontend CI until feature parity; the scaffold and `/app` shell need
+continuous validation as soon as they are introduced.
+
+Initial frontend workflow:
+
+```text
+.github/workflows/frontend.yml
+```
+
+Triggers:
+
+```text
+push
+pull_request
+workflow_dispatch
+```
+
+Required first-milestone jobs:
+
+- check out the repository
+- set up Python 3.13 and `uv`
+- install backend dev dependencies with `uv sync --dev`
+- set up Node 24
+- enable Corepack or use pinned `pnpm@10.18.3` without a global install
+- install frontend dependencies with `pnpm --dir frontend install --frozen-lockfile`
+- run `pnpm --dir frontend lint`
+- run `pnpm --dir frontend typecheck`
+- run `pnpm --dir frontend test`
+- run `pnpm --dir frontend build`
+- run `pnpm --dir frontend check:api`
+- install Playwright Chromium for the frontend test environment
+- run `pnpm --dir frontend test:e2e`
+
+The existing Python workflows should remain in place:
+
+- unit tests
+- Ruff
+- Pyrefly
+- existing Python Playwright browser smoke tests for the Jinja frontend
+- integration and performance workflows
+
+Do not run full frontend builds or Playwright from pre-commit hooks. Keep
+pre-commit fast: formatting, linting, and file hygiene only. Full frontend checks
+belong in scripts and GitHub Actions.
+
+Future/deferred workflow work:
+
+- Docker image build validation can remain in Cloud Build for now.
+- Browser test consolidation between Python Playwright and JavaScript Playwright
+  is deferred until the React app has real feature coverage.
+- Dependency update automation can be added later with Dependabot or Renovate.
 
 ## API Contract Workflow
 
@@ -645,6 +701,30 @@ can improve during implementation, but avoid large product changes until the
 React app has matched current behavior.
 
 Feature parity starts in Milestone 2, not in the first scaffolding pass.
+
+### First Milestone Follow-Up Notes
+
+The initial app shell is intentionally provisional. Before or during Milestone 2,
+address these known rough edges:
+
+- Replace developer-facing placeholder copy with real condition content as the
+  NYC vertical slice is implemented.
+- Improve the location nav for narrow mobile viewports; the current full-button
+  nav is acceptable for shell validation but will need a compact overflow or menu
+  treatment as app content grows.
+- Revisit the placeholder card styling once real condition, tide, current, plot,
+  webcam, transit, and citation content is present. The final layout should be
+  denser and closer to the current site's useful information hierarchy.
+- Local development can use Node 24+ with pinned `pnpm@10.18.3`; production
+  Docker remains pinned to the active Node LTS major. Corepack is preferred when
+  available; otherwise use an ephemeral pinned invocation such as
+  `npx --yes pnpm@10.18.3 ...` rather than installing package managers globally.
+  If local Node Current releases cause toolchain issues, reproduce on Node 24
+  before treating the issue as a project bug.
+- JavaScript Playwright tests use `PLAYWRIGHT_BROWSERS_PATH=0`, so browser
+  binaries live under `frontend/node_modules`. After deleting or recreating
+  `frontend/node_modules`, run `pnpm --dir frontend test:e2e:install` before
+  `pnpm --dir frontend test:e2e`.
 
 ## Feature Parity Plan
 

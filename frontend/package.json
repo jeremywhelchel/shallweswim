@@ -1,0 +1,46 @@
+{
+  "name": "shallweswim-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.18.3",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "export-openapi": "uv --directory .. run python -m shallweswim.scripts.export_openapi > openapi.json",
+    "generate-api": "openapi-typescript ./openapi.json -o ./src/api/generated.ts",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:e2e:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
+    "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test",
+    "check:api": "corepack pnpm@10.18.3 export-openapi && corepack pnpm@10.18.3 generate-api && git diff --exit-code openapi.json src/api/generated.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.0",
+    "openapi-fetch": "^0.15.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.6",
+    "@playwright/test": "^1.59.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.21",
+    "jsdom": "^27.2.0",
+    "openapi-typescript": "^7.10.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.0",
+    "vitest": "^4.0.0"
+  }
+}

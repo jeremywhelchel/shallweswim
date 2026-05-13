@@ -1,0 +1,59 @@
+name: Frontend
+# Run React app scaffold checks on pushes, PRs, and manual dispatches.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    name: Run frontend checks
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install backend dependencies
+        run: uv sync --dev
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.3 --activate
+          pnpm --version
+
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Lint frontend
+        run: pnpm --dir frontend lint
+
+      - name: Typecheck frontend
+        run: pnpm --dir frontend typecheck
+
+      - name: Test frontend
+        run: pnpm --dir frontend test
+
+      - name: Build frontend
+        run: pnpm --dir frontend build
+
+      - name: Check generated API contract
+        run: pnpm --dir frontend check:api
+
+      - name: Install Playwright Chromium
+        run: PLAYWRIGHT_BROWSERS_PATH=0 pnpm --dir frontend exec playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests
+        run: pnpm --dir frontend test:e2e

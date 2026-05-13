@@ -3,7 +3,7 @@
 from fastapi.testclient import TestClient
 
 from shallweswim import canonical, config
-from shallweswim.main import app
+from shallweswim.main import app, start_app
 
 
 def test_www_host_redirects_to_canonical_apex() -> None:
@@ -45,6 +45,115 @@ def test_sitemap_lists_canonical_location_pages() -> None:
 
     for loc_code in config.CONFIGS:
         assert f"<loc>{canonical.CANONICAL_BASE_URL}/{loc_code}</loc>" in response.text
+
+
+def test_app_route_returns_clear_not_built_response_when_dist_missing(tmp_path) -> None:
+    """Local /app requests are explicit when the frontend build is missing."""
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    app.state.frontend_dist = str(tmp_path / "missing-dist")
+
+    try:
+        response = client.get("/app")
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+
+    assert response.status_code == 404
+    assert "Frontend app shell has not been built" in response.text
+    assert response.headers["cache-control"] == "no-cache, must-revalidate"
+
+
+def test_app_routes_serve_built_shell_and_assets(tmp_path) -> None:
+    """Built frontend shell is served for client routes under /app."""
+    dist = tmp_path / "dist"
+    assets = dist / "assets"
+    assets.mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><div id='root'></div>")
+    (dist / "manifest.webmanifest").write_text('{"name":"Shall We Swim"}')
+    (assets / "app.js").write_text("console.log('app')")
+
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    app.state.frontend_dist = str(dist)
+
+    try:
+        shell = client.get("/app/nyc/currents")
+        manifest = client.get("/app/manifest.webmanifest")
+        asset = client.get("/app/assets/app.js")
+        missing_asset = client.get("/app/assets/missing.js")
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+
+    assert shell.status_code == 200
+    assert "<div id='root'></div>" in shell.text
+    assert shell.headers["cache-control"] == "no-cache, must-revalidate"
+    assert manifest.status_code == 200
+    assert manifest.headers["cache-control"] == "no-cache, must-revalidate"
+    assert asset.status_code == 200
+    assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert missing_asset.status_code == 404
+
+
+def test_app_assets_reject_encoded_path_traversal(tmp_path) -> None:
+    """Encoded asset paths cannot escape the built frontend assets directory."""
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do not expose")
+
+    dist = tmp_path / "dist"
+    assets = dist / "assets"
+    assets.mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><div id='root'></div>")
+    (assets / "app.js").write_text("console.log('app')")
+
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    app.state.frontend_dist = str(dist)
+
+    traversal_paths = [
+        "/app/assets/%2e%2e/index.html",
+        "/app/assets/%2e%2e/%2e%2e/secret.txt",
+        "/app/assets/..%2F..%2Fsecret.txt",
+    ]
+
+    try:
+        responses = [client.get(path) for path in traversal_paths]
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+
+    for response in responses:
+        assert response.status_code == 404
+        assert "do not expose" not in response.text
+        assert "<div id='root'></div>" not in response.text
+
+
+def test_start_app_requires_frontend_dist_when_configured(tmp_path) -> None:
+    """Production startup fails loudly if the built frontend shell is absent."""
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+
+    try:
+        try:
+            start_app(
+                frontend_dist=str(tmp_path / "missing-dist"),
+                require_frontend_dist=True,
+            )
+        except RuntimeError as exc:
+            assert "Frontend app shell is missing" in str(exc)
+        else:
+            raise AssertionError("start_app should fail when frontend dist is required")
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
 
 
 def test_location_page_has_canonical_url() -> None:

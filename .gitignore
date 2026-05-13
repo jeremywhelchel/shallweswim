@@ -148,5 +148,12 @@ TODO.md
 # Asset manifest for fingerprinting
 shallweswim/static/asset-manifest.json
 
+# Frontend build artifacts
+.pnpm-store/
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+
 # Claude Code local settings
 .claude/settings.local.json

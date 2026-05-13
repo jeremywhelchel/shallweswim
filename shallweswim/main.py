@@ -15,6 +15,7 @@ import os
 import signal
 from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 from typing import (
     Any,
     cast,
@@ -89,6 +90,13 @@ NO_CACHE_HEADERS = {
     "Pragma": "no-cache",
     "Expires": "0",
 }
+APP_SHELL_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, must-revalidate",
+}
+APP_ASSET_CACHE_HEADERS = {
+    "Cache-Control": "public, max-age=31536000, immutable",
+}
+DEFAULT_FRONTEND_DIST = Path("frontend/dist")
 
 
 @app.middleware("http")
@@ -223,6 +231,84 @@ async def sitemap_xml() -> responses.Response:
     )
     return responses.Response(
         content=canonical.sitemap_xml(urls), media_type="application/xml"
+    )
+
+
+# ======================================================================
+# React app routes - These must come before parameterized location routes
+# ======================================================================
+
+
+def frontend_dist_dir() -> Path:
+    """Return the configured frontend build output directory."""
+    return Path(getattr(app.state, "frontend_dist", DEFAULT_FRONTEND_DIST))
+
+
+def frontend_index_path() -> Path:
+    """Return the built React app shell path."""
+    return frontend_dist_dir() / "index.html"
+
+
+def frontend_assets_dir() -> Path:
+    """Return the resolved built React app assets directory."""
+    return (frontend_dist_dir() / "assets").resolve()
+
+
+def app_shell_missing_response() -> responses.PlainTextResponse:
+    """Return a clear local-development response for a missing frontend build."""
+    return responses.PlainTextResponse(
+        "Frontend app shell has not been built. Run "
+        "`corepack pnpm@10.18.3 --dir frontend build` from the repository root, "
+        "then retry /app.",
+        status_code=404,
+        headers=APP_SHELL_CACHE_HEADERS,
+    )
+
+
+@app.get("/app/assets/{asset_path:path}", include_in_schema=False)
+async def frontend_asset(asset_path: str) -> responses.FileResponse:
+    """Serve Vite-built immutable assets for the React app."""
+    assets_dir = frontend_assets_dir()
+    asset = (assets_dir / asset_path).resolve()
+
+    try:
+        asset.relative_to(assets_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Frontend asset not found") from exc
+
+    if not asset.is_file():
+        raise HTTPException(status_code=404, detail="Frontend asset not found")
+
+    return responses.FileResponse(asset, headers=APP_ASSET_CACHE_HEADERS)
+
+
+@app.get("/app/manifest.webmanifest", include_in_schema=False)
+async def frontend_manifest() -> responses.Response:
+    """Serve the React app web manifest with app-shell cache semantics."""
+    manifest = frontend_dist_dir() / "manifest.webmanifest"
+    if not manifest.is_file():
+        return app_shell_missing_response()
+
+    return responses.FileResponse(
+        manifest,
+        media_type="application/manifest+json",
+        headers=APP_SHELL_CACHE_HEADERS,
+    )
+
+
+@app.get("/app", include_in_schema=False)
+@app.get("/app/", include_in_schema=False)
+@app.get("/app/{app_path:path}", include_in_schema=False)
+async def frontend_app_shell(app_path: str = "") -> responses.Response:
+    """Serve the React app shell for client-owned routes under /app."""
+    index = frontend_index_path()
+    if not index.is_file():
+        return app_shell_missing_response()
+
+    return responses.FileResponse(
+        index,
+        media_type="text/html",
+        headers=APP_SHELL_CACHE_HEADERS,
     )
 
 
@@ -435,11 +521,17 @@ def setup_signal_handlers() -> None:
     signal.signal(signal.SIGTERM, sigterm_handler)
 
 
-def start_app(asset_manifest: str | None = None) -> fastapi.FastAPI:
+def start_app(
+    asset_manifest: str | None = None,
+    frontend_dist: str | None = None,
+    require_frontend_dist: bool = False,
+) -> fastapi.FastAPI:
     """Initialize and return the FastAPI application.
 
     Args:
         asset_manifest: Optional path to asset manifest file for fingerprinting
+        frontend_dist: Optional path to the built frontend app directory
+        require_frontend_dist: Fail startup if the frontend app shell is missing
 
     Returns:
         Configured FastAPI application instance
@@ -462,6 +554,15 @@ def start_app(asset_manifest: str | None = None) -> fastapi.FastAPI:
         app.state.asset_manager.manifest = manifest
         logging.info("Asset fingerprinting enabled")
 
+    if frontend_dist:
+        app.state.frontend_dist = frontend_dist
+
+    if require_frontend_dist and not frontend_index_path().is_file():
+        raise RuntimeError(
+            "Frontend app shell is missing. Expected built index.html at "
+            f"{frontend_index_path()}"
+        )
+
     return app
 
 
@@ -471,6 +572,17 @@ parser.add_argument(
     "--asset-manifest",
     type=str,
     help="Path to asset manifest file for fingerprint-based cache busting",
+)
+parser.add_argument(
+    "--frontend-dist",
+    type=str,
+    default=str(DEFAULT_FRONTEND_DIST),
+    help="Path to built frontend app output directory",
+)
+parser.add_argument(
+    "--require-frontend-dist",
+    action="store_true",
+    help="Fail startup if the built frontend app shell is missing",
 )
 parser.add_argument(
     "--host",
@@ -504,7 +616,11 @@ def create_app() -> fastapi.FastAPI:
     asset_manifest = _parsed_args.asset_manifest
 
     logging.info(f"create_app() called, asset_manifest = {asset_manifest}")
-    return start_app(asset_manifest=asset_manifest)
+    return start_app(
+        asset_manifest=asset_manifest,
+        frontend_dist=_parsed_args.frontend_dist,
+        require_frontend_dist=_parsed_args.require_frontend_dist,
+    )
 
 
 if __name__ == "__main__":

@@ -1,3 +1,15 @@
+FROM node:24-slim AS frontend-builder
+
+WORKDIR /frontend
+
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY frontend/tsconfig.json frontend/vite.config.ts frontend/tailwind.config.ts ./
+COPY frontend/postcss.config.js frontend/playwright.config.ts ./
+RUN corepack enable && corepack pnpm install --frozen-lockfile
+
+COPY frontend/ ./
+RUN corepack pnpm build
+
 # Use the official lightweight Python image.
 # https://hub.docker.com/_/python
 FROM python:3.13-slim
@@ -25,6 +37,7 @@ RUN --mount=type=cache,target=/opt/uv-cache/ \
 
 # Copy code and data
 COPY shallweswim shallweswim
+COPY --from=frontend-builder /frontend/dist frontend/dist
 # Now install the project itself
 RUN --mount=type=cache,target=/opt/uv-cache/ \
     uv sync --frozen --no-dev --compile-bytecode
@@ -33,4 +46,4 @@ RUN --mount=type=cache,target=/opt/uv-cache/ \
 RUN python -m shallweswim.scripts.generate_asset_manifest
 
 # Run the web service on container startup with asset manifest
-CMD ["python", "-m", "shallweswim.main", "--asset-manifest=shallweswim/static/asset-manifest.json", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "shallweswim.main", "--asset-manifest=shallweswim/static/asset-manifest.json", "--frontend-dist=frontend/dist", "--require-frontend-dist", "--host", "0.0.0.0", "--port", "8080"]

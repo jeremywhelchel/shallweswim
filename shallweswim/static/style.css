@@ -5,6 +5,11 @@ body {
   background-color: #fcffff;
 }
 
+:root {
+  --content-max-width: 980px;
+  --embed-max-width: 950px;
+}
+
 h1,
 h2,
 h3,
@@ -79,12 +84,12 @@ h6 {
 /* Plot component */
 .plot {
   width: 100%;
-  max-width: 980px;
+  max-width: var(--content-max-width);
   display: block;
 }
 
 .plot-status {
-  max-width: 980px;
+  max-width: var(--content-max-width);
   margin: 4px 0 12px;
   color: #666;
 }
@@ -99,14 +104,14 @@ h6 {
 /* Responsive webcam sizing */
 @media (max-width: 600px) {
   .webcamdiv {
-    max-width: 950px;
+    max-width: var(--embed-max-width);
     height: 220px; /* Height for phones */
   }
 }
 
 @media (min-width: 601px) {
   .webcamdiv {
-    max-width: 950px;
+    max-width: var(--embed-max-width);
     height: 534px; /* Height for desktop */
   }
 }
@@ -126,7 +131,7 @@ h6 {
 /* Windy forecast iframe */
 .windyframe {
   width: 100%;
-  max-width: 950px;
+  max-width: var(--embed-max-width);
   display: block;
   height: 350px;
 }
@@ -213,6 +218,7 @@ h6 {
  * ====================================== */
 .transit-div {
   width: 100%;
+  max-width: var(--content-max-width);
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -221,7 +227,6 @@ h6 {
 
 .train-div {
   width: 300px;
-  margin: 10px;
   padding: 15px;
   border-radius: 8px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);

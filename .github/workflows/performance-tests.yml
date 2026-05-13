@@ -1,16 +1,15 @@
 name: Performance Tests
 # Run request-path performance guardrails separately from correctness tests.
 on:
-  # Run weekly to catch drift without making every PR depend on runner timing.
+  push:
+  pull_request:
+  # Run weekly to catch runner/environment drift even when code is quiet.
   schedule:
     - cron: "30 9 * * 1"
   workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize, reopened, labeled]
 
 jobs:
   performance-tests:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-performance-tests') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     name: Run Performance Tests

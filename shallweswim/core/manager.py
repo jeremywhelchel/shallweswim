@@ -22,6 +22,7 @@ from shallweswim.clients.base import BaseApiClient
 from shallweswim.core import queries, updater
 from shallweswim.types import (
     CurrentInfo,
+    DataSourceType,
     LegacyChartInfo,
     TemperatureReading,
     TideInfo,
@@ -120,6 +121,13 @@ class LocationDataManager:
         # Timestamp of when each plot was last generated, used to detect
         # when feed data is newer than the current plot.
         self._plot_generated_at: dict[feeds.FeedName, datetime.datetime] = {}
+
+        # Derived current prediction frame for locations with tidal prediction
+        # feeds. This is refreshed when the raw currents feed updates so request
+        # handlers only need a point-in-time lookup.
+        self._current_prediction_frame: pd.DataFrame | None = None
+        self._current_prediction_source_timestamp: datetime.datetime | None = None
+        self._current_prediction_source_data_id: int | None = None
 
     def _configure_live_temps_feed(self) -> feeds.Feed | None:
         """Configure the live temperature feed.
@@ -661,6 +669,35 @@ class LocationDataManager:
                 )
                 self._pending_plot_futures[feeds.FEED_HISTORIC_TEMPS] = (future, now)
 
+    def _precompute_current_predictions(self) -> None:
+        """Precompute derived tidal-current columns when raw current data changes."""
+        currents_source = self.config.currents_source
+        if (
+            currents_source is None
+            or currents_source.source_type != DataSourceType.PREDICTION
+        ):
+            return
+
+        feed = self._feeds.get(feeds.FEED_CURRENTS)
+        if feed is None or feed._data is None:
+            return
+
+        source_timestamp = feed._fetch_timestamp
+        source_data_id = id(feed._data)
+        if (
+            self._current_prediction_frame is not None
+            and self._current_prediction_source_timestamp == source_timestamp
+            and self._current_prediction_source_data_id == source_data_id
+        ):
+            return
+
+        self._current_prediction_frame = queries.prepare_current_prediction_frame(
+            feed.values
+        )
+        self._current_prediction_source_timestamp = source_timestamp
+        self._current_prediction_source_data_id = source_data_id
+        self.log("Precomputed current prediction frame.", level=logging.DEBUG)
+
     async def __update_loop(self) -> None:
         """Background task that refreshes feed data and regenerates plots.
 
@@ -683,6 +720,7 @@ class LocationDataManager:
                             self._feeds, self.clients, feed_name
                         )
 
+                    self._precompute_current_predictions()
                     self._generate_plots(loop)
 
                 except Exception as e:
@@ -828,6 +866,18 @@ class LocationDataManager:
             DataUnavailableError: If current data is not available.
             ValueError: If the requested time has timezone info.
         """
+        if (
+            self.config.currents_source is not None
+            and self.config.currents_source.source_type == DataSourceType.PREDICTION
+        ):
+            self._precompute_current_predictions()
+            if self._current_prediction_frame is not None:
+                return queries.predict_flow_from_precomputed_frame(
+                    self._current_prediction_frame,
+                    self.config,
+                    t,
+                )
+
         return queries.predict_flow_at_time(self._feeds, self.config, t)
 
     def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:

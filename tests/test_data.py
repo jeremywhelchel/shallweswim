@@ -27,6 +27,7 @@ from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
+from shallweswim.core import queries
 from shallweswim.core.queries import DataUnavailableError, get_current_tide_info
 from shallweswim.data import LocationDataManager
 from shallweswim.feeds import Feed
@@ -194,6 +195,41 @@ async def test_current_prediction_at_flood_peak(
     assert result.trend == CurrentTrend.BUILDING
     assert pytest.approx(result.magnitude, 0.1) == 1.5
     assert result.state_description == "strong flood and building"
+
+
+@pytest.mark.asyncio
+async def test_current_prediction_reuses_precomputed_frame(
+    mock_data_with_currents: LocationDataManager,
+    mock_current_data: pd.DataFrame,
+    mocker: MockerFixture,
+) -> None:
+    """Prediction source data is precomputed once per feed update."""
+    current_feed = mock_data_with_currents._feeds["currents"]
+    assert current_feed is not None
+    current_feed_mock = cast(Any, current_feed)
+    current_feed_mock._data = mock_current_data
+    current_feed_mock.values = mock_current_data
+    current_feed_mock._fetch_timestamp = datetime.datetime(2025, 4, 22, 0, 0, 0)
+
+    prepare_spy = mocker.patch(
+        "shallweswim.core.manager.queries.prepare_current_prediction_frame",
+        wraps=queries.prepare_current_prediction_frame,
+    )
+
+    t = datetime.datetime(2025, 4, 22, 15, 0, 0)
+    first = mock_data_with_currents.predict_flow_at_time(t)
+    second = mock_data_with_currents.predict_flow_at_time(t)
+
+    assert first == second
+    assert prepare_spy.call_count == 1
+
+    updated_data = mock_current_data.copy()
+    current_feed_mock._data = updated_data
+    current_feed_mock.values = updated_data
+    current_feed_mock._fetch_timestamp = datetime.datetime(2025, 4, 22, 1, 0, 0)
+
+    mock_data_with_currents.predict_flow_at_time(t)
+    assert prepare_spy.call_count == 2
 
 
 @pytest.mark.asyncio

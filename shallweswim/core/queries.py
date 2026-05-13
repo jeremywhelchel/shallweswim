@@ -170,19 +170,86 @@ def _process_local_magnitude_pct(
     peak_times = current_df.index[peaks]
     peak_magnitudes = current_df["magnitude"].iloc[peaks].values
 
-    # For each row in the current direction, find the nearest peak
-    # and calculate the percentage relative to that peak
-    for idx in current_df.index:
-        # Find the nearest peak (before or after)
-        time_diffs = abs(peak_times - idx)
-        nearest_peak_idx = time_diffs.argmin()
-        nearest_peak_magnitude = peak_magnitudes[nearest_peak_idx]
+    current_times = current_df.index
+    if not isinstance(current_times, pd.DatetimeIndex):
+        raise DataUnavailableError("Current prediction DataFrame must use datetimes")
 
-        # Calculate percentage relative to nearest peak
-        if nearest_peak_magnitude > 0:
-            local_pct = current_df.loc[idx, "magnitude"] / nearest_peak_magnitude
-            df.loc[idx, "local_mag_pct"] = min(local_pct, 1.0)  # Cap at 100%
+    peak_ns = peak_times.asi8
+    current_ns = current_times.asi8
+    insert_positions = np.searchsorted(peak_ns, current_ns)
+    previous_peak_positions = np.clip(insert_positions - 1, 0, len(peak_ns) - 1)
+    next_peak_positions = np.clip(insert_positions, 0, len(peak_ns) - 1)
 
+    previous_distances = np.abs(current_ns - peak_ns[previous_peak_positions])
+    next_distances = np.abs(current_ns - peak_ns[next_peak_positions])
+    nearest_peak_positions = np.where(
+        previous_distances <= next_distances,
+        previous_peak_positions,
+        next_peak_positions,
+    )
+
+    nearest_peak_magnitudes = peak_magnitudes[nearest_peak_positions]
+    local_pct = np.divide(
+        current_df["magnitude"].to_numpy(dtype=float),
+        nearest_peak_magnitudes,
+        out=np.zeros(len(current_df), dtype=float),
+        where=nearest_peak_magnitudes > 0,
+    )
+    df.loc[current_df.index, "local_mag_pct"] = np.minimum(local_pct, 1.0)
+
+    return df
+
+
+def prepare_current_prediction_frame(currents_data: pd.DataFrame) -> pd.DataFrame:
+    """Precompute derived current prediction columns for fast point-in-time lookup."""
+    df = currents_data.copy()
+
+    # Convert raw velocity to magnitude and direction
+    df["v"] = df["velocity"]
+    df["magnitude"] = df["v"].abs()
+
+    # Add a slope column to track if current is strengthening or weakening
+    df["raw_slope"] = df["v"].diff()
+
+    # Create a directionally correct slope column
+    conditions = [
+        (df["v"] > 0),  # flooding
+        (df["v"] < 0),  # ebbing
+    ]
+    choices = [
+        df["raw_slope"],  # for flooding, use raw slope
+        -df["raw_slope"],  # for ebbing, negate the slope
+    ]
+    df["slope"] = np.select(conditions, choices, default=0)
+
+    # Mark direction as flood or ebb
+    conditions = [
+        (df["v"] > 0),  # flooding
+        (df["v"] < 0),  # ebbing
+    ]
+    choices = [CurrentDirection.FLOODING.value, CurrentDirection.EBBING.value]
+    df["direction"] = np.select(conditions, choices, default="")
+
+    # Initialize column for local magnitude percentage
+    df["local_mag_pct"] = 0.0
+
+    # Process flood and ebb separately
+    flood_df: pd.DataFrame = df[df["v"] > 0].copy()  # type: ignore[assignment]
+    ebb_df: pd.DataFrame = df[df["v"] < 0].copy()  # type: ignore[assignment]
+
+    # Calculate mag_pct for global magnitude ranking (needed for fallback)
+    df["mag_pct"] = df.groupby("direction")["magnitude"].rank(pct=True)
+
+    # Calculate magnitude percentages relative to local peaks
+    df = _process_local_magnitude_pct(df, flood_df, CurrentDirection.FLOODING.value)
+    df = _process_local_magnitude_pct(
+        df,
+        ebb_df,
+        CurrentDirection.EBBING.value,
+        invert=True,
+    )
+
+    _require_naive_datetime_index(df, "Current prediction")
     return df
 
 
@@ -478,22 +545,22 @@ def get_current_flow_info(
     )
 
 
-def predict_flow_at_time(
-    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
+def predict_flow_from_precomputed_frame(
+    df: pd.DataFrame,
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
 ) -> CurrentInfo:
     """Predict tidal current conditions for a specific time.
 
-    Analyzes current prediction data to determine the state, direction, and magnitude
-    of the tidal current at the specified time. Includes contextual information about
-    whether the current is strengthening, weakening, or at peak/slack.
+    Uses a precomputed current prediction frame from
+    prepare_current_prediction_frame() to determine the state, direction, and
+    magnitude of the tidal current at the specified time.
 
     NOTE: This method is currently specific to TIDAL current systems.
     River current predictions will require a separate implementation.
 
     Args:
-        feeds_dict: Dictionary mapping feed names to Feed objects
+        df: Precomputed current prediction DataFrame
         config: Location configuration
         t: Time to predict current for, defaults to current time in location's timezone.
            Must be a naive datetime in the location's timezone.
@@ -513,57 +580,6 @@ def predict_flow_at_time(
     """
     if not t:
         t = config.local_now()
-
-    # Get currents data from the feed
-    currents_data = get_feed_data(feeds_dict, FEED_CURRENTS)
-
-    # Create a working copy of the current data for analysis
-    df = currents_data.copy()
-
-    # Convert raw velocity to magnitude and direction
-    df["v"] = df["velocity"]
-    df["magnitude"] = df["v"].abs()
-
-    # Add a slope column to track if current is strengthening or weakening
-    df["raw_slope"] = df["v"].diff()
-
-    # Create a directionally correct slope column
-    conditions = [
-        (df["v"] > 0),  # flooding
-        (df["v"] < 0),  # ebbing
-    ]
-    choices = [
-        df["raw_slope"],  # for flooding, use raw slope
-        -df["raw_slope"],  # for ebbing, negate the slope
-    ]
-    df["slope"] = np.select(conditions, choices, default=0)
-
-    # Mark direction as flood or ebb
-    conditions = [
-        (df["v"] > 0),  # flooding
-        (df["v"] < 0),  # ebbing
-    ]
-    choices = [CurrentDirection.FLOODING.value, CurrentDirection.EBBING.value]
-    df["direction"] = np.select(conditions, choices, default="")
-
-    # Initialize column for local magnitude percentage
-    df["local_mag_pct"] = 0.0
-
-    # Process flood and ebb separately
-    flood_df: pd.DataFrame = df[df["v"] > 0].copy()  # type: ignore[assignment]
-    ebb_df: pd.DataFrame = df[df["v"] < 0].copy()  # type: ignore[assignment]
-
-    # Calculate mag_pct for global magnitude ranking (needed for fallback)
-    df["mag_pct"] = df.groupby("direction")["magnitude"].rank(pct=True)
-
-    # Calculate magnitude percentages relative to local peaks
-    df = _process_local_magnitude_pct(df, flood_df, CurrentDirection.FLOODING.value)
-    df = _process_local_magnitude_pct(
-        df,
-        ebb_df,
-        CurrentDirection.EBBING.value,
-        invert=True,
-    )
 
     # Ensure we're using a naive datetime for DataFrame slicing
     if t.tzinfo is not None:
@@ -599,3 +615,19 @@ def predict_flow_at_time(
         magnitude_pct=row["local_mag_pct"],  # type: ignore[arg-type]
         state_description=state_description,
     )
+
+
+def predict_flow_at_time(
+    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
+    config: config_lib.LocationConfig,
+    t: datetime.datetime | None = None,
+) -> CurrentInfo:
+    """Predict tidal current conditions for a specific time.
+
+    This convenience path derives the current prediction frame on demand. Runtime
+    managers should prefer prepare_current_prediction_frame() plus
+    predict_flow_from_precomputed_frame() so repeated requests are cheap.
+    """
+    currents_data = get_feed_data(feeds_dict, FEED_CURRENTS)
+    prediction_frame = prepare_current_prediction_frame(currents_data)
+    return predict_flow_from_precomputed_frame(prediction_frame, config, t)

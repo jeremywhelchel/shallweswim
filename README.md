@@ -43,16 +43,17 @@ The application is **fully stateless** with no database or persistent storage. O
 
 ### Request Flow
 
-**User requests** always serve cached data (fast, no external calls):
+**User requests** always serve cached or precomputed data (fast, no external calls):
 
 ```text
-HTTP Request → API Handler → LocationDataManager → Feed (cached) → Response
+HTTP Request → API Handler → LocationDataManager → Feed / Derived Cache → Response
 ```
 
-**Background tasks** refresh feeds on intervals (10 min to 24 hours):
+**Background tasks** refresh feeds and derived data on intervals (10 min to 24 hours):
 
 ```text
 Background Task → Feed → ApiClient → External API → Update Cache
+Background Task → Derived Data Precompute → Update Derived Cache
 ```
 
 Failed fetches leave data stale until the next successful refresh.

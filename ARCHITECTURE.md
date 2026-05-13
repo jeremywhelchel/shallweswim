@@ -50,17 +50,25 @@ static/                  # CSS, JS, images
 
 ### Data Flow
 
-**User requests** serve cached data (no external calls):
+**User requests** serve cached data or derived in-memory views (no external calls):
 
 ```text
-API Handler → LocationDataManager → Feed (cached data) → Response
+API Handler → LocationDataManager → Feed / Derived Cache → Response
 ```
 
-**Background refresh** updates the cache on intervals:
+**Background refresh** updates raw feeds and derived caches on intervals:
 
 ```text
-Background Task → Feed → ApiClient → External Service → Update Cache
+Background Task → Feed → ApiClient → External Service → Update Feed Cache
+Background Task → Derived Data Precompute → Update Derived Cache
 ```
+
+Keep user-facing condition endpoints on the fast path. Expensive, repeatable
+work that depends only on cached feed data should run during background updates
+or immediately after a feed changes, not on every request. Request handlers may
+perform cheap point-in-time lookups and response serialization, but should not
+loop across full feed DataFrames for high-traffic or above-the-fold endpoints
+such as `/api/{location}/conditions` and `/api/{location}/currents`.
 
 ### Configuration
 
@@ -226,6 +234,14 @@ normalized against the nearest local flood/ebb peak in the available prediction
 curve, not against a fixed theoretical maximum. A neap and spring tide can both
 report `magnitude_pct` near `1.0` while having different absolute `magnitude`
 values.
+
+For prediction-based current feeds, `LocationDataManager` precomputes the
+derived prediction frame when the raw current feed changes. That frame contains
+the local peak-relative magnitude, direction, slope, and related columns needed
+for current state displays. User requests then do an `asof` lookup for the
+requested time instead of recalculating those columns across the full current
+prediction DataFrame. Preserve this split: derived data belongs in the
+background/feed-update path; request handlers should remain cheap lookups.
 
 ### Client Timeouts
 

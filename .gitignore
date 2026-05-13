@@ -123,6 +123,10 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# Local performance test output
+performance-results.json
+performance-test-results.xml
 .dmypy.json
 dmypy.json
 

@@ -70,6 +70,11 @@ perform cheap point-in-time lookups and response serialization, but should not
 loop across full feed DataFrames for high-traffic or above-the-fold endpoints
 such as `/api/{location}/conditions` and `/api/{location}/currents`.
 
+Known tech debt: `/api/{location}/plots/current_tide` still renders a Matplotlib
+SVG per request in the process pool. It should eventually cache or precompute
+common hourly `shift` values, while preserving on-demand fallback behavior for
+less common shifts.
+
 ### Configuration
 
 - All static configuration is in `config/locations.py`.
@@ -119,6 +124,11 @@ Two error types for data availability, at different layers:
   - Other locations: unavailable feeds are collected as skip reasons; test skips if any feed is unavailable but never blocks validation of other feeds
   - Run with: `uv run pytest -m integration --run-integration`
   - Teardown intentionally uses bounded waits for blocking external-API worker threads. Earlier unbounded cleanup caused GitHub Actions integration jobs to stall when live NOAA/USGS/NDBC calls hung. Local full-suite integration runs may finish all tests and still report unclosed socket `ResourceWarning`s during pytest teardown; preserve bounded cleanup unless CI behavior is revalidated.
+- **Performance Tests**: Marked with `@pytest.mark.performance` and kept in `tests/performance/`.
+  - Use deterministic in-memory feed data, not live APIs
+  - Guard important user-facing request paths against accidental feed-scale DataFrame work
+  - Run separately with: `uv run pytest tests/performance -v --run-performance`
+  - GitHub Actions runs them on a weekly schedule, manually, or on PRs labeled `run-performance-tests`
 - **Fixtures**: Use `conftest.py` for shared fixtures.
 - **Warnings as Errors**: Pytest treats all warnings as errors (`filterwarnings = ["error"]`).
   - New warnings fail tests immediately, forcing explicit decisions

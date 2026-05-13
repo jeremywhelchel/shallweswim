@@ -147,6 +147,9 @@ uv run pytest -v -m integration --run-integration
 uv run playwright install chromium
 uv run pytest tests/test_frontend_browser.py -v --run-browser
 
+# Run optional performance guardrails
+uv run pytest tests/performance -v --run-performance
+
 # Run type checking
 uv run pyrefly check .
 

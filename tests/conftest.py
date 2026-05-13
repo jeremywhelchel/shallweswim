@@ -118,6 +118,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Run browser smoke tests that require Playwright browser binaries",
     )
+    parser.addoption(
+        "--run-performance",
+        action="store_true",
+        default=False,
+        help="Run performance regression tests for request-path latency",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -127,6 +133,9 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers", "browser: mark test as requiring a real browser via Playwright"
+    )
+    config.addinivalue_line(
+        "markers", "performance: mark test as a request-path performance guardrail"
     )
 
 
@@ -147,6 +156,14 @@ def pytest_collection_modifyitems(
         for item in items:
             if "browser" in item.keywords:
                 item.add_marker(skip_browser)
+
+    if not config.getoption("--run-performance"):
+        skip_performance = pytest.mark.skip(
+            reason="Need --run-performance option to run"
+        )
+        for item in items:
+            if "performance" in item.keywords:
+                item.add_marker(skip_performance)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

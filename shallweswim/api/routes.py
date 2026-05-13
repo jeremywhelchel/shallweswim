@@ -403,7 +403,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     detail=f"{cfg.name} tide/current data temporarily unavailable",
                 )
 
-            # Offload plotting to the process pool with timeout
+            # TODO: Cache or precompute common shift values for this plot. This
+            # endpoint is the remaining user-facing path that does Matplotlib
+            # work per request, even though it is offloaded to the process pool.
             pool = app.state.process_pool
             loop = asyncio.get_running_loop()
             fig = await asyncio.wait_for(

@@ -794,6 +794,144 @@ Non-goals:
 - Do not add service workers or offline data caching.
 - Do not add the existing-site adoption banner yet.
 
+### Milestone 2.5: NYC Layout And Information Hierarchy Pass
+
+Milestone 2 intentionally biases toward current Jinja/HTML parity. After that
+slice is committed, take a dedicated layout pass before spreading the same
+structure to every location.
+
+Goal:
+
+- keep the Milestone 2 data, routes, embed behavior, refresh behavior, and tests
+  intact
+- improve the NYC page's information hierarchy, scanability, density, and mobile
+  ergonomics
+- make the page feel like a focused conditions app rather than a literal port of
+  the old document layout
+
+Primary design question:
+
+```text
+What does a swimmer need to know first before deciding whether to swim today?
+```
+
+Expected direction:
+
+- prioritize the current swim decision signals near the top: water temperature,
+  tide timing, current estimate, and forecast context
+- make supporting material secondary: plots, webcam, transit, sources, and
+  location navigation
+- reduce excessive vertical scanning without hiding important details
+- use layout density carefully: compact where information is routine, spacious
+  where comparison or interpretation matters
+- preserve direct access to the full supporting evidence, especially plots and
+  citations
+- keep the design restrained, operational, and mobile-first
+
+Temperature plot treatment:
+
+- Prefer a single temperature plot module instead of showing all temperature
+  plots as separate stacked images.
+- The module should provide a compact selector for:
+  - live
+  - 2-month historical
+  - 12-month historical
+- Only the selected plot should be visually primary. This should reduce vertical
+  scanning while preserving access to the same plot endpoints.
+- Keep the selector state local to the component for now. It does not need to be
+  encoded in the URL unless a later sharing/bookmarking use case appears.
+- Continue to use the existing backend image endpoints in this phase.
+
+Compact tide/current visual summaries:
+
+- Explore compact bar-style instruments for tides and currents in the top
+  decision area. These should summarize state, not replace the fuller supporting
+  plots elsewhere on the page.
+- The bar direction matters. It should communicate whether the value is filling
+  toward a peak or draining away from one, not only the current percentage.
+- For currents, use the existing `current.magnitude_pct`, `current.trend`,
+  `current.phase`, `current.magnitude`, and state description fields.
+- Current bar labeling should make the basis explicit, for example:
+  - current direction/phase: flooding, ebbing, slack before flood, etc.
+  - whether the current is building, easing, or steady
+  - current value in knots
+  - expected local peak value and time when available
+- For tides, do not approximate the normalized percentage in the frontend. Add a
+  backend-derived tide summary before building a tide bar so the app can display
+  the current predicted tide height, normalized height/progress, rising/falling
+  direction, and the relevant high/low event time and height.
+- Tide bar labeling should make the basis explicit, for example:
+  - rising toward high or falling toward low
+  - current predicted tide height in feet
+  - next high/low height and time
+  - percentage toward the relevant high/low range or event, as defined by the
+    backend field
+- Use animation sparingly. A subtle leading-edge pulse/shimmer can indicate
+  filling/building/rising; a subtle trailing-edge pulse or inward motion can
+  indicate draining/easing/falling. Avoid distracting blinking and respect
+  `prefers-reduced-motion`.
+- Treat current and tide bars as independent instruments. Their percentages have
+  different physical meanings, so the UI must not imply they are directly
+  comparable.
+
+Provisional visual direction:
+
+- Treat the visual style as exploratory in Milestone 2.5. The goal is to see a
+  concrete design in the app, review it on desktop and mobile, and iterate.
+- Do not lock in a final design system yet. Any typography, color, spacing, card,
+  or bar-chart choices made in this milestone are provisional until reviewed with
+  real content.
+- A full terminal-style interface is probably too strong for the whole app. It is
+  distinctive, but it can hurt readability and make the app feel more like a
+  novelty dashboard than a practical swim-conditions tool.
+- Use terminal/console aesthetics selectively as an accent language for
+  instrument-like elements where precision and compactness matter.
+- Good candidates for selective monospace or console treatment:
+  - tide/current bar instruments
+  - numeric measurements
+  - timestamps
+  - compact status labels such as `LIVE`, `RISING`, `FALLING`, `BUILDING`, or
+    `EASING`
+  - station/source codes when they are shown as data labels
+- Keep body copy, explanatory text, section headings, links, and most navigation
+  in a more natural readable sans-serif treatment unless a prototype proves the
+  monospace style works better.
+- The ASCII-style bar idea is explicitly worth prototyping. It may give the app a
+  distinctive identity while remaining contained to the tide/current instruments.
+- Prefer a restrained operational UI overall: useful, readable, compact, and
+  mobile-safe. Avoid letting the aesthetic overpower the swim-condition
+  information.
+- A possible hybrid pattern:
+
+```text
+CURRENT  FLOODING / BUILDING
+1.3 kt now   peak 1.6 kt 5:10 PM
+[############----] 72%  filling
+```
+
+This is only an example of tone and density, not a required final component.
+
+Implementation guidance:
+
+- this is a React/Tailwind layout refactor, not a backend/API milestone
+- prefer rearranging and refining existing Milestone 2 components over rewriting
+  data hooks or behavior
+- add small presentational components only when they make the layout easier to
+  reason about
+- keep component and browser tests focused on behavior and key visible content,
+  not pixel-level layout
+- do not generalize all locations yet; use NYC as the design proving ground
+
+Acceptance checks:
+
+- `/app` and `/app/nyc` still render the NYC page without redirecting `/app`
+- conditions, Windy, YouTube, deferred plots, transit, sources, and location nav
+  still render with mocked Playwright data
+- first-load and refresh failure behavior remains unchanged
+- no horizontal overflow at the existing mobile viewport test size
+- frontend lint, typecheck, unit tests, build, API freshness check, and e2e tests
+  pass
+
 ### Milestone 3: Generalize Location Pages
 
 - support `/app/:locationCode`
@@ -958,8 +1096,10 @@ committing to offline behavior.
 Initial requirements:
 
 - web app manifest
-- app name: `Shall We Swim`
-- short name: `Swim`
+- app name: `shallweswim`
+- short name: `shallweswim`
+- iOS home screen label should display as `shallweswim`: one word, all
+  lowercase
 - `start_url`: `/app`
 - `scope`: `/app/`
 - `display`: `standalone`
@@ -980,6 +1120,33 @@ build. Swim conditions are time-sensitive, and stale data should not be served a
 if it were current. If service workers are considered later, they should be
 limited to app-shell/static-asset caching with explicit stale/unavailable data
 messaging.
+
+### Persisted App State
+
+The installable app should remember the user's last viewed location so reopening
+from a phone home screen returns to the relevant swim location.
+
+Initial behavior:
+
+- Explicit routes remain authoritative. Visiting `/app/nyc` should render NYC
+  regardless of previously persisted state.
+- When a user views a concrete location route, persist that location code in
+  `localStorage`.
+- Opening `/app` should use the persisted location code if it is valid in
+  `/api/app/bootstrap`; otherwise fall back to the backend-provided default
+  location.
+- Prefer preserving the `/app` URL rather than redirecting solely to restore
+  state, unless routing or analytics needs make canonicalization useful later.
+- Do not persist sensitive data, live condition payloads, or external API
+  responses. This is UI preference state only.
+- If `localStorage` is unavailable, private, or cleared, silently fall back to
+  the default location.
+
+Potential future persisted preferences:
+
+- selected temperature plot mode
+- dismissed existing-site adoption banner
+- preferred units if the app ever supports more than Fahrenheit
 
 ## External Embeds And Third-Party Data
 
@@ -1074,6 +1241,47 @@ External embeds:
 
 - render Windy and YouTube independently from API data loading
 - show layout-stable fallback text if an embed cannot be loaded
+
+## Frontend Error Instrumentation
+
+The React app should eventually surface client-side failures to developers. This
+is not a replacement for user-visible unavailable states; it is for detecting
+bugs and integration failures after deployment.
+
+Initial goals:
+
+- catch React render failures with an app-level error boundary
+- catch uncaught `window.error` and `unhandledrejection` events
+- capture API request failures at the client/query layer with endpoint, status,
+  and coarse error category
+- capture external integration failures where practical, especially YouTube,
+  Windy, plot image loading, and GoodService transit failures
+- include enough context to debug: app version/build identifier, route,
+  location code, viewport class, user agent, timestamp, and whether the app is
+  running in standalone display mode
+- avoid collecting precise location, personally identifying information, full
+  URLs with arbitrary query strings, or raw third-party response bodies
+
+Possible implementation paths:
+
+- Lightweight first-party endpoint: add a backend endpoint such as
+  `/api/app/client-error` that accepts sanitized client error events and writes
+  them to server logs for Cloud Run/Cloud Logging.
+- Third-party monitoring service: consider Sentry or similar if first-party logs
+  are not enough, but do not introduce a monitoring vendor without a separate
+  decision.
+- Local-only diagnostics: keep a small in-memory or `sessionStorage` ring buffer
+  of recent frontend errors to support manual bug reports, similar in spirit to
+  the existing Jinja debug tooling.
+
+Initial recommendation:
+
+- Do not block Milestone 2.5 on full observability.
+- Before the adoption banner sends real users to `/app`, add at least an error
+  boundary plus sanitized first-party client-error logging or an explicit
+  decision to defer it.
+- Frontend error logging must be best-effort and must never break the app if the
+  logging endpoint fails.
 
 ## Plot Strategy
 

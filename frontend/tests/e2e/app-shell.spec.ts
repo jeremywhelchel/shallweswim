@@ -228,11 +228,15 @@ test("renders the NYC location vertical slice", async ({ page }) => {
     page.getByRole("heading", { name: "Temperature Trends" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: "Live temperature plot" }),
+    page.getByRole("img", { name: "12 month temperature plot, all years" }),
   ).toBeVisible();
   await page.getByRole("button", { exact: true, name: "2 mo" }).click();
   await expect(
     page.getByRole("img", { name: "2 month temperature plot, all years" }),
+  ).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "Live" }).click();
+  await expect(
+    page.getByRole("img", { name: "Live temperature plot" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Transit Status" }),
@@ -249,6 +253,11 @@ test("renders the NYC location vertical slice", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "goodservice.io" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Earth Cam Coney Island" }),
+  ).toBeVisible();
+  await expect(page.getByText("Alternate:")).toBeVisible();
+  await expect(page.getByText("Alternative option:")).toHaveCount(0);
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,

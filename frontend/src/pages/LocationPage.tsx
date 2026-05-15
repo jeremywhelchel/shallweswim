@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  Anchor,
+  GitHub,
+  Shuffle,
+  Thermometer,
+  Truck,
+  Video,
+} from "react-feather";
 import { Link } from "react-router-dom";
 import { useLocationConditions } from "../api/conditions";
 import type { components } from "../api/generated";
@@ -120,20 +128,6 @@ export function LocationPage({
       location.integrations.youtube_live ? (
         <Section title="Live Webcam">
           <YouTubeLiveEmbed config={location.integrations.youtube_live} />
-          {location.integrations.webcam_alternative ? (
-            <p className="mt-3 text-sm text-slate-700">
-              Alternative option:{" "}
-              <a
-                className="text-swim-blue underline"
-                href={location.integrations.webcam_alternative.url}
-              >
-                {location.integrations.webcam_alternative.label}
-              </a>
-              {location.integrations.webcam_alternative.description
-                ? ` - ${location.integrations.webcam_alternative.description}`
-                : null}
-            </p>
-          ) : null}
         </Section>
       ) : null}
 
@@ -658,7 +652,7 @@ function TemperaturePlots({
   enabled: boolean;
   locationCode: string;
 }) {
-  const [selectedPlot, setSelectedPlot] = useState("live");
+  const [selectedPlot, setSelectedPlot] = useState("12mo");
   const plots = [
     {
       key: "live",
@@ -702,12 +696,17 @@ function TemperaturePlots({
           </button>
         ))}
       </fieldset>
-      <DeferredPlotImage
-        alt={activePlot.alt}
-        enabled={enabled}
-        key={activePlot.key}
-        src={activePlot.src}
-      />
+      <div className="border-swim-line rounded border bg-white p-2">
+        {plots.map((plot) => (
+          <DeferredPlotImage
+            alt={plot.alt}
+            enabled={enabled}
+            isActive={plot.key === activePlot.key}
+            key={plot.key}
+            src={plot.src}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -715,16 +714,18 @@ function TemperaturePlots({
 function DeferredPlotImage({
   alt,
   enabled,
+  isActive,
   src,
 }: {
   alt: string;
   enabled: boolean;
+  isActive: boolean;
   src: string;
 }) {
   const image = useDeferredImage(src, enabled);
 
   return (
-    <div className="border-swim-line rounded border bg-white p-2">
+    <div className={isActive ? "block" : "hidden"}>
       {image.status === "loaded" && image.src ? (
         <img alt={alt} className="w-full" src={image.src} />
       ) : (
@@ -842,29 +843,68 @@ function SourcesList({
   return (
     <Section title="Sources">
       <div className="overflow-hidden rounded border border-swim-line bg-white">
-        <SourceHtml label="Temperature" html={citations.temperature} />
-        <SourceHtml label="Tides" html={citations.tides} />
-        <SourceHtml label="Currents" html={citations.currents} />
-        <SourceLink label="Webcam" link={location.integrations.webcam_source} />
+        <SourceHtml
+          icon={<Thermometer aria-hidden="true" />}
+          label="Temperature"
+          html={citations.temperature}
+        />
+        <SourceHtml
+          icon={<Anchor aria-hidden="true" />}
+          label="Tides"
+          html={citations.tides}
+        />
+        <SourceHtml
+          icon={<Shuffle aria-hidden="true" />}
+          label="Currents"
+          html={citations.currents}
+        />
         <SourceLink
+          icon={<Video aria-hidden="true" />}
+          includeLabel={false}
+          label="Webcam"
+          link={location.integrations.webcam_source}
+          linkFirst
+          secondaryLink={location.integrations.webcam_alternative}
+          secondaryPrefix="Alternate:"
+        />
+        <SourceLink
+          icon={<Truck aria-hidden="true" />}
           label="Transit"
           link={location.integrations.transit_source}
         />
-        <SourceLink label="GitHub" link={bootstrap.source_code_link} />
+        <SourceLink
+          icon={<GitHub aria-hidden="true" />}
+          label="GitHub"
+          link={bootstrap.source_code_link}
+        />
       </div>
       <LocationNav bootstrap={bootstrap} currentCode={location.metadata.code} />
     </Section>
   );
 }
 
-function SourceHtml({ label, html }: { label: string; html?: string | null }) {
+function SourceHtml({
+  icon,
+  label,
+  html,
+}: {
+  icon: ReactNode;
+  label: string;
+  html?: string | null;
+}) {
   if (!html) {
     return null;
   }
 
   return (
-    <div className="grid gap-2 border-swim-line border-b p-3 text-sm sm:grid-cols-[7rem_1fr]">
-      <span className="font-medium text-slate-600">{label}</span>
+    <div className="grid grid-cols-[1.75rem_1fr] gap-3 border-swim-line border-b p-3 text-sm">
+      <span
+        aria-label={label}
+        className="mt-0.5 text-slate-500 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:stroke-[1.8]"
+        role="img"
+      >
+        {icon}
+      </span>
       <span
         className="[&_a]:text-swim-blue [&_a]:underline"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: Citation HTML is trusted repository-controlled bootstrap content.
@@ -875,24 +915,65 @@ function SourceHtml({ label, html }: { label: string; html?: string | null }) {
 }
 
 function SourceLink({
+  icon,
   label,
   link,
+  secondaryLink,
+  secondaryPrefix,
+  includeLabel = true,
+  linkFirst = false,
 }: {
+  icon: ReactNode;
   label: string;
   link?: AppExternalIntegrations["webcam_source"];
+  secondaryLink?: AppExternalIntegrations["webcam_source"];
+  secondaryPrefix?: string;
+  includeLabel?: boolean;
+  linkFirst?: boolean;
 }) {
   if (!link) {
     return null;
   }
 
   return (
-    <div className="grid gap-2 border-swim-line border-b p-3 text-sm sm:grid-cols-[7rem_1fr]">
-      <span className="font-medium text-slate-600">{label}</span>
+    <div className="grid grid-cols-[1.75rem_1fr] gap-3 border-swim-line border-b p-3 text-sm">
+      <span
+        aria-label={label}
+        className="mt-0.5 text-slate-500 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:stroke-[1.8]"
+        role="img"
+      >
+        {icon}
+      </span>
       <span>
-        {link.description ? `${link.description} ` : null}
-        <a className="text-swim-blue underline" href={link.url}>
-          {link.label}
-        </a>
+        <span>
+          {includeLabel ? `${label}: ` : null}
+          {linkFirst ? (
+            <>
+              <a className="text-swim-blue underline" href={link.url}>
+                {link.label}
+              </a>
+              {link.description ? ` ${link.description}` : null}
+            </>
+          ) : (
+            <>
+              {link.description ? `${link.description} ` : null}
+              <a className="text-swim-blue underline" href={link.url}>
+                {link.label}
+              </a>
+            </>
+          )}
+        </span>
+        {secondaryLink ? (
+          <span className="mt-1 block">
+            {secondaryPrefix ? `${secondaryPrefix} ` : null}
+            <a className="text-swim-blue underline" href={secondaryLink.url}>
+              {secondaryLink.label}
+            </a>
+            {secondaryLink.description
+              ? ` - ${secondaryLink.description}`
+              : null}
+          </span>
+        ) : null}
       </span>
     </div>
   );

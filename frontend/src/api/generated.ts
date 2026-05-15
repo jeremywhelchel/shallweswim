@@ -862,7 +862,7 @@ export interface components {
             magnitude: number;
             /**
              * Magnitude Pct
-             * @description Relative current strength (0.0-1.0, null if non-tidal), normalized against the nearest local flood/ebb peak in the available prediction curve.
+             * @description Relative current strength (0.0-1.0, null if non-tidal), normalized against the peak within the current continuous flood or ebb segment in the available prediction curve.
              */
             magnitude_pct?: number | null;
             /** @description Compact current phase for displays. Tidal prediction values are flood, ebb, slack_before_flood, slack_before_ebb, or slack. Slack phases are assigned when absolute current magnitude is below 0.2 knots; slack_before_* indicates the next non-slack direction predicted by the curve. */

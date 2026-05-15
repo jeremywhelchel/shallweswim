@@ -256,6 +256,96 @@ async def test_current_prediction_reuses_precomputed_frame(
     assert prepare_spy.call_count == 2
 
 
+def test_prepare_current_prediction_frame_derives_segment_context(
+    mock_current_data: pd.DataFrame,
+) -> None:
+    """Current preprocessing derives per-segment peak and slack context."""
+    frame = queries.prepare_current_prediction_frame(mock_current_data)
+
+    required_columns = {
+        "local_mag_pct",
+        "segment_id",
+        "segment_phase",
+        "segment_peak_time",
+        "segment_peak_magnitude",
+        "segment_start_slack_time",
+        "segment_start_slack_magnitude",
+        "segment_end_slack_time",
+        "segment_end_slack_magnitude",
+    }
+    assert required_columns.issubset(frame.columns)
+
+    flood_row = frame.loc[datetime.datetime(2025, 4, 22, 13, 0, 0)]
+    assert flood_row["segment_phase"] == "flood"
+    assert flood_row["segment_peak_time"] == datetime.datetime(2025, 4, 22, 15, 0, 0)
+    assert flood_row["segment_peak_magnitude"] == pytest.approx(1.5)
+    assert flood_row["local_mag_pct"] == pytest.approx(0.7 / 1.5)
+    assert flood_row["segment_start_slack_time"] == datetime.datetime(
+        2025, 4, 22, 11, 36, 0
+    )
+    assert flood_row["segment_start_slack_magnitude"] == pytest.approx(0.0)
+    assert flood_row["segment_end_slack_time"] == datetime.datetime(
+        2025, 4, 22, 18, 0, 0
+    )
+    assert flood_row["segment_end_slack_magnitude"] == pytest.approx(0.1)
+
+    peak_row = frame.loc[datetime.datetime(2025, 4, 22, 15, 0, 0)]
+    assert peak_row["local_mag_pct"] == pytest.approx(1.0)
+
+
+def test_prepare_current_prediction_frame_normalizes_within_ebb_segment() -> None:
+    """Ebb percentages are normalized against their own segment peak."""
+    index = pd.DatetimeIndex(
+        [
+            datetime.datetime(2025, 4, 22, 18, 0, 0),
+            datetime.datetime(2025, 4, 22, 19, 0, 0),
+            datetime.datetime(2025, 4, 22, 20, 0, 0),
+            datetime.datetime(2025, 4, 22, 21, 0, 0),
+            datetime.datetime(2025, 4, 22, 22, 0, 0),
+        ]
+    )
+    currents = pd.DataFrame(
+        {"velocity": [0.0, -0.4, -1.2, -0.8, 0.0]},
+        index=index,
+    )
+
+    frame = queries.prepare_current_prediction_frame(currents)
+
+    ebb_row = frame.loc[datetime.datetime(2025, 4, 22, 20, 0, 0)]
+    assert ebb_row["segment_phase"] == "ebb"
+    assert ebb_row["segment_peak_time"] == datetime.datetime(2025, 4, 22, 20, 0, 0)
+    assert ebb_row["segment_peak_magnitude"] == pytest.approx(1.2)
+    assert ebb_row["local_mag_pct"] == pytest.approx(1.0)
+
+    easing_row = frame.loc[datetime.datetime(2025, 4, 22, 21, 0, 0)]
+    assert easing_row["local_mag_pct"] == pytest.approx(0.8 / 1.2)
+    assert easing_row["segment_start_slack_time"] == datetime.datetime(
+        2025, 4, 22, 18, 0, 0
+    )
+    assert easing_row["segment_end_slack_time"] == datetime.datetime(
+        2025, 4, 22, 22, 0, 0
+    )
+
+
+def test_prepare_current_prediction_frame_handles_all_slack_data() -> None:
+    """A current frame with no non-slack segments remains queryable."""
+    index = pd.DatetimeIndex(
+        [
+            datetime.datetime(2025, 4, 22, 18, 0, 0),
+            datetime.datetime(2025, 4, 22, 19, 0, 0),
+            datetime.datetime(2025, 4, 22, 20, 0, 0),
+        ]
+    )
+    currents = pd.DataFrame({"velocity": [0.0, 0.1, -0.1]}, index=index)
+
+    frame = queries.prepare_current_prediction_frame(currents)
+
+    assert frame["local_mag_pct"].tolist() == [0.0, 0.0, 0.0]
+    assert frame["segment_id"].isna().all()
+    assert frame["segment_peak_time"].isna().all()
+    assert frame["segment_peak_magnitude"].isna().all()
+
+
 def test_prepare_tide_prediction_frame_derives_minute_curve(
     mock_tide_data: pd.DataFrame,
 ) -> None:

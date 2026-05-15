@@ -50,6 +50,7 @@ PERFORMANCE_CONFIG = TEST_CONFIG_FULL.model_copy(
 )
 ENDPOINT_P95_LIMIT_MS = float(os.getenv("PERF_MAX_ENDPOINT_P95_MS", "25"))
 MANAGER_P95_LIMIT_MS = float(os.getenv("PERF_MAX_MANAGER_P95_MS", "5"))
+PRECOMPUTE_P95_LIMIT_MS = float(os.getenv("PERF_MAX_PRECOMPUTE_P95_MS", "25"))
 REPORT_PATH = Path(os.getenv("PERFORMANCE_RESULTS_PATH", "performance-results.json"))
 
 
@@ -231,6 +232,24 @@ def test_manager_current_prediction_lookup_stays_precomputed(
 
     assert calls == 1
     assert _p95(samples) < MANAGER_P95_LIMIT_MS
+
+
+def test_current_prediction_frame_precompute_stays_under_guardrail() -> None:
+    """Segment-derived current preprocessing remains bounded for loaded feeds."""
+    currents = _make_currents(_now())
+
+    samples = _measure(
+        lambda: prepare_current_prediction_frame(currents),
+        iterations=12,
+        warmups=2,
+    )
+    _record_result(
+        "queries.prepare_current_prediction_frame",
+        samples,
+        PRECOMPUTE_P95_LIMIT_MS,
+    )
+
+    assert _p95(samples) < PRECOMPUTE_P95_LIMIT_MS
 
 
 def test_manager_tide_prediction_frame_stays_precomputed(

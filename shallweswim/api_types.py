@@ -181,7 +181,8 @@ class CurrentInfo(BaseModel):
         None,
         description=(
             "Relative current strength (0.0-1.0, null if non-tidal), normalized "
-            "against the nearest local flood/ebb peak in the available prediction curve."
+            "against the peak within the current continuous flood or ebb segment "
+            "in the available prediction curve."
         ),
     )
     state_description: str | None = Field(

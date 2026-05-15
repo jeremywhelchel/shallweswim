@@ -422,7 +422,7 @@
                 "type": "null"
               }
             ],
-            "description": "Relative current strength (0.0-1.0, null if non-tidal), normalized against the nearest local flood/ebb peak in the available prediction curve.",
+            "description": "Relative current strength (0.0-1.0, null if non-tidal), normalized against the peak within the current continuous flood or ebb segment in the available prediction curve.",
             "title": "Magnitude Pct"
           },
           "phase": {

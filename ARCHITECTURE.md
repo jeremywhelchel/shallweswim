@@ -271,18 +271,18 @@ and directional context. Consumers that need compact display text should prefer
 `phase`; consumers that need user-facing prose can use `state_description`.
 
 `magnitude` is absolute speed in knots. `magnitude_pct` is cycle-relative: it is
-normalized against the nearest local flood/ebb peak in the available prediction
-curve, not against a fixed theoretical maximum. A neap and spring tide can both
-report `magnitude_pct` near `1.0` while having different absolute `magnitude`
-values.
+normalized against the peak within the current continuous flood or ebb segment,
+not against a fixed theoretical maximum. A neap and spring tide can both report
+`magnitude_pct` near `1.0` while having different absolute `magnitude` values.
 
 For prediction-based current feeds, `LocationDataManager` precomputes the
 derived prediction frame when the raw current feed changes. That frame contains
-the local peak-relative magnitude, direction, slope, and related columns needed
-for current state displays. User requests then do an `asof` lookup for the
-requested time instead of recalculating those columns across the full current
-prediction DataFrame. Preserve this split: derived data belongs in the
-background/feed-update path; request handlers should remain cheap lookups.
+the segment peak-relative magnitude, direction, slope, segment peak metadata,
+and adjacent slack-boundary metadata needed for current state displays. User
+requests then do an `asof` lookup for the requested time instead of
+recalculating those columns across the full current prediction DataFrame.
+Preserve this split: derived data belongs in the background/feed-update path;
+request handlers should remain cheap lookups.
 
 Tide state follows the same derived-cache pattern. The raw tide feed currently
 stores NOAA high/low prediction events (`interval=hilo`). When that feed changes,

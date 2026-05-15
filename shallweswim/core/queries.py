@@ -242,90 +242,17 @@ def predict_tide_from_precomputed_frame(
     )
 
 
-def _process_local_magnitude_pct(
-    df: pd.DataFrame,
-    current_df: pd.DataFrame,
-    direction: str,
-    invert: bool = False,
-) -> pd.DataFrame:
-    """Process local magnitude percentages for current data.
-
-    Calculates magnitude percentages relative to local peaks for a given
-    current direction. This provides more meaningful context than global
-    percentages since tidal currents vary in strength throughout the day.
-
-    Args:
-        df: The main DataFrame to update with local magnitude percentages
-        current_df: DataFrame containing only the current direction's data
-        direction: The current direction being processed ('flood' or 'ebb')
-        invert: Whether to invert the magnitude values (for ebb currents)
-
-    Returns:
-        Updated DataFrame with local_mag_pct values for the specified direction
-    """
-    if current_df.empty:
-        return df
-
-    # Get magnitude values for peak detection
-    magnitudes: np.ndarray[Any, np.dtype[np.floating[Any]]] = np.asarray(
-        current_df["magnitude"].values
-    )
-    if invert:
-        magnitudes = -magnitudes
-
-    # Find peaks in the magnitude data
-    # Using a minimum height threshold to avoid detecting noise
-    # Lazy import to avoid loading scipy.signal at startup
-    from scipy.signal import find_peaks
-
-    peaks, _ = find_peaks(magnitudes, height=0.1)
-
-    if len(peaks) == 0:
-        # No peaks found, use global percentage as fallback
-        df.loc[current_df.index, "local_mag_pct"] = df.loc[current_df.index, "mag_pct"]
-        return df
-
-    # Get the timestamps and magnitudes at peak locations
-    peak_times = current_df.index[peaks]
-    peak_magnitudes = current_df["magnitude"].iloc[peaks].values
-
-    current_times = current_df.index
-    if not isinstance(current_times, pd.DatetimeIndex):
-        raise DataUnavailableError("Current prediction DataFrame must use datetimes")
-
-    peak_ns = peak_times.asi8
-    current_ns = current_times.asi8
-    insert_positions = np.searchsorted(peak_ns, current_ns)
-    previous_peak_positions = np.clip(insert_positions - 1, 0, len(peak_ns) - 1)
-    next_peak_positions = np.clip(insert_positions, 0, len(peak_ns) - 1)
-
-    previous_distances = np.abs(current_ns - peak_ns[previous_peak_positions])
-    next_distances = np.abs(current_ns - peak_ns[next_peak_positions])
-    nearest_peak_positions = np.where(
-        previous_distances <= next_distances,
-        previous_peak_positions,
-        next_peak_positions,
-    )
-
-    nearest_peak_magnitudes = peak_magnitudes[nearest_peak_positions]
-    local_pct = np.divide(
-        current_df["magnitude"].to_numpy(dtype=float),
-        nearest_peak_magnitudes,
-        out=np.zeros(len(current_df), dtype=float),
-        where=nearest_peak_magnitudes > 0,
-    )
-    df.loc[current_df.index, "local_mag_pct"] = np.minimum(local_pct, 1.0)
-
-    return df
-
-
 def prepare_current_prediction_frame(currents_data: pd.DataFrame) -> pd.DataFrame:
     """Precompute derived current prediction columns for fast point-in-time lookup."""
     df = currents_data.copy()
+    _require_naive_datetime_index(df, "Current prediction")
 
     # Convert raw velocity to magnitude and direction
     df["v"] = df["velocity"]
     df["magnitude"] = df["v"].abs()
+    velocities = df["v"].to_numpy(dtype=float)
+    magnitudes = np.abs(velocities)
+    index = cast(pd.DatetimeIndex, df.index)
 
     # Add a slope column to track if current is strengthening or weakening
     df["raw_slope"] = df["v"].diff()
@@ -349,26 +276,128 @@ def prepare_current_prediction_frame(currents_data: pd.DataFrame) -> pd.DataFram
     choices = [CurrentDirection.FLOODING.value, CurrentDirection.EBBING.value]
     df["direction"] = np.select(conditions, choices, default="")
 
-    # Initialize column for local magnitude percentage
-    df["local_mag_pct"] = 0.0
-
-    # Process flood and ebb separately
-    flood_df: pd.DataFrame = df[df["v"] > 0].copy()  # type: ignore[assignment]
-    ebb_df: pd.DataFrame = df[df["v"] < 0].copy()  # type: ignore[assignment]
-
-    # Calculate mag_pct for global magnitude ranking (needed for fallback)
-    df["mag_pct"] = df.groupby("direction")["magnitude"].rank(pct=True)
-
-    # Calculate magnitude percentages relative to local peaks
-    df = _process_local_magnitude_pct(df, flood_df, CurrentDirection.FLOODING.value)
-    df = _process_local_magnitude_pct(
-        df,
-        ebb_df,
-        CurrentDirection.EBBING.value,
-        invert=True,
+    direction_values = df["direction"].to_numpy(dtype=str)
+    local_mag_pct = np.zeros(len(df), dtype=float)
+    segment_ids = np.full(len(df), np.nan)
+    segment_phases = np.full(len(df), None, dtype=object)
+    segment_peak_times = np.full(len(df), np.datetime64("NaT"), dtype="datetime64[ns]")
+    segment_peak_magnitudes = np.full(len(df), np.nan)
+    segment_start_slack_times = np.full(
+        len(df), np.datetime64("NaT"), dtype="datetime64[ns]"
     )
+    segment_start_slack_magnitudes = np.full(len(df), np.nan)
+    segment_end_slack_times = np.full(
+        len(df), np.datetime64("NaT"), dtype="datetime64[ns]"
+    )
+    segment_end_slack_magnitudes = np.full(len(df), np.nan)
 
-    _require_naive_datetime_index(df, "Current prediction")
+    def interpolated_slack_time(
+        left_position: int,
+        right_position: int,
+    ) -> datetime.datetime | None:
+        left_time = df.index[left_position]
+        right_time = df.index[right_position]
+        if not isinstance(left_time, datetime.datetime) or not isinstance(
+            right_time, datetime.datetime
+        ):
+            return None
+
+        left_velocity = float(df.iloc[left_position]["v"])
+        right_velocity = float(df.iloc[right_position]["v"])
+        velocity_delta = right_velocity - left_velocity
+        if velocity_delta == 0:
+            return None
+
+        zero_fraction = -left_velocity / velocity_delta
+        if zero_fraction < 0 or zero_fraction > 1:
+            return None
+
+        return left_time + (right_time - left_time) * zero_fraction
+
+    def slack_boundary_before(position: int) -> tuple[datetime.datetime, float] | None:
+        if position == 0:
+            return None
+
+        # Use an explicit slack row when the prediction curve provides one.
+        # Otherwise store an interpolated zero-crossing as the semantic slack
+        # boundary for this segment.
+        previous_time = df.index[position - 1]
+        if magnitudes[position - 1] < SLACK_MAGNITUDE_THRESHOLD_KNOTS:
+            return previous_time, float(magnitudes[position - 1])  # type: ignore[return-value]
+
+        slack_time = interpolated_slack_time(position - 1, position)
+        return (slack_time, 0.0) if slack_time is not None else None
+
+    def slack_boundary_after(position: int) -> tuple[datetime.datetime, float] | None:
+        if position >= len(df) - 1:
+            return None
+
+        # Mirror slack_boundary_before: prefer real slack rows, and fall back to
+        # zero-crossing interpolation when adjacent non-slack rows change sign.
+        next_time = df.index[position + 1]
+        if magnitudes[position + 1] < SLACK_MAGNITUDE_THRESHOLD_KNOTS:
+            return next_time, float(magnitudes[position + 1])  # type: ignore[return-value]
+
+        slack_time = interpolated_slack_time(position, position + 1)
+        return (slack_time, 0.0) if slack_time is not None else None
+
+    non_slack = (magnitudes >= SLACK_MAGNITUDE_THRESHOLD_KNOTS) & (
+        direction_values != ""
+    )
+    previous_non_slack = np.concatenate(([False], non_slack[:-1]))
+    previous_directions = np.concatenate(([""], direction_values[:-1]))
+    segment_starts = non_slack & (
+        ~previous_non_slack | (direction_values != previous_directions)
+    )
+    segment_marker = np.cumsum(segment_starts)
+    segment_lookup = np.where(non_slack, segment_marker, 0)
+
+    for segment_id in range(1, int(segment_marker.max()) + 1):
+        positions = np.flatnonzero(segment_lookup == segment_id)
+        if len(positions) == 0:
+            continue
+
+        active_direction = direction_values[positions[0]]
+        peak_position = positions[int(magnitudes[positions].argmax())]
+        peak_time = index[peak_position]
+        peak_magnitude = float(magnitudes[peak_position])
+
+        start_position = positions[0]
+        end_position = positions[-1]
+        start_slack = slack_boundary_before(start_position)
+        end_slack = slack_boundary_after(end_position)
+
+        segment_ids[positions] = segment_id
+        segment_phases[positions] = (
+            CurrentPhase.FLOOD.value
+            if active_direction == CurrentDirection.FLOODING.value
+            else CurrentPhase.EBB.value
+        )
+        segment_peak_times[positions] = np.datetime64(peak_time, "ns")
+        segment_peak_magnitudes[positions] = peak_magnitude
+        if peak_magnitude > 0:
+            local_mag_pct[positions] = np.minimum(
+                magnitudes[positions] / peak_magnitude, 1.0
+            )
+
+        if start_slack is not None:
+            slack_time, slack_magnitude = start_slack
+            segment_start_slack_times[positions] = np.datetime64(slack_time, "ns")
+            segment_start_slack_magnitudes[positions] = slack_magnitude
+        if end_slack is not None:
+            slack_time, slack_magnitude = end_slack
+            segment_end_slack_times[positions] = np.datetime64(slack_time, "ns")
+            segment_end_slack_magnitudes[positions] = slack_magnitude
+
+    df["local_mag_pct"] = local_mag_pct
+    df["segment_id"] = segment_ids
+    df["segment_phase"] = segment_phases
+    df["segment_peak_time"] = segment_peak_times
+    df["segment_peak_magnitude"] = segment_peak_magnitudes
+    df["segment_start_slack_time"] = segment_start_slack_times
+    df["segment_start_slack_magnitude"] = segment_start_slack_magnitudes
+    df["segment_end_slack_time"] = segment_end_slack_times
+    df["segment_end_slack_magnitude"] = segment_end_slack_magnitudes
     return df
 
 
@@ -391,18 +420,12 @@ def _next_non_slack_direction(
 
 def _phase_for_current(
     df: pd.DataFrame,
-    row: pd.Series,
+    row_time: datetime.datetime,
+    magnitude: float,
+    direction_str: str,
 ) -> CurrentPhase:
     """Return the compact current phase for a prediction row."""
-    magnitude = row["magnitude"]
-    direction_str = row["direction"]
-
     if magnitude < SLACK_MAGNITUDE_THRESHOLD_KNOTS:
-        row_time = row.name
-        if not isinstance(row_time, datetime.datetime):
-            raise DataUnavailableError(
-                "Current prediction row index must contain datetimes"
-            )
         next_direction = _next_non_slack_direction(df, row_time)
         match next_direction:
             case CurrentDirection.FLOODING:
@@ -689,7 +712,8 @@ def predict_flow_from_precomputed_frame(
             - direction: Direction of current (FLOODING or EBBING)
             - phase: Compact phase (flood, ebb, slack_before_flood, slack_before_ebb, or slack)
             - magnitude: Magnitude of current in knots
-            - magnitude_pct: Relative magnitude percentage (0.0-1.0) compared to local peaks
+            - magnitude_pct: Relative magnitude percentage (0.0-1.0) compared to the
+              peak in the current continuous flood or ebb segment
             - state_description: Display-ready current state phrase
             - source_type: Always PREDICTION for this method
 
@@ -705,17 +729,26 @@ def predict_flow_from_precomputed_frame(
         raise ValueError("Input datetime must be naive")
     _require_naive_datetime_index(df, "Current prediction")
 
-    # Get the row at or after the specified time
-    row = get_row_at_time(df, t)
+    # Fetch only the scalar columns needed for the public response. The
+    # precomputed frame also carries segment metadata for future range labels,
+    # and materializing a full mixed-type pandas row on every request is
+    # measurably slower.
+    row_time = df.index.asof(t)
+    if not isinstance(row_time, datetime.datetime):
+        raise DataUnavailableError(
+            "Current prediction row index must contain datetimes"
+        )
 
-    magnitude = row["magnitude"]
-    local_pct = row["local_mag_pct"]
-    phase = _phase_for_current(df, row)
+    magnitude = float(df.at[row_time, "magnitude"])
+    local_pct = float(df.at[row_time, "local_mag_pct"])
+    slope = float(df.at[row_time, "slope"])
+    direction_str = str(df.at[row_time, "direction"])
+
+    phase = _phase_for_current(df, row_time, magnitude, direction_str)
     strength = _strength_for_current(phase, local_pct)
-    trend = _trend_for_current(phase, row["slope"])
+    trend = _trend_for_current(phase, slope)
     state_description = _state_description_for_current(phase, strength, trend)
 
-    direction_str = row["direction"]
     if not direction_str:
         if phase == CurrentPhase.SLACK_BEFORE_FLOOD:
             direction_str = CurrentDirection.FLOODING.value
@@ -730,8 +763,8 @@ def predict_flow_from_precomputed_frame(
         phase=phase,
         strength=strength,
         trend=trend,
-        magnitude=magnitude,  # type: ignore[arg-type]
-        magnitude_pct=row["local_mag_pct"],  # type: ignore[arg-type]
+        magnitude=magnitude,
+        magnitude_pct=local_pct,
         state_description=state_description,
     )
 

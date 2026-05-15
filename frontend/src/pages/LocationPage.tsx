@@ -16,6 +16,7 @@ type AppBootstrapLocation = components["schemas"]["AppBootstrapLocation"];
 type AppLocationMetadata = components["schemas"]["AppLocationMetadata"];
 type AppExternalIntegrations = components["schemas"]["AppExternalIntegrations"];
 type LocationConditions = components["schemas"]["LocationConditions"];
+type CurrentInfo = components["schemas"]["CurrentInfo"];
 type TideEntry = components["schemas"]["TideEntry"];
 type TransitRouteConfig = components["schemas"]["TransitRouteConfig"];
 type YouTubeLiveConfig = components["schemas"]["YouTubeLiveConfig"];
@@ -196,7 +197,7 @@ function TemperatureSummary({
         <p className="text-sm text-slate-700 md:mt-2 md:text-base">
           The water is currently
         </p>
-        <p className="font-semibold text-2xl text-swim-blue md:mt-1 md:text-3xl">
+        <p className="font-mono font-semibold text-2xl text-swim-blue md:mt-1 md:text-3xl">
           {conditions?.temperature && !hasError
             ? `${conditions.temperature.water_temp}°${conditions.temperature.units || "F"}`
             : "Unavailable"}
@@ -211,9 +212,17 @@ function TemperatureSummary({
                 conditions.location.name ||
                 "station"}
             </span>
-            {formatStationTimestamp(conditions.temperature.timestamp)
-              ? ` as of ${formatStationTimestamp(conditions.temperature.timestamp)}.`
-              : "."}
+            {formatStationTimestamp(conditions.temperature.timestamp) ? (
+              <>
+                {" as of "}
+                <span className="font-mono">
+                  {formatStationTimestamp(conditions.temperature.timestamp)}
+                </span>
+                .
+              </>
+            ) : (
+              "."
+            )}
           </>
         ) : (
           "Current water temperature is unavailable."
@@ -244,13 +253,13 @@ function TideRow({ label, tide }: { label: string; tide?: TideEntry }) {
     <div className="grid grid-cols-[5.75rem_1fr] gap-2 text-xs md:grid-cols-[6.5rem_1fr] md:text-sm">
       <span className="font-medium text-slate-600">{label}</span>
       <span>
-        <span className="font-semibold capitalize text-swim-tide">
+        <span className="font-mono font-semibold capitalize text-swim-tide">
           {tide?.type ?? "Unavailable"}
         </span>{" "}
         <span className="text-slate-600">
           {tide ? formatTideDate(tide.time) : "Unavailable"}
         </span>{" "}
-        <span className="font-semibold text-swim-ink">
+        <span className="font-mono font-semibold text-swim-ink">
           {tide ? formatTime(tide.time) : "Unavailable"}
         </span>
       </span>
@@ -262,7 +271,7 @@ function CurrentSummary({
   current,
   locationCode,
 }: {
-  current?: LocationConditions["current"];
+  current?: CurrentInfo | null;
   locationCode: string;
 }) {
   const description =
@@ -274,15 +283,16 @@ function CurrentSummary({
     <div className="p-3 md:rounded md:border md:border-swim-line md:bg-white md:p-4">
       <h2 className="font-semibold text-base md:text-lg">Current Estimate</h2>
       <p className="mt-1 text-sm text-slate-700 md:mt-2 md:text-base">
-        <span className="font-semibold capitalize text-swim-current">
+        <span className="font-mono font-semibold capitalize text-swim-current">
           {description}
         </span>{" "}
         at{" "}
-        <span className="font-semibold text-swim-ink">
+        <span className="font-mono font-semibold text-swim-ink">
           {formatMagnitude(current?.magnitude)}
         </span>{" "}
         knots
       </p>
+      <CurrentInstrument current={current} />
       {current?.direction ? (
         <Link
           className="mt-1 inline-block text-xs text-swim-blue underline md:mt-2 md:text-sm"
@@ -291,6 +301,84 @@ function CurrentSummary({
           Current details
         </Link>
       ) : null}
+    </div>
+  );
+}
+
+function CurrentInstrument({ current }: { current?: CurrentInfo | null }) {
+  if (current?.magnitude_pct == null) {
+    return null;
+  }
+
+  const percent = Math.max(
+    0,
+    Math.min(100, Math.round(current.magnitude_pct * 100)),
+  );
+  const segmentCount = 32;
+  const filledSegments = Math.max(
+    0,
+    Math.min(segmentCount, Math.floor(percent / (100 / segmentCount))),
+  );
+  const phase =
+    current.phase?.replaceAll("_", " ") ?? current.direction ?? "flow";
+  const trend = current.trend ?? "steady";
+  const pulseIndex =
+    trend === "building"
+      ? Math.min(segmentCount - 1, filledSegments)
+      : trend === "easing"
+        ? Math.max(0, filledSegments - 1)
+        : null;
+  const segmentIds = Array.from(
+    { length: segmentCount },
+    (_, index) => `current-segment-${index}`,
+  );
+
+  return (
+    <div className="mt-2 rounded border border-swim-line bg-slate-50 px-2 py-1.5 font-mono text-[11px] leading-tight text-slate-700 md:mt-3 md:text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span className="font-semibold text-swim-current">CURRENT</span>
+        <span className="uppercase">
+          {phase} / {trend}
+        </span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span>{formatMagnitude(current.magnitude)} kt now</span>
+        <span>
+          {percent}% {current.trend ?? "steady"}
+        </span>
+      </div>
+      <div className="mt-1">
+        <div
+          aria-hidden="true"
+          className="flex min-w-0 items-center text-swim-current tracking-[0.03em]"
+        >
+          <span>[</span>
+          <span className="flex min-w-0 flex-1 justify-between">
+            {segmentIds.map((segmentId, index) => {
+              const isFilled = index < filledSegments;
+              const isPulse = index === pulseIndex;
+              return (
+                <span className="contents" key={segmentId}>
+                  {index === filledSegments ? (
+                    <span className="text-swim-ink">|</span>
+                  ) : null}
+                  <span
+                    className={
+                      isPulse ? "motion-safe:animate-pulse" : undefined
+                    }
+                  >
+                    {isFilled || (isPulse && trend === "building") ? "#" : "-"}
+                  </span>
+                </span>
+              );
+            })}
+            {filledSegments === segmentCount ? (
+              <span className="text-swim-ink">|</span>
+            ) : null}
+          </span>
+          <span>]</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -422,22 +510,55 @@ function TemperaturePlots({
   enabled: boolean;
   locationCode: string;
 }) {
+  const [selectedPlot, setSelectedPlot] = useState("live");
+  const plots = [
+    {
+      key: "live",
+      label: "Live",
+      alt: "Live temperature plot",
+      src: `/api/${locationCode}/plots/live_temps`,
+    },
+    {
+      key: "2mo",
+      label: "2 mo",
+      alt: "2 month temperature plot, all years",
+      src: `/api/${locationCode}/plots/historic_temps?period=2mo`,
+    },
+    {
+      key: "12mo",
+      label: "12 mo",
+      alt: "12 month temperature plot, all years",
+      src: `/api/${locationCode}/plots/historic_temps?period=12mo`,
+    },
+  ];
+  const activePlot =
+    plots.find((plot) => plot.key === selectedPlot) ?? plots[0];
+
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3">
+      <fieldset className="inline-flex w-fit overflow-hidden rounded border border-swim-line bg-white">
+        <legend className="sr-only">Temperature plot range</legend>
+        {plots.map((plot) => (
+          <button
+            className={[
+              "min-h-9 px-3 py-1.5 font-mono font-medium text-sm",
+              plot.key === selectedPlot
+                ? "bg-swim-blue text-white"
+                : "bg-white text-swim-blue",
+            ].join(" ")}
+            key={plot.key}
+            onClick={() => setSelectedPlot(plot.key)}
+            type="button"
+          >
+            {plot.label}
+          </button>
+        ))}
+      </fieldset>
       <DeferredPlotImage
-        alt="Live temperature plot"
+        alt={activePlot.alt}
         enabled={enabled}
-        src={`/api/${locationCode}/plots/live_temps`}
-      />
-      <DeferredPlotImage
-        alt="2 month temperature plot, all years"
-        enabled={enabled}
-        src={`/api/${locationCode}/plots/historic_temps?period=2mo`}
-      />
-      <DeferredPlotImage
-        alt="12 month temperature plot, all years"
-        enabled={enabled}
-        src={`/api/${locationCode}/plots/historic_temps?period=12mo`}
+        key={activePlot.key}
+        src={activePlot.src}
       />
     </div>
   );
@@ -497,20 +618,23 @@ function TransitRouteCard({ route }: { route: TransitRouteConfig }) {
             src={route.icon_url}
           />
         ) : (
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-swim-blue font-semibold text-white">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-swim-blue font-mono font-semibold text-white">
             {route.label}
           </span>
         )}
         <div>
-          <h3 className="font-semibold">{route.label} train</h3>
+          <h3 className="font-semibold">
+            <span className="font-mono">{route.label}</span> train
+          </h3>
           <p className="text-sm text-slate-600">
-            to {transit?.destination ?? "..."}
+            to{" "}
+            <span className="font-mono">{transit?.destination ?? "..."}</span>
           </p>
         </div>
       </a>
       <p
         className={[
-          "mt-4 inline-flex rounded px-3 py-1 font-medium text-sm",
+          "mt-4 inline-flex rounded px-3 py-1 font-mono font-medium text-sm",
           transitStatusClass(transit?.status),
         ].join(" ")}
       >
@@ -536,7 +660,7 @@ function TransitAlert({ label, value }: { label: string; value: string }) {
   return (
     <div className="mt-3 border-swim-line border-t pt-3 text-sm">
       <p className="font-medium text-swim-alert">{label}</p>
-      <p className="mt-1 text-slate-700">{value}</p>
+      <p className="mt-1 font-mono text-slate-700">{value}</p>
     </div>
   );
 }

@@ -207,6 +207,13 @@ test("renders the NYC location vertical slice", async ({ page }) => {
     page.getByRole("heading", { name: "Temperature Trends" }),
   ).toBeVisible();
   await expect(
+    page.getByRole("img", { name: "Live temperature plot" }),
+  ).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "2 mo" }).click();
+  await expect(
+    page.getByRole("img", { name: "2 month temperature plot, all years" }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "Transit Status" }),
   ).toBeVisible();
   await expect(page.getByText("Coney Island-Stillwell Av")).toHaveCount(2);
@@ -214,4 +221,9 @@ test("renders the NYC location vertical slice", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "goodservice.io" }),
   ).toBeVisible();
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
 });

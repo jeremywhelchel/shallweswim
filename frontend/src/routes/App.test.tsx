@@ -137,6 +137,8 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByText("Grimaldo's Chair")).toBeVisible();
   expect(screen.getByText("61.4°F")).toBeVisible();
   expect(screen.getByText(/moderate ebb and building/)).toBeVisible();
+  expect(screen.getByText("CURRENT")).toBeVisible();
+  expect(screen.getByText("50% building")).toBeVisible();
   expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Temp source" })).toBeVisible();
 });

@@ -18,6 +18,7 @@ from shallweswim.types import (
     CurrentTrend,
     DataSourceType,
     TideCategory,
+    TideTrend,
 )
 
 #############################################################
@@ -94,6 +95,35 @@ class TideEntry(BaseModel):
     prediction: float = Field(..., description="Height of tide in feet")
 
 
+class TideState(BaseModel):
+    """Point-in-time estimated tide state for API responses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    timestamp: datetime.datetime = Field(
+        ...,
+        description="Timestamp of the tide-state estimate in the location's local timezone",
+    )
+    estimated_height: float = Field(
+        ...,
+        description=(
+            "Estimated tide height in feet, derived from the available tide "
+            "prediction curve"
+        ),
+    )
+    units: str = Field("ft", description="Tide height units")
+    trend: TideTrend = Field(..., description="Estimated tide trend at the timestamp")
+    height_pct: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Estimated normalized tide height from 0.0 to 1.0 between the "
+            "surrounding low/high tide range; null when unavailable"
+        ),
+    )
+
+
 class TideInfo(BaseModel):
     """Collection of tide information for API responses."""
 
@@ -101,6 +131,13 @@ class TideInfo(BaseModel):
 
     past: list[TideEntry] = Field(..., description="Recently occurred tides")
     next: list[TideEntry] = Field(..., description="Upcoming tides")
+    state: TideState | None = Field(
+        None,
+        description=(
+            "Point-in-time estimated tide state, null when the derived tide "
+            "curve is unavailable"
+        ),
+    )
 
 
 class CurrentInfo(BaseModel):

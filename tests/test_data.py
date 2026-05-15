@@ -38,6 +38,7 @@ from shallweswim.types import (
     CurrentStrength,
     CurrentTrend,
     DataSourceType,
+    TideTrend,
 )
 
 # Local helpers
@@ -330,6 +331,60 @@ def test_prepare_tide_prediction_frame_fails_fast_on_timezone_aware_feed_data() 
         queries.prepare_tide_prediction_frame(tides)
 
 
+def test_predict_tide_from_precomputed_frame_returns_estimated_state(
+    mock_config: config_lib.LocationConfig,
+    mock_tide_data: pd.DataFrame,
+) -> None:
+    """A precomputed tide frame supports cheap point-in-time tide state lookup."""
+    frame = queries.prepare_tide_prediction_frame(mock_tide_data)
+
+    result = queries.predict_tide_from_precomputed_frame(
+        frame,
+        mock_config,
+        datetime.datetime(2025, 4, 22, 3, 0, 30),
+    )
+
+    assert result.timestamp == datetime.datetime(2025, 4, 22, 3, 0, 0)
+    assert result.estimated_height == pytest.approx(
+        frame.loc[datetime.datetime(2025, 4, 22, 3, 0, 0), "prediction"]
+    )
+    assert result.units == "ft"
+    assert result.trend == TideTrend.RISING
+    assert 0.0 <= cast(float, result.height_pct) <= 1.0
+
+
+def test_predict_tide_from_precomputed_frame_rejects_timezone_aware_input(
+    mock_config: config_lib.LocationConfig,
+    mock_tide_data: pd.DataFrame,
+) -> None:
+    """Tide state lookup requires local-naive input datetimes."""
+    frame = queries.prepare_tide_prediction_frame(mock_tide_data)
+
+    with pytest.raises(ValueError, match="Input datetime must be naive"):
+        queries.predict_tide_from_precomputed_frame(
+            frame,
+            mock_config,
+            datetime.datetime(2025, 4, 22, 3, 0, 0, tzinfo=datetime.UTC),
+        )
+
+
+def test_predict_tide_from_precomputed_frame_converts_nan_height_pct_to_none(
+    mock_config: config_lib.LocationConfig,
+    mock_tide_data: pd.DataFrame,
+) -> None:
+    """Unavailable normalized tide height serializes as null, not NaN."""
+    frame = queries.prepare_tide_prediction_frame(mock_tide_data)
+    frame.loc[datetime.datetime(2025, 4, 22, 3, 0, 0), "height_pct"] = float("nan")
+
+    result = queries.predict_tide_from_precomputed_frame(
+        frame,
+        mock_config,
+        datetime.datetime(2025, 4, 22, 3, 0, 0),
+    )
+
+    assert result.height_pct is None
+
+
 @pytest.mark.asyncio
 async def test_tide_prediction_reuses_precomputed_frame(
     mock_config: config_lib.LocationConfig,
@@ -371,6 +426,41 @@ async def test_tide_prediction_reuses_precomputed_frame(
 
 
 @pytest.mark.asyncio
+async def test_predict_tide_at_time_reuses_precomputed_frame(
+    mock_config: config_lib.LocationConfig,
+    mock_tide_data: pd.DataFrame,
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+    mocker: MockerFixture,
+) -> None:
+    """Manager tide state lookup reuses the derived tide frame."""
+    data = LocationDataManager(
+        mock_config,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+    tide_feed = MagicMock()
+    tide_feed._data = mock_tide_data
+    tide_feed.values = mock_tide_data
+    tide_feed._fetch_timestamp = datetime.datetime(2025, 4, 22, 0, 0, 0)
+    data._feeds[feeds.FEED_TIDES] = tide_feed
+
+    prepare_spy = mocker.patch(
+        "shallweswim.core.manager.queries.prepare_tide_prediction_frame",
+        wraps=queries.prepare_tide_prediction_frame,
+    )
+
+    t = datetime.datetime(2025, 4, 22, 3, 0, 0)
+    first = data.predict_tide_at_time(t)
+    second = data.predict_tide_at_time(t)
+
+    assert first == second
+    assert first is not None
+    assert first.trend == TideTrend.RISING
+    assert prepare_spy.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_tide_prediction_precompute_skips_missing_tide_source(
     mock_config: config_lib.LocationConfig,
     mock_tide_data: pd.DataFrame,
@@ -402,6 +492,23 @@ async def test_tide_prediction_precompute_skips_missing_tide_source(
 
 
 @pytest.mark.asyncio
+async def test_predict_tide_at_time_returns_none_without_tide_source(
+    mock_config: config_lib.LocationConfig,
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+) -> None:
+    """Locations without tide support do not expose tide state."""
+    config = mock_config.model_copy(update={"tide_source": None})
+    data = LocationDataManager(
+        config,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+
+    assert data.predict_tide_at_time(datetime.datetime(2025, 4, 22, 3, 0, 0)) is None
+
+
+@pytest.mark.asyncio
 async def test_tide_prediction_precompute_skips_missing_feed_data(
     mock_config: config_lib.LocationConfig,
     process_pool: ProcessPoolExecutor,
@@ -427,6 +534,25 @@ async def test_tide_prediction_precompute_skips_missing_feed_data(
 
     assert prepare_spy.call_count == 0
     assert data._tide_prediction_frame is None
+
+
+@pytest.mark.asyncio
+async def test_predict_tide_at_time_returns_none_without_feed_data(
+    mock_config: config_lib.LocationConfig,
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+) -> None:
+    """Configured tide locations without loaded tide data do not expose tide state."""
+    data = LocationDataManager(
+        mock_config,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+    tide_feed = MagicMock()
+    tide_feed._data = None
+    data._feeds[feeds.FEED_TIDES] = tide_feed
+
+    assert data.predict_tide_at_time(datetime.datetime(2025, 4, 22, 3, 0, 0)) is None
 
 
 @pytest.mark.asyncio
@@ -465,6 +591,34 @@ async def test_tide_prediction_precompute_keeps_unavailable_frame_optional(
 
     assert prepare_spy.call_count == 1
     assert data._tide_prediction_frame is None
+
+
+@pytest.mark.asyncio
+async def test_predict_tide_at_time_returns_none_when_derived_frame_unavailable(
+    mock_config: config_lib.LocationConfig,
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+) -> None:
+    """Sparse high/low data leaves tide state unavailable without crashing."""
+    data = LocationDataManager(
+        mock_config,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+    sparse_tides = pd.DataFrame(
+        {
+            "prediction": [4.0],
+            "type": pd.Categorical(["high"], categories=["low", "high"]),
+        },
+        index=pd.DatetimeIndex([datetime.datetime(2025, 4, 22, 0, 0, 0)]),
+    )
+    tide_feed = MagicMock()
+    tide_feed._data = sparse_tides
+    tide_feed.values = sparse_tides
+    tide_feed._fetch_timestamp = datetime.datetime(2025, 4, 22, 0, 0, 0)
+    data._feeds[feeds.FEED_TIDES] = tide_feed
+
+    assert data.predict_tide_at_time(datetime.datetime(2025, 4, 22, 3, 0, 0)) is None
 
 
 @pytest.mark.asyncio

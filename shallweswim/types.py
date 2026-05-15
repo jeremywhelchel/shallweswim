@@ -50,6 +50,14 @@ class TideCategory(enum.Enum):
     HIGH = "high"
 
 
+class TideTrend(enum.Enum):
+    """Whether the tide height is rising or falling."""
+
+    RISING = "rising"
+    FALLING = "falling"
+    STEADY = "steady"
+
+
 class CurrentSystemType(enum.Enum):
     """Type of current system (reversing tidal or unidirectional river)."""
 
@@ -91,11 +99,23 @@ class TideEntry:
 
 
 @dataclass
+class TideState:
+    """Point-in-time estimated tide state."""
+
+    timestamp: datetime.datetime
+    estimated_height: float
+    trend: TideTrend
+    units: str = "ft"
+    height_pct: float | None = None
+
+
+@dataclass
 class TideInfo:
-    """Structured information about past and future tides."""
+    """Structured information about past, future, and current tide state."""
 
     past: list[TideEntry]  # The most recent tide
     next: list[TideEntry]  # The next two upcoming tides
+    state: TideState | None = None  # Point-in-time estimated tide state
 
 
 @dataclass

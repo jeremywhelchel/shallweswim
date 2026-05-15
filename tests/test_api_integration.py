@@ -182,6 +182,7 @@ def validate_tides_data(tides: dict, location_config: config.LocationConfig) -> 
     """Validate the structure and correctness of tides data."""
     assert "past" in tides, "Missing past tides data"
     assert "next" in tides, "Missing next tides data"
+    assert "state" in tides, "Missing tide state field"
     assert len(tides["past"]) > 0, "No past tides data"
     assert len(tides["next"]) > 0, "No next tides data"
 
@@ -210,6 +211,29 @@ def validate_tides_data(tides: dict, location_config: config.LocationConfig) -> 
 
     all_tide_times = [tide["time"] for tide in tides["past"] + tides["next"]]
     assert len(all_tide_times) == len(set(all_tide_times)), "Tide times are not unique"
+
+    if tides["state"] is not None:
+        state = tides["state"]
+        assert "timestamp" in state, "Missing tide state timestamp"
+        assert "estimated_height" in state, "Missing estimated tide height"
+        assert "units" in state, "Missing tide height units"
+        assert "trend" in state, "Missing tide trend"
+        assert "height_pct" in state, "Missing tide height percentage"
+
+        _parse_naive_time(state["timestamp"])
+        assert isinstance(state["estimated_height"], int | float), (
+            "Estimated tide height is not a number"
+        )
+        assert state["units"] == "ft", f"Unexpected tide units: {state['units']}"
+        assert state["trend"] in [
+            "rising",
+            "falling",
+            "steady",
+        ], f"Invalid tide trend: {state['trend']}"
+        if state["height_pct"] is not None:
+            assert 0.0 <= state["height_pct"] <= 1.0, (
+                f"Invalid tide height percentage: {state['height_pct']}"
+            )
 
 
 def validate_current_data(current_data: dict) -> None:

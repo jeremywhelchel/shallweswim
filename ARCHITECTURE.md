@@ -293,6 +293,14 @@ events to interpolate, the manager leaves the derived tide frame unavailable
 without blocking the existing high/low tide event responses. Request handlers
 must not recompute the tide curve across the full feed DataFrame.
 
+`/api/{location}/conditions` exposes this as `tides.state` when available.
+`tides.past` and `tides.next` remain the high/low event lists. `tides.state` is
+the point-in-time estimated tide state and may be `null` even when high/low
+events are available. It includes `timestamp`, `estimated_height`, `units`,
+`trend`, and `height_pct`. The timestamp uses a real Pydantic `datetime` field
+so OpenAPI exposes it as `format: date-time`; existing timestamp fields still
+use string models until a future coordinated cleanup.
+
 ### Client Timeouts
 
 All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIMEOUT` in `clients/base.py`):

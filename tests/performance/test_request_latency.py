@@ -266,6 +266,34 @@ def test_manager_tide_prediction_frame_stays_precomputed(
     assert _p95(samples) < MANAGER_P95_LIMIT_MS
 
 
+def test_conditions_endpoint_reuses_precomputed_tide_frame(
+    performance_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Conditions requests do not rebuild the derived tide frame per request."""
+    calls = 0
+
+    def counting_prepare(tides_data: pd.DataFrame) -> pd.DataFrame:
+        nonlocal calls
+        calls += 1
+        return prepare_tide_prediction_frame(tides_data)
+
+    monkeypatch.setattr(
+        "shallweswim.core.manager.queries.prepare_tide_prediction_frame",
+        counting_prepare,
+    )
+
+    def fetch() -> None:
+        response = performance_client.get("/api/nyc/conditions")
+        assert response.status_code == 200
+
+    samples = _measure(fetch)
+    _record_result("api.conditions.tide_state", samples, ENDPOINT_P95_LIMIT_MS)
+
+    assert calls == 0
+    assert _p95(samples) < ENDPOINT_P95_LIMIT_MS
+
+
 @pytest.mark.parametrize(
     ("path", "name"),
     [

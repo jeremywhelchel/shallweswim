@@ -7,6 +7,17 @@
   future coverage would be easier to maintain in focused modules such as
   `tests/test_tide_queries.py`, `tests/test_current_queries.py`, and/or
   manager-specific tests.
+- Consider aligning point-in-time condition data under symmetric API structures,
+  for example `tides.state` and `currents.state`. The existing `current` response
+  is effectively current-state data already, but its top-level naming is less
+  consistent with the planned tide state. Because the app is deployed as one
+  consolidated frontend/backend, this can be a coordinated client migration
+  rather than a long-lived compatibility burden.
+- Clean up API timestamp field types. Several existing API Pydantic models use
+  `str` plus manual `.isoformat()` serialization for timestamps. Prefer
+  `datetime.datetime` fields so Pydantic/OpenAPI can expose proper `date-time`
+  schemas, then migrate route serialization and generated frontend types in one
+  coordinated pass.
 
 ## Future Tide Curve Source Upgrade
 

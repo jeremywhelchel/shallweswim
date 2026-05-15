@@ -37,6 +37,7 @@ from shallweswim.api_types import (
     TemperatureInfo,
     TideEntry,
     TideInfo,
+    TideState,
     TransitRouteConfig,
     YouTubeLiveConfig,
 )
@@ -374,6 +375,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         # Add tide data only if the location has a tide source AND data is available
         if cfg.tide_source and data_manager.has_feed_data(FEED_TIDES):
             tide_info = data_manager.get_current_tide_info()
+            tide_state = data_manager.predict_tide_at_time()
 
             # Create Pydantic model instances
             past_tides = [
@@ -394,7 +396,19 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 for tide in tide_info.next
             ]
 
-            tides_info = TideInfo(past=past_tides, next=next_tides)
+            state = (
+                TideState(
+                    timestamp=tide_state.timestamp,
+                    estimated_height=tide_state.estimated_height,
+                    units=tide_state.units,
+                    trend=tide_state.trend,
+                    height_pct=tide_state.height_pct,
+                )
+                if tide_state is not None
+                else None
+            )
+
+            tides_info = TideInfo(past=past_tides, next=next_tides, state=state)
 
         # Fetch Current Data (if configured AND data is available)
         if cfg.currents_source and data_manager.has_feed_data(FEED_CURRENTS):

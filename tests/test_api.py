@@ -305,6 +305,13 @@ def test_get_location_conditions(
         past=[mock_past_tide_entry],
         next=[mock_next_tide_entry_1, mock_next_tide_entry_2],
     )
+    mock_tide_state = sw_types.TideState(
+        timestamp=mock_dt,
+        estimated_height=0.8,
+        units="ft",
+        trend=sw_types.TideTrend.RISING,
+        height_pct=0.6,
+    )
     mock_current_info = sw_types.CurrentInfo(
         timestamp=mock_dt,  # Use datetime here as CurrentInfo expects it
         magnitude=0.753,  # Test rounding
@@ -328,6 +335,7 @@ def test_get_location_conditions(
     mock_manager.predict_flow_at_time.return_value = mock_current_info
     # Mock the return value for get_current_tide_info method
     mock_manager.get_current_tide_info.return_value = mock_tide_info
+    mock_manager.predict_tide_at_time.return_value = mock_tide_state
 
     # --- 3. Call API Endpoint ---
     response = test_client.get("/api/nyc/conditions")
@@ -361,10 +369,19 @@ def test_get_location_conditions(
     assert data["tides"] is not None
     assert "past" in data["tides"]
     assert "next" in data["tides"]
+    assert "state" in data["tides"]
     assert isinstance(data["tides"]["past"], list)
     assert len(data["tides"]["past"]) == 1
     assert isinstance(data["tides"]["next"], list)
     assert len(data["tides"]["next"]) == 2
+    assert data["tides"]["state"] is not None
+    assert data["tides"]["state"]["timestamp"] == mock_tide_state.timestamp.isoformat()
+    assert (
+        data["tides"]["state"]["estimated_height"] == mock_tide_state.estimated_height
+    )
+    assert data["tides"]["state"]["units"] == "ft"
+    assert data["tides"]["state"]["trend"] == "rising"
+    assert data["tides"]["state"]["height_pct"] == mock_tide_state.height_pct
 
     # Check past tide entry
     past_entry_data = data["tides"]["past"][0]
@@ -404,8 +421,8 @@ def test_get_location_conditions(
     assert data["current"]["state_description"] == mock_current_info.state_description
 
 
-def test_openapi_documents_current_phase_enum(test_client: TestClient) -> None:
-    """OpenAPI schema exposes compact current phase enum values."""
+def test_openapi_documents_condition_state_enums(test_client: TestClient) -> None:
+    """OpenAPI schema exposes compact current and tide state enum values."""
     response = test_client.get("/openapi.json")
 
     assert response.status_code == status.HTTP_200_OK
@@ -420,9 +437,14 @@ def test_openapi_documents_current_phase_enum(test_client: TestClient) -> None:
     ]
     assert schemas["CurrentStrength"]["enum"] == ["light", "moderate", "strong"]
     assert schemas["CurrentTrend"]["enum"] == ["building", "easing", "steady"]
+    assert schemas["TideTrend"]["enum"] == ["rising", "falling", "steady"]
     assert "phase" in schemas["CurrentInfo"]["properties"]
     assert "strength" in schemas["CurrentInfo"]["properties"]
     assert "trend" in schemas["CurrentInfo"]["properties"]
+    assert "state" in schemas["TideInfo"]["properties"]
+    tide_state_timestamp = schemas["TideState"]["properties"]["timestamp"]
+    assert tide_state_timestamp["type"] == "string"
+    assert tide_state_timestamp["format"] == "date-time"
 
 
 def test_get_location_conditions_missing_data(
@@ -808,6 +830,7 @@ def test_conditions_endpoint_handles_nan_in_current_data(
             )
         ],
     )
+    mock_manager.predict_tide_at_time.return_value = None
 
     # Mock current with NaN magnitude_pct (the actual bug scenario)
     current_info_with_nan = sw_types.CurrentInfo(

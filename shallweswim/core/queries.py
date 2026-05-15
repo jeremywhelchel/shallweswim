@@ -29,6 +29,8 @@ from shallweswim.types import (
     TideCategory,
     TideEntry,
     TideInfo,
+    TideState,
+    TideTrend,
 )
 
 # =============================================================================
@@ -194,6 +196,50 @@ def prepare_tide_prediction_frame(tides_data: pd.DataFrame) -> pd.DataFrame:
     )
 
     return df
+
+
+def predict_tide_from_precomputed_frame(
+    df: pd.DataFrame,
+    config: config_lib.LocationConfig,
+    t: datetime.datetime | None = None,
+) -> TideState:
+    """Estimate point-in-time tide state from a precomputed tide frame.
+
+    Args:
+        df: Precomputed tide prediction DataFrame from prepare_tide_prediction_frame().
+        config: Location configuration.
+        t: Time to estimate tide state for, defaults to current local time.
+
+    Returns:
+        Estimated tide state for the closest available minute at or before `t`.
+
+    Raises:
+        ValueError: If input datetime has timezone info or the frame contract is invalid.
+    """
+    if not t:
+        t = config.local_now()
+
+    if t.tzinfo is not None:
+        raise ValueError("Input datetime must be naive")
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("Tide prediction DataFrame must use a DatetimeIndex")
+    if df.index.tz is not None:
+        raise ValueError("Tide prediction DataFrame should use naive datetimes")
+
+    row = get_row_at_time(df, t)
+    timestamp = row.name
+    if not isinstance(timestamp, datetime.datetime):
+        raise ValueError("Tide prediction row index must contain datetimes")
+
+    height_pct = row["height_pct"]
+
+    return TideState(
+        timestamp=timestamp,
+        estimated_height=float(row["prediction"]),
+        units="ft",
+        trend=TideTrend(row["trend"]),
+        height_pct=None if pd.isna(height_pct) else float(height_pct),
+    )
 
 
 def _process_local_magnitude_pct(

@@ -174,6 +174,7 @@ def test_conditions_partial_data_returns_200(app_with_mock_manager: Any) -> None
 
     mock_manager.has_feed_data.side_effect = has_feed_data_side_effect
     mock_manager.get_current_tide_info.return_value = create_mock_tide_info()
+    mock_manager.predict_tide_at_time.return_value = None
 
     client = TestClient(app)
     response = client.get("/api/nyc/conditions")
@@ -199,6 +200,7 @@ def test_conditions_ignores_unavailable_derived_tide_frame(
     mock_manager.has_feed_data.side_effect = has_feed_data_side_effect
     mock_manager._tide_prediction_frame = None
     mock_manager.get_current_tide_info.return_value = create_mock_tide_info()
+    mock_manager.predict_tide_at_time.return_value = None
 
     client = TestClient(app)
     response = client.get("/api/nyc/conditions")
@@ -206,6 +208,7 @@ def test_conditions_ignores_unavailable_derived_tide_frame(
     assert response.status_code == 200
     data = response.json()
     assert data["tides"] is not None
+    assert data["tides"]["state"] is None
     assert data["tides"]["past"][0]["type"] == "low"
     assert data["tides"]["next"][0]["type"] == "high"
     mock_manager.get_current_tide_info.assert_called_once()

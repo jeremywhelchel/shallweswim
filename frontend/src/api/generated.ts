@@ -1212,7 +1212,45 @@ export interface components {
              * @description Recently occurred tides
              */
             past: components["schemas"]["TideEntry"][];
+            /** @description Point-in-time estimated tide state, null when the derived tide curve is unavailable */
+            state?: components["schemas"]["TideState"] | null;
         };
+        /**
+         * TideState
+         * @description Point-in-time estimated tide state for API responses.
+         */
+        TideState: {
+            /**
+             * Estimated Height
+             * @description Estimated tide height in feet, derived from the available tide prediction curve
+             */
+            estimated_height: number;
+            /**
+             * Height Pct
+             * @description Estimated normalized tide height from 0.0 to 1.0 between the surrounding low/high tide range; null when unavailable
+             */
+            height_pct?: number | null;
+            /**
+             * Timestamp
+             * Format: date-time
+             * @description Timestamp of the tide-state estimate in the location's local timezone
+             */
+            timestamp: string;
+            /** @description Estimated tide trend at the timestamp */
+            trend: components["schemas"]["TideTrend"];
+            /**
+             * Units
+             * @description Tide height units
+             * @default ft
+             */
+            units: string;
+        };
+        /**
+         * TideTrend
+         * @description Whether the tide height is rising or falling.
+         * @enum {string}
+         */
+        TideTrend: "rising" | "falling" | "steady";
         /**
          * TransitRouteConfig
          * @description Transit route metadata for frontend status cards.

@@ -1040,6 +1040,17 @@
             },
             "title": "Past",
             "type": "array"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TideState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Point-in-time estimated tide state, null when the derived tide curve is unavailable"
           }
         },
         "required": [
@@ -1048,6 +1059,64 @@
         ],
         "title": "TideInfo",
         "type": "object"
+      },
+      "TideState": {
+        "additionalProperties": false,
+        "description": "Point-in-time estimated tide state for API responses.",
+        "properties": {
+          "estimated_height": {
+            "description": "Estimated tide height in feet, derived from the available tide prediction curve",
+            "title": "Estimated Height",
+            "type": "number"
+          },
+          "height_pct": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Estimated normalized tide height from 0.0 to 1.0 between the surrounding low/high tide range; null when unavailable",
+            "title": "Height Pct"
+          },
+          "timestamp": {
+            "description": "Timestamp of the tide-state estimate in the location's local timezone",
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "trend": {
+            "$ref": "#/components/schemas/TideTrend",
+            "description": "Estimated tide trend at the timestamp"
+          },
+          "units": {
+            "default": "ft",
+            "description": "Tide height units",
+            "title": "Units",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp",
+          "estimated_height",
+          "trend"
+        ],
+        "title": "TideState",
+        "type": "object"
+      },
+      "TideTrend": {
+        "description": "Whether the tide height is rising or falling.",
+        "enum": [
+          "rising",
+          "falling",
+          "steady"
+        ],
+        "title": "TideTrend",
+        "type": "string"
       },
       "TransitRouteConfig": {
         "additionalProperties": false,

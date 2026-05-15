@@ -26,6 +26,7 @@ from shallweswim.types import (
     LegacyChartInfo,
     TemperatureReading,
     TideInfo,
+    TideState,
 )
 from shallweswim.util import utc_now
 
@@ -857,6 +858,38 @@ class LocationDataManager:
             DataUnavailableError: If tide data feed is missing.
         """
         return queries.get_current_tide_info(self._feeds, self.config)
+
+    def predict_tide_at_time(
+        self, t: datetime.datetime | None = None
+    ) -> TideState | None:
+        """Estimate tide state for a specific time when a derived tide frame exists.
+
+        Args:
+            t: Time to estimate tide state for, defaults to current local time.
+
+        Returns:
+            Estimated tide state, or None if tide data/state is unavailable.
+
+        Raises:
+            ValueError: If the requested time has timezone info or the derived frame
+                violates its expected contract.
+        """
+        if self.config.tide_source is None:
+            return None
+
+        feed = self._feeds.get(feeds.FEED_TIDES)
+        if feed is None or feed._data is None:
+            return None
+
+        self._precompute_tide_predictions()
+        if self._tide_prediction_frame is None:
+            return None
+
+        return queries.predict_tide_from_precomputed_frame(
+            self._tide_prediction_frame,
+            self.config,
+            t,
+        )
 
     def get_chart_info(self, t: datetime.datetime | None = None) -> LegacyChartInfo:
         """Generate chart information based on tide data for the specified time.

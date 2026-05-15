@@ -18,11 +18,6 @@
   `datetime.datetime` fields so Pydantic/OpenAPI can expose proper `date-time`
   schemas, then migrate route serialization and generated frontend types in one
   coordinated pass.
-- Consolidate the React current and tide meter implementations behind a shared
-  meter component once the visual design settles. The first pass intentionally
-  duplicated the compact ASCII-style bar so the tide and current states could be
-  evaluated together, but the shared behavior should live in one place before
-  the component grows more states.
 - Rework the meter layout into a clearer tide/current instrument. Candidate
   improvements: combine the tide bar with last/next/following tide context,
   include relevant event times on or near the meter, make endpoint labels less

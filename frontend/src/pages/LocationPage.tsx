@@ -31,6 +31,8 @@ type TideState = components["schemas"]["TideState"];
 type TransitRouteConfig = components["schemas"]["TransitRouteConfig"];
 type YouTubeLiveConfig = components["schemas"]["YouTubeLiveConfig"];
 
+const METER_SEGMENT_COUNT = 32;
+
 type LocationPageProps = {
   bootstrap: AppBootstrapResponse;
   locationCode: string;
@@ -285,62 +287,112 @@ function TideInstrument({
     typeof state.height_pct === "number" && Number.isFinite(state.height_pct)
       ? Math.max(0, Math.min(100, Math.round(state.height_pct * 100)))
       : null;
-  const segmentCount = 32;
+  const trend = state.trend ?? "steady";
+  const tideBounds = getTideBounds(previousTide, nextTide);
+
+  return (
+    <ConditionMeter
+      accentClassName="text-swim-tide"
+      labelCells={
+        tideBounds ? (
+          <>
+            <span className="min-w-0">
+              <span className="whitespace-nowrap">
+                low {formatTideHeight(tideBounds.low.prediction)} {state.units}
+              </span>{" "}
+              <span className="whitespace-nowrap">
+                {formatTime(tideBounds.low.time)}
+              </span>
+            </span>
+            <span className="text-center font-semibold text-swim-ink">
+              now {formatTideHeight(state.estimated_height ?? undefined)}{" "}
+              {state.units}
+            </span>
+            <span className="min-w-0 text-right">
+              <span className="whitespace-nowrap">
+                high {formatTideHeight(tideBounds.high.prediction)}{" "}
+                {state.units}
+              </span>{" "}
+              <span className="whitespace-nowrap">
+                {formatTime(tideBounds.high.time)}
+              </span>
+            </span>
+          </>
+        ) : null
+      }
+      percent={percent}
+      pulseDirection={
+        percent == null || trend === "steady"
+          ? null
+          : trend === "rising"
+            ? "up"
+            : "down"
+      }
+      title="TIDE"
+      titleDetail={trend}
+    />
+  );
+}
+
+type ConditionMeterProps = {
+  accentClassName: string;
+  labelCells?: ReactNode;
+  percent: number | null;
+  pulseDirection: "up" | "down" | null;
+  title: string;
+  titleDetail: ReactNode;
+};
+
+function ConditionMeter({
+  accentClassName,
+  labelCells,
+  percent,
+  pulseDirection,
+  title,
+  titleDetail,
+}: ConditionMeterProps) {
   const filledSegments =
     percent == null
       ? 0
       : Math.max(
           0,
-          Math.min(segmentCount, Math.floor(percent / (100 / segmentCount))),
+          Math.min(
+            METER_SEGMENT_COUNT,
+            Math.floor(percent / (100 / METER_SEGMENT_COUNT)),
+          ),
         );
-  const trend = state.trend ?? "steady";
   const pulseIndex =
-    percent == null || trend === "steady"
+    percent == null || pulseDirection == null
       ? null
-      : trend === "rising"
-        ? Math.min(segmentCount - 1, filledSegments)
+      : pulseDirection === "up"
+        ? Math.min(METER_SEGMENT_COUNT - 1, filledSegments)
         : Math.max(0, filledSegments - 1);
   const segmentIds = Array.from(
-    { length: segmentCount },
-    (_, index) => `tide-segment-${index}`,
+    { length: METER_SEGMENT_COUNT },
+    (_, index) => `${title.toLowerCase()}-segment-${index}`,
   );
-  const tideBounds = getTideBounds(previousTide, nextTide);
 
   return (
     <div className="mt-2 rounded border border-swim-line bg-slate-50 px-2 py-1.5 font-mono text-[11px] leading-tight text-slate-700 md:mt-3 md:text-xs">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span className="font-semibold text-swim-tide">TIDE</span>
-        <span className="uppercase">{trend}</span>
+        <span className={["font-semibold", accentClassName].join(" ")}>
+          {title}
+        </span>
+        <span className="uppercase">{titleDetail}</span>
       </div>
-      {tideBounds ? (
+      {labelCells ? (
         <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] text-slate-600 md:text-[11px]">
-          <span className="min-w-0">
-            <span className="whitespace-nowrap">
-              low {formatTideHeight(tideBounds.low.prediction)} {state.units}
-            </span>{" "}
-            <span className="whitespace-nowrap">
-              {formatTime(tideBounds.low.time)}
-            </span>
-          </span>
-          <span className="text-center font-semibold text-swim-ink">
-            now {formatTideHeight(state.estimated_height ?? undefined)}{" "}
-            {state.units}
-          </span>
-          <span className="min-w-0 text-right">
-            <span className="whitespace-nowrap">
-              high {formatTideHeight(tideBounds.high.prediction)} {state.units}
-            </span>{" "}
-            <span className="whitespace-nowrap">
-              {formatTime(tideBounds.high.time)}
-            </span>
-          </span>
+          {labelCells}
         </div>
       ) : null}
       {percent == null ? null : (
         <div className="mt-1">
           <div
             aria-hidden="true"
-            className="flex min-w-0 items-center text-swim-tide tracking-[0.03em]"
+            className={[
+              "flex min-w-0 items-center tracking-[0.03em]",
+              accentClassName,
+            ].join(" ")}
           >
             <span>[</span>
             <span className="flex min-w-0 flex-1 justify-between">
@@ -357,12 +409,14 @@ function TideInstrument({
                         isPulse ? "motion-safe:animate-pulse" : undefined
                       }
                     >
-                      {isFilled || (isPulse && trend === "rising") ? "#" : "-"}
+                      {isFilled || (isPulse && pulseDirection === "up")
+                        ? "#"
+                        : "-"}
                     </span>
                   </span>
                 );
               })}
-              {filledSegments === segmentCount ? (
+              {filledSegments === METER_SEGMENT_COUNT ? (
                 <span className="text-swim-ink">|</span>
               ) : null}
             </span>
@@ -373,7 +427,6 @@ function TideInstrument({
     </div>
   );
 }
-
 function getTideBounds(previousTide?: TideEntry, nextTide?: TideEntry) {
   if (!previousTide || !nextTide || previousTide.type === nextTide.type) {
     return null;
@@ -434,94 +487,51 @@ function CurrentInstrument({ current }: { current?: CurrentInfo | null }) {
     0,
     Math.min(100, Math.round(current.magnitude_pct * 100)),
   );
-  const segmentCount = 32;
-  const filledSegments = Math.max(
-    0,
-    Math.min(segmentCount, Math.floor(percent / (100 / segmentCount))),
-  );
   const phase =
     current.phase?.replaceAll("_", " ") ?? current.direction ?? "flow";
   const trend = current.trend ?? "steady";
-  const pulseIndex =
-    trend === "building"
-      ? Math.min(segmentCount - 1, filledSegments)
-      : trend === "easing"
-        ? Math.max(0, filledSegments - 1)
-        : null;
-  const segmentIds = Array.from(
-    { length: segmentCount },
-    (_, index) => `current-segment-${index}`,
-  );
 
   return (
-    <div className="mt-2 rounded border border-swim-line bg-slate-50 px-2 py-1.5 font-mono text-[11px] leading-tight text-slate-700 md:mt-3 md:text-xs">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span className="font-semibold text-swim-current">CURRENT</span>
-        <span className="uppercase">
-          {phase} / {trend}
-        </span>
-      </div>
-      {range ? (
-        <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] md:text-[11px]">
-          <span className="min-w-0">
-            <span className="whitespace-nowrap">slack</span>{" "}
-            <span className="whitespace-nowrap">
-              {formatTime(range.slack.timestamp)}
+    <ConditionMeter
+      accentClassName="text-swim-current"
+      labelCells={
+        range ? (
+          <>
+            <span className="min-w-0">
+              <span className="whitespace-nowrap">slack</span>{" "}
+              <span className="whitespace-nowrap">
+                {formatTime(range.slack.timestamp)}
+              </span>
             </span>
-          </span>
-          <span className="text-center font-semibold text-swim-ink">
-            now {formatMagnitude(current.magnitude)} kt
-          </span>
-          <span className="min-w-0 text-right">
-            <span className="whitespace-nowrap">
-              peak {formatMagnitude(range.peak.magnitude)} {range.peak.units}
-            </span>{" "}
-            <span className="whitespace-nowrap">
-              {formatTime(range.peak.timestamp)}
+            <span className="text-center font-semibold text-swim-ink">
+              now {formatMagnitude(current.magnitude)} kt
             </span>
-          </span>
-        </div>
-      ) : (
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-          <span>{formatMagnitude(current.magnitude)} kt now</span>
-          <span>
-            {percent}% {current.trend ?? "steady"}
-          </span>
-        </div>
-      )}
-      <div className="mt-1">
-        <div
-          aria-hidden="true"
-          className="flex min-w-0 items-center text-swim-current tracking-[0.03em]"
-        >
-          <span>[</span>
-          <span className="flex min-w-0 flex-1 justify-between">
-            {segmentIds.map((segmentId, index) => {
-              const isFilled = index < filledSegments;
-              const isPulse = index === pulseIndex;
-              return (
-                <span className="contents" key={segmentId}>
-                  {index === filledSegments ? (
-                    <span className="text-swim-ink">|</span>
-                  ) : null}
-                  <span
-                    className={
-                      isPulse ? "motion-safe:animate-pulse" : undefined
-                    }
-                  >
-                    {isFilled || (isPulse && trend === "building") ? "#" : "-"}
-                  </span>
-                </span>
-              );
-            })}
-            {filledSegments === segmentCount ? (
-              <span className="text-swim-ink">|</span>
-            ) : null}
-          </span>
-          <span>]</span>
-        </div>
-      </div>
-    </div>
+            <span className="min-w-0 text-right">
+              <span className="whitespace-nowrap">
+                peak {formatMagnitude(range.peak.magnitude)} {range.peak.units}
+              </span>{" "}
+              <span className="whitespace-nowrap">
+                {formatTime(range.peak.timestamp)}
+              </span>
+            </span>
+          </>
+        ) : (
+          <>
+            <span>{formatMagnitude(current.magnitude)} kt now</span>
+            <span />
+            <span className="text-right">
+              {percent}% {current.trend ?? "steady"}
+            </span>
+          </>
+        )
+      }
+      percent={percent}
+      pulseDirection={
+        trend === "building" ? "up" : trend === "easing" ? "down" : null
+      }
+      title="CURRENT"
+      titleDetail={`${phase} / ${trend}`}
+    />
   );
 }
 

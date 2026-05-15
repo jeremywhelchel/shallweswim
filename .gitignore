@@ -142,8 +142,6 @@ Thumbs.db
 # Pyre type checker
 .pyre/
 
-TODO.md
-
 # Asset manifest for fingerprinting
 shallweswim/static/asset-manifest.json
 

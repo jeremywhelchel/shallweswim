@@ -232,11 +232,27 @@ test("renders the NYC location vertical slice", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { exact: true, name: "2 mo" }).click();
   await expect(
-    page.getByRole("img", { name: "2 month temperature plot, all years" }),
+    page.getByRole("img", {
+      exact: true,
+      name: "2 month temperature plot, all years",
+    }),
   ).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Live" }).click();
   await expect(
     page.getByRole("img", { name: "Live temperature plot" }),
+  ).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "All" }).click();
+  await expect(
+    page.getByRole("img", { name: "Live temperature plot" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      exact: true,
+      name: "2 month temperature plot, all years",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "12 month temperature plot, all years" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Transit Status" }),

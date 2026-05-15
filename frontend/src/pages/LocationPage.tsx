@@ -757,14 +757,13 @@ function TemperaturePlots({
       src: `/api/${locationCode}/plots/historic_temps?period=12mo`,
     },
   ];
-  const activePlot =
-    plots.find((plot) => plot.key === selectedPlot) ?? plots[0];
+  const plotOptions = [...plots, { key: "all", label: "All" }];
 
   return (
     <div className="grid gap-3">
       <fieldset className="inline-flex w-fit overflow-hidden rounded border border-swim-line bg-white">
         <legend className="sr-only">Temperature plot range</legend>
-        {plots.map((plot) => (
+        {plotOptions.map((plot) => (
           <button
             className={[
               "min-h-9 px-3 py-1.5 font-mono font-medium text-sm",
@@ -780,12 +779,12 @@ function TemperaturePlots({
           </button>
         ))}
       </fieldset>
-      <div className="border-swim-line rounded border bg-white p-2">
+      <div className="grid gap-3">
         {plots.map((plot) => (
           <DeferredPlotImage
             alt={plot.alt}
             enabled={enabled}
-            isActive={plot.key === activePlot.key}
+            isActive={selectedPlot === "all" || plot.key === selectedPlot}
             key={plot.key}
             src={plot.src}
           />
@@ -809,7 +808,13 @@ function DeferredPlotImage({
   const image = useDeferredImage(src, enabled);
 
   return (
-    <div className={isActive ? "block" : "hidden"}>
+    <div
+      className={
+        isActive
+          ? "block rounded border border-swim-line bg-white p-2"
+          : "hidden"
+      }
+    >
       {image.status === "loaded" && image.src ? (
         <img alt={alt} className="w-full" src={image.src} />
       ) : (

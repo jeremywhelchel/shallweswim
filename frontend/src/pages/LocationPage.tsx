@@ -318,6 +318,30 @@ function TideInstrument({
         <span className="font-semibold text-swim-tide">TIDE</span>
         <span className="uppercase">{trend}</span>
       </div>
+      {tideBounds ? (
+        <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] text-slate-600 md:text-[11px]">
+          <span className="min-w-0">
+            <span className="whitespace-nowrap">
+              low {formatTideHeight(tideBounds.low.prediction)} {state.units}
+            </span>{" "}
+            <span className="whitespace-nowrap">
+              {formatTime(tideBounds.low.time)}
+            </span>
+          </span>
+          <span className="text-center font-semibold text-swim-ink">
+            now {formatTideHeight(state.estimated_height ?? undefined)}{" "}
+            {state.units}
+          </span>
+          <span className="min-w-0 text-right">
+            <span className="whitespace-nowrap">
+              high {formatTideHeight(tideBounds.high.prediction)} {state.units}
+            </span>{" "}
+            <span className="whitespace-nowrap">
+              {formatTime(tideBounds.high.time)}
+            </span>
+          </span>
+        </div>
+      ) : null}
       {percent == null ? null : (
         <div className="mt-1">
           <div
@@ -350,21 +374,6 @@ function TideInstrument({
             </span>
             <span>]</span>
           </div>
-          {tideBounds ? (
-            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-slate-600 md:text-[11px]">
-              <span>
-                low {formatTideHeight(tideBounds.low.prediction)} {state.units}
-              </span>
-              <span className="font-semibold text-swim-ink">
-                now {formatTideHeight(state.estimated_height ?? undefined)}{" "}
-                {state.units}
-              </span>
-              <span>
-                high {formatTideHeight(tideBounds.high.prediction)}{" "}
-                {state.units}
-              </span>
-            </div>
-          ) : null}
         </div>
       )}
     </div>
@@ -426,6 +435,7 @@ function CurrentInstrument({ current }: { current?: CurrentInfo | null }) {
     return null;
   }
 
+  const range = current.range;
   const percent = Math.max(
     0,
     Math.min(100, Math.round(current.magnitude_pct * 100)),
@@ -457,12 +467,34 @@ function CurrentInstrument({ current }: { current?: CurrentInfo | null }) {
           {phase} / {trend}
         </span>
       </div>
-      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span>{formatMagnitude(current.magnitude)} kt now</span>
-        <span>
-          {percent}% {current.trend ?? "steady"}
-        </span>
-      </div>
+      {range ? (
+        <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] md:text-[11px]">
+          <span className="min-w-0">
+            <span className="whitespace-nowrap">slack</span>{" "}
+            <span className="whitespace-nowrap">
+              {formatTime(range.slack.timestamp)}
+            </span>
+          </span>
+          <span className="text-center font-semibold text-swim-ink">
+            now {formatMagnitude(current.magnitude)} kt
+          </span>
+          <span className="min-w-0 text-right">
+            <span className="whitespace-nowrap">
+              peak {formatMagnitude(range.peak.magnitude)} {range.peak.units}
+            </span>{" "}
+            <span className="whitespace-nowrap">
+              {formatTime(range.peak.timestamp)}
+            </span>
+          </span>
+        </div>
+      ) : (
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <span>{formatMagnitude(current.magnitude)} kt now</span>
+          <span>
+            {percent}% {current.trend ?? "steady"}
+          </span>
+        </div>
+      )}
       <div className="mt-1">
         <div
           aria-hidden="true"

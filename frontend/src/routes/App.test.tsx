@@ -110,6 +110,20 @@ const conditionsPayload: components["schemas"]["LocationConditions"] = {
     magnitude: 1.25,
     magnitude_pct: 0.5,
     state_description: "moderate ebb and building",
+    range: {
+      slack: {
+        timestamp: "2026-05-13T05:45:00",
+        magnitude: 0,
+        units: "kt",
+        phase: null,
+      },
+      peak: {
+        timestamp: "2026-05-13T08:30:00",
+        magnitude: 1.8,
+        units: "kt",
+        phase: "ebb",
+      },
+    },
     source_type: "prediction",
   },
 };
@@ -146,11 +160,18 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByText(/moderate ebb and building/)).toBeVisible();
   expect(screen.getByText("TIDE")).toBeVisible();
   expect(screen.getByText("rising")).toBeVisible();
-  expect(screen.getByText("low 0.2 ft")).toBeVisible();
+  expect(screen.getByText(/low 0.2 ft/)).toBeVisible();
   expect(screen.getByText("now 1.6 ft")).toBeVisible();
-  expect(screen.getByText("high 4.8 ft")).toBeVisible();
+  expect(screen.getByText(/high 4.8 ft/)).toBeVisible();
   expect(screen.getByText("CURRENT")).toBeVisible();
-  expect(screen.getByText("50% building")).toBeVisible();
+  expect(
+    screen.getByText((_, element) => {
+      const text = element?.textContent?.replace(/\s+/g, " ").trim();
+      return text === "slack 5:45 AM";
+    }),
+  ).toBeVisible();
+  expect(screen.getByText("now 1.3 kt")).toBeVisible();
+  expect(screen.getByText(/peak 1.8 kt/)).toBeVisible();
   expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Temp source" })).toBeVisible();
 });

@@ -243,6 +243,14 @@ test("renders the NYC location vertical slice", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("Coney Island-Stillwell Av")).toHaveCount(2);
   await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Water Movement" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "The tide is rising, and the water is going out steadily and getting stronger.",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("TIDE", { exact: true })).toBeVisible();
   await expect(page.getByText(/low 0.2 ft/)).toBeVisible();
   await expect(page.getByText("now 1.6 ft")).toBeVisible();

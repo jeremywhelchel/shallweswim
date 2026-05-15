@@ -28,6 +28,15 @@
   exposes slack-to-peak range for non-slack rows with complete segment context;
   slack phases can later be associated with the upcoming flood/ebb segment so
   the current meter can show where it is about to build.
+- Explore richer swimmer-focused condition summaries. The current app should
+  stay deterministic, but a future version could generate a concise
+  natural-language summary from water temperature, tide/current state, weather,
+  and possibly webcam imagery. Treat this as a product/reliability project, not
+  a small copy tweak.
+- Add backend-derived temperature trend context for the app summary, such as
+  `up 1.2°F in 24h`, `down 3.0°F this week`, or `near seasonal range`. Do this
+  from structured historical/live temperature data rather than inferring it from
+  plot images or adding filler copy in the frontend.
 
 ## Future Tide Curve Source Upgrade
 

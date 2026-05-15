@@ -15,7 +15,6 @@ import { useDeferredImage } from "../hooks/useDeferredImage";
 import {
   formatMagnitude,
   formatStationTimestamp,
-  formatTideDate,
   formatTideHeight,
   formatTime,
 } from "../lib/format";
@@ -170,12 +169,12 @@ export function ConditionsSummary({
   }
 
   return (
-    <section className="grid gap-0 overflow-hidden rounded border border-swim-line bg-white md:grid-cols-[1.1fr_1fr_1fr] md:gap-4 md:overflow-visible md:border-0 md:bg-transparent">
+    <section className="grid gap-0 overflow-hidden rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:overflow-visible md:border-0 md:bg-transparent">
       <TemperatureSummary conditions={conditions} hasError={hasError} />
-      <TideSummary tides={hasError ? undefined : conditions?.tides} />
-      <CurrentSummary
+      <WaterMovementSummary
         current={hasError ? undefined : conditions?.current}
         locationCode={locationCode}
+        tides={hasError ? undefined : conditions?.tides}
       />
     </section>
   );
@@ -230,44 +229,157 @@ function TemperatureSummary({
   );
 }
 
-function TideSummary({ tides }: { tides?: LocationConditions["tides"] }) {
+function WaterMovementSummary({
+  current,
+  locationCode,
+  tides,
+}: {
+  current?: CurrentInfo | null;
+  locationCode: string;
+  tides?: LocationConditions["tides"];
+}) {
   const pastTide = tides?.past?.at(-1);
-  const nextTides = [tides?.next?.[0], tides?.next?.[1]];
+  const nextTide = tides?.next?.[0];
+  const description = describeWaterMovement(tides?.state, current);
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
-      <h2 className="font-semibold text-base md:text-lg">Tides</h2>
+      <h2 className="font-semibold text-base md:text-lg">Water Movement</h2>
+      <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
+        {description}
+      </p>
       <TideInstrument
-        nextTide={nextTides[0]}
+        nextTide={nextTide}
         previousTide={pastTide}
         state={tides?.state}
       />
-      <div className="mt-2 space-y-1.5 md:mt-3 md:space-y-3">
-        <TideRow label="Last tide" tide={pastTide} />
-        <TideRow label="Next tide" tide={nextTides[0]} />
-        <TideRow label="Following tide" tide={nextTides[1]} />
-      </div>
+      <CurrentInstrument current={current} />
+      {current?.direction ? (
+        <Link
+          className="mt-1 inline-block text-xs text-swim-blue underline md:mt-2 md:text-sm"
+          to={`/${locationCode}/currents`}
+        >
+          Current details
+        </Link>
+      ) : null}
     </div>
   );
 }
 
-function TideRow({ label, tide }: { label: string; tide?: TideEntry }) {
+function describeWaterMovement(
+  tideState?: TideState | null,
+  current?: CurrentInfo | null,
+) {
+  if (current) {
+    const tidePosition = describeTidePosition(tideState);
+
+    if (isSlackCurrent(current)) {
+      if (tidePosition) {
+        return `It's ${tidePosition} and calm.`;
+      }
+      if (current.phase === "slack_before_flood") {
+        return "It's calm before the water starts coming in.";
+      }
+      if (current.phase === "slack_before_ebb") {
+        return "It's calm before the water starts going out.";
+      }
+      return "It's calm right now.";
+    }
+
+    const direction = currentDirectionPhrase(current);
+    const speed = currentSpeedPhrase(current);
+    const trend = currentTrendClause(current);
+    const tidePrefix = currentTidePrefix(tideState);
+
+    return `${tidePrefix}the water is ${direction}${speed ? ` ${speed}` : ""}${
+      trend ?? ""
+    }.`;
+  }
+
+  if (tideState?.trend) {
+    return `The tide is ${tideState.trend}.`;
+  }
+
+  return "Water movement is unavailable right now.";
+}
+
+function currentTidePrefix(tideState?: TideState | null) {
+  const position = describeTidePosition(tideState);
+  if (position) {
+    return `${capitalize(position)}, `;
+  }
+
+  switch (tideState?.trend) {
+    case "rising":
+      return "The tide is rising, and ";
+    case "falling":
+      return "The tide is falling, and ";
+    case "steady":
+      return "The tide is steady, and ";
+    default:
+      return "Right now, ";
+  }
+}
+
+function describeTidePosition(tideState?: TideState | null) {
+  if (typeof tideState?.height_pct !== "number") {
+    return null;
+  }
+  if (tideState.height_pct <= 0.15) {
+    return "near low tide";
+  }
+  if (tideState.height_pct >= 0.85) {
+    return "near high tide";
+  }
+  return null;
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function isSlackCurrent(current: CurrentInfo) {
   return (
-    <div className="grid grid-cols-[5.75rem_1fr] gap-2 text-xs md:grid-cols-[6.5rem_1fr] md:text-sm">
-      <span className="font-medium text-slate-600">{label}</span>
-      <span>
-        <span className="font-mono font-semibold capitalize text-swim-tide">
-          {tide?.type ?? "Unavailable"}
-        </span>{" "}
-        <span className="text-slate-600">
-          {tide ? formatTideDate(tide.time) : "Unavailable"}
-        </span>{" "}
-        <span className="font-mono font-semibold text-swim-ink">
-          {tide ? formatTime(tide.time) : "Unavailable"}
-        </span>
-      </span>
-    </div>
+    current.phase === "slack" ||
+    current.phase === "slack_before_flood" ||
+    current.phase === "slack_before_ebb"
   );
+}
+
+function currentDirectionPhrase(current: CurrentInfo) {
+  if (current.phase === "ebb" || current.direction === "ebbing") {
+    return "going out";
+  }
+  if (current.phase === "flood" || current.direction === "flooding") {
+    return "coming in";
+  }
+  return "moving";
+}
+
+function currentSpeedPhrase(current: CurrentInfo) {
+  switch (current.strength) {
+    case "strong":
+      return "fast";
+    case "moderate":
+      return "steadily";
+    case "light":
+      return "gently";
+    default:
+      return null;
+  }
+}
+
+function currentTrendClause(current: CurrentInfo) {
+  switch (current.trend) {
+    case "building":
+      return " and getting stronger";
+    case "easing":
+      return ", but starting to ease";
+    case "steady":
+      return " and holding steady";
+    default:
+      return null;
+  }
 }
 
 function TideInstrument({
@@ -437,44 +549,6 @@ function getTideBounds(previousTide?: TideEntry, nextTide?: TideEntry) {
   const high = tides.find((tide) => tide.type === "high");
 
   return low && high ? { high, low } : null;
-}
-
-function CurrentSummary({
-  current,
-  locationCode,
-}: {
-  current?: CurrentInfo | null;
-  locationCode: string;
-}) {
-  const description =
-    current?.state_description ||
-    current?.direction?.toLowerCase() ||
-    "unavailable";
-
-  return (
-    <div className="p-3 md:rounded md:border md:border-swim-line md:bg-white md:p-4">
-      <h2 className="font-semibold text-base md:text-lg">Current Estimate</h2>
-      <p className="mt-1 text-sm text-slate-700 md:mt-2 md:text-base">
-        <span className="font-mono font-semibold capitalize text-swim-current">
-          {description}
-        </span>{" "}
-        at{" "}
-        <span className="font-mono font-semibold text-swim-ink">
-          {formatMagnitude(current?.magnitude)}
-        </span>{" "}
-        knots
-      </p>
-      <CurrentInstrument current={current} />
-      {current?.direction ? (
-        <Link
-          className="mt-1 inline-block text-xs text-swim-blue underline md:mt-2 md:text-sm"
-          to={`/${locationCode}/currents`}
-        >
-          Current details
-        </Link>
-      ) : null}
-    </div>
-  );
 }
 
 function CurrentInstrument({ current }: { current?: CurrentInfo | null }) {

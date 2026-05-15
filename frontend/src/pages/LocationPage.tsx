@@ -8,6 +8,7 @@ import {
   formatMagnitude,
   formatStationTimestamp,
   formatTideDate,
+  formatTideHeight,
   formatTime,
 } from "../lib/format";
 
@@ -18,6 +19,7 @@ type AppExternalIntegrations = components["schemas"]["AppExternalIntegrations"];
 type LocationConditions = components["schemas"]["LocationConditions"];
 type CurrentInfo = components["schemas"]["CurrentInfo"];
 type TideEntry = components["schemas"]["TideEntry"];
+type TideState = components["schemas"]["TideState"];
 type TransitRouteConfig = components["schemas"]["TransitRouteConfig"];
 type YouTubeLiveConfig = components["schemas"]["YouTubeLiveConfig"];
 
@@ -239,6 +241,11 @@ function TideSummary({ tides }: { tides?: LocationConditions["tides"] }) {
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
       <h2 className="font-semibold text-base md:text-lg">Tides</h2>
+      <TideInstrument
+        nextTide={nextTides[0]}
+        previousTide={pastTide}
+        state={tides?.state}
+      />
       <div className="mt-2 space-y-1.5 md:mt-3 md:space-y-3">
         <TideRow label="Last tide" tide={pastTide} />
         <TideRow label="Next tide" tide={nextTides[0]} />
@@ -265,6 +272,115 @@ function TideRow({ label, tide }: { label: string; tide?: TideEntry }) {
       </span>
     </div>
   );
+}
+
+function TideInstrument({
+  nextTide,
+  previousTide,
+  state,
+}: {
+  nextTide?: TideEntry;
+  previousTide?: TideEntry;
+  state?: TideState | null;
+}) {
+  if (!state) {
+    return null;
+  }
+
+  const percent =
+    typeof state.height_pct === "number" && Number.isFinite(state.height_pct)
+      ? Math.max(0, Math.min(100, Math.round(state.height_pct * 100)))
+      : null;
+  const segmentCount = 32;
+  const filledSegments =
+    percent == null
+      ? 0
+      : Math.max(
+          0,
+          Math.min(segmentCount, Math.floor(percent / (100 / segmentCount))),
+        );
+  const trend = state.trend ?? "steady";
+  const pulseIndex =
+    percent == null || trend === "steady"
+      ? null
+      : trend === "rising"
+        ? Math.min(segmentCount - 1, filledSegments)
+        : Math.max(0, filledSegments - 1);
+  const segmentIds = Array.from(
+    { length: segmentCount },
+    (_, index) => `tide-segment-${index}`,
+  );
+  const tideBounds = getTideBounds(previousTide, nextTide);
+
+  return (
+    <div className="mt-2 rounded border border-swim-line bg-slate-50 px-2 py-1.5 font-mono text-[11px] leading-tight text-slate-700 md:mt-3 md:text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span className="font-semibold text-swim-tide">TIDE</span>
+        <span className="uppercase">{trend}</span>
+      </div>
+      {percent == null ? null : (
+        <div className="mt-1">
+          <div
+            aria-hidden="true"
+            className="flex min-w-0 items-center text-swim-tide tracking-[0.03em]"
+          >
+            <span>[</span>
+            <span className="flex min-w-0 flex-1 justify-between">
+              {segmentIds.map((segmentId, index) => {
+                const isFilled = index < filledSegments;
+                const isPulse = index === pulseIndex;
+                return (
+                  <span className="contents" key={segmentId}>
+                    {index === filledSegments ? (
+                      <span className="text-swim-ink">|</span>
+                    ) : null}
+                    <span
+                      className={
+                        isPulse ? "motion-safe:animate-pulse" : undefined
+                      }
+                    >
+                      {isFilled || (isPulse && trend === "rising") ? "#" : "-"}
+                    </span>
+                  </span>
+                );
+              })}
+              {filledSegments === segmentCount ? (
+                <span className="text-swim-ink">|</span>
+              ) : null}
+            </span>
+            <span>]</span>
+          </div>
+          {tideBounds ? (
+            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-slate-600 md:text-[11px]">
+              <span>
+                low {formatTideHeight(tideBounds.low.prediction)} {state.units}
+              </span>
+              <span className="font-semibold text-swim-ink">
+                now {formatTideHeight(state.estimated_height ?? undefined)}{" "}
+                {state.units}
+              </span>
+              <span>
+                high {formatTideHeight(tideBounds.high.prediction)}{" "}
+                {state.units}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getTideBounds(previousTide?: TideEntry, nextTide?: TideEntry) {
+  if (!previousTide || !nextTide || previousTide.type === nextTide.type) {
+    return null;
+  }
+
+  const tides = [previousTide, nextTide];
+  const low = tides.find((tide) => tide.type === "low");
+  const high = tides.find((tide) => tide.type === "high");
+
+  return low && high ? { high, low } : null;
 }
 
 function CurrentSummary({

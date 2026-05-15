@@ -45,3 +45,9 @@ export function formatMagnitude(value: number | undefined) {
     ? value.toFixed(1)
     : "N/A";
 }
+
+export function formatTideHeight(value: number | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toFixed(1)
+    : "N/A";
+}

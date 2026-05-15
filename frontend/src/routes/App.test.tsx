@@ -61,7 +61,7 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
   },
 };
 
-const conditionsPayload = {
+const conditionsPayload: components["schemas"]["LocationConditions"] = {
   location: {
     code: "nyc",
     name: "New York",
@@ -93,6 +93,13 @@ const conditionsPayload = {
         prediction: 0.4,
       },
     ],
+    state: {
+      timestamp: "2026-05-13T07:30:00-04:00",
+      estimated_height: 1.6,
+      units: "ft",
+      trend: "rising",
+      height_pct: 0.35,
+    },
   },
   current: {
     timestamp: "2026-05-13T07:30:00-04:00",
@@ -105,7 +112,7 @@ const conditionsPayload = {
     state_description: "moderate ebb and building",
     source_type: "prediction",
   },
-} as const;
+};
 
 function renderLocation() {
   const queryClient = new QueryClient({
@@ -137,6 +144,11 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByText("Grimaldo's Chair")).toBeVisible();
   expect(screen.getByText("61.4°F")).toBeVisible();
   expect(screen.getByText(/moderate ebb and building/)).toBeVisible();
+  expect(screen.getByText("TIDE")).toBeVisible();
+  expect(screen.getByText("rising")).toBeVisible();
+  expect(screen.getByText("low 0.2 ft")).toBeVisible();
+  expect(screen.getByText("now 1.6 ft")).toBeVisible();
+  expect(screen.getByText("high 4.8 ft")).toBeVisible();
   expect(screen.getByText("CURRENT")).toBeVisible();
   expect(screen.getByText("50% building")).toBeVisible();
   expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
@@ -155,4 +167,28 @@ test("renders unavailable condition states on first-load failure", () => {
     screen.getByText("Current water temperature is unavailable."),
   ).toBeVisible();
   expect(screen.getByText("N/A")).toBeVisible();
+});
+
+test("keeps tide rows when tide state is unavailable", () => {
+  render(
+    <MemoryRouter>
+      <ConditionsSummary
+        conditions={{
+          ...conditionsPayload,
+          tides: {
+            past: conditionsPayload.tides?.past ?? [],
+            next: conditionsPayload.tides?.next ?? [],
+            state: null,
+          },
+        }}
+        hasError={false}
+        isLoading={false}
+        locationCode="nyc"
+      />
+    </MemoryRouter>,
+  );
+
+  expect(screen.queryByText("TIDE")).not.toBeInTheDocument();
+  expect(screen.getByText("Last tide")).toBeVisible();
+  expect(screen.getByText("Next tide")).toBeVisible();
 });

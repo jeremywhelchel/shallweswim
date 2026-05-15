@@ -118,6 +118,13 @@ const conditionsPayload = {
         prediction: 0.4,
       },
     ],
+    state: {
+      timestamp: "2026-05-13T07:30:00-04:00",
+      estimated_height: 1.6,
+      units: "ft",
+      trend: "rising",
+      height_pct: 0.35,
+    },
   },
   current: {
     timestamp: "2026-05-13T07:30:00-04:00",
@@ -218,6 +225,10 @@ test("renders the NYC location vertical slice", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("Coney Island-Stillwell Av")).toHaveCount(2);
   await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+  await expect(page.getByText("TIDE", { exact: true })).toBeVisible();
+  await expect(page.getByText("low 0.2 ft")).toBeVisible();
+  await expect(page.getByText("now 1.6 ft")).toBeVisible();
+  await expect(page.getByText("high 4.8 ft")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "goodservice.io" }),
   ).toBeVisible();

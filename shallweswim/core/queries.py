@@ -21,6 +21,8 @@ from shallweswim.types import (
     CurrentDirection,
     CurrentInfo,
     CurrentPhase,
+    CurrentRange,
+    CurrentRangePoint,
     CurrentStrength,
     CurrentTrend,
     DataSourceType,
@@ -503,6 +505,92 @@ def _state_description_for_current(
     raise ValueError(f"Unhandled current phase: {phase}")
 
 
+def _datetime_or_none(value: Any) -> datetime.datetime | None:
+    """Convert a pandas/numpy datetime scalar to a Python datetime."""
+    if value is None or pd.isna(value):
+        return None
+
+    timestamp = pd.Timestamp(value)
+    if pd.isna(timestamp):
+        return None
+    return timestamp.to_pydatetime()
+
+
+def _float_or_none(value: Any) -> float | None:
+    """Convert a pandas/numpy numeric scalar to float when finite."""
+    if value is None or pd.isna(value):
+        return None
+
+    result = float(value)
+    return result if np.isfinite(result) else None
+
+
+def _current_range_from_segment_context(
+    *,
+    phase: CurrentPhase,
+    trend: CurrentTrend | None,
+    segment_peak_time: Any,
+    segment_peak_magnitude: Any,
+    segment_phase: Any,
+    segment_start_slack_time: Any,
+    segment_start_slack_magnitude: Any,
+    segment_end_slack_time: Any,
+    segment_end_slack_magnitude: Any,
+) -> CurrentRange | None:
+    """Build current range metadata from precomputed segment columns."""
+    if phase in {
+        CurrentPhase.SLACK_BEFORE_FLOOD,
+        CurrentPhase.SLACK_BEFORE_EBB,
+        CurrentPhase.SLACK,
+    }:
+        return None
+
+    peak_time = _datetime_or_none(segment_peak_time)
+    peak_magnitude = _float_or_none(segment_peak_magnitude)
+    if peak_time is None or peak_magnitude is None:
+        return None
+
+    try:
+        peak_phase = CurrentPhase(str(segment_phase))
+    except ValueError:
+        return None
+    if peak_phase not in {CurrentPhase.FLOOD, CurrentPhase.EBB}:
+        return None
+
+    start_slack = (
+        _datetime_or_none(segment_start_slack_time),
+        _float_or_none(segment_start_slack_magnitude),
+    )
+    end_slack = (
+        _datetime_or_none(segment_end_slack_time),
+        _float_or_none(segment_end_slack_magnitude),
+    )
+    if trend == CurrentTrend.EASING:
+        slack_time, slack_magnitude = end_slack
+    else:
+        slack_time, slack_magnitude = start_slack
+        if trend == CurrentTrend.STEADY and (
+            slack_time is None or slack_magnitude is None
+        ):
+            slack_time, slack_magnitude = end_slack
+
+    if slack_time is None or slack_magnitude is None:
+        return None
+
+    return CurrentRange(
+        slack=CurrentRangePoint(
+            timestamp=slack_time,
+            magnitude=slack_magnitude,
+            phase=None,
+        ),
+        peak=CurrentRangePoint(
+            timestamp=peak_time,
+            magnitude=peak_magnitude,
+            phase=peak_phase,
+        ),
+    )
+
+
 # =============================================================================
 # Query functions
 # =============================================================================
@@ -715,6 +803,7 @@ def predict_flow_from_precomputed_frame(
             - magnitude_pct: Relative magnitude percentage (0.0-1.0) compared to the
               peak in the current continuous flood or ebb segment
             - state_description: Display-ready current state phrase
+            - range: Optional slack-to-peak context for the active current segment
             - source_type: Always PREDICTION for this method
 
     Raises:
@@ -730,9 +819,9 @@ def predict_flow_from_precomputed_frame(
     _require_naive_datetime_index(df, "Current prediction")
 
     # Fetch only the scalar columns needed for the public response. The
-    # precomputed frame also carries segment metadata for future range labels,
-    # and materializing a full mixed-type pandas row on every request is
-    # measurably slower.
+    # precomputed frame also carries segment metadata for range labels, and
+    # materializing a full mixed-type pandas row on every request is measurably
+    # slower.
     row_time = df.index.asof(t)
     if not isinstance(row_time, datetime.datetime):
         raise DataUnavailableError(
@@ -743,11 +832,29 @@ def predict_flow_from_precomputed_frame(
     local_pct = float(df.at[row_time, "local_mag_pct"])
     slope = float(df.at[row_time, "slope"])
     direction_str = str(df.at[row_time, "direction"])
+    segment_peak_time = df.at[row_time, "segment_peak_time"]
+    segment_peak_magnitude = df.at[row_time, "segment_peak_magnitude"]
+    segment_phase = df.at[row_time, "segment_phase"]
+    segment_start_slack_time = df.at[row_time, "segment_start_slack_time"]
+    segment_start_slack_magnitude = df.at[row_time, "segment_start_slack_magnitude"]
+    segment_end_slack_time = df.at[row_time, "segment_end_slack_time"]
+    segment_end_slack_magnitude = df.at[row_time, "segment_end_slack_magnitude"]
 
     phase = _phase_for_current(df, row_time, magnitude, direction_str)
     strength = _strength_for_current(phase, local_pct)
     trend = _trend_for_current(phase, slope)
     state_description = _state_description_for_current(phase, strength, trend)
+    current_range = _current_range_from_segment_context(
+        phase=phase,
+        trend=trend,
+        segment_peak_time=segment_peak_time,
+        segment_peak_magnitude=segment_peak_magnitude,
+        segment_phase=segment_phase,
+        segment_start_slack_time=segment_start_slack_time,
+        segment_start_slack_magnitude=segment_start_slack_magnitude,
+        segment_end_slack_time=segment_end_slack_time,
+        segment_end_slack_magnitude=segment_end_slack_magnitude,
+    )
 
     if not direction_str:
         if phase == CurrentPhase.SLACK_BEFORE_FLOOD:
@@ -766,6 +873,7 @@ def predict_flow_from_precomputed_frame(
         magnitude=magnitude,
         magnitude_pct=local_pct,
         state_description=state_description,
+        range=current_range,
     )
 
 

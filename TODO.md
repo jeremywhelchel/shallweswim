@@ -29,6 +29,10 @@
   cluttered on mobile, clarify that tide endpoints are low/high range labels
   rather than chronological order, and preserve the current compact data-dense
   mono treatment.
+- Extend current `range` context to slack rows when useful. The current API only
+  exposes slack-to-peak range for non-slack rows with complete segment context;
+  slack phases can later be associated with the upcoming flood/ebb segment so
+  the current meter can show where it is about to build.
 
 ## Future Tide Curve Source Upgrade
 

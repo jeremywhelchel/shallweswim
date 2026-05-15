@@ -140,6 +140,38 @@ class TideInfo(BaseModel):
     )
 
 
+class CurrentRangePoint(BaseModel):
+    """A contextual point in a current-speed range."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    timestamp: datetime.datetime = Field(
+        ...,
+        description="Timestamp of this current range point in the location's local timezone",
+    )
+    magnitude: float = Field(..., description="Current speed at this point in knots")
+    units: str = Field("kt", description="Current speed units")
+    phase: CurrentPhase | None = Field(
+        None,
+        description="Current phase for this point when applicable; null for slack.",
+    )
+
+
+class CurrentRange(BaseModel):
+    """Contextual slack-to-peak current range for API responses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slack: CurrentRangePoint = Field(
+        ...,
+        description="Relevant slack boundary for the current segment and trend.",
+    )
+    peak: CurrentRangePoint = Field(
+        ...,
+        description="Peak current point for the current continuous flood or ebb segment.",
+    )
+
+
 class CurrentInfo(BaseModel):
     """Current prediction/observation information for API responses."""
 
@@ -190,6 +222,14 @@ class CurrentInfo(BaseModel):
         description=(
             "Display-ready current state phrase, such as 'strong ebb and building' "
             "or 'slack before flood' (null if non-tidal)."
+        ),
+    )
+    range: CurrentRange | None = Field(
+        None,
+        description=(
+            "Contextual slack-to-peak range for prediction-backed current displays; "
+            "null for observations, non-tidal currents, slack-only data, or "
+            "incomplete segment context."
         ),
     )
     source_type: DataSourceType = Field(

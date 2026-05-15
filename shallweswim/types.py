@@ -119,6 +119,24 @@ class TideInfo:
 
 
 @dataclass
+class CurrentRangePoint:
+    """A contextual point in a current-speed range."""
+
+    timestamp: datetime.datetime
+    magnitude: float
+    units: str = "kt"
+    phase: CurrentPhase | None = None
+
+
+@dataclass
+class CurrentRange:
+    """Contextual slack-to-peak range for a current prediction."""
+
+    slack: CurrentRangePoint
+    peak: CurrentRangePoint
+
+
+@dataclass
 class CurrentInfo:
     """Structured information about the current water conditions (prediction or observation)."""
 
@@ -143,6 +161,7 @@ class CurrentInfo:
 
     magnitude_pct: float | None = None
     state_description: str | None = None
+    range: CurrentRange | None = None
 
 
 @dataclass

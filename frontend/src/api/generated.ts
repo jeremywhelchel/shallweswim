@@ -867,6 +867,8 @@ export interface components {
             magnitude_pct?: number | null;
             /** @description Compact current phase for displays. Tidal prediction values are flood, ebb, slack_before_flood, slack_before_ebb, or slack. Slack phases are assigned when absolute current magnitude is below 0.2 knots; slack_before_* indicates the next non-slack direction predicted by the curve. */
             phase?: components["schemas"]["CurrentPhase"] | null;
+            /** @description Contextual slack-to-peak range for prediction-backed current displays; null for observations, non-tidal currents, slack-only data, or incomplete segment context. */
+            range?: components["schemas"]["CurrentRange"] | null;
             /** @description Indicates if data is prediction or observation (Enum: DataSourceType) */
             source_type: components["schemas"]["DataSourceType"];
             /**
@@ -890,6 +892,41 @@ export interface components {
          * @enum {string}
          */
         CurrentPhase: "flood" | "ebb" | "slack_before_flood" | "slack_before_ebb" | "slack";
+        /**
+         * CurrentRange
+         * @description Contextual slack-to-peak current range for API responses.
+         */
+        CurrentRange: {
+            /** @description Peak current point for the current continuous flood or ebb segment. */
+            peak: components["schemas"]["CurrentRangePoint"];
+            /** @description Relevant slack boundary for the current segment and trend. */
+            slack: components["schemas"]["CurrentRangePoint"];
+        };
+        /**
+         * CurrentRangePoint
+         * @description A contextual point in a current-speed range.
+         */
+        CurrentRangePoint: {
+            /**
+             * Magnitude
+             * @description Current speed at this point in knots
+             */
+            magnitude: number;
+            /** @description Current phase for this point when applicable; null for slack. */
+            phase?: components["schemas"]["CurrentPhase"] | null;
+            /**
+             * Timestamp
+             * Format: date-time
+             * @description Timestamp of this current range point in the location's local timezone
+             */
+            timestamp: string;
+            /**
+             * Units
+             * @description Current speed units
+             * @default kt
+             */
+            units: string;
+        };
         /**
          * CurrentStrength
          * @description Cycle-relative current strength for displays.

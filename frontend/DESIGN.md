@@ -849,13 +849,15 @@ Compact tide/current visual summaries:
   plots elsewhere on the page.
 - The bar direction matters. It should communicate whether the value is filling
   toward a peak or draining away from one, not only the current percentage.
-- For currents, use the existing `current.magnitude_pct`, `current.trend`,
-  `current.phase`, `current.magnitude`, and state description fields.
+- For currents, use backend-derived `current.magnitude_pct`,
+  `current.trend`, `current.phase`, `current.magnitude`,
+  `current.state_description`, and `current.range` when available.
 - Current bar labeling should make the basis explicit, for example:
   - current direction/phase: flooding, ebbing, slack before flood, etc.
   - whether the current is building, easing, or steady
   - current value in knots
-  - expected local peak value and time when available
+  - relevant slack value/time and segment peak value/time when
+    `current.range` is available
 - For tides, do not approximate the normalized percentage in the frontend. Add a
   backend-derived tide summary before building a tide bar so the app can display
   the current predicted tide height, normalized height/progress, rising/falling

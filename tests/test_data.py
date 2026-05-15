@@ -256,6 +256,61 @@ async def test_current_prediction_reuses_precomputed_frame(
     assert prepare_spy.call_count == 2
 
 
+def test_current_prediction_range_uses_segment_start_slack_when_building(
+    mock_data_with_currents: LocationDataManager,
+) -> None:
+    """Building current range runs from prior slack to the segment peak."""
+    result = mock_data_with_currents.predict_flow_at_time(
+        datetime.datetime(2025, 4, 22, 13, 0, 0)
+    )
+
+    assert result.range is not None
+    assert result.trend == CurrentTrend.BUILDING
+    assert result.range.slack.timestamp == datetime.datetime(2025, 4, 22, 11, 36, 0)
+    assert result.range.slack.magnitude == pytest.approx(0.0)
+    assert result.range.slack.units == "kt"
+    assert result.range.slack.phase is None
+    assert result.range.peak.timestamp == datetime.datetime(2025, 4, 22, 15, 0, 0)
+    assert result.range.peak.magnitude == pytest.approx(1.5)
+    assert result.range.peak.units == "kt"
+    assert result.range.peak.phase == CurrentPhase.FLOOD
+
+
+def test_current_prediction_range_uses_segment_end_slack_when_easing(
+    mock_data_with_currents: LocationDataManager,
+) -> None:
+    """Easing current range uses the upcoming slack boundary."""
+    result = mock_data_with_currents.predict_flow_at_time(
+        datetime.datetime(2025, 4, 22, 16, 0, 0)
+    )
+
+    assert result.range is not None
+    assert result.trend == CurrentTrend.EASING
+    assert result.range.slack.timestamp == datetime.datetime(2025, 4, 22, 18, 0, 0)
+    assert result.range.slack.magnitude == pytest.approx(0.1)
+    assert result.range.peak.timestamp == datetime.datetime(2025, 4, 22, 15, 0, 0)
+    assert result.range.peak.magnitude == pytest.approx(1.5)
+    assert result.range.peak.phase == CurrentPhase.FLOOD
+
+
+def test_current_prediction_range_supports_ebb_segments(
+    mock_data_with_currents: LocationDataManager,
+) -> None:
+    """Ebb ranges expose ebb peak context."""
+    result = mock_data_with_currents.predict_flow_at_time(
+        datetime.datetime(2025, 4, 22, 7, 0, 0)
+    )
+
+    assert result.range is not None
+    assert result.phase == CurrentPhase.EBB
+    assert result.trend == CurrentTrend.BUILDING
+    assert result.range.slack.timestamp == datetime.datetime(2025, 4, 22, 4, 0, 0)
+    assert result.range.slack.magnitude == pytest.approx(0.1)
+    assert result.range.peak.timestamp == datetime.datetime(2025, 4, 22, 8, 0, 0)
+    assert result.range.peak.magnitude == pytest.approx(1.5)
+    assert result.range.peak.phase == CurrentPhase.EBB
+
+
 def test_prepare_current_prediction_frame_derives_segment_context(
     mock_current_data: pd.DataFrame,
 ) -> None:
@@ -344,6 +399,14 @@ def test_prepare_current_prediction_frame_handles_all_slack_data() -> None:
     assert frame["segment_id"].isna().all()
     assert frame["segment_peak_time"].isna().all()
     assert frame["segment_peak_magnitude"].isna().all()
+
+    result = queries.predict_flow_from_precomputed_frame(
+        frame,
+        create_test_location_config(),
+        datetime.datetime(2025, 4, 22, 19, 0, 0),
+    )
+    assert result.phase == CurrentPhase.SLACK
+    assert result.range is None
 
 
 def test_prepare_tide_prediction_frame_derives_minute_curve(

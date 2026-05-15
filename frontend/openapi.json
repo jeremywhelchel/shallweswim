@@ -436,6 +436,17 @@
             ],
             "description": "Compact current phase for displays. Tidal prediction values are flood, ebb, slack_before_flood, slack_before_ebb, or slack. Slack phases are assigned when absolute current magnitude is below 0.2 knots; slack_before_* indicates the next non-slack direction predicted by the curve."
           },
+          "range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentRange"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Contextual slack-to-peak range for prediction-backed current displays; null for observations, non-tidal currents, slack-only data, or incomplete segment context."
+          },
           "source_type": {
             "$ref": "#/components/schemas/DataSourceType",
             "description": "Indicates if data is prediction or observation (Enum: DataSourceType)"
@@ -499,6 +510,66 @@
         ],
         "title": "CurrentPhase",
         "type": "string"
+      },
+      "CurrentRange": {
+        "additionalProperties": false,
+        "description": "Contextual slack-to-peak current range for API responses.",
+        "properties": {
+          "peak": {
+            "$ref": "#/components/schemas/CurrentRangePoint",
+            "description": "Peak current point for the current continuous flood or ebb segment."
+          },
+          "slack": {
+            "$ref": "#/components/schemas/CurrentRangePoint",
+            "description": "Relevant slack boundary for the current segment and trend."
+          }
+        },
+        "required": [
+          "slack",
+          "peak"
+        ],
+        "title": "CurrentRange",
+        "type": "object"
+      },
+      "CurrentRangePoint": {
+        "additionalProperties": false,
+        "description": "A contextual point in a current-speed range.",
+        "properties": {
+          "magnitude": {
+            "description": "Current speed at this point in knots",
+            "title": "Magnitude",
+            "type": "number"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentPhase"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current phase for this point when applicable; null for slack."
+          },
+          "timestamp": {
+            "description": "Timestamp of this current range point in the location's local timezone",
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "units": {
+            "default": "kt",
+            "description": "Current speed units",
+            "title": "Units",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp",
+          "magnitude"
+        ],
+        "title": "CurrentRangePoint",
+        "type": "object"
       },
       "CurrentStrength": {
         "description": "Cycle-relative current strength for displays.",

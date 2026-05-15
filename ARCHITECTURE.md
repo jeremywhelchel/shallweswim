@@ -275,6 +275,13 @@ normalized against the peak within the current continuous flood or ebb segment,
 not against a fixed theoretical maximum. A neap and spring tide can both report
 `magnitude_pct` near `1.0` while having different absolute `magnitude` values.
 
+`range` is optional slack-to-peak context for prediction-backed current displays.
+When present, `range.slack` is the relevant slack boundary for the current
+segment and trend, and `range.peak` is the peak of the current continuous flood
+or ebb segment. `range` is `null` for observation sources, non-tidal currents,
+slack-only data, slack phases that are not associated with a non-slack segment,
+or incomplete segment context.
+
 For prediction-based current feeds, `LocationDataManager` precomputes the
 derived prediction frame when the raw current feed changes. That frame contains
 the segment peak-relative magnitude, direction, slope, segment peak metadata,

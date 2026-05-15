@@ -322,6 +322,17 @@ def test_get_location_conditions(
         strength=sw_types.CurrentStrength.MODERATE,
         trend=sw_types.CurrentTrend.BUILDING,
         state_description="moderate flood and building",
+        range=sw_types.CurrentRange(
+            slack=sw_types.CurrentRangePoint(
+                timestamp=mock_dt - datetime.timedelta(hours=2),
+                magnitude=0.0,
+            ),
+            peak=sw_types.CurrentRangePoint(
+                timestamp=mock_dt + datetime.timedelta(hours=1),
+                magnitude=1.4,
+                phase=sw_types.CurrentPhase.FLOOD,
+            ),
+        ),
     )
 
     # --- 2. Mock Manager Methods and Attributes ---
@@ -419,6 +430,21 @@ def test_get_location_conditions(
     assert mock_current_info.trend is not None  # Help mypy
     assert data["current"]["trend"] == mock_current_info.trend.value
     assert data["current"]["state_description"] == mock_current_info.state_description
+    assert data["current"]["range"] is not None
+    assert (
+        data["current"]["range"]["slack"]["timestamp"]
+        == (mock_dt - datetime.timedelta(hours=2)).isoformat()
+    )
+    assert data["current"]["range"]["slack"]["magnitude"] == 0.0
+    assert data["current"]["range"]["slack"]["units"] == "kt"
+    assert data["current"]["range"]["slack"]["phase"] is None
+    assert (
+        data["current"]["range"]["peak"]["timestamp"]
+        == (mock_dt + datetime.timedelta(hours=1)).isoformat()
+    )
+    assert data["current"]["range"]["peak"]["magnitude"] == 1.4
+    assert data["current"]["range"]["peak"]["units"] == "kt"
+    assert data["current"]["range"]["peak"]["phase"] == "flood"
 
 
 def test_openapi_documents_condition_state_enums(test_client: TestClient) -> None:
@@ -441,6 +467,10 @@ def test_openapi_documents_condition_state_enums(test_client: TestClient) -> Non
     assert "phase" in schemas["CurrentInfo"]["properties"]
     assert "strength" in schemas["CurrentInfo"]["properties"]
     assert "trend" in schemas["CurrentInfo"]["properties"]
+    assert "range" in schemas["CurrentInfo"]["properties"]
+    range_point_timestamp = schemas["CurrentRangePoint"]["properties"]["timestamp"]
+    assert range_point_timestamp["type"] == "string"
+    assert range_point_timestamp["format"] == "date-time"
     assert "state" in schemas["TideInfo"]["properties"]
     tide_state_timestamp = schemas["TideState"]["properties"]["timestamp"]
     assert tide_state_timestamp["type"] == "string"
@@ -620,6 +650,55 @@ def test_currents_endpoint_no_currents_source_returns_404(
     response = test_client.get("/api/sfo/currents")
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert "does not support" in response.json()["detail"]
+
+
+def test_currents_endpoint_serializes_current_range(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Current prediction responses include optional slack-to-peak range context."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_dt = datetime.datetime(2025, 5, 4, 12, 0, 0)
+    mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
+        timestamp=mock_dt,
+        magnitude=0.753,
+        source_type=sw_types.DataSourceType.PREDICTION,
+        magnitude_pct=0.65,
+        direction=sw_types.CurrentDirection.FLOODING,
+        phase=sw_types.CurrentPhase.FLOOD,
+        strength=sw_types.CurrentStrength.MODERATE,
+        trend=sw_types.CurrentTrend.BUILDING,
+        state_description="moderate flood and building",
+        range=sw_types.CurrentRange(
+            slack=sw_types.CurrentRangePoint(
+                timestamp=mock_dt - datetime.timedelta(hours=2),
+                magnitude=0.0,
+            ),
+            peak=sw_types.CurrentRangePoint(
+                timestamp=mock_dt + datetime.timedelta(hours=1),
+                magnitude=1.4,
+                phase=sw_types.CurrentPhase.FLOOD,
+            ),
+        ),
+    )
+
+    response = test_client.get("/api/nyc/currents")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["current"]["range"] is not None
+    assert (
+        data["current"]["range"]["slack"]["timestamp"]
+        == (mock_dt - datetime.timedelta(hours=2)).isoformat()
+    )
+    assert data["current"]["range"]["slack"]["magnitude"] == 0.0
+    assert data["current"]["range"]["slack"]["phase"] is None
+    assert (
+        data["current"]["range"]["peak"]["timestamp"]
+        == (mock_dt + datetime.timedelta(hours=1)).isoformat()
+    )
+    assert data["current"]["range"]["peak"]["magnitude"] == 1.4
+    assert data["current"]["range"]["peak"]["phase"] == "flood"
 
 
 def test_invalid_location_returns_404(
@@ -859,3 +938,4 @@ def test_conditions_endpoint_handles_nan_in_current_data(
     # NaN should be serialized as null
     assert data["current"]["magnitude_pct"] is None
     assert data["current"]["magnitude"] == 1.5
+    assert data["current"]["range"] is None

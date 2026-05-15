@@ -241,6 +241,7 @@ def validate_current_data(current_data: dict) -> None:
     assert "timestamp" in current_data
     assert "magnitude" in current_data
     assert "source_type" in current_data
+    assert "range" in current_data
     assert isinstance(current_data["timestamp"], str)
     assert isinstance(current_data["magnitude"], int | float)
     assert isinstance(current_data["source_type"], str)
@@ -273,6 +274,30 @@ def validate_current_data(current_data: dict) -> None:
     assert isinstance(current_data.get("state_description"), str | type(None)), (
         "State description is not str or None"
     )
+    if current_data["range"] is not None:
+        current_range = current_data["range"]
+        assert "slack" in current_range, "Missing current range slack point"
+        assert "peak" in current_range, "Missing current range peak point"
+        for point_name in ("slack", "peak"):
+            point = current_range[point_name]
+            assert "timestamp" in point, f"Missing current range {point_name} timestamp"
+            assert "magnitude" in point, f"Missing current range {point_name} magnitude"
+            assert "units" in point, f"Missing current range {point_name} units"
+            assert "phase" in point, f"Missing current range {point_name} phase"
+            _parse_naive_time(point["timestamp"])
+            assert isinstance(point["magnitude"], int | float), (
+                f"Current range {point_name} magnitude is not a number"
+            )
+            assert point["units"] == "kt", (
+                f"Unexpected current range {point_name} units: {point['units']}"
+            )
+        assert current_range["slack"]["phase"] is None, (
+            "Current range slack phase should be null"
+        )
+        assert current_range["peak"]["phase"] in [
+            CurrentPhase.FLOOD.value,
+            CurrentPhase.EBB.value,
+        ], f"Invalid current range peak phase: {current_range['peak']['phase']}"
 
 
 # --- Test functions ---
@@ -434,6 +459,7 @@ def validate_currents_response(response: httpx.Response, location_code: str) -> 
     assert "trend" in current, "Missing current trend"
     assert "magnitude" in current, "Missing current magnitude"
     assert "magnitude_pct" in current, "Missing current magnitude percentage"
+    assert "range" in current, "Missing current range context"
     assert "state_description" in current, "Missing current state description"
     assert current["direction"] in [
         CurrentDirection.FLOODING.value,

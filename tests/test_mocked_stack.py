@@ -401,11 +401,24 @@ async def test_conditions_with_mock_data(mock_api_client: TestClient) -> None:
     assert data["tides"] is not None
     assert len(data["tides"]["past"]) > 0
     assert len(data["tides"]["next"]) > 0
+    assert "state" in data["tides"]
+    assert data["tides"]["state"] is not None
+    assert data["tides"]["state"]["units"] == "ft"
+    assert data["tides"]["state"]["trend"] in ["rising", "falling", "steady"]
+    if data["tides"]["state"]["height_pct"] is not None:
+        assert 0.0 <= data["tides"]["state"]["height_pct"] <= 1.0
 
     # Currents should be present (NYC has currents)
     assert data["current"] is not None
     assert "magnitude" in data["current"]
     assert "direction" in data["current"]
+    assert "range" in data["current"]
+    if data["current"]["range"] is not None:
+        current_range = data["current"]["range"]
+        assert current_range["slack"]["units"] == "kt"
+        assert current_range["slack"]["phase"] is None
+        assert current_range["peak"]["units"] == "kt"
+        assert current_range["peak"]["phase"] in ["flood", "ebb"]
 
 
 @pytest.mark.asyncio

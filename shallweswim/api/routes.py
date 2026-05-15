@@ -28,6 +28,8 @@ from shallweswim.api_types import (
     AppPresentationLink,
     AppSourceCitations,
     CurrentInfo,
+    CurrentRange,
+    CurrentRangePoint,
     CurrentsResponse,
     LegacyChartInfo,
     LocationConditions,
@@ -94,6 +96,27 @@ warnings.filterwarnings(
     # Optionally target the specific module if needed, but keeping broad for now
     # module="pydantic.type_adapter"
 )
+
+
+def api_current_range(current_range: types.CurrentRange | None) -> CurrentRange | None:
+    """Convert internal current range context to the API model."""
+    if current_range is None:
+        return None
+
+    return CurrentRange(
+        slack=CurrentRangePoint(
+            timestamp=current_range.slack.timestamp,
+            magnitude=current_range.slack.magnitude,
+            units=current_range.slack.units,
+            phase=current_range.slack.phase,
+        ),
+        peak=CurrentRangePoint(
+            timestamp=current_range.peak.timestamp,
+            magnitude=current_range.peak.magnitude,
+            units=current_range.peak.units,
+            phase=current_range.peak.phase,
+        ),
+    )
 
 
 async def initialize_location_data(
@@ -435,6 +458,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 magnitude=current_info_internal.magnitude,
                 magnitude_pct=current_info_internal.magnitude_pct,
                 state_description=current_info_internal.state_description,
+                range=api_current_range(current_info_internal.range),
                 source_type=current_info_internal.source_type,
             )
 
@@ -817,6 +841,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             magnitude=round(current_info.magnitude, 1),
             magnitude_pct=current_info.magnitude_pct,
             state_description=current_info.state_description,
+            range=api_current_range(current_info.range),
             source_type=current_info.source_type,
         )
 

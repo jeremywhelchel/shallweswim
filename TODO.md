@@ -37,6 +37,15 @@
   `up 1.2°F in 24h`, `down 3.0°F this week`, or `near seasonal range`. Do this
   from structured historical/live temperature data rather than inferring it from
   plot images or adding filler copy in the frontend.
+- Preserve NYC as a derived current location if we upgrade current prediction
+  sources. NYC currently estimates local swim-area current by averaging nearby
+  NOAA current prediction station velocity curves. A future NOAA curve/covariate
+  upgrade should keep that explicit virtual-location model: build or fetch a
+  prediction curve per source station, normalize them onto a common timestamped
+  velocity series, blend the station curves into one location curve, and only
+  then derive phase, strength, trend, slack/peak range, and API/UI state. Avoid
+  blending harmonic constituents, offsets, or other model inputs up front unless
+  we have a defensible physical model for doing so.
 
 ## Future Tide Curve Source Upgrade
 

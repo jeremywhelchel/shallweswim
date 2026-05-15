@@ -284,6 +284,15 @@ requested time instead of recalculating those columns across the full current
 prediction DataFrame. Preserve this split: derived data belongs in the
 background/feed-update path; request handlers should remain cheap lookups.
 
+Tide state follows the same derived-cache pattern. The raw tide feed currently
+stores NOAA high/low prediction events (`interval=hilo`). When that feed changes,
+`LocationDataManager` precomputes a minute-resolution tide-height frame from
+those events for future point-in-time tide state lookups. This derived frame is
+optional: if a location has no tide source, no loaded tide data, or too few
+events to interpolate, the manager leaves the derived tide frame unavailable
+without blocking the existing high/low tide event responses. Request handlers
+must not recompute the tide curve across the full feed DataFrame.
+
 ### Client Timeouts
 
 All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIMEOUT` in `clients/base.py`):

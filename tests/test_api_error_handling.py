@@ -186,6 +186,31 @@ def test_conditions_partial_data_returns_200(app_with_mock_manager: Any) -> None
     assert data["current"] is None  # Not available - no crash
 
 
+def test_conditions_ignores_unavailable_derived_tide_frame(
+    app_with_mock_manager: Any,
+) -> None:
+    """Conditions can serve high/low tides when derived tide state is unavailable."""
+    app, mock_manager = app_with_mock_manager
+    mock_manager.has_data = True
+
+    def has_feed_data_side_effect(feed_name: str) -> bool:
+        return feed_name == FEED_TIDES
+
+    mock_manager.has_feed_data.side_effect = has_feed_data_side_effect
+    mock_manager._tide_prediction_frame = None
+    mock_manager.get_current_tide_info.return_value = create_mock_tide_info()
+
+    client = TestClient(app)
+    response = client.get("/api/nyc/conditions")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tides"] is not None
+    assert data["tides"]["past"][0]["type"] == "low"
+    assert data["tides"]["next"][0]["type"] == "high"
+    mock_manager.get_current_tide_info.assert_called_once()
+
+
 def test_conditions_all_feeds_missing_specific_data(
     app_with_mock_manager: Any,
 ) -> None:

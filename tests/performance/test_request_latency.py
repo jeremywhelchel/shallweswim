@@ -28,7 +28,10 @@ from shallweswim import config as config_lib
 from shallweswim.api import register_routes
 from shallweswim.core import feeds
 from shallweswim.core.manager import LocationDataManager
-from shallweswim.core.queries import prepare_current_prediction_frame
+from shallweswim.core.queries import (
+    prepare_current_prediction_frame,
+    prepare_tide_prediction_frame,
+)
 from shallweswim.types import TIDE_TYPE_CATEGORIES
 from shallweswim.util import utc_now
 from tests.conftest import TEST_CONFIG_FULL
@@ -122,6 +125,7 @@ def _build_manager(process_pool: ProcessPoolExecutor) -> LocationDataManager:
     manager._feeds[feeds.FEED_CURRENTS] = _loaded_feed(_make_currents(now))
     manager._feeds[feeds.FEED_LIVE_TEMPS] = _loaded_feed(_make_live_temps(now))
     manager._feeds[feeds.FEED_HISTORIC_TEMPS] = None
+    manager._precompute_tide_predictions()
     manager._precompute_current_predictions()
     return manager
 
@@ -226,6 +230,39 @@ def test_manager_current_prediction_lookup_stays_precomputed(
     _record_result("manager.predict_flow_at_time", samples, MANAGER_P95_LIMIT_MS)
 
     assert calls == 1
+    assert _p95(samples) < MANAGER_P95_LIMIT_MS
+
+
+def test_manager_tide_prediction_frame_stays_precomputed(
+    performance_manager: LocationDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated tide precompute checks reuse the derived tide frame."""
+    calls = 0
+
+    def counting_prepare(tides_data: pd.DataFrame) -> pd.DataFrame:
+        nonlocal calls
+        calls += 1
+        return prepare_tide_prediction_frame(tides_data)
+
+    monkeypatch.setattr(
+        "shallweswim.core.manager.queries.prepare_tide_prediction_frame",
+        counting_prepare,
+    )
+
+    # Clear the eager fixture precompute so this test proves one recomputation
+    # followed by repeated cache reuse.
+    performance_manager._tide_prediction_frame = None
+    performance_manager._tide_prediction_source_timestamp = None
+    performance_manager._tide_prediction_source_data_id = None
+
+    samples = _measure(performance_manager._precompute_tide_predictions)
+    _record_result(
+        "manager._precompute_tide_predictions", samples, MANAGER_P95_LIMIT_MS
+    )
+
+    assert calls == 1
+    assert performance_manager._tide_prediction_frame is not None
     assert _p95(samples) < MANAGER_P95_LIMIT_MS
 
 

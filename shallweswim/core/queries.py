@@ -57,6 +57,7 @@ class DataUnavailableError(Exception):
 SLACK_MAGNITUDE_THRESHOLD_KNOTS = 0.2
 LIGHT_CURRENT_MAX_PCT = 1 / 3
 MODERATE_CURRENT_MAX_PCT = 2 / 3
+TIDE_CURVE_FREQUENCY = "60s"
 
 
 def get_feed_data(
@@ -121,6 +122,78 @@ def record_to_tide_entry(record: dict[str, Any]) -> TideEntry:
         type=TideCategory(record["type"]),
         prediction=record["prediction"],
     )
+
+
+def prepare_tide_prediction_frame(tides_data: pd.DataFrame) -> pd.DataFrame:
+    """Precompute a minute-resolution tide-height curve from high/low events.
+
+    The current tide feed stores NOAA high/low predictions only. This prepares a
+    derived frame that can later support cheap point-in-time tide-state lookups
+    without changing the upstream NOAA request shape.
+    """
+    if len(tides_data) < 2:
+        raise DataUnavailableError("At least two tide predictions are required")
+
+    if not isinstance(tides_data.index, pd.DatetimeIndex):
+        raise ValueError("Tide prediction DataFrame must use a DatetimeIndex")
+    if tides_data.index.tz is not None:
+        raise ValueError("Tide prediction DataFrame should use naive datetimes")
+
+    tides = tides_data.sort_index()
+    interpolation_method = "polynomial" if len(tides) >= 3 else "linear"
+    interpolation_kwargs: dict[str, int] = (
+        {"order": 2} if interpolation_method == "polynomial" else {}
+    )
+
+    df = (
+        tides[["prediction"]]
+        .resample(TIDE_CURVE_FREQUENCY)
+        .interpolate(
+            interpolation_method,
+            **interpolation_kwargs,
+        )
+    )
+
+    event_times = tides.index
+    curve_times = df.index
+    if not isinstance(event_times, pd.DatetimeIndex) or not isinstance(
+        curve_times, pd.DatetimeIndex
+    ):
+        raise DataUnavailableError("Tide prediction DataFrame must use datetimes")
+
+    event_ns = event_times.asi8
+    curve_ns = curve_times.asi8
+    previous_positions = np.clip(
+        np.searchsorted(event_ns, curve_ns, side="right") - 1,
+        0,
+        len(event_ns) - 1,
+    )
+    next_positions = np.clip(
+        np.searchsorted(event_ns, curve_ns, side="left"),
+        0,
+        len(event_ns) - 1,
+    )
+
+    previous_heights = tides["prediction"].to_numpy(dtype=float)[previous_positions]
+    next_heights = tides["prediction"].to_numpy(dtype=float)[next_positions]
+    low_heights = np.minimum(previous_heights, next_heights)
+    high_heights = np.maximum(previous_heights, next_heights)
+    height_ranges = high_heights - low_heights
+
+    df["height_pct"] = np.divide(
+        df["prediction"].to_numpy(dtype=float) - low_heights,
+        height_ranges,
+        out=np.zeros(len(df), dtype=float),
+        where=height_ranges > 0,
+    )
+    df["height_pct"] = df["height_pct"].clip(0.0, 1.0)
+    df["trend"] = np.select(
+        [next_heights > previous_heights, next_heights < previous_heights],
+        ["rising", "falling"],
+        default="steady",
+    )
+
+    return df
 
 
 def _process_local_magnitude_pct(

@@ -129,6 +129,13 @@ class LocationDataManager:
         self._current_prediction_source_timestamp: datetime.datetime | None = None
         self._current_prediction_source_data_id: int | None = None
 
+        # Derived tide prediction frame for locations with tide feeds. This is
+        # refreshed when the raw high/low tide feed updates so future tide-state
+        # lookups can follow the same cheap request path as current predictions.
+        self._tide_prediction_frame: pd.DataFrame | None = None
+        self._tide_prediction_source_timestamp: datetime.datetime | None = None
+        self._tide_prediction_source_data_id: int | None = None
+
     def _configure_live_temps_feed(self) -> feeds.Feed | None:
         """Configure the live temperature feed.
 
@@ -698,6 +705,39 @@ class LocationDataManager:
         self._current_prediction_source_data_id = source_data_id
         self.log("Precomputed current prediction frame.", level=logging.DEBUG)
 
+    def _precompute_tide_predictions(self) -> None:
+        """Precompute a tide-height curve when raw high/low tide data changes."""
+        if self.config.tide_source is None:
+            return
+
+        feed = self._feeds.get(feeds.FEED_TIDES)
+        if feed is None or feed._data is None:
+            return
+
+        source_timestamp = feed._fetch_timestamp
+        source_data_id = id(feed._data)
+        if (
+            self._tide_prediction_source_timestamp == source_timestamp
+            and self._tide_prediction_source_data_id == source_data_id
+        ):
+            return
+
+        self._tide_prediction_source_timestamp = source_timestamp
+        self._tide_prediction_source_data_id = source_data_id
+        try:
+            self._tide_prediction_frame = queries.prepare_tide_prediction_frame(
+                feed.values
+            )
+        except queries.DataUnavailableError as e:
+            self._tide_prediction_frame = None
+            self.log(
+                f"Tide prediction frame unavailable: {e}",
+                level=logging.WARNING,
+            )
+            return
+
+        self.log("Precomputed tide prediction frame.", level=logging.DEBUG)
+
     async def __update_loop(self) -> None:
         """Background task that refreshes feed data and regenerates plots.
 
@@ -720,6 +760,7 @@ class LocationDataManager:
                             self._feeds, self.clients, feed_name
                         )
 
+                    self._precompute_tide_predictions()
                     self._precompute_current_predictions()
                     self._generate_plots(loop)
 

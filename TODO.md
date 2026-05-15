@@ -1,5 +1,13 @@
 # TODO
 
+## Tech Debt
+
+- Split tide/current query and manager tests out of `tests/test_data.py` once the
+  tide-state API work lands. That file is becoming a broad data-layer catch-all;
+  future coverage would be easier to maintain in focused modules such as
+  `tests/test_tide_queries.py`, `tests/test_current_queries.py`, and/or
+  manager-specific tests.
+
 ## Future Tide Curve Source Upgrade
 
 Consider adding a NOAA-derived tide-height prediction curve instead of deriving

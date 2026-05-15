@@ -131,6 +131,29 @@ def mock_current_data() -> pd.DataFrame:
     return df
 
 
+@pytest.fixture
+def mock_tide_data() -> pd.DataFrame:
+    """Create mock high/low tide prediction data."""
+    index = pd.DatetimeIndex(
+        [
+            datetime.datetime(2025, 4, 22, 0, 0, 0),
+            datetime.datetime(2025, 4, 22, 6, 0, 0),
+            datetime.datetime(2025, 4, 22, 12, 0, 0),
+            datetime.datetime(2025, 4, 22, 18, 0, 0),
+        ]
+    )
+    return pd.DataFrame(
+        {
+            "prediction": [0.0, 4.0, 0.0, 4.0],
+            "type": pd.Categorical(
+                ["low", "high", "low", "high"],
+                categories=["low", "high"],
+            ),
+        },
+        index=index,
+    )
+
+
 @pytest_asyncio.fixture
 async def process_pool() -> AsyncGenerator[ProcessPoolExecutor]:
     """Fixture to provide a ProcessPoolExecutor and ensure it's shut down."""
@@ -230,6 +253,218 @@ async def test_current_prediction_reuses_precomputed_frame(
 
     mock_data_with_currents.predict_flow_at_time(t)
     assert prepare_spy.call_count == 2
+
+
+def test_prepare_tide_prediction_frame_derives_minute_curve(
+    mock_tide_data: pd.DataFrame,
+) -> None:
+    """High/low tide events are precomputed into a minute-resolution curve."""
+    result = queries.prepare_tide_prediction_frame(mock_tide_data)
+
+    assert result.index[0] == datetime.datetime(2025, 4, 22, 0, 0, 0)
+    assert result.index[1] == datetime.datetime(2025, 4, 22, 0, 1, 0)
+    assert result.index[-1] == datetime.datetime(2025, 4, 22, 18, 0, 0)
+    assert set(result.columns) == {"prediction", "height_pct", "trend"}
+    assert result.loc[datetime.datetime(2025, 4, 22, 3, 0, 0), "trend"] == "rising"
+    assert result.loc[datetime.datetime(2025, 4, 22, 9, 0, 0), "trend"] == "falling"
+    assert 0.0 <= result["height_pct"].min() <= result["height_pct"].max() <= 1.0
+
+
+def test_prepare_tide_prediction_frame_supports_two_event_linear_curve() -> None:
+    """Two high/low events are enough for a linear fallback tide curve."""
+    tides = pd.DataFrame(
+        {
+            "prediction": [0.0, 4.0],
+            "type": pd.Categorical(["low", "high"], categories=["low", "high"]),
+        },
+        index=pd.DatetimeIndex(
+            [
+                datetime.datetime(2025, 4, 22, 0, 0, 0),
+                datetime.datetime(2025, 4, 22, 6, 0, 0),
+            ]
+        ),
+    )
+
+    result = queries.prepare_tide_prediction_frame(tides)
+
+    midpoint = result.loc[datetime.datetime(2025, 4, 22, 3, 0, 0)]
+    assert midpoint["prediction"] == pytest.approx(2.0)
+    assert midpoint["height_pct"] == pytest.approx(0.5)
+    assert midpoint["trend"] == "rising"
+
+
+def test_prepare_tide_prediction_frame_rejects_insufficient_events() -> None:
+    """A tide curve needs at least two high/low events."""
+    tides = pd.DataFrame(
+        {
+            "prediction": [4.0],
+            "type": pd.Categorical(["high"], categories=["low", "high"]),
+        },
+        index=pd.DatetimeIndex([datetime.datetime(2025, 4, 22, 0, 0, 0)]),
+    )
+
+    with pytest.raises(
+        DataUnavailableError,
+        match="At least two tide predictions are required",
+    ):
+        queries.prepare_tide_prediction_frame(tides)
+
+
+def test_prepare_tide_prediction_frame_fails_fast_on_timezone_aware_feed_data() -> None:
+    """Precomputed tide curves fail loudly for invalid feed frame contracts."""
+    tides = pd.DataFrame(
+        {
+            "prediction": [0.0, 4.0],
+            "type": pd.Categorical(["low", "high"], categories=["low", "high"]),
+        },
+        index=pd.DatetimeIndex(
+            [
+                datetime.datetime(2025, 4, 22, 0, 0, 0),
+                datetime.datetime(2025, 4, 22, 6, 0, 0),
+            ],
+            tz=datetime.UTC,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="should use naive datetimes"):
+        queries.prepare_tide_prediction_frame(tides)
+
+
+@pytest.mark.asyncio
+async def test_tide_prediction_reuses_precomputed_frame(
+    mock_config: config_lib.LocationConfig,
+    mock_tide_data: pd.DataFrame,
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+    mocker: MockerFixture,
+) -> None:
+    """Tide prediction source data is precomputed once per feed update."""
+    data = LocationDataManager(
+        mock_config,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+    tide_feed = MagicMock()
+    tide_feed._data = mock_tide_data
+    tide_feed.values = mock_tide_data
+    tide_feed._fetch_timestamp = datetime.datetime(2025, 4, 22, 0, 0, 0)
+    data._feeds[feeds.FEED_TIDES] = tide_feed
+
+    prepare_spy = mocker.patch(
+        "shallweswim.core.manager.queries.prepare_tide_prediction_frame",
+        wraps=queries.prepare_tide_prediction_frame,
+    )
+
+    data._precompute_tide_predictions()
+    data._precompute_tide_predictions()
+
+    assert prepare_spy.call_count == 1
+    assert data._tide_prediction_frame is not None
+
+    updated_data = mock_tide_data.copy()
+    tide_feed._data = updated_data
+    tide_feed.values = updated_data
+    tide_feed._fetch_timestamp = datetime.datetime(2025, 4, 22, 1, 0, 0)
+
+    data._precompute_tide_predictions()
+    assert prepare_spy.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_tide_prediction_precompute_skips_missing_tide_source(
+    mock_config: config_lib.LocationConfig,
+    mock_tide_data: pd.DataFrame,
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+    mocker: MockerFixture,
+) -> None:
+    """Locations without tide support do not try to build a tide curve."""
+    config = mock_config.model_copy(update={"tide_source": None})
+    data = LocationDataManager(
+        config,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+    tide_feed = MagicMock()
+    tide_feed._data = mock_tide_data
+    tide_feed.values = mock_tide_data
+    data._feeds[feeds.FEED_TIDES] = tide_feed
+
+    prepare_spy = mocker.patch(
+        "shallweswim.core.manager.queries.prepare_tide_prediction_frame",
+        wraps=queries.prepare_tide_prediction_frame,
+    )
+
+    data._precompute_tide_predictions()
+
+    assert prepare_spy.call_count == 0
+    assert data._tide_prediction_frame is None
+
+
+@pytest.mark.asyncio
+async def test_tide_prediction_precompute_skips_missing_feed_data(
+    mock_config: config_lib.LocationConfig,
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+    mocker: MockerFixture,
+) -> None:
+    """Configured tide feeds without loaded data do not fail precompute."""
+    data = LocationDataManager(
+        mock_config,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+    tide_feed = MagicMock()
+    tide_feed._data = None
+    data._feeds[feeds.FEED_TIDES] = tide_feed
+
+    prepare_spy = mocker.patch(
+        "shallweswim.core.manager.queries.prepare_tide_prediction_frame",
+        wraps=queries.prepare_tide_prediction_frame,
+    )
+
+    data._precompute_tide_predictions()
+
+    assert prepare_spy.call_count == 0
+    assert data._tide_prediction_frame is None
+
+
+@pytest.mark.asyncio
+async def test_tide_prediction_precompute_keeps_unavailable_frame_optional(
+    mock_config: config_lib.LocationConfig,
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+    mocker: MockerFixture,
+) -> None:
+    """Sparse high/low data leaves the derived tide frame absent until data changes."""
+    data = LocationDataManager(
+        mock_config,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+    sparse_tides = pd.DataFrame(
+        {
+            "prediction": [4.0],
+            "type": pd.Categorical(["high"], categories=["low", "high"]),
+        },
+        index=pd.DatetimeIndex([datetime.datetime(2025, 4, 22, 0, 0, 0)]),
+    )
+    tide_feed = MagicMock()
+    tide_feed._data = sparse_tides
+    tide_feed.values = sparse_tides
+    tide_feed._fetch_timestamp = datetime.datetime(2025, 4, 22, 0, 0, 0)
+    data._feeds[feeds.FEED_TIDES] = tide_feed
+
+    prepare_spy = mocker.patch(
+        "shallweswim.core.manager.queries.prepare_tide_prediction_frame",
+        wraps=queries.prepare_tide_prediction_frame,
+    )
+
+    data._precompute_tide_predictions()
+    data._precompute_tide_predictions()
+
+    assert prepare_spy.call_count == 1
+    assert data._tide_prediction_frame is None
 
 
 @pytest.mark.asyncio

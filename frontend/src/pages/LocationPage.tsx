@@ -403,142 +403,42 @@ function TideInstrument({
   const tideBounds = getTideBounds(previousTide, nextTide);
 
   return (
-    <ConditionMeter
-      accentClassName="text-swim-tide"
-      labelCells={
+    <DriftBar
+      accent="tide"
+      label="TIDE"
+      leftLabel={
         tideBounds ? (
           <>
-            <span className="min-w-0">
-              <span className="whitespace-nowrap">
-                low {formatTideHeight(tideBounds.low.prediction)} {state.units}
-              </span>{" "}
-              <span className="whitespace-nowrap">
-                {formatTime(tideBounds.low.time)}
-              </span>
-            </span>
-            <span className="text-center font-semibold text-swim-ink">
-              now {formatTideHeight(state.estimated_height ?? undefined)}{" "}
-              {state.units}
-            </span>
-            <span className="min-w-0 text-right">
-              <span className="whitespace-nowrap">
-                high {formatTideHeight(tideBounds.high.prediction)}{" "}
-                {state.units}
-              </span>{" "}
-              <span className="whitespace-nowrap">
-                {formatTime(tideBounds.high.time)}
-              </span>
+            low {formatTideHeight(tideBounds.low.prediction)} {state.units}
+            <span className="whitespace-nowrap">
+              {" · "}
+              {formatTime(tideBounds.low.time)}
             </span>
           </>
-        ) : null
+        ) : (
+          "low"
+        )
       }
       percent={percent}
-      pulseDirection={
-        percent == null || trend === "steady"
-          ? null
-          : trend === "rising"
-            ? "up"
-            : "down"
+      rightLabel={
+        tideBounds ? (
+          <>
+            high {formatTideHeight(tideBounds.high.prediction)} {state.units}
+            <span className="whitespace-nowrap">
+              {" · "}
+              {formatTime(tideBounds.high.time)}
+            </span>
+          </>
+        ) : (
+          "high"
+        )
       }
-      title="TIDE"
-      titleDetail={trend}
+      trend={trend}
+      value={`${formatTideHeight(state.estimated_height ?? undefined)} ${state.units}`}
     />
   );
 }
 
-type ConditionMeterProps = {
-  accentClassName: string;
-  labelCells?: ReactNode;
-  percent: number | null;
-  pulseDirection: "up" | "down" | null;
-  title: string;
-  titleDetail: ReactNode;
-};
-
-function ConditionMeter({
-  accentClassName,
-  labelCells,
-  percent,
-  pulseDirection,
-  title,
-  titleDetail,
-}: ConditionMeterProps) {
-  const filledSegments =
-    percent == null
-      ? 0
-      : Math.max(
-          0,
-          Math.min(
-            METER_SEGMENT_COUNT,
-            Math.floor(percent / (100 / METER_SEGMENT_COUNT)),
-          ),
-        );
-  const pulseIndex =
-    percent == null || pulseDirection == null
-      ? null
-      : pulseDirection === "up"
-        ? Math.min(METER_SEGMENT_COUNT - 1, filledSegments)
-        : Math.max(0, filledSegments - 1);
-  const segmentIds = Array.from(
-    { length: METER_SEGMENT_COUNT },
-    (_, index) => `${title.toLowerCase()}-segment-${index}`,
-  );
-
-  return (
-    <div className="mt-2 rounded border border-swim-line bg-slate-50 px-2 py-1.5 font-mono text-[11px] leading-tight text-slate-700 md:mt-3 md:text-xs">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span className={["font-semibold", accentClassName].join(" ")}>
-          {title}
-        </span>
-        <span className="uppercase">{titleDetail}</span>
-      </div>
-      {labelCells ? (
-        <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] text-slate-600 md:text-[11px]">
-          {labelCells}
-        </div>
-      ) : null}
-      {percent == null ? null : (
-        <div className="mt-1">
-          <div
-            aria-hidden="true"
-            className={[
-              "flex min-w-0 items-center tracking-[0.03em]",
-              accentClassName,
-            ].join(" ")}
-          >
-            <span>[</span>
-            <span className="flex min-w-0 flex-1 justify-between">
-              {segmentIds.map((segmentId, index) => {
-                const isFilled = index < filledSegments;
-                const isPulse = index === pulseIndex;
-                return (
-                  <span className="contents" key={segmentId}>
-                    {index === filledSegments ? (
-                      <span className="text-swim-ink">|</span>
-                    ) : null}
-                    <span
-                      className={
-                        isPulse ? "motion-safe:animate-pulse" : undefined
-                      }
-                    >
-                      {isFilled || (isPulse && pulseDirection === "up")
-                        ? "#"
-                        : "-"}
-                    </span>
-                  </span>
-                );
-              })}
-              {filledSegments === METER_SEGMENT_COUNT ? (
-                <span className="text-swim-ink">|</span>
-              ) : null}
-            </span>
-            <span>]</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 function getTideBounds(previousTide?: TideEntry, nextTide?: TideEntry) {
   if (!previousTide || !nextTide || previousTide.type === nextTide.type) {
     return null;
@@ -562,51 +462,211 @@ function CurrentInstrument({ current }: { current?: CurrentInfo | null }) {
     Math.min(100, Math.round(current.magnitude_pct * 100)),
   );
   const phase =
-    current.phase?.replaceAll("_", " ") ?? current.direction ?? "flow";
+    current.phase?.replaceAll("_", " ") ?? current.direction ?? null;
   const trend = current.trend ?? "steady";
 
   return (
-    <ConditionMeter
-      accentClassName="text-swim-current"
-      labelCells={
+    <DriftBar
+      accent="current"
+      label="CURRENT"
+      leftLabel={
         range ? (
           <>
-            <span className="min-w-0">
-              <span className="whitespace-nowrap">slack</span>{" "}
-              <span className="whitespace-nowrap">
-                {formatTime(range.slack.timestamp)}
-              </span>
-            </span>
-            <span className="text-center font-semibold text-swim-ink">
-              now {formatMagnitude(current.magnitude)} kt
-            </span>
-            <span className="min-w-0 text-right">
-              <span className="whitespace-nowrap">
-                peak {formatMagnitude(range.peak.magnitude)} {range.peak.units}
-              </span>{" "}
-              <span className="whitespace-nowrap">
-                {formatTime(range.peak.timestamp)}
-              </span>
+            slack
+            <span className="whitespace-nowrap">
+              {" · "}
+              {formatTime(range.slack.timestamp)}
             </span>
           </>
         ) : (
-          <>
-            <span>{formatMagnitude(current.magnitude)} kt now</span>
-            <span />
-            <span className="text-right">
-              {percent}% {current.trend ?? "steady"}
-            </span>
-          </>
+          "slack"
         )
       }
       percent={percent}
-      pulseDirection={
-        trend === "building" ? "up" : trend === "easing" ? "down" : null
+      phase={phase}
+      rightLabel={
+        range ? (
+          <>
+            peak {formatMagnitude(range.peak.magnitude)} {range.peak.units}
+            <span className="whitespace-nowrap">
+              {" · "}
+              {formatTime(range.peak.timestamp)}
+            </span>
+          </>
+        ) : (
+          "peak"
+        )
       }
-      title="CURRENT"
-      titleDetail={`${phase} / ${trend}`}
+      trend={trend}
+      value={`${formatMagnitude(current.magnitude)} kt`}
     />
   );
+}
+
+const DRIFT_FULL_BLOCK = "█";
+const DRIFT_MARKER = "│";
+
+const DRIFT_ACCENT = {
+  tide: {
+    color: "#5b7f2a",
+    soft: "rgba(91, 127, 42, 0.28)",
+    cardBg: "bg-[#f6f9f1]",
+    labelText: "text-swim-tide",
+    arrowText: "text-swim-alert",
+  },
+  current: {
+    color: "#006b8f",
+    soft: "rgba(0, 107, 143, 0.28)",
+    cardBg: "bg-[#eff7fa]",
+    labelText: "text-swim-current",
+    arrowText: "text-swim-current",
+  },
+} as const;
+
+type DriftBarProps = {
+  accent: keyof typeof DRIFT_ACCENT;
+  label: string;
+  leftLabel: ReactNode;
+  percent: number | null;
+  phase?: string | null;
+  rightLabel: ReactNode;
+  trend: string;
+  value: string;
+};
+
+function DriftBar({
+  accent,
+  label,
+  leftLabel,
+  percent,
+  phase,
+  rightLabel,
+  trend,
+  value,
+}: DriftBarProps) {
+  if (percent == null) {
+    return null;
+  }
+
+  const direction = trendDirection(trend);
+  const fillChars = Math.max(
+    0,
+    Math.min(
+      METER_SEGMENT_COUNT,
+      Math.round((percent / 100) * METER_SEGMENT_COUNT),
+    ),
+  );
+  const emptyChars = METER_SEGMENT_COUNT - fillChars;
+  const accentTokens = DRIFT_ACCENT[accent];
+
+  const fillGradient =
+    direction === "up"
+      ? `linear-gradient(90deg, ${accentTokens.soft} 0%, ${accentTokens.color} 65%, ${accentTokens.color} 100%)`
+      : direction === "down"
+        ? `linear-gradient(90deg, ${accentTokens.color} 0%, ${accentTokens.color} 55%, ${accentTokens.soft} 100%)`
+        : accentTokens.color;
+
+  const pulseClass =
+    direction === "down"
+      ? "drift-arrow-pulse-left"
+      : direction === "up"
+        ? "drift-arrow-pulse-right"
+        : "";
+
+  return (
+    <div
+      className={`mt-2 rounded border border-swim-line px-3 py-2 md:mt-3 md:px-4 md:py-2.5 ${accentTokens.cardBg}`}
+    >
+      <div className="flex items-baseline justify-between gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.1em] md:text-xs">
+        <span>
+          <span className={accentTokens.labelText}>{label}</span>{" "}
+          <span className="font-normal normal-case tracking-normal tabular-nums text-swim-ink">
+            {value}
+          </span>
+        </span>
+        <span className="text-swim-ink">
+          {phase ? (
+            <>
+              <span>{phase}</span>
+              {" · "}
+            </>
+          ) : null}
+          {direction !== "steady" ? (
+            <span className="md:hidden">
+              <span>{trend}</span>
+              {" · "}
+            </span>
+          ) : null}
+          {percent}%
+        </span>
+      </div>
+
+      <div
+        aria-hidden="true"
+        className="my-1.5 flex items-center whitespace-nowrap font-mono text-[clamp(12px,4vw,16px)] leading-none md:text-[clamp(16px,1.4vw,20px)]"
+      >
+        <span className="font-semibold text-slate-500">[</span>
+        <span
+          className="-tracking-[0.06em]"
+          style={{
+            backgroundImage: fillGradient,
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          {DRIFT_FULL_BLOCK.repeat(fillChars)}
+        </span>
+        <span
+          className="-mx-px font-black text-swim-ink"
+          style={{ fontSize: "1.25em", lineHeight: 0.85 }}
+        >
+          {DRIFT_MARKER}
+        </span>
+        <span className="-tracking-[0.06em] text-[#cdd6db]">
+          {DRIFT_FULL_BLOCK.repeat(emptyChars)}
+        </span>
+        <span className="font-semibold text-slate-500">]</span>
+        {direction !== "steady" ? (
+          <span
+            className={`ml-3 font-sans text-[12px] font-extrabold uppercase tracking-wider md:text-[13px] ${accentTokens.arrowText} ${pulseClass}`}
+          >
+            {direction === "down" ? (
+              <>
+                ←
+                <span className="hidden md:inline">
+                  {" "}
+                  <span>{trend}</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="hidden md:inline">
+                  <span>{trend}</span>{" "}
+                </span>
+                →
+              </>
+            )}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums text-slate-500 md:text-xs">
+        <span className="min-w-0">{leftLabel}</span>
+        <span className="min-w-0 text-right">{rightLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+function trendDirection(trend: string): "up" | "down" | "steady" {
+  if (trend === "rising" || trend === "building") {
+    return "up";
+  }
+  if (trend === "falling" || trend === "easing") {
+    return "down";
+  }
+  return "steady";
 }
 
 function WindyEmbed({ metadata }: { metadata: AppLocationMetadata }) {

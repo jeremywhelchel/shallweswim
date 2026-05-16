@@ -204,18 +204,20 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
     ),
   ).toBeVisible();
   expect(screen.getByText("TIDE")).toBeVisible();
-  expect(screen.getByText("rising")).toBeVisible();
+  // Trend word is rendered in two CSS-toggled locations (mobile header /
+  // desktop arrow callout); just confirm it's in the DOM at least once.
+  expect(screen.getAllByText("rising").length).toBeGreaterThan(0);
   expect(screen.getByText(/low 0.2 ft/)).toBeVisible();
-  expect(screen.getByText("now 1.6 ft")).toBeVisible();
+  expect(screen.getByText("1.6 ft")).toBeVisible();
   expect(screen.getByText(/high 4.8 ft/)).toBeVisible();
   expect(screen.getByText("CURRENT")).toBeVisible();
   expect(
     screen.getByText((_, element) => {
       const text = element?.textContent?.replace(/\s+/g, " ").trim();
-      return text === "slack 5:45 AM";
+      return text === "slack · 5:45 AM";
     }),
   ).toBeVisible();
-  expect(screen.getByText("now 1.3 kt")).toBeVisible();
+  expect(screen.getByText("1.3 kt")).toBeVisible();
   expect(screen.getByText(/peak 1.8 kt/)).toBeVisible();
   expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Temp source" })).toBeVisible();

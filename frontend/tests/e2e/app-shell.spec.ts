@@ -269,10 +269,12 @@ test("renders the NYC location vertical slice", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("TIDE", { exact: true })).toBeVisible();
   await expect(page.getByText(/low 0.2 ft/)).toBeVisible();
-  await expect(page.getByText("now 1.6 ft")).toBeVisible();
+  await expect(page.getByText("1.6 ft", { exact: true })).toBeVisible();
   await expect(page.getByText(/high 4.8 ft/)).toBeVisible();
-  await expect(page.getByText("slack 5:45 AM", { exact: true })).toBeVisible();
-  await expect(page.getByText("now 1.3 kt")).toBeVisible();
+  await expect(
+    page.getByText("slack · 5:45 AM", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("1.3 kt", { exact: true })).toBeVisible();
   await expect(page.getByText(/peak 1.8 kt/)).toBeVisible();
   await expect(
     page.getByRole("link", { name: "goodservice.io" }),

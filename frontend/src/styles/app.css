@@ -17,3 +17,44 @@ body {
 a {
   text-decoration: none;
 }
+
+/* Drift bar arrow callout: subtle pulse that nudges in the direction of motion. */
+@keyframes drift-arrow-left {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(-4px);
+  }
+}
+
+@keyframes drift-arrow-right {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(4px);
+  }
+}
+
+.drift-arrow-pulse-left {
+  animation: drift-arrow-left 2.2s ease-in-out infinite;
+}
+
+.drift-arrow-pulse-right {
+  animation: drift-arrow-right 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drift-arrow-pulse-left,
+  .drift-arrow-pulse-right {
+    animation: none;
+    opacity: 1;
+  }
+}

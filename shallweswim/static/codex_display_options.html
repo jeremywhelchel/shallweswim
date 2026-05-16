@@ -1,0 +1,1435 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shall We Swim - Data Display Options</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --blue: #000099;
+        --ink: #172033;
+        --muted: #526075;
+        --mist: #fcffff;
+        --line: #d6e4e8;
+        --panel: #ffffff;
+        --soft: #f4f8fa;
+        --tide: #5b7f2a;
+        --tide-soft: #dfeccb;
+        --current: #006b8f;
+        --current-soft: #cce9f2;
+        --ebb: #8b4961;
+        --flood: #007767;
+        --warn: #a64b00;
+        --shadow: 0 12px 28px rgba(23, 32, 51, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--mist);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1220px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 56px;
+      }
+
+      header {
+        margin-bottom: 24px;
+      }
+
+      .kicker {
+        margin: 0 0 8px;
+        color: var(--current);
+        font-size: 13px;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        color: var(--blue);
+        font-size: clamp(32px, 5vw, 58px);
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+
+      .intro {
+        max-width: 780px;
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.45;
+      }
+
+      .sample-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin: 24px 0 28px;
+      }
+
+      .sample-item {
+        border: 1px solid var(--line);
+        background: #fff;
+        padding: 10px 12px;
+      }
+
+      .sample-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .sample-value {
+        margin-top: 3px;
+        font-variant-numeric: tabular-nums;
+        font-weight: 750;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+      }
+
+      .section-title {
+        margin: 34px 0 14px;
+      }
+
+      .section-title:first-of-type {
+        margin-top: 12px;
+      }
+
+      .section-eyebrow {
+        margin: 0 0 4px;
+        color: var(--current);
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+      }
+
+      .section-title h2 {
+        color: var(--ink);
+        font-size: 24px;
+      }
+
+      .section-title p {
+        max-width: 780px;
+        margin: 7px 0 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.42;
+      }
+
+      .option {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .option-head {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid var(--line);
+        padding: 16px 18px 13px;
+        background: linear-gradient(#ffffff, #f8fbfc);
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      .option-note {
+        max-width: 560px;
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .tag {
+        flex: none;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 9px;
+        color: var(--current);
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .demo {
+        padding: 18px;
+      }
+
+      .movement-copy {
+        margin: 0 0 16px;
+        color: var(--current);
+        font-size: clamp(22px, 3vw, 33px);
+        font-weight: 800;
+        line-height: 1.12;
+        letter-spacing: 0;
+      }
+
+      .rail-stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      .meter-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+        padding: 12px;
+      }
+
+      .meter-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .tide-text {
+        color: var(--tide);
+      }
+
+      .current-text {
+        color: var(--current);
+      }
+
+      .rail-labels {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: end;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.25;
+      }
+
+      .rail-labels strong {
+        color: var(--ink);
+      }
+
+      .rail-labels .center {
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 850;
+        text-align: center;
+      }
+
+      .rail-labels .right {
+        text-align: right;
+      }
+
+      .rail {
+        position: relative;
+        height: 18px;
+        margin: 11px 0 4px;
+        border-radius: 999px;
+        background: #e7edf0;
+        overflow: visible;
+      }
+
+      .rail::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        width: var(--pct);
+        border-radius: inherit;
+        background: var(--fill);
+      }
+
+      .rail::after {
+        content: "";
+        position: absolute;
+        top: -6px;
+        left: calc(var(--pct) - 1px);
+        width: 2px;
+        height: 30px;
+        border-radius: 2px;
+        background: var(--ink);
+      }
+
+      .drift-rail {
+        position: relative;
+        height: 22px;
+        margin: 12px 0 5px;
+        border-radius: 999px;
+        background: #e7edf0;
+        overflow: hidden;
+      }
+
+      .drift-rail .fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: var(--pct);
+        border-radius: inherit;
+        background:
+          linear-gradient(90deg, color-mix(in srgb, var(--rail-color), white 72%), var(--rail-color)),
+          var(--rail-color);
+      }
+
+      .drift-rail .motion {
+        position: absolute;
+        inset: 0;
+        width: var(--pct);
+        border-radius: inherit;
+        background: repeating-linear-gradient(
+          115deg,
+          transparent 0 12px,
+          rgba(255, 255, 255, 0.36) 12px 18px,
+          transparent 18px 34px
+        );
+        opacity: 0.7;
+        animation: drift 1.8s linear infinite;
+      }
+
+      .drift-rail.down .motion {
+        animation-direction: reverse;
+      }
+
+      .drift-rail .marker {
+        position: absolute;
+        top: -5px;
+        left: calc(var(--pct) - 2px);
+        z-index: 2;
+        width: 4px;
+        height: 32px;
+        border-radius: 3px;
+        background: var(--ink);
+        box-shadow: 0 0 0 3px #fff;
+      }
+
+      @keyframes drift {
+        from {
+          background-position: 0 0;
+        }
+
+        to {
+          background-position: 42px 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .drift-rail .motion {
+          animation: none;
+        }
+      }
+
+      .r2-hero {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: linear-gradient(180deg, #fff, #f7fbfc);
+        padding: 16px;
+      }
+
+      .r2-eyebrow {
+        margin: 0 0 5px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .r2-headline {
+        margin: 0;
+        color: var(--current);
+        font-size: clamp(30px, 4vw, 46px);
+        font-weight: 900;
+        line-height: 0.98;
+      }
+
+      .r2-copy {
+        max-width: 680px;
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.42;
+      }
+
+      .r2-facts {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 9px;
+        margin-top: 14px;
+      }
+
+      .r2-fact {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        padding: 9px 10px;
+      }
+
+      .r2-fact span {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .r2-fact strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 14px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .r2-split {
+        display: grid;
+        grid-template-columns: 145px 1fr;
+        gap: 18px;
+        align-items: center;
+      }
+
+      .current-badge {
+        display: grid;
+        place-items: center;
+        width: 142px;
+        aspect-ratio: 1;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at center, #fff 0 42%, transparent 43%),
+          conic-gradient(from 220deg, #d7eef5, #fff, #e5efd8, #fff, #d7eef5);
+      }
+
+      .current-badge .badge-arrow {
+        color: var(--current);
+        font-size: 52px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      .current-badge .badge-label {
+        margin-top: -12px;
+        color: var(--current);
+        font-size: 11px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .priority-list {
+        display: grid;
+        gap: 9px;
+        margin-top: 14px;
+      }
+
+      .priority-row {
+        display: grid;
+        grid-template-columns: 92px 1fr auto;
+        gap: 12px;
+        align-items: center;
+        border-top: 1px solid var(--line);
+        padding-top: 9px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .priority-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .priority-row .name {
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .priority-row .value {
+        font-weight: 850;
+      }
+
+      .horizon-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 14px;
+      }
+
+      .horizon-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .horizon-card svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .ticks {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        color: #8a98a6;
+        font-size: 10px;
+      }
+
+      .ticks span:not(:first-child) {
+        text-align: center;
+      }
+
+      .ticks span:last-child {
+        text-align: right;
+      }
+
+      .pill-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .pill {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        padding: 10px;
+      }
+
+      .pill small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .pill strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 18px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .timeline {
+        position: relative;
+        padding: 10px 0 0;
+      }
+
+      .timeline-line {
+        position: relative;
+        height: 10px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--tide-soft), #f6f9fb 57%, var(--current-soft));
+      }
+
+      .timeline-line::after {
+        content: "";
+        position: absolute;
+        top: -8px;
+        left: var(--now);
+        width: 3px;
+        height: 26px;
+        border-radius: 3px;
+        background: var(--ink);
+      }
+
+      .events {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-top: 14px;
+        font-size: 12px;
+      }
+
+      .event {
+        min-width: 0;
+      }
+
+      .event strong {
+        display: block;
+        color: var(--ink);
+      }
+
+      .event span {
+        color: var(--muted);
+      }
+
+      .mini-chart {
+        width: 100%;
+        height: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .gauge-wrap {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .gauge {
+        text-align: center;
+      }
+
+      .gauge svg {
+        width: min(100%, 220px);
+        height: auto;
+      }
+
+      .gauge-title {
+        margin-top: -10px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .gauge-value {
+        font-size: 24px;
+        font-weight: 850;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .direction-panel {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 20px;
+        align-items: center;
+      }
+
+      .compass {
+        position: relative;
+        width: 118px;
+        aspect-ratio: 1;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at center, #fff 0 35%, transparent 36%),
+          conic-gradient(from 270deg, var(--current-soft), #fff, var(--tide-soft), #fff, var(--current-soft));
+      }
+
+      .arrow {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 72px;
+        height: 12px;
+        transform: translate(-50%, -50%) rotate(180deg);
+        transform-origin: center;
+        color: var(--current);
+      }
+
+      .arrow::before {
+        content: "";
+        position: absolute;
+        inset: 4px 12px 4px 0;
+        background: currentColor;
+      }
+
+      .arrow::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        top: -6px;
+        border-top: 12px solid transparent;
+        border-bottom: 12px solid transparent;
+        border-left: 18px solid currentColor;
+      }
+
+      .matrix {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px 14px;
+        align-items: center;
+      }
+
+      .matrix-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .dots {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 4px;
+      }
+
+      .dot {
+        height: 14px;
+        border-radius: 3px;
+        background: #d9e2e6;
+      }
+
+      .dot.on.tide {
+        background: var(--tide);
+      }
+
+      .dot.on.current {
+        background: var(--current);
+      }
+
+      .score {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .score-main {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+        background: linear-gradient(180deg, #fff, #f6fafb);
+      }
+
+      .score-word {
+        color: var(--current);
+        font-size: 42px;
+        font-weight: 900;
+        line-height: 0.95;
+      }
+
+      .score-copy {
+        margin-top: 10px;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+
+      .facts {
+        display: grid;
+        gap: 10px;
+      }
+
+      .fact {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 9px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .stacked-bars {
+        display: grid;
+        gap: 12px;
+      }
+
+      .band {
+        display: grid;
+        grid-template-columns: 78px 1fr 86px;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .band-name {
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .band-value {
+        text-align: right;
+        font-weight: 850;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .segbar {
+        display: grid;
+        grid-template-columns: repeat(16, 1fr);
+        gap: 3px;
+      }
+
+      .seg {
+        height: 26px;
+        border-radius: 3px;
+        background: #e1e9ed;
+      }
+
+      .seg.tide.on {
+        background: var(--tide);
+      }
+
+      .seg.current.on {
+        background: var(--current);
+      }
+
+      .mono {
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      .table-card {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      table {
+        width: 100%;
+        min-width: 520px;
+        border-collapse: collapse;
+        background: #fff;
+        font-size: 13px;
+      }
+
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .heat-cell {
+        border-radius: 5px;
+        background: linear-gradient(90deg, var(--current-soft) 0 58%, #eef4f6 58%);
+        font-weight: 800;
+      }
+
+      .wide {
+        grid-column: 1 / -1;
+      }
+
+      @media (max-width: 820px) {
+        main {
+          width: min(100vw - 20px, 680px);
+          padding-top: 18px;
+        }
+
+        .sample-strip,
+        .grid,
+        .score,
+        .gauge-wrap,
+        .r2-facts,
+        .r2-split {
+          grid-template-columns: 1fr;
+        }
+
+        .option-head {
+          display: block;
+        }
+
+        .tag {
+          display: inline-block;
+          margin-top: 10px;
+        }
+
+        .rail-labels,
+        .band {
+          grid-template-columns: 1fr;
+          gap: 5px;
+        }
+
+        .rail-labels .center,
+        .rail-labels .right,
+        .band-value {
+          text-align: left;
+        }
+
+        .pill-row,
+        .events {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .direction-panel {
+          grid-template-columns: 1fr;
+        }
+
+        .priority-row {
+          grid-template-columns: 1fr;
+          gap: 5px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="kicker">New York · Grimaldo's Chair</p>
+        <h1>water movement display options</h1>
+        <p class="intro">
+          A standalone workshop sheet for replacing the ASCII tide/current
+          meters. Every option below uses the same mock state: tide falling at
+          4.8 ft between low 0.4 ft and high 6.2 ft; ebb current building at
+          1.1 kt between slack and a 1.9 kt peak.
+        </p>
+      </header>
+
+      <section class="sample-strip" aria-label="Sample condition values">
+        <div class="sample-item">
+          <div class="sample-label">Tide</div>
+          <div class="sample-value">falling · 4.8 ft</div>
+        </div>
+        <div class="sample-item">
+          <div class="sample-label">Tide Range</div>
+          <div class="sample-value">low 0.4 → high 6.2</div>
+        </div>
+        <div class="sample-item">
+          <div class="sample-label">Current</div>
+          <div class="sample-value">ebb · building · 1.1 kt</div>
+        </div>
+        <div class="sample-item">
+          <div class="sample-label">Current Range</div>
+          <div class="sample-value">slack 8:24 PM → peak 11:26 PM</div>
+        </div>
+      </section>
+
+      <section class="section-title" aria-labelledby="round-2-title">
+        <p class="section-eyebrow">Round 2</p>
+        <h2 id="round-2-title">Consolidated Candidates</h2>
+        <p>
+          These combine the strongest ideas from the Codex, Claude, and Gemini
+          explorations: a human-readable condition summary, production-friendly
+          rails, directional current context, and a curve-based future direction.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="option wide">
+          <div class="option-head">
+            <div>
+              <h2>R2.1 Decision-Led Drift Rails</h2>
+              <p class="option-note">
+                Best immediate candidate: the headline answers the swimmer's
+                question, then two rails show the exact tide and current ranges.
+                The rail texture carries trend without relying on ASCII.
+              </p>
+            </div>
+            <span class="tag">recommended</span>
+          </div>
+          <div class="demo">
+            <div class="r2-hero">
+              <p class="r2-eyebrow">Right now at Grimaldo's Chair</p>
+              <p class="r2-headline">Going out, building</p>
+              <p class="r2-copy">
+                The tide is falling from high, and the ebb current is building
+                toward its evening peak. Expect more push before it settles.
+              </p>
+              <div class="rail-stack" style="margin-top: 16px">
+                <div class="meter-card">
+                  <div class="meter-top">
+                    <span class="tide-text">Tide</span>
+                    <span>falling toward low</span>
+                  </div>
+                  <div class="rail-labels">
+                    <span><strong>low 0.4 ft</strong><br />1:50 AM</span>
+                    <span class="center">now 4.8 ft</span>
+                    <span class="right"><strong>high 6.2 ft</strong><br />7:21 PM</span>
+                  </div>
+                  <div class="drift-rail down" style="--pct: 76%; --rail-color: var(--tide)">
+                    <div class="fill"></div>
+                    <div class="motion"></div>
+                    <div class="marker"></div>
+                  </div>
+                  <div class="ticks"><span>low</span><span></span><span>mid</span><span></span><span>high</span></div>
+                </div>
+                <div class="meter-card">
+                  <div class="meter-top">
+                    <span class="current-text">Current</span>
+                    <span>ebb building toward peak</span>
+                  </div>
+                  <div class="rail-labels">
+                    <span><strong>slack</strong><br />8:24 PM</span>
+                    <span class="center">now 1.1 kt</span>
+                    <span class="right"><strong>peak 1.9 kt</strong><br />11:26 PM</span>
+                  </div>
+                  <div class="drift-rail" style="--pct: 58%; --rail-color: var(--current)">
+                    <div class="fill"></div>
+                    <div class="motion"></div>
+                    <div class="marker"></div>
+                  </div>
+                  <div class="ticks"><span>calm</span><span></span><span>steady</span><span></span><span>peak</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>R2.2 Current-First Swim Card</h2>
+              <p class="option-note">
+                Gives the main visual weight to current direction and strength,
+                with tide as supporting context. This is useful when current is
+                the most actionable swim signal.
+              </p>
+            </div>
+            <span class="tag">swimmer first</span>
+          </div>
+          <div class="demo">
+            <div class="r2-split">
+              <div class="current-badge" aria-hidden="true">
+                <div>
+                  <div class="badge-arrow">↘</div>
+                  <div class="badge-label">ebb</div>
+                </div>
+              </div>
+              <div>
+                <p class="r2-eyebrow">Current leads the story</p>
+                <p class="movement-copy" style="margin-bottom: 8px">Ebb is building</p>
+                <p class="r2-copy">
+                  1.1 kt now, rising toward a 1.9 kt peak at 11:26 PM. Tide is
+                  already falling from the evening high.
+                </p>
+              </div>
+            </div>
+            <div class="priority-list">
+              <div class="priority-row">
+                <span class="name current-text">Current</span>
+                <div class="drift-rail" style="--pct: 58%; --rail-color: var(--current); margin: 0">
+                  <div class="fill"></div>
+                  <div class="motion"></div>
+                  <div class="marker"></div>
+                </div>
+                <span class="value">1.1 kt</span>
+              </div>
+              <div class="priority-row">
+                <span class="name tide-text">Tide</span>
+                <div class="drift-rail down" style="--pct: 76%; --rail-color: var(--tide); margin: 0">
+                  <div class="fill"></div>
+                  <div class="motion"></div>
+                  <div class="marker"></div>
+                </div>
+                <span class="value">4.8 ft</span>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>R2.3 Horizon Preview Card</h2>
+              <p class="option-note">
+                Best longer-term direction: one wide curve view shows recent
+                and upcoming water movement, while the facts below keep it
+                readable. This likely wants denser curve data later.
+              </p>
+            </div>
+            <span class="tag">future detail</span>
+          </div>
+          <div class="demo">
+            <div class="horizon-card">
+              <div class="horizon-top">
+                <span><span class="tide-text">Tide</span> + <span class="current-text">current</span></span>
+                <span>now 9:24 PM</span>
+              </div>
+              <svg viewBox="0 0 680 230" role="img" aria-label="Tide and current horizon preview">
+                <defs>
+                  <linearGradient id="r2TideFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#dfeccb" stop-opacity="0.88" />
+                    <stop offset="1" stop-color="#dfeccb" stop-opacity="0" />
+                  </linearGradient>
+                  <linearGradient id="r2CurrentFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#cce9f2" stop-opacity="0" />
+                    <stop offset="1" stop-color="#cce9f2" stop-opacity="0.9" />
+                  </linearGradient>
+                </defs>
+                <rect width="680" height="230" fill="#fff" />
+                <line x1="28" x2="650" y1="72" y2="72" stroke="#eef3f5" />
+                <line x1="28" x2="650" y1="150" y2="150" stroke="#eef3f5" />
+                <path d="M28 140 C90 164, 155 175, 222 154 C295 132, 358 70, 428 48 C493 28, 548 58, 650 142 L650 184 L28 184 Z" fill="url(#r2TideFill)" />
+                <path d="M28 140 C90 164, 155 175, 222 154 C295 132, 358 70, 428 48 C493 28, 548 58, 650 142" fill="none" stroke="#5b7f2a" stroke-width="4" stroke-linecap="round" />
+                <path d="M28 174 C95 180, 148 160, 202 138 C257 116, 312 124, 372 156 C433 190, 505 166, 650 104" fill="none" stroke="#006b8f" stroke-width="4" stroke-linecap="round" />
+                <path d="M28 174 C95 180, 148 160, 202 138 C257 116, 312 124, 372 156 C433 190, 505 166, 650 104 L650 184 L28 184 Z" fill="url(#r2CurrentFill)" />
+                <line x1="510" x2="510" y1="28" y2="194" stroke="#172033" stroke-width="3" />
+                <circle cx="510" cy="54" r="6" fill="#172033" />
+                <circle cx="510" cy="160" r="6" fill="#006b8f" />
+                <text x="520" y="51" fill="#172033" font-size="14" font-weight="850">4.8 ft falling</text>
+                <text x="520" y="165" fill="#006b8f" font-size="14" font-weight="850">1.1 kt ebb building</text>
+                <text x="28" y="214" fill="#526075" font-size="12">low 1:50 AM</text>
+                <text x="396" y="28" fill="#5b7f2a" font-size="12" font-weight="850">high 7:21 PM</text>
+                <text x="570" y="214" fill="#526075" font-size="12">next low</text>
+              </svg>
+              <div class="r2-facts">
+                <div class="r2-fact"><span>Tide</span><strong>4.8 ft · falling</strong></div>
+                <div class="r2-fact"><span>Current</span><strong>1.1 kt · ebb</strong></div>
+                <div class="r2-fact"><span>Peak current</span><strong>11:26 PM</strong></div>
+                <div class="r2-fact"><span>Next low</span><strong>1:54 AM</strong></div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="section-title" aria-labelledby="round-1-title">
+        <p class="section-eyebrow">Round 1</p>
+        <h2 id="round-1-title">Initial Codex Options</h2>
+        <p>
+          The original spread of directions, kept for comparison against the
+          consolidated Round 2 candidates above.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>1. Paired Range Rails</h2>
+              <p class="option-note">
+                Closest to the current idea: compact bars, clearer labels,
+                real fill, and a precise now marker.
+              </p>
+            </div>
+            <span class="tag">best first pass</span>
+          </div>
+          <div class="demo">
+            <p class="movement-copy">
+              The tide is falling, and the water is going out steadily and
+              getting stronger.
+            </p>
+            <div class="rail-stack">
+              <div class="meter-card">
+                <div class="meter-top">
+                  <span class="tide-text">Tide</span>
+                  <span>Falling</span>
+                </div>
+                <div class="rail-labels">
+                  <span><strong>low 0.4 ft</strong><br />1:50 AM</span>
+                  <span class="center">now 4.8 ft</span>
+                  <span class="right"><strong>high 6.2 ft</strong><br />7:21 PM</span>
+                </div>
+                <div class="rail" style="--pct: 76%; --fill: var(--tide-soft)"></div>
+                <div class="ticks"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+              </div>
+              <div class="meter-card">
+                <div class="meter-top">
+                  <span class="current-text">Current</span>
+                  <span>Ebb / building</span>
+                </div>
+                <div class="rail-labels">
+                  <span><strong>slack</strong><br />8:24 PM</span>
+                  <span class="center">now 1.1 kt</span>
+                  <span class="right"><strong>peak 1.9 kt</strong><br />11:26 PM</span>
+                </div>
+                <div class="rail" style="--pct: 58%; --fill: var(--current-soft)"></div>
+                <div class="ticks"><span>calm</span><span></span><span>steady</span><span></span><span>peak</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>2. Event Timeline</h2>
+              <p class="option-note">
+                Emphasizes where now sits between the surrounding water events
+                instead of emphasizing normalized strength.
+              </p>
+            </div>
+            <span class="tag">time first</span>
+          </div>
+          <div class="demo">
+            <div class="meter-card">
+              <div class="meter-top">
+                <span class="tide-text">Tide cycle</span>
+                <span>now 9:24 PM</span>
+              </div>
+              <div class="timeline" style="--now: 70%">
+                <div class="timeline-line"></div>
+                <div class="events">
+                  <div class="event"><strong>low</strong><span>0.4 ft · 1:50 AM</span></div>
+                  <div class="event"><strong>high</strong><span>6.2 ft · 7:21 PM</span></div>
+                  <div class="event"><strong>now</strong><span>4.8 ft · falling</span></div>
+                  <div class="event"><strong>next low</strong><span>1:54 AM</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="meter-card" style="margin-top: 14px">
+              <div class="meter-top">
+                <span class="current-text">Current cycle</span>
+                <span>ebb building</span>
+              </div>
+              <div class="timeline" style="--now: 32%">
+                <div class="timeline-line"></div>
+                <div class="events">
+                  <div class="event"><strong>slack</strong><span>8:24 PM</span></div>
+                  <div class="event"><strong>now</strong><span>1.1 kt</span></div>
+                  <div class="event"><strong>peak ebb</strong><span>1.9 kt · 11:26 PM</span></div>
+                  <div class="event"><strong>next slack</strong><span>later</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>3. Mini Curves</h2>
+              <p class="option-note">
+                The most physically intuitive. It looks more like water, but it
+                wants denser curve data for a production version.
+              </p>
+            </div>
+            <span class="tag">richer</span>
+          </div>
+          <div class="demo">
+            <svg class="mini-chart" viewBox="0 0 720 260" role="img" aria-label="Tide and current mini curves">
+              <defs>
+                <linearGradient id="tideFill" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0" stop-color="#dfeccb" />
+                  <stop offset="1" stop-color="#ffffff" />
+                </linearGradient>
+                <linearGradient id="currentFill" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0" stop-color="#cce9f2" />
+                  <stop offset="1" stop-color="#ffffff" />
+                </linearGradient>
+              </defs>
+              <rect width="720" height="260" fill="#fff" />
+              <line x1="50" x2="680" y1="120" y2="120" stroke="#d6e4e8" />
+              <line x1="50" x2="680" y1="205" y2="205" stroke="#d6e4e8" />
+              <text x="50" y="38" fill="#5b7f2a" font-size="15" font-weight="800">TIDE</text>
+              <text x="50" y="160" fill="#006b8f" font-size="15" font-weight="800">CURRENT</text>
+              <path d="M50 120 C150 28, 285 32, 380 74 C485 120, 575 136, 680 92 L680 120 Z" fill="url(#tideFill)" />
+              <path d="M50 120 C150 28, 285 32, 380 74 C485 120, 575 136, 680 92" fill="none" stroke="#5b7f2a" stroke-width="5" stroke-linecap="round" />
+              <path d="M50 205 C170 205, 225 190, 292 170 C380 145, 500 170, 680 205" fill="none" stroke="#006b8f" stroke-width="5" stroke-linecap="round" />
+              <path d="M50 205 C170 205, 225 190, 292 170 C380 145, 500 170, 680 205 L680 205 Z" fill="url(#currentFill)" />
+              <line x1="455" x2="455" y1="30" y2="228" stroke="#172033" stroke-width="3" />
+              <circle cx="455" cy="93" r="7" fill="#172033" />
+              <circle cx="455" cy="160" r="7" fill="#172033" />
+              <text x="468" y="89" fill="#172033" font-size="18" font-weight="850">now 4.8 ft</text>
+              <text x="468" y="166" fill="#172033" font-size="18" font-weight="850">now 1.1 kt</text>
+              <text x="50" y="244" fill="#526075" font-size="13">low 1:50 AM</text>
+              <text x="328" y="244" fill="#526075" font-size="13">high 7:21 PM</text>
+              <text x="606" y="244" fill="#526075" font-size="13">next low</text>
+            </svg>
+          </div>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>4. Instrument Gauges</h2>
+              <p class="option-note">
+                Strong at-a-glance shape. Less space efficient and a little more
+                “score-like” than the underlying data deserves.
+              </p>
+            </div>
+            <span class="tag">glanceable</span>
+          </div>
+          <div class="demo">
+            <div class="gauge-wrap">
+              <div class="gauge">
+                <svg viewBox="0 0 220 150" aria-label="Tide gauge">
+                  <path d="M30 120 A80 80 0 0 1 190 120" fill="none" stroke="#e1e9ed" stroke-width="20" stroke-linecap="round" />
+                  <path d="M30 120 A80 80 0 0 1 158 56" fill="none" stroke="#5b7f2a" stroke-width="20" stroke-linecap="round" />
+                  <line x1="110" y1="120" x2="155" y2="67" stroke="#172033" stroke-width="4" stroke-linecap="round" />
+                  <circle cx="110" cy="120" r="7" fill="#172033" />
+                </svg>
+                <div class="gauge-title tide-text">Tide · falling</div>
+                <div class="gauge-value">4.8 ft</div>
+              </div>
+              <div class="gauge">
+                <svg viewBox="0 0 220 150" aria-label="Current gauge">
+                  <path d="M30 120 A80 80 0 0 1 190 120" fill="none" stroke="#e1e9ed" stroke-width="20" stroke-linecap="round" />
+                  <path d="M30 120 A80 80 0 0 1 126 42" fill="none" stroke="#006b8f" stroke-width="20" stroke-linecap="round" />
+                  <line x1="110" y1="120" x2="126" y2="54" stroke="#172033" stroke-width="4" stroke-linecap="round" />
+                  <circle cx="110" cy="120" r="7" fill="#172033" />
+                </svg>
+                <div class="gauge-title current-text">Ebb · building</div>
+                <div class="gauge-value">1.1 kt</div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>5. Direction + Strength</h2>
+              <p class="option-note">
+                Lets current direction dominate visually, while tide stays as
+                secondary context. Useful for NYC where current matters a lot.
+              </p>
+            </div>
+            <span class="tag">current first</span>
+          </div>
+          <div class="demo">
+            <div class="direction-panel">
+              <div class="compass">
+                <div class="arrow" aria-hidden="true"></div>
+              </div>
+              <div>
+                <p class="movement-copy" style="margin-bottom: 12px">Going out, building</p>
+                <div class="matrix">
+                  <div class="matrix-label current-text">Current strength</div>
+                  <div class="sample-value">1.1 kt</div>
+                  <div class="dots" aria-hidden="true">
+                    <span class="dot on current"></span><span class="dot on current"></span><span class="dot on current"></span><span class="dot on current"></span><span class="dot on current"></span><span class="dot on current"></span><span class="dot on current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                  </div>
+                  <div></div>
+                  <div class="matrix-label tide-text">Tide height</div>
+                  <div class="sample-value">4.8 ft</div>
+                  <div class="dots" aria-hidden="true">
+                    <span class="dot on tide"></span><span class="dot on tide"></span><span class="dot on tide"></span><span class="dot on tide"></span><span class="dot on tide"></span><span class="dot on tide"></span><span class="dot on tide"></span><span class="dot on tide"></span><span class="dot on tide"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                  </div>
+                  <div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>6. Segmented Meter</h2>
+              <p class="option-note">
+                Keeps the chunky meter language but replaces ASCII with stable
+                blocks. This is the conservative visual update.
+              </p>
+            </div>
+            <span class="tag">compact</span>
+          </div>
+          <div class="demo">
+            <div class="stacked-bars mono">
+              <div class="band">
+                <div class="band-name tide-text">Tide</div>
+                <div class="segbar" aria-hidden="true">
+                  <span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg tide on"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span>
+                </div>
+                <div class="band-value">4.8 ft</div>
+              </div>
+              <div class="band">
+                <div class="band-name current-text">Current</div>
+                <div class="segbar" aria-hidden="true">
+                  <span class="seg current on"></span><span class="seg current on"></span><span class="seg current on"></span><span class="seg current on"></span><span class="seg current on"></span><span class="seg current on"></span><span class="seg current on"></span><span class="seg current on"></span><span class="seg current on"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span>
+                </div>
+                <div class="band-value">1.1 kt</div>
+              </div>
+            </div>
+            <div class="pill-row" style="margin-top: 16px">
+              <div class="pill"><small>Last</small><strong>slack 8:24</strong></div>
+              <div class="pill"><small>Now</small><strong>ebb building</strong></div>
+              <div class="pill"><small>Next</small><strong>peak 11:26</strong></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>7. Swim Condition Panel</h2>
+              <p class="option-note">
+                Turns the data into a swimmer-facing readout first, then exposes
+                the measured values. More editorial, less instrument-like.
+              </p>
+            </div>
+            <span class="tag">human first</span>
+          </div>
+          <div class="demo">
+            <div class="score">
+              <div class="score-main">
+                <div class="score-word">Moving out</div>
+                <div class="score-copy">
+                  Ebb is building from slack toward peak. Expect more push as
+                  the evening goes on.
+                </div>
+              </div>
+              <div class="facts">
+                <div class="fact"><span class="tide-text">Tide</span><strong>falling · 4.8 ft</strong></div>
+                <div class="fact"><span class="current-text">Current</span><strong>ebb · 1.1 kt</strong></div>
+                <div class="fact"><span>Next current peak</span><strong>11:26 PM</strong></div>
+                <div class="fact"><span>Next low</span><strong>1:54 AM</strong></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>8. Dense Data Table</h2>
+              <p class="option-note">
+                Not as beautiful, but highly legible and easy to scan on mobile
+                if this section needs to feel operational.
+              </p>
+            </div>
+            <span class="tag">plain</span>
+          </div>
+          <div class="demo">
+            <div class="table-card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Signal</th>
+                    <th>Now</th>
+                    <th>Trend</th>
+                    <th>Range</th>
+                    <th>Next event</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="tide-text"><strong>Tide</strong></td>
+                    <td class="heat-cell">4.8 ft</td>
+                    <td>falling</td>
+                    <td>low 0.4 → high 6.2</td>
+                    <td>low · 1:54 AM</td>
+                  </tr>
+                  <tr>
+                    <td class="current-text"><strong>Current</strong></td>
+                    <td class="heat-cell">1.1 kt</td>
+                    <td>ebb · building</td>
+                    <td>slack → peak 1.9</td>
+                    <td>peak · 11:26 PM</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

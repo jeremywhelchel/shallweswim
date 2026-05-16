@@ -1,0 +1,2036 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shall We Swim - Water Movement Display Options (Claude)</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --blue: #000099;
+        --ink: #172033;
+        --muted: #526075;
+        --mist: #fcffff;
+        --line: #d6e4e8;
+        --panel: #ffffff;
+        --soft: #f4f8fa;
+        --tide: #5b7f2a;
+        --tide-soft: #dfeccb;
+        --tide-tint: #eef6dd;
+        --current: #006b8f;
+        --current-soft: #cce9f2;
+        --current-tint: #e3f2f8;
+        --ebb: #8b4961;
+        --flood: #007767;
+        --warn: #a64b00;
+        --shadow: 0 12px 28px rgba(23, 32, 51, 0.08);
+        --rising-arrow: #5b7f2a;
+        --falling-arrow: #a64b00;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--mist);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1220px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 56px;
+      }
+
+      header {
+        margin-bottom: 24px;
+      }
+
+      .kicker {
+        margin: 0 0 8px;
+        color: var(--current);
+        font-size: 13px;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        color: var(--blue);
+        font-size: clamp(32px, 5vw, 58px);
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+
+      .intro {
+        max-width: 780px;
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.45;
+      }
+
+      .intro a {
+        color: var(--blue);
+      }
+
+      .sample-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin: 24px 0 28px;
+      }
+
+      .sample-item {
+        border: 1px solid var(--line);
+        background: #fff;
+        padding: 10px 12px;
+      }
+
+      .sample-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .sample-value {
+        margin-top: 3px;
+        font-variant-numeric: tabular-nums;
+        font-weight: 750;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+      }
+
+      .option {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .option-head {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid var(--line);
+        padding: 16px 18px 13px;
+        background: linear-gradient(#ffffff, #f8fbfc);
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      .option-note {
+        max-width: 560px;
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .tag {
+        flex: none;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 9px;
+        color: var(--current);
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .demo {
+        padding: 18px;
+      }
+
+      .movement-copy {
+        margin: 0 0 16px;
+        color: var(--current);
+        font-size: clamp(22px, 3vw, 33px);
+        font-weight: 800;
+        line-height: 1.12;
+        letter-spacing: 0;
+      }
+
+      /* ---------- Option 1: Refined ASCII Meters ---------- */
+
+      .ascii-stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .ascii-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f7faf3;
+        padding: 12px 14px;
+      }
+
+      .ascii-card.current {
+        background: #f1f8fb;
+      }
+
+      .ascii-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .ascii-head .label {
+        color: var(--tide);
+      }
+
+      .ascii-card.current .ascii-head .label {
+        color: var(--current);
+      }
+
+      .ascii-head .status {
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .ascii-row {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 12px;
+        align-items: baseline;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .ascii-row .now {
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 800;
+        text-align: center;
+      }
+
+      .ascii-row .right {
+        text-align: right;
+      }
+
+      .ascii-bar {
+        margin-top: 9px;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 18px;
+        line-height: 1;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+
+      .ascii-bar .bracket {
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .ascii-bar .filled {
+        color: var(--tide);
+        letter-spacing: -0.05em;
+      }
+
+      .ascii-card.current .ascii-bar .filled {
+        color: var(--current);
+      }
+
+      .ascii-bar .empty {
+        color: #cdd6db;
+        letter-spacing: -0.05em;
+      }
+
+      .ascii-bar .marker {
+        color: var(--ink);
+        font-weight: 800;
+        margin: 0 -1px;
+        animation: ascii-pulse 1.8s ease-in-out infinite;
+      }
+
+      .ascii-bar .arrow {
+        margin-left: 8px;
+        color: var(--falling-arrow);
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .ascii-card.current .ascii-bar .arrow {
+        color: var(--current);
+      }
+
+      .ascii-pct {
+        margin-left: auto;
+        color: var(--ink);
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      @keyframes ascii-pulse {
+        0%, 100% { opacity: 0.4; }
+        50% { opacity: 1; }
+      }
+
+      /* ---------- Option 2: Drift Rails ---------- */
+
+      .drift-stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      .drift-row {
+        display: grid;
+        gap: 6px;
+      }
+
+      .drift-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .drift-head .lab.tide { color: var(--tide); }
+      .drift-head .lab.current { color: var(--current); }
+      .drift-head .state { color: var(--ink); }
+
+      .drift-now {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        font-size: 13px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .drift-now strong {
+        color: var(--ink);
+        font-weight: 800;
+      }
+
+      .drift-now .now-value {
+        font-size: 17px;
+        font-weight: 800;
+        color: var(--ink);
+      }
+
+      .drift-rail {
+        position: relative;
+        height: 22px;
+        border-radius: 999px;
+        background: #e7edf0;
+        overflow: hidden;
+      }
+
+      .drift-rail .fill {
+        position: absolute;
+        inset: 0;
+        width: var(--pct);
+        background:
+          linear-gradient(90deg,
+            color-mix(in srgb, var(--rail-color) 88%, transparent),
+            var(--rail-color) 65%,
+            color-mix(in srgb, var(--rail-color) 70%, white));
+        border-radius: inherit;
+      }
+
+      .drift-rail .drift {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        width: 36%;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255, 255, 255, 0.55) 70%,
+          rgba(255, 255, 255, 0) 100%
+        );
+        mix-blend-mode: lighten;
+      }
+
+      .drift-rail.dir-up .drift {
+        animation: drift-forward 2.4s ease-in-out infinite;
+      }
+
+      .drift-rail.dir-down .drift {
+        animation: drift-backward 2.4s ease-in-out infinite;
+        background: linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0) 0%,
+          rgba(255, 255, 255, 0.55) 30%,
+          transparent 100%
+        );
+      }
+
+      @keyframes drift-forward {
+        0% { transform: translateX(-25%); opacity: 0; }
+        20% { opacity: 1; }
+        100% { transform: translateX(15%); opacity: 0; }
+      }
+
+      @keyframes drift-backward {
+        0% { transform: translateX(15%); opacity: 0; }
+        20% { opacity: 1; }
+        100% { transform: translateX(-25%); opacity: 0; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .drift-rail .drift,
+        .ascii-bar .marker,
+        .vessel-fill .surface,
+        .horizon-now,
+        .clock-pulse {
+          animation: none;
+        }
+      }
+
+      .drift-rail .marker {
+        position: absolute;
+        top: -5px;
+        bottom: -5px;
+        left: calc(var(--pct) - 2px);
+        width: 4px;
+        border-radius: 2px;
+        background: var(--ink);
+      }
+
+      .drift-rail .marker::after {
+        content: "";
+        position: absolute;
+        top: -6px;
+        left: 50%;
+        transform: translateX(-50%);
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 6px solid var(--ink);
+      }
+
+      .drift-meta {
+        display: flex;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 11.5px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ---------- Option 3: Tide Clock + Current Vector ---------- */
+
+      .clock-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: stretch;
+      }
+
+      .clock-card {
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px 14px 12px;
+        background: linear-gradient(180deg, #ffffff, #f7fbfc);
+        text-align: center;
+      }
+
+      .clock-card h3 {
+        margin: 0 0 10px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--tide);
+      }
+
+      .clock-card.current h3 { color: var(--current); }
+
+      .clock-svg {
+        width: 100%;
+        max-width: 200px;
+        height: auto;
+        display: block;
+        margin: 0 auto;
+      }
+
+      .clock-readout {
+        margin-top: 8px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .clock-readout .big {
+        display: block;
+        color: var(--ink);
+        font-size: 22px;
+        font-weight: 850;
+        line-height: 1.05;
+      }
+
+      .clock-readout .small {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 4px;
+      }
+
+      .clock-pulse {
+        transform-origin: 110px 110px;
+        animation: clock-tick 5s ease-in-out infinite;
+      }
+
+      @keyframes clock-tick {
+        0%, 88%, 100% { transform: rotate(0deg); }
+        92% { transform: rotate(2deg); }
+        96% { transform: rotate(-1deg); }
+      }
+
+      /* ---------- Option 4: Vertical Level Vessels ---------- */
+
+      .vessel-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        align-items: end;
+      }
+
+      .vessel {
+        position: relative;
+        height: 200px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fbfdfd;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .vessel-top,
+      .vessel-bottom {
+        font-size: 11.5px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 700;
+      }
+
+      .vessel-bottom { text-align: left; }
+      .vessel-top   { text-align: right; }
+
+      .vessel-glass {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 32px;
+        bottom: 32px;
+        border: 1.5px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .vessel-fill {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: var(--pct);
+        background: linear-gradient(180deg, color-mix(in srgb, var(--vessel-color) 88%, white), var(--vessel-color));
+      }
+
+      .vessel-fill .surface {
+        position: absolute;
+        top: -4px;
+        left: -10%;
+        right: -10%;
+        height: 10px;
+        background:
+          radial-gradient(ellipse at 20% 80%, color-mix(in srgb, var(--vessel-color) 95%, white) 0 24%, transparent 25%),
+          radial-gradient(ellipse at 60% 80%, color-mix(in srgb, var(--vessel-color) 95%, white) 0 24%, transparent 25%),
+          radial-gradient(ellipse at 90% 80%, color-mix(in srgb, var(--vessel-color) 95%, white) 0 24%, transparent 25%);
+        animation: surface-wave 6s ease-in-out infinite;
+      }
+
+      @keyframes surface-wave {
+        0%, 100% { transform: translateX(0); }
+        50% { transform: translateX(-6%); }
+      }
+
+      .vessel-arrow {
+        position: absolute;
+        top: 50%;
+        right: -10px;
+        transform: translateY(-50%);
+        font-size: 22px;
+        font-weight: 900;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--line);
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+
+      .vessel-arrow.down  { color: var(--falling-arrow); }
+      .vessel-arrow.up    { color: var(--tide); }
+
+      .vessel-label {
+        position: absolute;
+        bottom: -28px;
+        left: 0;
+        right: 0;
+        text-align: center;
+      }
+
+      .vessel-label .name {
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .vessel-label .name.tide { color: var(--tide); }
+      .vessel-label .name.current { color: var(--current); }
+
+      .vessel-label .value {
+        margin-top: 2px;
+        font-size: 18px;
+        font-weight: 850;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .vessel-label .state {
+        margin-top: 1px;
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .vessel-wrapper {
+        padding-bottom: 56px;
+      }
+
+      /* ---------- Option 5: Horizon Sparkline ---------- */
+
+      .horizon {
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .horizon-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 12px 14px 6px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .horizon-header .tide-lbl  { color: var(--tide); }
+      .horizon-header .now-lbl   { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+      .horizon-svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .horizon-axis {
+        display: flex;
+        justify-content: space-between;
+        padding: 0 14px 12px;
+        font-size: 11px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .horizon-readout {
+        display: flex;
+        gap: 12px;
+        padding: 0 14px 14px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .horizon-readout .chip {
+        flex: 1;
+        background: var(--soft);
+        border-radius: 6px;
+        padding: 8px 10px;
+      }
+
+      .horizon-readout .chip strong {
+        display: block;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .horizon-readout .chip.tide strong   { color: var(--tide); }
+      .horizon-readout .chip.current strong { color: var(--current); }
+
+      @keyframes pulse-dot {
+        0%, 100% { r: 6; opacity: 1; }
+        50% { r: 9; opacity: 0.65; }
+      }
+
+      .horizon-now {
+        animation: pulse-dot 2.4s ease-in-out infinite;
+        transform-origin: center;
+      }
+
+      /* ---------- Option 6: Decision Headline ---------- */
+
+      .verdict-card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 22px 20px 18px;
+        background: linear-gradient(180deg, #fff, #f5fafb);
+      }
+
+      .verdict-eyebrow {
+        font-size: 11.5px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-weight: 700;
+      }
+
+      .verdict-word {
+        display: block;
+        margin-top: 4px;
+        color: var(--current);
+        font-size: clamp(34px, 5vw, 48px);
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.01em;
+      }
+
+      .verdict-arrow {
+        display: inline-block;
+        margin-left: 6px;
+        color: var(--tide);
+        transform: translateY(-4px);
+      }
+
+      .verdict-sub {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 14.5px;
+        line-height: 1.45;
+        max-width: 56ch;
+      }
+
+      .verdict-sub strong { color: var(--ink); }
+
+      .verdict-facts {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px 18px;
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px dashed var(--line);
+      }
+
+      .verdict-fact {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .verdict-fact .lab {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 700;
+      }
+
+      .verdict-fact .lab.tide    { color: var(--tide); }
+      .verdict-fact .lab.current { color: var(--current); }
+
+      .verdict-fact .val {
+        font-weight: 800;
+        color: var(--ink);
+      }
+
+      .verdict-strip {
+        position: relative;
+        height: 6px;
+        margin-top: 16px;
+        border-radius: 3px;
+        background: #eaf0f3;
+        overflow: hidden;
+      }
+
+      .verdict-strip .seg {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-radius: 3px;
+      }
+
+      .verdict-strip .seg.tide {
+        left: 0;
+        width: 76%;
+        background: linear-gradient(90deg, var(--tide-soft), var(--tide));
+      }
+
+      .verdict-strip .seg.current {
+        left: 0;
+        width: 58%;
+        height: 3px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: var(--current);
+        mix-blend-mode: multiply;
+      }
+
+      /* ---------- Round divider headers ---------- */
+
+      .round-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 32px 0 8px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid var(--line);
+      }
+
+      .round-header:first-of-type {
+        margin-top: 12px;
+      }
+
+      .round-header h2 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 850;
+        color: var(--blue);
+      }
+
+      .round-header .round-pill {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .round-intro {
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+        max-width: 720px;
+      }
+
+      /* ---------- Round 2 · Candidate A: Polished Range Rail ---------- */
+
+      .rr-stack {
+        display: grid;
+        gap: 18px;
+      }
+
+      .rr-card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px 18px 16px;
+        background: linear-gradient(180deg, #fff, #f9fbfc);
+      }
+
+      .rr-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+      }
+
+      .rr-label {
+        font-size: 13px;
+        font-weight: 850;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .rr-card.tide .rr-label { color: var(--tide); }
+      .rr-card.current .rr-label { color: var(--current); }
+
+      .rr-status {
+        font-size: 13px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .rr-track-wrap {
+        position: relative;
+        height: 62px;
+        margin: 8px 0 6px;
+      }
+
+      .rr-bubble {
+        position: absolute;
+        left: var(--pct);
+        top: 0;
+        transform: translateX(-50%);
+        background: var(--ink);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 800;
+        padding: 4px 10px;
+        border-radius: 6px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .rr-bubble::after {
+        content: "";
+        position: absolute;
+        bottom: -5px;
+        left: 50%;
+        transform: translateX(-50%);
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 6px solid var(--ink);
+      }
+
+      .rr-track {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 18px;
+        height: 16px;
+        background: #e7edf0;
+        border-radius: 8px;
+        overflow: visible;
+      }
+
+      .rr-fill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: var(--pct);
+        border-radius: inherit;
+      }
+
+      .rr-card.tide .rr-fill {
+        background: linear-gradient(
+          90deg,
+          var(--tide) 0%,
+          var(--tide) 55%,
+          color-mix(in srgb, var(--tide) 22%, transparent) 100%
+        );
+      }
+
+      .rr-card.current .rr-fill {
+        background: linear-gradient(
+          90deg,
+          color-mix(in srgb, var(--current) 22%, transparent) 0%,
+          var(--current) 65%,
+          var(--current) 100%
+        );
+      }
+
+      .rr-thumb {
+        position: absolute;
+        top: 50%;
+        left: var(--pct);
+        transform: translate(-50%, -50%);
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+        z-index: 2;
+      }
+
+      .rr-card.tide .rr-thumb { border: 3px solid var(--tide); }
+      .rr-card.current .rr-thumb { border: 3px solid var(--current); }
+
+      .rr-endpoints {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12.5px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .rr-endpoints strong {
+        color: var(--ink);
+        font-weight: 800;
+      }
+
+      /* ---------- Round 2 · Candidate B: Instrument Drift Bar ---------- */
+
+      .idb-stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .idb-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px 14px 11px;
+        background: #f6f9f1;
+      }
+
+      .idb-card.current {
+        background: #eff7fa;
+      }
+
+      .idb-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .idb-name { color: var(--tide); }
+      .idb-card.current .idb-name { color: var(--current); }
+      .idb-status { color: var(--ink); }
+
+      .idb-now-val {
+        color: var(--ink);
+        text-transform: none;
+        letter-spacing: 0;
+        margin-left: 6px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .idb-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        align-items: baseline;
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .idb-row .idb-right {
+        text-align: right;
+      }
+
+      .idb-bar {
+        position: relative;
+        margin: 6px 0 2px;
+        display: flex;
+        align-items: center;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 18px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .idb-bar .bracket {
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .idb-bar .fill,
+      .idb-bar .empty {
+        letter-spacing: -0.06em;
+      }
+
+      .idb-card .idb-bar .fill {
+        background: linear-gradient(
+          90deg,
+          var(--tide) 0%,
+          var(--tide) 55%,
+          color-mix(in srgb, var(--tide) 28%, transparent) 100%
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .idb-card.current .idb-bar .fill {
+        background: linear-gradient(
+          90deg,
+          color-mix(in srgb, var(--current) 28%, transparent) 0%,
+          var(--current) 65%,
+          var(--current) 100%
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .idb-bar .marker {
+        color: var(--ink);
+        font-weight: 900;
+        margin: 0 -1px;
+        font-size: 1.25em;
+        line-height: 0.85;
+      }
+
+      .idb-bar .empty {
+        color: #cdd6db;
+      }
+
+      .idb-bar .arrow {
+        margin-left: 12px;
+        color: var(--falling-arrow);
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 12.5px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        animation: idb-arrow-pulse-left 2.2s ease-in-out infinite;
+      }
+
+      .idb-card.current .idb-bar .arrow {
+        color: var(--current);
+        animation-name: idb-arrow-pulse-right;
+      }
+
+      @keyframes idb-arrow-pulse-left {
+        0%, 100% { opacity: 0.55; transform: translateX(0); }
+        50% { opacity: 1; transform: translateX(-4px); }
+      }
+
+      @keyframes idb-arrow-pulse-right {
+        0%, 100% { opacity: 0.55; transform: translateX(0); }
+        50% { opacity: 1; transform: translateX(4px); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .idb-bar .arrow {
+          animation: none;
+          opacity: 1;
+        }
+      }
+
+      /* ---------- Round 2 · Candidate C: Tide Cycle Strip ---------- */
+
+      .cycle-card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .cycle-headline {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        padding: 14px 16px 6px;
+      }
+
+      .cycle-headline .label {
+        font-size: 13px;
+        font-weight: 850;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .cycle-headline .label .tide { color: var(--tide); }
+      .cycle-headline .label .current { color: var(--current); }
+
+      .cycle-headline .now {
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .cycle-svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .cycle-axis {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 16px 10px;
+        font-size: 11px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .cycle-readout {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        padding: 0 16px 16px;
+      }
+
+      .cycle-chip {
+        background: var(--soft);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 11.5px;
+        color: var(--muted);
+        line-height: 1.3;
+      }
+
+      .cycle-chip strong {
+        display: block;
+        margin-top: 2px;
+        color: var(--ink);
+        font-size: 13.5px;
+        font-weight: 800;
+      }
+
+      .cycle-chip.tide strong { color: var(--tide); }
+      .cycle-chip.current strong { color: var(--current); }
+
+      @keyframes cycle-dot {
+        0%, 100% { r: 5.5; opacity: 1; }
+        50% { r: 8; opacity: 0.7; }
+      }
+
+      .cycle-now-dot {
+        animation: cycle-dot 2.4s ease-in-out infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .cycle-now-dot { animation: none; }
+      }
+
+      /* ---------- shared utility ---------- */
+
+      .wide { grid-column: 1 / -1; }
+
+      .palette-note {
+        margin: 28px 0 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      @media (max-width: 820px) {
+        main {
+          width: min(100vw - 20px, 680px);
+          padding-top: 18px;
+        }
+
+        .sample-strip,
+        .grid,
+        .clock-row,
+        .vessel-row {
+          grid-template-columns: 1fr;
+        }
+
+        .option-head {
+          display: block;
+        }
+
+        .tag {
+          display: inline-block;
+          margin-top: 10px;
+        }
+
+        .ascii-bar {
+          font-size: 15px;
+        }
+
+        .vessel-row {
+          gap: 12px 18px;
+        }
+
+        .verdict-facts,
+        .cycle-readout {
+          grid-template-columns: 1fr;
+        }
+
+        .idb-card {
+          padding: 8px 12px 10px;
+        }
+
+        .idb-head {
+          font-size: 11px;
+          letter-spacing: 0.08em;
+        }
+
+        .idb-row {
+          font-size: 11px;
+        }
+
+        .idb-bar {
+          font-size: clamp(12px, 4vw, 16px);
+          letter-spacing: -0.08em;
+        }
+
+        .idb-bar .arrow {
+          margin-left: 8px;
+          font-size: 11px;
+        }
+
+        .idb-bar .arrow-text {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="kicker">New York · Grimaldo's Chair</p>
+        <h1>water movement display options</h1>
+        <p class="intro">
+          A workshop sheet exploring how to replace the current dual ASCII
+          tide/current meter on <code>/app/nyc</code>.
+          <strong>Round 2</strong> holds three consolidated candidates that
+          combine the best ideas from all three contributors after reviewing
+          18 options across the original three sheets.
+          <strong>Round 1</strong> is the original six-option exploration
+          that informed them. All options share the same mocked state — tide
+          falling at 4.8 ft on the way down from a 7:21 PM high, ebb current
+          building at 1.1 kt between an 8:24 PM slack and an 11:26 PM peak.
+          Compare with
+          <a href="/static/codex_display_options.html">codex_display_options.html</a>
+          and
+          <a href="/static/gemini_display_options.html">gemini_display_options.html</a>.
+        </p>
+      </header>
+
+      <section class="sample-strip" aria-label="Sample condition values">
+        <div class="sample-item">
+          <div class="sample-label">Tide</div>
+          <div class="sample-value">falling · 4.8 ft</div>
+        </div>
+        <div class="sample-item">
+          <div class="sample-label">Tide Range</div>
+          <div class="sample-value">low 0.4 → high 6.2</div>
+        </div>
+        <div class="sample-item">
+          <div class="sample-label">Current</div>
+          <div class="sample-value">ebb · building · 1.1 kt</div>
+        </div>
+        <div class="sample-item">
+          <div class="sample-label">Current Range</div>
+          <div class="sample-value">slack 8:24 PM → peak 11:26 PM</div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- ROUND 2 — Consolidated top candidates                        -->
+      <!-- ============================================================ -->
+
+      <div class="round-header">
+        <h2>Round 2 — Consolidated top candidates</h2>
+        <span class="round-pill">Best-of synthesis</span>
+      </div>
+      <p class="round-intro">
+        Three options that combine the strongest ideas from across the
+        original 18: Codex #1's clean triplet labels, Gemini #2's
+        directional opacity ramp, Gemini #3's floating value bubble,
+        Claude #1's monospace identity, Claude #2's motion-as-direction,
+        and Codex #3's physical curves. Picks span the design space —
+        most legible (A), most identity-preserving (B), most distinctive (C).
+      </p>
+
+      <section class="grid">
+
+        <!-- =============== Candidate A: Polished Range Rail =============== -->
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>A. Polished Range Rail</h2>
+              <p class="option-note">
+                Codex #1's clean track + Gemini #3's floating value bubble +
+                Gemini #2's opacity-ramp direction cue. The "now" number
+                rides on the thumb; the gradient encodes direction in the
+                bar itself (tide fades toward the active edge as it drains,
+                current intensifies toward the active edge as it builds).
+                No animation needed.
+              </p>
+            </div>
+            <span class="tag">most legible</span>
+          </div>
+          <div class="demo">
+            <div class="rr-stack">
+              <div class="rr-card tide">
+                <div class="rr-head">
+                  <span class="rr-label">Tide</span>
+                  <span class="rr-status">Falling · past high, draining toward low</span>
+                </div>
+                <div class="rr-track-wrap" style="--pct: 76%">
+                  <div class="rr-bubble">4.8 ft</div>
+                  <div class="rr-track">
+                    <div class="rr-fill"></div>
+                    <div class="rr-thumb"></div>
+                  </div>
+                </div>
+                <div class="rr-endpoints">
+                  <span><strong>low 0.4 ft</strong> · 1:50 AM</span>
+                  <span><strong>high 6.2 ft</strong> · 7:21 PM</span>
+                </div>
+              </div>
+              <div class="rr-card current">
+                <div class="rr-head">
+                  <span class="rr-label">Current</span>
+                  <span class="rr-status">Ebb · building toward peak</span>
+                </div>
+                <div class="rr-track-wrap" style="--pct: 58%">
+                  <div class="rr-bubble">1.1 kt</div>
+                  <div class="rr-track">
+                    <div class="rr-fill"></div>
+                    <div class="rr-thumb"></div>
+                  </div>
+                </div>
+                <div class="rr-endpoints">
+                  <span><strong>slack</strong> · 8:24 PM</span>
+                  <span><strong>peak 1.9 kt</strong> · 11:26 PM</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- =============== Candidate B: Instrument Drift Bar =============== -->
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>B. Instrument Drift Bar</h2>
+              <p class="option-note">
+                Keeps the design doc's monospace/instrument accent
+                (Claude #1) and fixes every legibility issue: solid block
+                glyphs, a bold colored "now" marker, the same opacity-ramp
+                direction cue as A applied to the text (Gemini #2), plus a
+                small pulsing arrow showing motion (Claude #2). The arrow
+                still points the right way under
+                <code>prefers-reduced-motion</code> — animation just stops.
+              </p>
+            </div>
+            <span class="tag">keeps mono identity</span>
+          </div>
+          <div class="demo">
+            <div class="idb-stack">
+              <div class="idb-card">
+                <div class="idb-head">
+                  <span class="idb-name">TIDE<span class="idb-now-val">4.8 ft</span></span>
+                  <span class="idb-status">FALLING · 76%</span>
+                </div>
+                <div class="idb-bar" aria-hidden="true">
+                  <span class="bracket">[</span><span class="fill">████████████████████████</span><span class="marker">│</span><span class="empty">████████</span><span class="bracket">]</span>
+                  <span class="arrow">←<span class="arrow-text"> draining</span></span>
+                </div>
+                <div class="idb-row">
+                  <span>low 0.4 ft · 1:50 AM</span>
+                  <span class="idb-right">high 6.2 ft · 7:21 PM</span>
+                </div>
+              </div>
+              <div class="idb-card current">
+                <div class="idb-head">
+                  <span class="idb-name">CURRENT<span class="idb-now-val">1.1 kt</span></span>
+                  <span class="idb-status">EBB · BUILDING · 58%</span>
+                </div>
+                <div class="idb-bar" aria-hidden="true">
+                  <span class="bracket">[</span><span class="fill">███████████████████</span><span class="marker">│</span><span class="empty">█████████████</span><span class="bracket">]</span>
+                  <span class="arrow"><span class="arrow-text">filling </span>→</span>
+                </div>
+                <div class="idb-row">
+                  <span>slack · 8:24 PM</span>
+                  <span class="idb-right">peak 1.9 kt · 11:26 PM</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- =============== Candidate C: Tide Cycle Strip =============== -->
+        <article class="option wide">
+          <div class="option-head">
+            <div>
+              <h2>C. Tide Cycle Strip</h2>
+              <p class="option-note">
+                Synthesis of Codex #3's physical sine curves + Claude #5's
+                now-line + readout chips. Tide and current as honest curves
+                over ~12h centered on "now". The most distinctive identity
+                in the set; the only candidate that needs backend curve
+                data the design doc anticipates in Phase 2, so this is the
+                higher-cost option.
+              </p>
+            </div>
+            <span class="tag">most distinctive</span>
+          </div>
+          <div class="demo">
+            <div class="cycle-card">
+              <div class="cycle-headline">
+                <span class="label">
+                  <span class="tide">Tide</span> &nbsp;·&nbsp;
+                  <span class="current">Current</span>
+                </span>
+                <span class="now">now · 9:24 PM</span>
+              </div>
+              <svg class="cycle-svg" viewBox="0 0 720 200" role="img" aria-label="Tide and current cycle, ~12 hours centered on now">
+                <defs>
+                  <linearGradient id="cycle-tide-fill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#dfeccb" stop-opacity="0.7" />
+                    <stop offset="1" stop-color="#dfeccb" stop-opacity="0" />
+                  </linearGradient>
+                </defs>
+                <!-- horizontal guides -->
+                <line x1="0" x2="720" y1="100" y2="100" stroke="#eef2f4" />
+                <line x1="0" x2="720" y1="40"  y2="40"  stroke="#f5f8f9" stroke-dasharray="2 4" />
+                <line x1="0" x2="720" y1="160" y2="160" stroke="#f5f8f9" stroke-dasharray="2 4" />
+
+                <!-- TIDE: rising from left, high at 7:21 PM (x≈238), now ~9:24 PM (x=360, descending), next low ~1:54 AM (x≈626) -->
+                <path
+                  d="M 0 80
+                     C 80 55, 170 36, 238 34
+                     C 320 36, 400 78, 470 108
+                     C 540 140, 590 158, 626 160
+                     C 670 158, 700 140, 720 122"
+                  fill="none" stroke="#5b7f2a" stroke-width="3" stroke-linejoin="round" />
+                <path
+                  d="M 0 80
+                     C 80 55, 170 36, 238 34
+                     C 320 36, 400 78, 470 108
+                     C 540 140, 590 158, 626 160
+                     C 670 158, 700 140, 720 122
+                     L 720 195 L 0 195 Z"
+                  fill="url(#cycle-tide-fill)" />
+
+                <!-- CURRENT: baseline before slack, rising from slack (x≈302) to peak ebb (x≈482), back down -->
+                <path
+                  d="M 0 158
+                     C 80 158, 180 158, 302 158
+                     C 360 156, 430 140, 482 122
+                     C 540 138, 590 156, 632 162
+                     C 670 162, 700 160, 720 156"
+                  fill="none" stroke="#006b8f" stroke-width="2.5" stroke-linejoin="round" />
+
+                <!-- event ticks -->
+                <line x1="238" y1="34"  x2="238" y2="22"  stroke="#5b7f2a" stroke-width="1.5" />
+                <text x="238" y="16" text-anchor="middle" fill="#5b7f2a" font-size="11" font-weight="800">high 6.2 ft · 7:21 PM</text>
+
+                <line x1="482" y1="122" x2="482" y2="186" stroke="#006b8f" stroke-width="1" stroke-dasharray="2 3" />
+                <text x="482" y="178" text-anchor="middle" fill="#006b8f" font-size="11" font-weight="800">peak 1.9 kt · 11:26 PM</text>
+
+                <line x1="302" y1="158" x2="302" y2="186" stroke="#526075" stroke-width="1" stroke-dasharray="2 3" />
+                <text x="302" y="178" text-anchor="middle" fill="#526075" font-size="11">slack · 8:24 PM</text>
+
+                <line x1="626" y1="160" x2="626" y2="186" stroke="#526075" stroke-width="1" stroke-dasharray="2 3" />
+                <text x="626" y="178" text-anchor="middle" fill="#526075" font-size="11">low · 1:54 AM</text>
+
+                <!-- NOW vertical line and dots -->
+                <line x1="360" y1="6" x2="360" y2="186" stroke="#172033" stroke-width="2.2" />
+                <circle class="cycle-now-dot" cx="360" cy="60"  r="5.5" fill="#172033" />
+                <circle class="cycle-now-dot" cx="360" cy="134" r="5.5" fill="#006b8f" />
+                <text x="368" y="56"  fill="#172033" font-size="13" font-weight="850">4.8 ft</text>
+                <text x="368" y="130" fill="#006b8f" font-size="13" font-weight="850">1.1 kt</text>
+              </svg>
+              <div class="cycle-axis">
+                <span>3 PM</span><span>6 PM</span><span>9 PM</span><span>12 AM</span><span>3 AM</span>
+              </div>
+              <div class="cycle-readout">
+                <div class="cycle-chip tide">
+                  Tide
+                  <strong>4.8 ft · falling</strong>
+                </div>
+                <div class="cycle-chip current">
+                  Current
+                  <strong>1.1 kt · ebb · building</strong>
+                </div>
+                <div class="cycle-chip">
+                  Next current peak
+                  <strong>1.9 kt · 11:26 PM</strong>
+                </div>
+                <div class="cycle-chip">
+                  Next low
+                  <strong>0.4 ft · 1:54 AM</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- ROUND 1 — Initial exploration                                -->
+      <!-- ============================================================ -->
+
+      <div class="round-header">
+        <h2>Round 1 — Initial exploration</h2>
+        <span class="round-pill">Source material</span>
+      </div>
+      <p class="round-intro">
+        The original six-option spread that the Round 2 candidates were
+        distilled from. Kept here for reference and side-by-side comparison.
+      </p>
+
+      <section class="grid">
+
+        <!-- =============== Option 1: Refined ASCII =============== -->
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>1. Refined ASCII Meters</h2>
+              <p class="option-note">
+                Honors the design doc's call to prototype an ASCII-style
+                instrument while fixing the legibility issues: solid block
+                glyphs, a bigger and colored now-marker, a tighter set, and an
+                inline direction arrow so "filling vs draining" is visible at
+                a glance.
+              </p>
+            </div>
+            <span class="tag">honors mono accent</span>
+          </div>
+          <div class="demo">
+            <div class="ascii-stack">
+              <div class="ascii-card">
+                <div class="ascii-head">
+                  <span class="label">TIDE</span>
+                  <span class="status">FALLING</span>
+                </div>
+                <div class="ascii-row">
+                  <span>low 0.4 ft · 1:50 AM</span>
+                  <span class="now">now 4.8 ft</span>
+                  <span class="right">high 6.2 ft · 7:21 PM</span>
+                </div>
+                <div class="ascii-bar" aria-hidden="true">
+                  <span class="bracket">[</span><span class="filled">████████████████████████</span><span class="marker">│</span><span class="empty">░░░░░░░░</span><span class="bracket">]</span>
+                  <span class="arrow">←</span>
+                  <span class="ascii-pct">76% draining</span>
+                </div>
+              </div>
+              <div class="ascii-card current">
+                <div class="ascii-head">
+                  <span class="label">CURRENT</span>
+                  <span class="status">EBB · BUILDING</span>
+                </div>
+                <div class="ascii-row">
+                  <span>slack · 8:24 PM</span>
+                  <span class="now">now 1.1 kt</span>
+                  <span class="right">peak 1.9 kt · 11:26 PM</span>
+                </div>
+                <div class="ascii-bar" aria-hidden="true">
+                  <span class="bracket">[</span><span class="filled">██████████████████</span><span class="marker">│</span><span class="empty">█████████████░</span><span class="bracket">]</span>
+                  <span class="arrow">→</span>
+                  <span class="ascii-pct">58% filling</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- =============== Option 2: Drift Rails =============== -->
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>2. Drift Rails</h2>
+              <p class="option-note">
+                Continuous solid rails — no segmentation. A subtle gradient
+                drifts along the leading edge in the direction of motion, so
+                the bar itself encodes "filling" or "draining" without needing
+                a text label. Respects <code>prefers-reduced-motion</code>.
+              </p>
+            </div>
+            <span class="tag">motion-led</span>
+          </div>
+          <div class="demo">
+            <div class="drift-stack">
+              <div class="drift-row" style="--pct: 76%; --rail-color: #5b7f2a">
+                <div class="drift-head">
+                  <span class="lab tide">Tide</span>
+                  <span class="state">Falling · draining toward low</span>
+                </div>
+                <div class="drift-now">
+                  <span><strong>low 0.4 ft</strong> · 1:50 AM</span>
+                  <span class="now-value">now 4.8 ft</span>
+                  <span><strong>high 6.2 ft</strong> · 7:21 PM</span>
+                </div>
+                <div class="drift-rail dir-down" aria-hidden="true">
+                  <div class="fill"></div>
+                  <div class="drift"></div>
+                  <div class="marker"></div>
+                </div>
+                <div class="drift-meta">
+                  <span>0%</span><span>50%</span><span>100%</span>
+                </div>
+              </div>
+              <div class="drift-row" style="--pct: 58%; --rail-color: #006b8f">
+                <div class="drift-head">
+                  <span class="lab current">Current</span>
+                  <span class="state">Ebb building · filling toward peak</span>
+                </div>
+                <div class="drift-now">
+                  <span><strong>slack</strong> · 8:24 PM</span>
+                  <span class="now-value">now 1.1 kt</span>
+                  <span><strong>peak 1.9 kt</strong> · 11:26 PM</span>
+                </div>
+                <div class="drift-rail dir-up" aria-hidden="true">
+                  <div class="fill"></div>
+                  <div class="drift"></div>
+                  <div class="marker"></div>
+                </div>
+                <div class="drift-meta">
+                  <span>calm</span><span>steady</span><span>peak</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- =============== Option 3: Tide Clock + Current Vector =============== -->
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>3. Tide Clock + Current Vector</h2>
+              <p class="option-note">
+                Treats tide and current as different physical things. Tide
+                is a 12-hour cycle clock with a hand at "now". Current is a
+                directional vector whose length encodes magnitude. Strong
+                physical mental model; takes more vertical space.
+              </p>
+            </div>
+            <span class="tag">physical</span>
+          </div>
+          <div class="demo">
+            <div class="clock-row">
+              <!-- Tide clock: 12h cycle. We are ~2h past high tide on the
+                   falling half. Place the hand at ~7 o'clock (210deg). -->
+              <div class="clock-card">
+                <h3>Tide cycle</h3>
+                <svg class="clock-svg" viewBox="0 0 220 220" role="img" aria-label="Tide cycle clock">
+                  <defs>
+                    <linearGradient id="rising-arc" x1="0" x2="1" y1="0" y2="0">
+                      <stop offset="0" stop-color="#dfeccb" />
+                      <stop offset="1" stop-color="#5b7f2a" />
+                    </linearGradient>
+                    <linearGradient id="falling-arc" x1="0" x2="1" y1="0" y2="0">
+                      <stop offset="0" stop-color="#a64b00" />
+                      <stop offset="1" stop-color="#f3dcc7" />
+                    </linearGradient>
+                  </defs>
+                  <!-- outer ring -->
+                  <circle cx="110" cy="110" r="92" fill="#fff" stroke="#d6e4e8" stroke-width="2" />
+                  <!-- rising half (right side, low at 6 → high at 12, drawn 180° → 0° clockwise via top) -->
+                  <path d="M110 202 A92 92 0 0 1 110 18" fill="none" stroke="url(#rising-arc)" stroke-width="14" stroke-linecap="round" />
+                  <!-- falling half (left side, high at 12 → low at 6) -->
+                  <path d="M110 18 A92 92 0 0 1 110 202" fill="none" stroke="url(#falling-arc)" stroke-width="14" stroke-linecap="round" />
+                  <!-- labels -->
+                  <text x="110" y="14" text-anchor="middle" fill="#5b7f2a" font-size="11" font-weight="800">HIGH</text>
+                  <text x="110" y="216" text-anchor="middle" fill="#a64b00" font-size="11" font-weight="800">LOW</text>
+                  <text x="206" y="113" text-anchor="end" fill="#526075" font-size="10">rising</text>
+                  <text x="14" y="113" text-anchor="start" fill="#526075" font-size="10">falling</text>
+                  <!-- ticks (every 30°) -->
+                  <g stroke="#b9c8cf" stroke-width="1">
+                    <line x1="110" y1="22" x2="110" y2="32" />
+                    <line x1="156" y1="32.3" x2="151" y2="40.9" />
+                    <line x1="187.7" y1="64" x2="179.1" y2="69" />
+                    <line x1="199" y1="110" x2="189" y2="110" />
+                    <line x1="187.7" y1="156" x2="179.1" y2="151" />
+                    <line x1="156" y1="187.7" x2="151" y2="179.1" />
+                    <line x1="110" y1="198" x2="110" y2="188" />
+                    <line x1="64" y1="187.7" x2="69" y2="179.1" />
+                    <line x1="32.3" y1="156" x2="40.9" y2="151" />
+                    <line x1="21" y1="110" x2="31" y2="110" />
+                    <line x1="32.3" y1="64" x2="40.9" y2="69" />
+                    <line x1="64" y1="32.3" x2="69" y2="40.9" />
+                  </g>
+                  <!-- hand at ~7 o'clock = 210deg from top -->
+                  <g class="clock-pulse">
+                    <line x1="110" y1="110" x2="58" y2="156" stroke="#172033" stroke-width="3.5" stroke-linecap="round" />
+                    <circle cx="58" cy="156" r="5.5" fill="#172033" />
+                  </g>
+                  <circle cx="110" cy="110" r="6" fill="#fff" stroke="#172033" stroke-width="2" />
+                </svg>
+                <div class="clock-readout">
+                  <span class="big">4.8 ft</span>
+                  <span class="small">falling · next low ~1:54 AM</span>
+                </div>
+              </div>
+              <!-- Current vector arrow -->
+              <div class="clock-card current">
+                <h3>Current vector</h3>
+                <svg class="clock-svg" viewBox="0 0 220 220" role="img" aria-label="Current direction and strength">
+                  <defs>
+                    <radialGradient id="comp-bg" cx="50%" cy="50%" r="60%">
+                      <stop offset="0" stop-color="#fff" />
+                      <stop offset="1" stop-color="#e3f2f8" />
+                    </radialGradient>
+                  </defs>
+                  <circle cx="110" cy="110" r="92" fill="url(#comp-bg)" stroke="#d6e4e8" stroke-width="2" />
+                  <!-- direction guides -->
+                  <line x1="20" y1="110" x2="200" y2="110" stroke="#cdd6db" stroke-width="1" stroke-dasharray="2 4" />
+                  <line x1="110" y1="20" x2="110" y2="200" stroke="#cdd6db" stroke-width="1" stroke-dasharray="2 4" />
+                  <text x="110" y="16" text-anchor="middle" fill="#526075" font-size="10">N</text>
+                  <text x="110" y="210" text-anchor="middle" fill="#526075" font-size="10">S</text>
+                  <text x="14" y="113" text-anchor="start" fill="#526075" font-size="10">W</text>
+                  <text x="206" y="113" text-anchor="end" fill="#526075" font-size="10">E</text>
+                  <!-- strength ring at 1.1/1.9 = 58% -->
+                  <circle cx="110" cy="110" r="55" fill="none" stroke="#cce9f2" stroke-width="2" stroke-dasharray="3 4" />
+                  <text x="170" y="155" fill="#006b8f" font-size="10" font-weight="700">58%</text>
+                  <!-- ebb arrow: pointing roughly out-to-sea (SE), length proportional to magnitude -->
+                  <g transform="translate(110 110) rotate(45)">
+                    <line x1="0" y1="0" x2="70" y2="0" stroke="#006b8f" stroke-width="11" stroke-linecap="round" />
+                    <polygon points="70,-13 88,0 70,13" fill="#006b8f" />
+                  </g>
+                  <circle cx="110" cy="110" r="6" fill="#fff" stroke="#006b8f" stroke-width="2" />
+                </svg>
+                <div class="clock-readout">
+                  <span class="big">1.1 kt <span style="color: var(--current); font-size: 14px; font-weight: 800">↗ ebb</span></span>
+                  <span class="small">building · peak 1.9 kt at 11:26 PM</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- =============== Option 4: Vertical Level Vessels =============== -->
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>4. Vertical Level Vessels</h2>
+              <p class="option-note">
+                Two tanks. Tide fills/drains literally — strongest "filling
+                metaphor" of any option. Current uses the same vessel shape
+                with a different label semantic (calm at bottom, peak at
+                top). Subtle surface wave at the water line.
+              </p>
+            </div>
+            <span class="tag">tank metaphor</span>
+          </div>
+          <div class="demo">
+            <div class="vessel-row vessel-wrapper">
+              <div class="vessel" style="--pct: 76%; --vessel-color: #5b7f2a">
+                <span class="vessel-top">high · 6.2 ft · 7:21 PM</span>
+                <span class="vessel-bottom">low · 0.4 ft · 1:50 AM</span>
+                <div class="vessel-glass">
+                  <div class="vessel-fill">
+                    <div class="surface" aria-hidden="true"></div>
+                  </div>
+                </div>
+                <div class="vessel-arrow down" aria-hidden="true" title="falling">↓</div>
+                <div class="vessel-label">
+                  <div class="name tide">Tide</div>
+                  <div class="value">4.8 ft</div>
+                  <div class="state">falling</div>
+                </div>
+              </div>
+              <div class="vessel" style="--pct: 58%; --vessel-color: #006b8f">
+                <span class="vessel-top">peak · 1.9 kt · 11:26 PM</span>
+                <span class="vessel-bottom">slack · 8:24 PM</span>
+                <div class="vessel-glass">
+                  <div class="vessel-fill">
+                    <div class="surface" aria-hidden="true"></div>
+                  </div>
+                </div>
+                <div class="vessel-arrow up" aria-hidden="true" title="building">↑</div>
+                <div class="vessel-label">
+                  <div class="name current">Current</div>
+                  <div class="value">1.1 kt</div>
+                  <div class="state">ebb · building</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- =============== Option 5: Horizon Sparkline =============== -->
+        <article class="option wide">
+          <div class="option-head">
+            <div>
+              <h2>5. Horizon Sparkline</h2>
+              <p class="option-note">
+                A wide, low-profile cycle view. Tide and current curves
+                overlay the recent past and projected near future, with a
+                pulsing "now" marker. Looks the most like water; would need
+                backend curve data to be production-ready.
+              </p>
+            </div>
+            <span class="tag">most designed</span>
+          </div>
+          <div class="demo">
+            <div class="horizon">
+              <div class="horizon-header">
+                <span><span class="tide-lbl">Tide</span> &nbsp;·&nbsp; <span style="color: var(--current)">Current</span></span>
+                <span class="now-lbl">now · 9:24 PM</span>
+              </div>
+              <svg class="horizon-svg" viewBox="0 0 720 220" role="img" aria-label="Tide and current sparkline across the day">
+                <defs>
+                  <linearGradient id="tide-fill-h" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#dfeccb" stop-opacity="0.85" />
+                    <stop offset="1" stop-color="#dfeccb" stop-opacity="0" />
+                  </linearGradient>
+                  <linearGradient id="current-fill-h" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#cce9f2" stop-opacity="0" />
+                    <stop offset="1" stop-color="#cce9f2" stop-opacity="0.85" />
+                  </linearGradient>
+                </defs>
+                <!-- background grid -->
+                <line x1="0" x2="720" y1="110" y2="110" stroke="#eef2f4" stroke-width="1" />
+                <line x1="0" x2="720" y1="55"  y2="55"  stroke="#f5f8f9" stroke-width="1" stroke-dasharray="2 4" />
+                <line x1="0" x2="720" y1="165" y2="165" stroke="#f5f8f9" stroke-width="1" stroke-dasharray="2 4" />
+
+                <!-- TIDE curve: previous low (1:50 AM) → high (7:21 PM) → next low. We map x=0..720 to a span of about 24h. -->
+                <path
+                  d="M0 95 C 60 105, 120 130, 175 165
+                     C 230 180, 285 180, 340 168
+                     C 395 156, 450 115, 510 70
+                     C 540 48, 565 36, 590 40
+                     C 615 44, 640 60, 670 90
+                     C 690 110, 705 130, 720 145"
+                  fill="none" stroke="#5b7f2a" stroke-width="3" />
+                <path
+                  d="M0 95 C 60 105, 120 130, 175 165
+                     C 230 180, 285 180, 340 168
+                     C 395 156, 450 115, 510 70
+                     C 540 48, 565 36, 590 40
+                     C 615 44, 640 60, 670 90
+                     C 690 110, 705 130, 720 145
+                     L 720 220 L 0 220 Z"
+                  fill="url(#tide-fill-h)" />
+
+                <!-- CURRENT curve (more oscillatory): peak/slack/peak. Lives slightly below tide for layering. -->
+                <path
+                  d="M0 175 C 35 188, 70 192, 110 185
+                     C 150 178, 180 160, 210 150
+                     C 245 138, 270 138, 310 152
+                     C 350 168, 380 188, 415 184
+                     C 445 180, 480 160, 510 135
+                     C 540 110, 565 95, 600 95
+                     C 635 95, 665 115, 720 145"
+                  fill="none" stroke="#006b8f" stroke-width="2.5" stroke-dasharray="0" />
+
+                <!-- key event ticks -->
+                <g stroke="#172033" stroke-width="1.2" opacity="0.4">
+                  <line x1="44" y1="100" x2="44" y2="125" />
+                  <line x1="513" y1="55" x2="513" y2="80" />
+                </g>
+                <text x="44" y="210" text-anchor="middle" fill="#526075" font-size="11" font-weight="700">low · 1:50 AM</text>
+                <text x="513" y="36" text-anchor="middle" fill="#5b7f2a" font-size="11" font-weight="800">high 6.2 · 7:21 PM</text>
+
+                <!-- now line (about 9:24 PM, ~2h past high in our 24h span). With low@1:50AM at x=44, peak@7:21PM at x=513 (separation ~17.5h → ~26.8 px/h), 9:24 PM is +2h05 → x ≈ 569 -->
+                <line x1="569" y1="20" x2="569" y2="195" stroke="#172033" stroke-width="2.2" />
+                <!-- tide now value y at x=569 ≈ 40 -->
+                <circle class="horizon-now" cx="569" cy="40" r="6" fill="#172033" />
+                <!-- current now value y at x=569 ≈ 102 -->
+                <circle class="horizon-now" cx="569" cy="102" r="6" fill="#006b8f" />
+                <text x="577" y="36"  fill="#172033" font-size="13" font-weight="800">now 4.8 ft</text>
+                <text x="577" y="100" fill="#006b8f" font-size="13" font-weight="800">now 1.1 kt · ebb building</text>
+              </svg>
+              <div class="horizon-axis">
+                <span>12 AM</span><span>6 AM</span><span>noon</span><span>6 PM</span><span>12 AM</span>
+              </div>
+              <div class="horizon-readout">
+                <div class="chip tide">
+                  Tide
+                  <strong>4.8 ft · falling</strong>
+                </div>
+                <div class="chip current">
+                  Current
+                  <strong>1.1 kt · ebb · building</strong>
+                </div>
+                <div class="chip">
+                  Next current peak
+                  <strong>1.9 kt · 11:26 PM</strong>
+                </div>
+                <div class="chip">
+                  Next low
+                  <strong>~1:54 AM</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- =============== Option 6: Decision Headline =============== -->
+        <article class="option wide">
+          <div class="option-head">
+            <div>
+              <h2>6. Decision Headline</h2>
+              <p class="option-note">
+                Drops the bar entirely and leans on typography. The verdict
+                is the picture; numeric values live below in a compact fact
+                grid. Useful as a reference point for "what if we kept it
+                editorial and skipped the instrument language?"
+              </p>
+            </div>
+            <span class="tag">no bar</span>
+          </div>
+          <div class="demo">
+            <div class="verdict-card">
+              <span class="verdict-eyebrow">Right now</span>
+              <span class="verdict-word">
+                Going out, building<span class="verdict-arrow">↘</span>
+              </span>
+              <p class="verdict-sub">
+                The tide is <strong>falling</strong> past mid-level on its way
+                toward the next low at ~1:54 AM. The ebb current is
+                <strong>building</strong> and won't peak until 11:26 PM —
+                expect more push from here on.
+              </p>
+              <div class="verdict-facts">
+                <div class="verdict-fact"><span class="lab tide">Tide</span><span class="val">4.8 ft · falling</span></div>
+                <div class="verdict-fact"><span class="lab current">Current</span><span class="val">1.1 kt · ebb · building</span></div>
+                <div class="verdict-fact"><span class="lab">Next current peak</span><span class="val">1.9 kt · 11:26 PM</span></div>
+                <div class="verdict-fact"><span class="lab">Next low</span><span class="val">~1:54 AM</span></div>
+              </div>
+              <div class="verdict-strip" aria-hidden="true">
+                <div class="seg tide"></div>
+                <div class="seg current"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: var(--muted)">
+                <span>low / slack</span>
+                <span>high / peak</span>
+              </div>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+      <p class="palette-note">
+        Mock data is identical to the Codex sheet so options can be compared
+        without correcting for different numbers. The animated leading edges
+        (options 2 &amp; 4 &amp; 5) honor <code>prefers-reduced-motion</code>.
+      </p>
+    </main>
+  </body>
+</html>

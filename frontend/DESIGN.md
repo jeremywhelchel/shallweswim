@@ -70,18 +70,28 @@ Initial URL shape:
 
 ```text
 /app                    app landing/default location, initially NYC
-/app/nyc                location conditions page
-/app/nyc/currents       current prediction page
+/app/nyc                location dashboard (canonical per-location URL)
 /app/locations          all locations/status page
 /app/assets/...         Vite-built static assets
 /app/manifest.webmanifest
 ```
 
-Query parameters remain available for app state where appropriate:
+There is no `/app/{loc}/currents` route in the React app. The currents
+detail surface lives in a planner overlay on the dashboard, opened via
+`?planner=open`.
+
+Query parameters carry app state. `planner=open` controls
+planner-overlay visibility; `at=...` carries the shifted planning time
+as an ISO-8601 timestamp:
 
 ```text
-/app/nyc/currents?shift=60
+/app/nyc?planner=open
+/app/nyc?at=2026-05-18T15:30:00-04:00
+/app/nyc?planner=open&at=2026-05-18T15:30:00-04:00
 ```
+
+See Milestone 3 below for the full route, URL state, and capability
+contract.
 
 `/app` should render the default location view, initially NYC, while preserving
 the `/app` URL. Do not redirect `/app` to `/app/nyc` in the first
@@ -510,8 +520,8 @@ Required backend changes for the first implementation:
 - add a freshness check for `frontend/openapi.json` and generated TypeScript API
   files
 - add FastAPI routes to serve the built frontend under `/app`
-- add tests that `/app`, `/app/nyc`, and `/app/nyc/currents` serve the frontend
-  shell while `/api/...` and existing Jinja routes still work
+- add tests that `/app` and `/app/nyc` serve the frontend shell while
+  `/api/...` and existing Jinja routes still work
 - add a frontend bootstrap API for non-secret presentation config
 
 Initial bootstrap endpoint:
@@ -633,7 +643,7 @@ frontend bootstrap endpoint.
 - serve built output under `/app`
 - configure Vite base and React Router basename
 - add app manifest and icons
-- prove `/app`, `/app/nyc`, and `/app/nyc/currents` reach the React shell
+- prove `/app` and `/app/nyc` reach the React shell
 - prove production builds fail loudly if the frontend build output is missing
 - keep current Jinja pages unchanged
 
@@ -658,9 +668,9 @@ Route scope:
 
 - `/app` and `/app/nyc` should both render the real NYC location page. `/app`
   should preserve the URL rather than redirecting.
-- `/app/nyc/currents` remains a placeholder unless the implementer needs a small
-  shared component for the current-detail link. The full currents page stays in
-  Milestone 4.
+- No `/app/{loc}/currents` route exists in the React app. The currents
+  detail surface lives in the planner overlay on the dashboard
+  (Milestone 3); deep links use `?planner=open&at=...`.
 - `/app/locations` remains a placeholder in this milestone.
 - Unsupported location codes can continue using placeholder or not-found
   behavior until Milestone 3 generalizes location pages.
@@ -690,8 +700,8 @@ Page content and ordering should match the current NYC page:
    - station note: `at {station_name} as of {formatted timestamp}.`
    - last tide, next tide, and following tide rows
    - current estimate: `{state_description or direction} at {magnitude} knots`
-   - show a detail link to `/app/nyc/currents` only when current direction is
-     available
+   - show a "PLAN AHEAD →" trigger that opens the planner overlay
+     (Milestone 3) only when current prediction data is available
 3. Forecast section with the Windy iframe.
 4. Live Webcam section with the YouTube live embed and the existing EarthCam
    alternative link.
@@ -790,7 +800,7 @@ Non-goals:
   charting.
 - Do not implement full `/app/:locationCode` generalization beyond what is
   naturally needed for NYC.
-- Do not implement the full currents detail page.
+- Do not implement the planner overlay or sticky time-bar — those land in Milestone 3.
 - Do not add service workers or offline data caching.
 - Do not add the existing-site adoption banner yet.
 
@@ -934,20 +944,195 @@ Acceptance checks:
 - frontend lint, typecheck, unit tests, build, API freshness check, and e2e tests
   pass
 
-### Milestone 3: Generalize Location Pages
+### Milestone 3: Location Dashboard with Planner Mode
 
-- support `/app/:locationCode`
-- respect per-location feature flags
-- handle locations without temperature, tides, currents, webcam, or transit
-- preserve 404 and unavailable states
+This milestone supersedes the earlier sketches of both a dedicated
+`/app/{loc}/currents` detail route and a standalone "Generalize
+Location Pages" milestone. The dashboard shape is the single
+per-location page, so generalizing to non-NYC locations is just step
+`3.D` (per-location React modules plus the router/404 plumbing). See
+`shallweswim/static/claude_app_structure.html` for the full design
+exploration — wireframes, interaction patterns, feature × location
+matrix, NYC depth split, fallback table — that this section condenses.
 
-### Milestone 4: Currents And Status Pages
+#### Chosen direction
 
-- implement `/app/:locationCode/currents`
-- implement `/app/locations`
-- decide whether widget/embed pages are still needed in React
+The location page at `/app/{loc}` is a single dashboard with no nested
+route. Two orthogonal URL query params drive its variable behavior:
 
-### Milestone 5: Adoption Banner
+- `planner=open` controls **planner-overlay visibility**. The overlay
+  carries the deep currents detail (annotated map, projection plot,
+  scrubber, commentary). With no `at`, it opens at "now".
+- `at=...` carries the **shifted planning time** as an ISO-8601
+  timestamp. When set, every prediction-respecting component on the
+  page — Water Movement, tide events, currents, projection plot — shows
+  the future state at that time. The sticky time-bar at the top of the
+  page transforms into the page-level time control. When not set, the
+  page is in its right-now state (water temp, Water Movement, forecast,
+  webcam, trends, transit, sources).
+
+The two params are independent: `?planner=open` without `at` opens the
+overlay at "now"; `?at=...` without `planner=open` shifts the page
+without the overlay visible. In conversational shorthand, the page is
+in "planner mode" whenever `at` is set — that's the state that visibly
+distinguishes future-view from right-now — but the URL contract is the
+authoritative model.
+
+Deep currents detail (annotated current map, tide × current projection
+plot, NYC direction commentary, physics notes, legacy harbor charts)
+lives in a **responsive planner overlay** — full-screen on mobile,
+side drawer alongside the dashboard on desktop. The overlay is opened
+from a "PLAN AHEAD →" link in the Water Movement card.
+
+NYC's domain depth — direction commentary, physics notes, custom map
+overlays, legacy chart copy — lives in `frontend/src/locations/nyc/`
+React modules, not in `/api/app/bootstrap`. The bootstrap endpoint
+stays focused on operational config (capability flags, station IDs,
+webcam URLs, transit route IDs, citation links).
+
+#### Route contract
+
+- Canonical URL: `/app/{loc}` with query params. There is no separate
+  `/currents` route in the React app — the React app isn't bound to
+  the Jinja URL shape, so we adopt the dashboard convention directly.
+- Primary URL: `/app/{loc}?planner=open&at=…` — dashboard with planner
+  open at the chosen time.
+- Known location without prediction data: the dashboard loads
+  normally; planner trigger and overlay are quietly suppressed; a
+  deep-linked `?planner=open` URL is a no-op rather than an error.
+- Unknown location code: hard HTTP 404. The 404 is reserved for codes
+  the app doesn't know about, not for known locations that simply
+  lack a planner.
+
+#### URL state contract
+
+- `?at=` is an absolute ISO-8601 timestamp with timezone offset, e.g.
+  `?at=2026-05-18T15:30:00-04:00`. UI displays "3:30 PM" but state is
+  unambiguous around DST and day boundaries.
+- `?planner=open` controls overlay visibility independently of `?at=`.
+- Backend support for `?at=` is additive. 3.A's frontend computes
+  `shift_minutes = round((at − now) / 60)` and calls the existing
+  `/api/{loc}/currents?shift=…` and
+  `/api/{loc}/plots/current_tide?shift=…` endpoints. Existing inbound
+  `?shift=` links are normalized to `?at=` on first navigation.
+
+History semantics:
+
+| Action                                             | URL change                                | History  |
+| -------------------------------------------------- | ----------------------------------------- | -------- |
+| Open planner from no-shift state                   | adds `?planner=open`                      | push     |
+| Scrub time inside overlay                          | updates `?at=…`                           | replace  |
+| Close overlay (× / ESC / click-outside / back)     | drops `?planner=open`, keeps `?at`        | replace  |
+| Reset to now from sticky bar                       | drops `?at`                               | replace  |
+
+Direct-entry edge case: if a user lands on
+`/app/{loc}?planner=open&at=…` via a shared link, browser Back follows
+normal browser history (leaves the app entirely). The close × inside
+the overlay still replaces to `/app/{loc}?at=…` so in-app dismissal
+behaves the same as in a fresh session.
+
+#### Capability / fallback rules
+
+| Location type                              | Planner trigger    | Sticky time-bar  | Overlay content                                                          |
+| ------------------------------------------ | ------------------ | ---------------- | ------------------------------------------------------------------------ |
+| Tidal · current prediction · NYC           | enabled            | enabled          | full — scrubber + map + projection plot + commentary + legacy charts     |
+| Tidal · current prediction · other         | enabled            | enabled          | generic — scrubber + projection plot                                     |
+| Tidal · tide prediction only (SAN/SFO/BOS/SEA) | optional · module-driven | tied to trigger | tide projection only                                              |
+| River · current observation (SDF)          | disabled           | disabled         | n/a — "Recent flow (observed)" card on home instead                      |
+| Lake (CHI)                                 | disabled           | disabled         | n/a — no Water Movement card                                             |
+| Spring · temperature-only (AUS)            | disabled           | disabled         | n/a — minimal home layout                                                |
+
+Default for any new location: the planner trigger is **disabled** unless
+the location either has `currents_source.type === 'prediction'` in its
+bootstrap config (auto-enables the trigger with generic overlay content)
+or registers its own React module with custom planner content
+(NYC-style).
+
+Sticky time-bar:
+
+- In right-now mode it appears only after the hero scrolls past, with
+  the three live chips (temp / tide / current) and a small "PLAN" chip.
+- In planner mode it pins to the top regardless of scroll, carrying
+  the time scrubber + preset chips + selected-time readout + "× reset
+  to now" affordance.
+
+Overlay interaction contract:
+
+- Open from "PLAN AHEAD →" on Water Movement or "PLAN" on the sticky
+  bar. Pushes one history entry.
+- Close via close ×, ESC (desktop), click-outside (desktop), or device
+  back button — all converge on the same outcome.
+- Mobile: full-screen overlay (replaces home view).
+- Desktop: side drawer; the dashboard column behind the drawer is
+  scroll-locked, but the drawer itself scrolls independently — that
+  matters for long NYC content (map, plot, commentary, legacy charts,
+  methodology notes can run past the viewport without dragging the
+  dashboard along).
+- Slider thumb, preset chips, and the × button are sized for 44×44 pt
+  minimum on touch.
+- Slider drags update predictions in real time (debounced ~150 ms on
+  the API-bound projection plot); preset chips snap.
+
+#### Shipping sequence
+
+Each step is independently shippable and adds a layer to the
+dashboard. Step 3.A is the foundation; 3.B is the "becomes a planner"
+unlock; 3.C and 3.D add depth and breadth.
+
+- **3.A · Planner overlay (foundation):** responsive overlay for NYC.
+  Inside: time scrubber + `−1h / now / +1h` preset chips, annotated
+  Coney Island map, tide × current projection plot, NYC direction
+  commentary, physics note ("currents lead the tide by 2 h here"),
+  legacy harbor charts. "PLAN AHEAD →" trigger in Water Movement.
+  URL-backed `?at=` (frontend translates to `shift` for the existing
+  backend endpoints; backend unchanged). All NYC-specific content
+  hard-coded in `frontend/src/locations/nyc/`. Result: feature parity
+  with the existing Jinja currents page, no backend changes.
+- **3.B · Sticky shifted-time bar:** the bar that transforms between
+  now-anchor (right-now mode, after scroll) and page-level time
+  control (planner mode, always pinned). Users keep scrubbing without
+  re-opening the overlay. Affects every prediction-respecting
+  component on the page.
+- **3.C · In-card Now/Soon toggle + smart presets:** Water Movement
+  card's `Now` / `Soon` chips for the 2-hour outlook. Adds
+  `next slack` / `peak flood` / `peak ebb` preset chips to both
+  overlay and sticky bar. *Depends on the backend follow-up below.*
+- **3.D · Generalize to other locations:** ship `locations/sdf/`,
+  `locations/chi/`, `locations/aus/`, and `locations/generic/`. Each
+  module configures which generic components render and provides
+  per-location copy. This step also handles the router-level work
+  formerly tracked as a standalone "Generalize Location Pages"
+  milestone: `/app/:locationCode` routing for any registered location,
+  per-location feature-flag rendering, graceful absence of features
+  (no temp / tide / current / webcam / transit on a given location
+  collapses without leaving holes), and preservation of 404 /
+  unavailable states. The dashboard shape is the single per-location
+  page; per-location modules just configure it.
+
+`/app/locations` (all-locations grid, matching the Jinja `/all` page)
+and the embed widget (`/{loc}/widget`) decisions stay in this milestone
+but are independent of the dashboard rework.
+
+#### Backend follow-up track
+
+Optional, additive, none of these block 3.A or 3.B:
+
+- Named inflection-point timestamps in `/api/{loc}/currents`
+  (`next_slack`, `next_peak_flood`, `next_peak_ebb`). Unblocks 3.C's
+  smart presets without client-side arithmetic.
+- Accept `?at=` server-side alongside `?shift=` on shift-aware
+  endpoints. Removes the client-side translation step. Both params can
+  coexist during migration.
+- Replace `/api/{loc}/plots/current_tide` image endpoint with a JSON
+  time-series so the projection plot renders client-side (interactive
+  tooltips, sharper labels, dynamic time-window bound to the planner
+  slider). The image endpoint stays for the Jinja site until that's
+  retired.
+- Future: a temperature prediction feed. The dashboard's planner mode
+  is already wired to accept it — adding a new prediction-respecting
+  component is the per-component renderer plus the feed.
+
+### Milestone 4: Adoption Banner
 
 - add the existing-site "try the new app" banner
 - include dismiss-forever behavior
@@ -965,7 +1150,7 @@ Milestone scope:
   Vitest, and Playwright
 - add OpenAPI export, minimal `/api/app/bootstrap`, and TypeScript API generation
 - serve the built frontend under `/app`
-- add placeholder routes for `/app`, `/app/nyc`, and `/app/nyc/currents`
+- add placeholder routes for `/app` and `/app/nyc`
 - include installable-app manifest metadata for `/app`
 - keep the existing Jinja pages unchanged except for wiring needed to serve `/app`
 

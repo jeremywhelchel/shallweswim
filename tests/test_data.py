@@ -28,7 +28,7 @@ from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.core import queries
-from shallweswim.core.queries import DataUnavailableError, get_current_tide_info
+from shallweswim.core.queries import DataUnavailableError, get_tide_info_at_time
 from shallweswim.data import LocationDataManager
 from shallweswim.feeds import Feed
 from shallweswim.types import (
@@ -968,7 +968,7 @@ def test_tide_info_rejects_timezone_aware_feed_data(
         DataUnavailableError,
         match="Tide DataFrame should use naive datetimes",
     ):
-        get_current_tide_info({feeds.FEED_TIDES: mock_tides_feed}, mock_config)
+        get_tide_info_at_time({feeds.FEED_TIDES: mock_tides_feed}, mock_config)
 
 
 @pytest.mark.asyncio

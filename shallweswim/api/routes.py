@@ -5,6 +5,8 @@ This module contains FastAPI route handlers for the API endpoints and data manag
 
 # Standard library imports
 import asyncio
+import dataclasses
+import datetime
 import io
 import logging
 import urllib.parse
@@ -63,6 +65,15 @@ from shallweswim.core.queries import DataUnavailableError
 # Data store for location data will be stored in app.state.data_managers
 
 
+def validate_location(loc: str) -> config_lib.LocationConfig:
+    """Return location config or raise the API's standard 404."""
+    cfg = config_lib.get(loc)
+    if not cfg:
+        logging.warning(f"[{loc}] Bad location request")
+        raise HTTPException(status_code=404, detail=f"Location '{loc}' not found")
+    return cfg
+
+
 def _create_tide_current_plot(*args, **kwargs):  # type: ignore[no-untyped-def]
     """Wrapper that lazily imports plot module for subprocess execution.
 
@@ -119,6 +130,181 @@ def api_current_range(current_range: types.CurrentRange | None) -> CurrentRange 
             phase=current_range.peak.phase,
         ),
     )
+
+
+@dataclasses.dataclass(frozen=True)
+class LocationRequestContext:
+    """Location request context after validating the location code."""
+
+    cfg: config_lib.LocationConfig
+    data_manager: data_lib.LocationDataManager
+
+
+@dataclasses.dataclass(frozen=True)
+class ResolvedLocationTime:
+    """Location request context after validating planner time parameters."""
+
+    cfg: config_lib.LocationConfig
+    data_manager: data_lib.LocationDataManager
+    time_query: util.EffectiveTimeQuery
+
+    @property
+    def timestamp(self) -> datetime.datetime:
+        return self.time_query.timestamp
+
+
+def resolve_location_context(
+    app: fastapi.FastAPI,
+    location: str,
+) -> LocationRequestContext:
+    """Resolve shared location config and manager for API routes."""
+    cfg = validate_location(location)
+    return LocationRequestContext(
+        cfg=cfg,
+        data_manager=app.state.data_managers[location],
+    )
+
+
+def resolve_location_time(
+    app: fastapi.FastAPI,
+    location: str,
+    *,
+    shift: int = 0,
+    at: str | None = None,
+) -> ResolvedLocationTime:
+    """Resolve shared location-local planner time for time-aware API routes."""
+    location_context = resolve_location_context(app, location)
+    try:
+        time_query = util.effective_time_query(
+            location_context.cfg.timezone, shift_minutes=shift, at=at
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return ResolvedLocationTime(
+        cfg=location_context.cfg,
+        data_manager=location_context.data_manager,
+        time_query=time_query,
+    )
+
+
+def api_location_info(location: str, cfg: config_lib.LocationConfig) -> LocationInfo:
+    """Convert location config to the API location summary model."""
+    return LocationInfo(code=location, name=cfg.name, swim_location=cfg.swim_location)
+
+
+def api_tide_entry(tide: types.TideEntry) -> TideEntry:
+    """Convert an internal tide event to the API model."""
+    return TideEntry(
+        time=tide.time.isoformat(),
+        type=tide.type,
+        prediction=tide.prediction,
+    )
+
+
+def api_tide_state(tide_state: types.TideState | None) -> TideState | None:
+    """Convert an internal point-in-time tide state to the API model."""
+    if tide_state is None:
+        return None
+
+    return TideState(
+        timestamp=tide_state.timestamp,
+        estimated_height=tide_state.estimated_height,
+        units=tide_state.units,
+        trend=tide_state.trend,
+        height_pct=tide_state.height_pct,
+    )
+
+
+def api_tide_info_at_time(
+    data_manager: data_lib.LocationDataManager,
+    timestamp: datetime.datetime,
+) -> TideInfo:
+    """Build tide API data for one location-local timestamp."""
+    tide_info = data_manager.get_tide_info_at_time(timestamp)
+    return TideInfo(
+        past=[api_tide_entry(tide) for tide in tide_info.past],
+        next=[api_tide_entry(tide) for tide in tide_info.next],
+        state=api_tide_state(data_manager.predict_tide_at_time(timestamp)),
+    )
+
+
+def api_current_info(
+    current_info: types.CurrentInfo, *, magnitude_digits: int | None = None
+) -> CurrentInfo:
+    """Convert internal current state to the API model."""
+    magnitude = current_info.magnitude
+    if magnitude_digits is not None:
+        magnitude = round(magnitude, magnitude_digits)
+
+    return CurrentInfo(
+        timestamp=current_info.timestamp.isoformat(),
+        direction=current_info.direction,
+        phase=current_info.phase,
+        strength=current_info.strength,
+        trend=current_info.trend,
+        magnitude=magnitude,
+        magnitude_pct=current_info.magnitude_pct,
+        state_description=current_info.state_description,
+        range=api_current_range(current_info.range),
+        source_type=current_info.source_type,
+    )
+
+
+def api_temperature_info(
+    cfg: config_lib.LocationConfig,
+    data_manager: data_lib.LocationDataManager,
+) -> TemperatureInfo | None:
+    """Build observed temperature data for the conditions endpoint."""
+    if not (
+        cfg.temp_source is not None
+        and cfg.temp_source.live_enabled
+        and data_manager.has_feed_data(FEED_LIVE_TEMPS)
+    ):
+        return None
+
+    temp_reading = data_manager.get_current_temperature()
+    return TemperatureInfo(
+        timestamp=temp_reading.timestamp.isoformat(),
+        water_temp=temp_reading.temperature,
+        units="F",
+        station_name=cfg.temp_source.name,
+    )
+
+
+def api_conditions_tide_info(
+    ctx: ResolvedLocationTime,
+) -> TideInfo | None:
+    """Build tide data for the conditions endpoint at the resolved time."""
+    if not (ctx.cfg.tide_source and ctx.data_manager.has_feed_data(FEED_TIDES)):
+        return None
+
+    return api_tide_info_at_time(ctx.data_manager, ctx.timestamp)
+
+
+def api_conditions_current_info(
+    ctx: ResolvedLocationTime,
+) -> CurrentInfo | None:
+    """Build current data for the conditions endpoint at the resolved time.
+
+    Prediction sources use the requested planner time. Observation sources
+    remain latest-observation data until we have forecast/prediction support for
+    that source type.
+    """
+    if not (ctx.cfg.currents_source and ctx.data_manager.has_feed_data(FEED_CURRENTS)):
+        return None
+
+    match ctx.cfg.currents_source.source_type:
+        case types.DataSourceType.PREDICTION:
+            current_info = ctx.data_manager.predict_flow_at_time(ctx.timestamp)
+        case types.DataSourceType.OBSERVATION:
+            current_info = ctx.data_manager.get_current_flow_info()
+        case _:
+            raise ValueError(
+                f"Unknown current source type: {ctx.cfg.currents_source.source_type}"
+            )
+
+    return api_current_info(current_info)
 
 
 async def initialize_location_data(
@@ -207,14 +393,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
     Args:
         app: The FastAPI application
     """
-
-    # Helper function to validate location
-    def validate_location(loc: str) -> config_lib.LocationConfig:
-        cfg = config_lib.get(loc)
-        if not cfg:
-            logging.warning(f"[{loc}] Bad location request")
-            raise HTTPException(status_code=404, detail=f"Location '{loc}' not found")
-        return cfg
 
     def timezone_name(cfg: config_lib.LocationConfig) -> str:
         """Return a stable IANA timezone name for a location config."""
@@ -341,11 +519,15 @@ def register_routes(app: fastapi.FastAPI) -> None:
         )
 
     @app.get("/api/{location}/conditions", response_model=LocationConditions)
-    async def location_conditions(location: str) -> LocationConditions:
+    async def location_conditions(
+        location: str, shift: int = 0, at: str | None = None
+    ) -> LocationConditions:
         """API endpoint that returns tide and temperature data for a specific location.
 
         Args:
             location: Location code (e.g., 'nyc')
+            shift: Time shift in minutes from current time (optional)
+            at: Location-local ISO-8601 timestamp within 24 hours; overrides shift
 
         Returns:
             JSON response with tide and temperature information
@@ -353,123 +535,27 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Raises:
             HTTPException: If the location is not configured
         """
-        logging.info(f"[{location}] Processing conditions request")
-        cfg = validate_location(location)
-
-        # Get the data manager for this location
-        data_manager = app.state.data_managers[location]
+        logging.info(
+            f"[{location}] Processing conditions request with shift={shift}, at={at}"
+        )
+        ctx = resolve_location_time(app, location, shift=shift, at=at)
 
         # Check if location has data before attempting to serve
         # Use has_data (not ready) to serve stale data during brief refresh windows
         # Background updater handles freshness - user-facing endpoints serve any available data
-        if not data_manager.has_data:
+        if not ctx.data_manager.has_data:
             logging.warning(f"[{location}] No data available for conditions request")
             raise HTTPException(
                 status_code=503,
-                detail=f"{cfg.name} data temporarily unavailable",
-            )
-
-        # Create location info
-        location_info = LocationInfo(
-            code=location, name=cfg.name, swim_location=cfg.swim_location
-        )
-
-        # Initialize temperature and tides as None
-        temperature_info = None
-        tides_info = None
-        current_info = None
-
-        # Prepare temperature information if available
-        # Check both config AND data availability before querying feed-backed data.
-        if (
-            cfg.temp_source is not None
-            and cfg.temp_source.live_enabled
-            and data_manager.has_feed_data(FEED_LIVE_TEMPS)
-        ):
-            temp_reading = data_manager.get_current_temperature()
-
-            # cfg.temp_source is guaranteed to exist and have a name due to the outer check.
-            # If not, it's an internal error and AttributeError is appropriate.
-            temperature_info = TemperatureInfo(
-                timestamp=temp_reading.timestamp.isoformat(),
-                water_temp=temp_reading.temperature,
-                units="F",
-                station_name=cfg.temp_source.name,
-            )
-
-        # Add tide data only if the location has a tide source AND data is available
-        if cfg.tide_source and data_manager.has_feed_data(FEED_TIDES):
-            tide_info = data_manager.get_current_tide_info()
-            tide_state = data_manager.predict_tide_at_time()
-
-            # Create Pydantic model instances
-            past_tides = [
-                TideEntry(
-                    time=tide.time.isoformat(),
-                    type=tide.type,
-                    prediction=tide.prediction,
-                )
-                for tide in tide_info.past
-            ]
-
-            next_tides = [
-                TideEntry(
-                    time=tide.time.isoformat(),
-                    type=tide.type,
-                    prediction=tide.prediction,
-                )
-                for tide in tide_info.next
-            ]
-
-            state = (
-                TideState(
-                    timestamp=tide_state.timestamp,
-                    estimated_height=tide_state.estimated_height,
-                    units=tide_state.units,
-                    trend=tide_state.trend,
-                    height_pct=tide_state.height_pct,
-                )
-                if tide_state is not None
-                else None
-            )
-
-            tides_info = TideInfo(past=past_tides, next=next_tides, state=state)
-
-        # Fetch Current Data (if configured AND data is available)
-        if cfg.currents_source and data_manager.has_feed_data(FEED_CURRENTS):
-            # Use the source_type to determine which method to call
-            match cfg.currents_source.source_type:
-                case types.DataSourceType.PREDICTION:
-                    # For prediction sources (like NOAA CO-OPS), use predict_flow_at_time
-                    current_info_internal = data_manager.predict_flow_at_time()
-                case types.DataSourceType.OBSERVATION:
-                    # For observation sources (like USGS NWIS), use get_current_flow_info
-                    current_info_internal = data_manager.get_current_flow_info()
-                case _:
-                    # If source_type is not recognized, raise an error
-                    raise ValueError(
-                        f"Unknown current source type: {cfg.currents_source.source_type}"
-                    )
-
-            current_info = CurrentInfo(
-                timestamp=current_info_internal.timestamp.isoformat(),
-                direction=current_info_internal.direction,
-                phase=current_info_internal.phase,
-                strength=current_info_internal.strength,
-                trend=current_info_internal.trend,
-                magnitude=current_info_internal.magnitude,
-                magnitude_pct=current_info_internal.magnitude_pct,
-                state_description=current_info_internal.state_description,
-                range=api_current_range(current_info_internal.range),
-                source_type=current_info_internal.source_type,
+                detail=f"{ctx.cfg.name} data temporarily unavailable",
             )
 
         # Return structured response using Pydantic models
         return LocationConditions(
-            location=location_info,
-            temperature=temperature_info,
-            tides=tides_info,
-            current=current_info,
+            location=api_location_info(location, ctx.cfg),
+            temperature=api_temperature_info(ctx.cfg, ctx.data_manager),
+            tides=api_conditions_tide_info(ctx),
+            current=api_conditions_current_info(ctx),
         )
 
     @app.get("/api/{location}/plots/live_temps")
@@ -557,33 +643,21 @@ def register_routes(app: fastapi.FastAPI) -> None:
         logging.info(
             f"[{location}] Processing current tide plot request with shift={shift}, at={at}"
         )
-        # Get location config to access the timezone
-        cfg = validate_location(location)
-
-        try:
-            time_query = util.effective_time_query(
-                cfg.timezone, shift_minutes=shift, at=at
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        ts = time_query.timestamp
-
-        # Generate the tide/current plot
-        data_manager = app.state.data_managers[location]
+        ctx = resolve_location_time(app, location, shift=shift, at=at)
 
         # Check both required feeds have data before attempting to generate plot
         if not (
-            data_manager.has_feed_data(FEED_TIDES)
-            and data_manager.has_feed_data(FEED_CURRENTS)
+            ctx.data_manager.has_feed_data(FEED_TIDES)
+            and ctx.data_manager.has_feed_data(FEED_CURRENTS)
         ):
             raise HTTPException(
                 status_code=503,
-                detail=f"{cfg.name} tide/current data temporarily unavailable",
+                detail=f"{ctx.cfg.name} tide/current data temporarily unavailable",
             )
 
         try:
-            tides_data = data_manager.get_feed_values(FEED_TIDES)
-            currents_data = data_manager.get_feed_values(FEED_CURRENTS)
+            tides_data = ctx.data_manager.get_feed_values(FEED_TIDES)
+            currents_data = ctx.data_manager.get_feed_values(FEED_CURRENTS)
 
             if len(tides_data) < 2 or len(currents_data) < 2:
                 logging.warning(
@@ -591,7 +665,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 )
                 raise HTTPException(
                     status_code=503,
-                    detail=f"{cfg.name} tide/current data temporarily unavailable",
+                    detail=f"{ctx.cfg.name} tide/current data temporarily unavailable",
                 )
 
             # TODO: Cache or precompute common shift values for this plot. This
@@ -605,8 +679,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     _create_tide_current_plot,  # Function to run (lazy imports plot)
                     tides_data,  # Argument 1
                     currents_data,  # Argument 2
-                    ts,  # Argument 3
-                    cfg,  # Argument 4
+                    ctx.timestamp,  # Argument 3
+                    ctx.cfg,  # Argument 4
                 ),
                 timeout=PLOT_TIMEOUT,
             )
@@ -620,7 +694,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         except DataUnavailableError as e:
             raise HTTPException(
                 status_code=503,
-                detail=f"{cfg.name} tide/current data temporarily unavailable",
+                detail=f"{ctx.cfg.name} tide/current data temporarily unavailable",
             ) from e
         except (RuntimeError, ValueError) as e:
             logging.exception(f"[{location}] Internal plot generation error")
@@ -814,35 +888,31 @@ def register_routes(app: fastapi.FastAPI) -> None:
         logging.info(
             f"[{location}] Processing currents request with shift={shift}, at={at}"
         )
-        # Validate location exists
-        cfg = validate_location(location)
+        location_context = resolve_location_context(app, location)
 
         # Check if this location supports current predictions
-        if not cfg.currents_source:
+        if not location_context.cfg.currents_source:
             raise HTTPException(
                 status_code=404,
                 detail=f"Location '{location}' does not support current predictions",
             )
 
         # Only PREDICTION-type sources support time-shifted current predictions
-        if cfg.currents_source.source_type != types.DataSourceType.PREDICTION:
+        if (
+            location_context.cfg.currents_source.source_type
+            != types.DataSourceType.PREDICTION
+        ):
             raise HTTPException(
                 status_code=404,
                 detail=f"Current predictions for '{location}' are not available (observation-only)",
             )
 
-        try:
-            time_query = util.effective_time_query(
-                cfg.timezone, shift_minutes=shift, at=at
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        ts = time_query.timestamp
-        resolved_shift = time_query.shift_minutes
+        ctx = resolve_location_time(app, location, shift=shift, at=at)
+        resolved_shift = ctx.time_query.shift_minutes
 
         try:
             # Get current prediction information
-            current_info = app.state.data_managers[location].predict_flow_at_time(ts)
+            current_info = ctx.data_manager.predict_flow_at_time(ctx.timestamp)
         except DataUnavailableError as e:
             raise HTTPException(status_code=503, detail=str(e)) from e
 
@@ -850,26 +920,14 @@ def register_routes(app: fastapi.FastAPI) -> None:
         fwd = min(resolved_shift + 60, util.MAX_SHIFT_LIMIT)
         back = max(resolved_shift - 60, util.MIN_SHIFT_LIMIT)
 
-        # Format current_info data for the API response
-        current_prediction = CurrentInfo(
-            timestamp=ts.isoformat(),
-            direction=current_info.direction,
-            phase=current_info.phase,
-            strength=current_info.strength,
-            trend=current_info.trend,
-            magnitude=round(current_info.magnitude, 1),
-            magnitude_pct=current_info.magnitude_pct,
-            state_description=current_info.state_description,
-            range=api_current_range(current_info.range),
-            source_type=current_info.source_type,
-        )
+        current_prediction = api_current_info(current_info, magnitude_digits=1)
 
         # Get chart data only if this location has chart assets configured
         legacy_chart = None
         current_chart_filename = None
-        if cfg.currents_source.has_static_charts:
+        if ctx.cfg.currents_source.has_static_charts:
             try:
-                chart_info = app.state.data_managers[location].get_chart_info(ts)
+                chart_info = ctx.data_manager.get_chart_info(ctx.timestamp)
             except DataUnavailableError as e:
                 raise HTTPException(status_code=503, detail=str(e)) from e
             legacy_chart = LegacyChartInfo(
@@ -889,8 +947,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 )
 
         plot_query = (
-            urllib.parse.urlencode({"at": time_query.at})
-            if time_query.at is not None
+            urllib.parse.urlencode({"at": ctx.time_query.at})
+            if ctx.time_query.at is not None
             else urllib.parse.urlencode({"shift": resolved_shift})
         )
         navigation = NavigationInfo(
@@ -899,15 +957,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
             prev_hour=back,
             current_api_url=f"/api/{location}/currents",
             plot_url=f"/api/{location}/plots/current_tide?{plot_query}",
-            at=time_query.at,
+            at=ctx.time_query.at,
         )
 
         # Return structured response
         return CurrentsResponse(
-            location=LocationInfo(
-                code=location, name=cfg.name, swim_location=cfg.swim_location
-            ),
-            timestamp=ts.isoformat(),
+            location=api_location_info(location, ctx.cfg),
+            timestamp=ctx.timestamp.isoformat(),
             current=current_prediction,
             legacy_chart=legacy_chart,
             current_chart_filename=current_chart_filename,

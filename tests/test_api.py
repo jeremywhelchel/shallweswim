@@ -3,9 +3,10 @@
 # pylint: disable=duplicate-code,unused-argument
 
 # Standard library imports
+import concurrent.futures
 import datetime
 from collections.abc import Generator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
 
@@ -27,7 +28,7 @@ from shallweswim.config import (
     CoopsTideFeedConfig,
     LocationConfig,
 )
-from shallweswim.core.feeds import FEED_TIDES
+from shallweswim.core.feeds import FEED_CURRENTS, FEED_TIDES
 from shallweswim.core.queries import DataUnavailableError
 from shallweswim.data import LocationDataManager
 from tests.helpers import assert_json_serializable, create_test_app
@@ -345,8 +346,8 @@ def test_get_location_conditions(
     mock_manager.get_current_flow_info.return_value = mock_current_info
     # Mock the return value for predict_flow_at_time method
     mock_manager.predict_flow_at_time.return_value = mock_current_info
-    # Mock the return value for get_current_tide_info method
-    mock_manager.get_current_tide_info.return_value = mock_tide_info
+    # Mock the return value for get_tide_info_at_time method
+    mock_manager.get_tide_info_at_time.return_value = mock_tide_info
     mock_manager.predict_tide_at_time.return_value = mock_tide_state
 
     # --- 3. Call API Endpoint ---
@@ -446,6 +447,211 @@ def test_get_location_conditions(
     assert data["current"]["range"]["peak"]["magnitude"] == 1.4
     assert data["current"]["range"]["peak"]["units"] == "kt"
     assert data["current"]["range"]["peak"]["phase"] == "flood"
+
+
+@freeze_time("2026-05-18T18:00:00Z")
+def test_conditions_endpoint_accepts_local_at_parameter(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """The conditions API shifts tide and prediction current state for planner time."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
+    mock_manager.get_current_temperature.return_value = sw_types.TemperatureReading(
+        timestamp=datetime.datetime(2026, 5, 18, 13, 55, 0),
+        temperature=65.0,
+    )
+    mock_manager.get_tide_info_at_time.return_value = sw_types.TideInfo(
+        past=[
+            sw_types.TideEntry(
+                time=mock_dt - datetime.timedelta(hours=1),
+                type=sw_types.TideCategory.LOW,
+                prediction=0.2,
+            )
+        ],
+        next=[
+            sw_types.TideEntry(
+                time=mock_dt + datetime.timedelta(hours=5),
+                type=sw_types.TideCategory.HIGH,
+                prediction=4.8,
+            )
+        ],
+    )
+    mock_manager.predict_tide_at_time.return_value = sw_types.TideState(
+        timestamp=mock_dt,
+        estimated_height=2.2,
+        units="ft",
+        trend=sw_types.TideTrend.RISING,
+        height_pct=0.52,
+    )
+    mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
+        timestamp=mock_dt,
+        magnitude=1.4,
+        source_type=sw_types.DataSourceType.PREDICTION,
+        magnitude_pct=0.75,
+        direction=sw_types.CurrentDirection.EBBING,
+        phase=sw_types.CurrentPhase.EBB,
+        strength=sw_types.CurrentStrength.MODERATE,
+        trend=sw_types.CurrentTrend.EASING,
+        state_description="moderate ebb and easing",
+    )
+
+    response = test_client.get("/api/nyc/conditions?at=2026-05-18T15:30:00")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["tides"]["state"]["timestamp"] == "2026-05-18T15:30:00"
+    assert data["tides"]["state"]["estimated_height"] == 2.2
+    assert data["current"]["timestamp"] == "2026-05-18T15:30:00"
+    assert data["current"]["magnitude"] == 1.4
+    mock_manager.get_tide_info_at_time.assert_called_once_with(mock_dt)
+    mock_manager.predict_tide_at_time.assert_called_once_with(mock_dt)
+    mock_manager.predict_flow_at_time.assert_called_once_with(mock_dt)
+
+
+@freeze_time("2026-05-18T18:00:00Z")
+def test_planner_at_is_consistent_across_time_aware_endpoints(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Planner-aware endpoints resolve one location-local target time."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
+    mock_manager.has_data = True
+
+    def has_feed_data_side_effect(feed_name: str) -> bool:
+        return feed_name in {FEED_TIDES, FEED_CURRENTS}
+
+    mock_manager.has_feed_data.side_effect = has_feed_data_side_effect
+    mock_manager._feeds[FEED_TIDES] = MagicMock(
+        values=pd.DataFrame({"prediction": [0.2, 4.8]})
+    )
+    mock_manager._feeds[FEED_CURRENTS] = MagicMock(
+        values=pd.DataFrame({"magnitude": [0.0, 1.4]})
+    )
+    mock_manager.get_tide_info_at_time.return_value = sw_types.TideInfo(
+        past=[
+            sw_types.TideEntry(
+                time=mock_dt - datetime.timedelta(hours=1),
+                type=sw_types.TideCategory.LOW,
+                prediction=0.2,
+            )
+        ],
+        next=[
+            sw_types.TideEntry(
+                time=mock_dt + datetime.timedelta(hours=5),
+                type=sw_types.TideCategory.HIGH,
+                prediction=4.8,
+            )
+        ],
+    )
+    mock_manager.predict_tide_at_time.return_value = sw_types.TideState(
+        timestamp=mock_dt,
+        estimated_height=2.2,
+        units="ft",
+        trend=sw_types.TideTrend.RISING,
+        height_pct=0.52,
+    )
+    mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
+        timestamp=mock_dt,
+        magnitude=1.4,
+        source_type=sw_types.DataSourceType.PREDICTION,
+        magnitude_pct=0.75,
+        direction=sw_types.CurrentDirection.EBBING,
+        phase=sw_types.CurrentPhase.EBB,
+        strength=sw_types.CurrentStrength.MODERATE,
+        trend=sw_types.CurrentTrend.EASING,
+        state_description="moderate ebb and easing",
+    )
+
+    class FakeFigure:
+        def savefig(self, output, **_kwargs) -> None:  # type: ignore[no-untyped-def]
+            output.write("<svg></svg>")
+
+    plot_call: dict[str, object] = {}
+
+    def fake_create_tide_current_plot(
+        _tides_data: pd.DataFrame,
+        _currents_data: pd.DataFrame,
+        timestamp: datetime.datetime,
+        _cfg: LocationConfig,
+    ) -> FakeFigure:
+        plot_call["timestamp"] = timestamp
+        return FakeFigure()
+
+    test_client.app.state.process_pool = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1
+    )
+    try:
+        with patch(
+            "shallweswim.api.routes._create_tide_current_plot",
+            side_effect=fake_create_tide_current_plot,
+        ):
+            conditions_response = test_client.get(
+                "/api/nyc/conditions?at=2026-05-18T15:30:00"
+            )
+            currents_response = test_client.get(
+                "/api/nyc/currents?at=2026-05-18T15:30:00"
+            )
+            plot_response = test_client.get(
+                "/api/nyc/plots/current_tide?at=2026-05-18T15:30:00"
+            )
+    finally:
+        test_client.app.state.process_pool.shutdown(wait=False)
+
+    assert conditions_response.status_code == status.HTTP_200_OK
+    assert currents_response.status_code == status.HTTP_200_OK
+    assert plot_response.status_code == status.HTTP_200_OK
+
+    conditions = conditions_response.json()
+    currents = currents_response.json()
+    assert conditions["tides"]["state"]["timestamp"] == "2026-05-18T15:30:00"
+    assert conditions["current"]["timestamp"] == "2026-05-18T15:30:00"
+    assert currents["timestamp"] == "2026-05-18T15:30:00"
+    assert currents["navigation"]["at"] == "2026-05-18T15:30:00"
+    assert plot_call["timestamp"] == mock_dt
+    mock_manager.get_tide_info_at_time.assert_called_once_with(mock_dt)
+    mock_manager.predict_tide_at_time.assert_called_once_with(mock_dt)
+    assert mock_manager.predict_flow_at_time.mock_calls == [
+        call(mock_dt),
+        call(mock_dt),
+    ]
+
+
+@pytest.mark.parametrize(
+    "at",
+    [
+        "2026-05-18T15:30:00-04:00",
+        "2026-05-18T19:30:00Z",
+    ],
+)
+def test_conditions_endpoint_rejects_at_with_timezone_offset(
+    at: str, test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Planner condition times are location-local and reject explicit offsets."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+
+    response = test_client.get("/api/nyc/conditions", params={"at": at})
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "must not include a timezone offset" in response.json()["detail"]
+    mock_manager.get_tide_info_at_time.assert_not_called()
+
+
+@freeze_time("2026-05-18T18:00:00Z")
+def test_conditions_endpoint_rejects_at_outside_prediction_window(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Planner condition times must stay within the supported prediction window."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+
+    response = test_client.get("/api/nyc/conditions?at=2026-05-19T14:01:00")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "within 24 hours" in response.json()["detail"]
+    mock_manager.get_tide_info_at_time.assert_not_called()
 
 
 def test_openapi_documents_condition_state_enums(test_client: TestClient) -> None:
@@ -649,6 +855,16 @@ def test_currents_endpoint_no_currents_source_returns_404(
     """
     # sfo doesn't have currents_source configured, so it gets 404
     response = test_client.get("/api/sfo/currents")
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "does not support" in response.json()["detail"]
+
+
+def test_currents_endpoint_no_currents_source_rejects_before_at_validation(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Unsupported current prediction routes should not parse planner params first."""
+    response = test_client.get("/api/sfo/currents?at=not-a-time")
+
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert "does not support" in response.json()["detail"]
 
@@ -992,7 +1208,7 @@ def test_conditions_endpoint_handles_nan_in_current_data(
     )
 
     # Mock tides
-    mock_manager.get_current_tide_info.return_value = sw_types.TideInfo(
+    mock_manager.get_tide_info_at_time.return_value = sw_types.TideInfo(
         past=[
             sw_types.TideEntry(
                 time=mock_dt - datetime.timedelta(hours=6),

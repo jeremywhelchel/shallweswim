@@ -1493,7 +1493,7 @@
     },
     "/api/{location}/conditions": {
       "get": {
-        "description": "API endpoint that returns tide and temperature data for a specific location.\n\nArgs:\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    JSON response with tide and temperature information\n\nRaises:\n    HTTPException: If the location is not configured",
+        "description": "API endpoint that returns tide and temperature data for a specific location.\n\nArgs:\n    location: Location code (e.g., 'nyc')\n    shift: Time shift in minutes from current time (optional)\n    at: Location-local ISO-8601 timestamp within 24 hours; overrides shift\n\nReturns:\n    JSON response with tide and temperature information\n\nRaises:\n    HTTPException: If the location is not configured",
         "operationId": "location_conditions_api__location__conditions_get",
         "parameters": [
           {
@@ -1503,6 +1503,32 @@
             "schema": {
               "title": "Location",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "shift",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Shift",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
             }
           }
         ],

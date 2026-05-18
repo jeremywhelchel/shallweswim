@@ -197,6 +197,8 @@ export interface paths {
          *
          *     Args:
          *         location: Location code (e.g., 'nyc')
+         *         shift: Time shift in minutes from current time (optional)
+         *         at: Location-local ISO-8601 timestamp within 24 hours; overrides shift
          *
          *     Returns:
          *         JSON response with tide and temperature information
@@ -1532,7 +1534,10 @@ export interface operations {
     };
     location_conditions_api__location__conditions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                shift?: number;
+                at?: string | null;
+            };
             header?: never;
             path: {
                 location: string;

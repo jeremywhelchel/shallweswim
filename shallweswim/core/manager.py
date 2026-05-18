@@ -848,8 +848,8 @@ class LocationDataManager:
         """
         return queries.get_current_temperature(self._feeds)
 
-    def get_current_tide_info(self) -> TideInfo:
-        """Get the previous tide and upcoming tides relative to current time.
+    def get_tide_info_at_time(self, t: datetime.datetime | None = None) -> TideInfo:
+        """Get the previous tide and upcoming tides relative to a target time.
 
         Returns:
             A TideInfo object with past and next tide entries
@@ -857,7 +857,7 @@ class LocationDataManager:
         Raises:
             DataUnavailableError: If tide data feed is missing.
         """
-        return queries.get_current_tide_info(self._feeds, self.config)
+        return queries.get_tide_info_at_time(self._feeds, self.config, t)
 
     def predict_tide_at_time(
         self, t: datetime.datetime | None = None

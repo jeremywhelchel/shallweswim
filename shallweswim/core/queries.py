@@ -629,19 +629,21 @@ def get_current_temperature(
     return TemperatureReading(timestamp=time, temperature=rounded_temp)  # type: ignore[arg-type]
 
 
-def get_current_tide_info(
+def get_tide_info_at_time(
     feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
     config: config_lib.LocationConfig,
+    t: datetime.datetime | None = None,
 ) -> TideInfo:
-    """Get the previous tide and upcoming tides relative to current time.
+    """Get the previous tide and upcoming tides relative to a target time.
 
-    Retrieves the most recent tide before current time and the next two
+    Retrieves the most recent tide before the target time and the next two
     upcoming tides from the tide predictions data. All times are naive datetimes
     in the location's timezone.
 
     Args:
         feeds_dict: Dictionary mapping feed names to Feed objects
         config: Location configuration
+        t: Target local time, defaults to current local time
 
     Returns:
         A TideInfo object containing:
@@ -654,9 +656,13 @@ def get_current_tide_info(
     # Get tides data from the feed
     tides_data = get_feed_data(feeds_dict, FEED_TIDES)
 
-    # Get current time in the location's timezone as a naive datetime and convert to pandas Timestamp for slicing
-    now = config.local_now()
-    now_ts = pd.Timestamp(now)
+    if t is None:
+        t = config.local_now()
+    if t.tzinfo is not None:
+        raise ValueError("Input datetime must be naive")
+
+    # Convert the target local time to pandas Timestamp for slicing.
+    now_ts = pd.Timestamp(t)
 
     # Ensure DataFrame has no timezone info for consistent comparison
     _require_naive_datetime_index(tides_data, "Tide")

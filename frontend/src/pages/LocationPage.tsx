@@ -7,8 +7,9 @@ import {
   Truck,
   Video,
 } from "react-feather";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useLocationConditions } from "../api/conditions";
+import { useLocationCurrents } from "../api/currents";
 import type { components } from "../api/generated";
 import { useTransitRoute } from "../api/transit";
 import { useDeferredImage } from "../hooks/useDeferredImage";
@@ -66,7 +67,17 @@ export function LocationPage({
 }: LocationPageProps) {
   const location = bootstrap.locations[locationCode];
   const conditions = useLocationConditions(locationCode);
+  const [searchParams, setSearchParams] = useSearchParams();
   const firstConditionsSettled = !conditions.isPending;
+  const supportsPlanner =
+    locationCode === "nyc" && Boolean(location?.metadata.features.currents);
+  const plannerOpen = supportsPlanner && searchParams.get("planner") === "open";
+  const plannerAt = supportsPlanner ? searchParams.get("at") : null;
+  const shiftedCurrents = useLocationCurrents(
+    locationCode,
+    plannerAt,
+    plannerOpen,
+  );
 
   if (!location) {
     return (
@@ -85,6 +96,27 @@ export function LocationPage({
   const unavailableMessage =
     conditions.isError && !conditions.data
       ? "Unable to load latest conditions. Please try again later."
+      : null;
+  const setPlannerAt = (at: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("planner", "open");
+    if (at) {
+      next.set("at", at);
+    } else {
+      next.delete("at");
+    }
+    setSearchParams(next, { replace: true });
+  };
+  const closePlanner = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("planner");
+    setSearchParams(next, { replace: true });
+  };
+  const plannerPlotUrl =
+    plannerOpen && supportsPlanner
+      ? `/api/${locationCode}/plots/current_tide${
+          plannerAt ? `?at=${encodeURIComponent(plannerAt)}` : ""
+        }`
       : null;
 
   return (
@@ -107,11 +139,36 @@ export function LocationPage({
         </p>
       </header>
 
+      {plannerOpen ? (
+        <PlannerControls
+          at={plannerAt}
+          location={location}
+          onClose={closePlanner}
+          onSetAt={setPlannerAt}
+        />
+      ) : null}
+
       <ConditionsSummary
         conditions={conditions.data}
+        currentOverride={
+          plannerOpen ? shiftedCurrents.data?.current : undefined
+        }
         hasError={conditions.isError && !conditions.data}
         isLoading={conditions.isPending}
         locationCode={locationCode}
+        plannerContext={
+          plannerOpen
+            ? {
+                at: plannerAt,
+                currentsError: shiftedCurrents.isError,
+                currentsLoading: shiftedCurrents.isPending,
+                label: plannerAt
+                  ? formatPlannerTimeLabel(plannerAt)
+                  : "Current conditions",
+                plotUrl: plannerPlotUrl,
+              }
+            : undefined
+        }
       />
       {staleMessage || unavailableMessage ? (
         <p className="border-swim-alert border-l-4 bg-white px-4 py-3 text-sm text-swim-alert">
@@ -155,14 +212,18 @@ export function LocationPage({
 
 export function ConditionsSummary({
   conditions,
+  currentOverride,
   hasError,
   isLoading,
   locationCode,
+  plannerContext,
 }: {
   conditions?: LocationConditions;
+  currentOverride?: CurrentInfo | null;
   hasError: boolean;
   isLoading: boolean;
   locationCode: string;
+  plannerContext?: PlannerContext;
 }) {
   if (isLoading) {
     return <ShellMessage title="Loading latest conditions" />;
@@ -172,13 +233,24 @@ export function ConditionsSummary({
     <section className="grid gap-0 overflow-hidden rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:overflow-visible md:border-0 md:bg-transparent">
       <TemperatureSummary conditions={conditions} hasError={hasError} />
       <WaterMovementSummary
-        current={hasError ? undefined : conditions?.current}
+        current={
+          hasError ? undefined : (currentOverride ?? conditions?.current)
+        }
         locationCode={locationCode}
+        plannerContext={plannerContext}
         tides={hasError ? undefined : conditions?.tides}
       />
     </section>
   );
 }
+
+type PlannerContext = {
+  at: string | null;
+  currentsError: boolean;
+  currentsLoading: boolean;
+  label: string;
+  plotUrl: string | null;
+};
 
 function TemperatureSummary({
   conditions,
@@ -232,10 +304,12 @@ function TemperatureSummary({
 function WaterMovementSummary({
   current,
   locationCode,
+  plannerContext,
   tides,
 }: {
   current?: CurrentInfo | null;
   locationCode: string;
+  plannerContext?: PlannerContext;
   tides?: LocationConditions["tides"];
 }) {
   const pastTide = tides?.past?.at(-1);
@@ -244,26 +318,310 @@ function WaterMovementSummary({
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
-      <h2 className="font-semibold text-base md:text-lg">Water Movement</h2>
-      <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
-        {description}
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="font-semibold text-base md:text-lg">Water Movement</h2>
+          {plannerContext ? (
+            <p className="mt-0.5 text-xs text-slate-600 md:text-sm">
+              Planned for{" "}
+              <span className="font-mono text-swim-blue">
+                {plannerContext.label}
+              </span>
+            </p>
+          ) : null}
+        </div>
+        {plannerContext ? (
+          <span className="rounded bg-[#eff7fa] px-2 py-1 font-mono text-[11px] text-swim-current uppercase">
+            Planner mode
+          </span>
+        ) : null}
+      </div>
+      {plannerContext?.currentsLoading ? (
+        <p className="mt-2 text-sm text-slate-600">
+          Loading planned water movement.
+        </p>
+      ) : plannerContext?.currentsError ? (
+        <p className="mt-2 text-sm text-swim-alert">
+          Planned current prediction is unavailable for this time.
+        </p>
+      ) : (
+        <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
+          {description}
+        </p>
+      )}
+      <WaterMovementBadges current={current} tideState={tides?.state} />
       <TideInstrument
         nextTide={nextTide}
         previousTide={pastTide}
         state={tides?.state}
       />
       <CurrentInstrument current={current} />
+      {plannerContext?.plotUrl ? (
+        <details
+          className="mt-3 rounded border border-swim-line bg-[#f8fbfc] p-3"
+          open
+        >
+          <summary className="cursor-pointer font-medium text-sm text-swim-blue">
+            Current and tide detail chart
+          </summary>
+          <img
+            alt={`Tide and current plot for ${plannerContext.label}`}
+            className="mt-3 w-full"
+            key={plannerContext.plotUrl}
+            src={plannerContext.plotUrl}
+          />
+        </details>
+      ) : null}
       {current?.direction ? (
         <Link
           className="mt-1 inline-block text-xs text-swim-blue underline md:mt-2 md:text-sm"
-          to={`/${locationCode}/currents`}
+          to={`/${locationCode}?planner=open`}
         >
-          Current details
+          Plan another time
         </Link>
       ) : null}
     </div>
   );
+}
+
+function WaterMovementBadges({
+  current,
+  tideState,
+}: {
+  current?: CurrentInfo | null;
+  tideState?: TideState | null;
+}) {
+  const currentLabel = currentPhaseLabel(current);
+  const tideLabel = tideStateLabel(tideState);
+
+  if (!currentLabel && !tideLabel) {
+    return null;
+  }
+
+  return (
+    <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+      {currentLabel ? (
+        <div className="rounded border border-swim-line bg-[#eff7fa] px-3 py-2">
+          <dt className="font-medium text-slate-600">Current</dt>
+          <dd className="mt-0.5 font-mono text-swim-current">{currentLabel}</dd>
+        </div>
+      ) : null}
+      {tideLabel ? (
+        <div className="rounded border border-swim-line bg-[#f6f9f1] px-3 py-2">
+          <dt className="font-medium text-slate-600">Tide</dt>
+          <dd className="mt-0.5 font-mono text-swim-tide">{tideLabel}</dd>
+        </div>
+      ) : null}
+    </dl>
+  );
+}
+
+function currentPhaseLabel(current?: CurrentInfo | null) {
+  if (!current) {
+    return null;
+  }
+
+  if (current.phase === "ebb" || current.direction === "ebbing") {
+    return "Ebb / going out";
+  }
+  if (current.phase === "flood" || current.direction === "flooding") {
+    return "Flood / coming in";
+  }
+  if (current.phase === "slack_before_flood") {
+    return "Slack before flood";
+  }
+  if (current.phase === "slack_before_ebb") {
+    return "Slack before ebb";
+  }
+  if (current.phase === "slack") {
+    return "Slack";
+  }
+
+  return current.phase ?? current.direction ?? null;
+}
+
+function tideStateLabel(tideState?: TideState | null) {
+  if (!tideState?.trend) {
+    return null;
+  }
+
+  const position = describeTidePosition(tideState);
+  if (position === "near high tide") {
+    return `Near high / ${tideState.trend}`;
+  }
+  if (position === "near low tide") {
+    return `Near low / ${tideState.trend}`;
+  }
+
+  return tideState.trend;
+}
+
+function PlannerControls({
+  at,
+  location,
+  onClose,
+  onSetAt,
+}: {
+  at: string | null;
+  location: AppBootstrapLocation;
+  onClose: () => void;
+  onSetAt: (at: string | null) => void;
+}) {
+  const plannerLabel = at ? formatPlannerTimeLabel(at) : "Current conditions";
+  const selectedAt = at ?? formatLocationIso(new Date(), location);
+  const selectedDate = parseLocationIso(selectedAt);
+
+  return (
+    <section
+      aria-labelledby="planner-title"
+      className="rounded border border-swim-line bg-white p-3 shadow-sm sm:p-4"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-medium text-swim-current text-xs uppercase sm:text-sm">
+            {location.metadata.name} planner
+          </p>
+          <h2
+            className="mt-1 font-semibold text-2xl text-swim-ink"
+            id="planner-title"
+          >
+            Planner mode
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Dashboard readings are shown for{" "}
+            <span className="font-mono text-swim-blue">{plannerLabel}</span>{" "}
+            where shifted predictions are available.
+          </p>
+        </div>
+        <button
+          aria-label="Close planner"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded border border-swim-line bg-white px-3 py-2 text-sm text-swim-ink"
+          onClick={onClose}
+          type="button"
+        >
+          Close
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <PlannerTimeButton
+          isActive={!at}
+          label="Now"
+          onClick={() => onSetAt(null)}
+        />
+        <PlannerTimeButton
+          isActive={false}
+          label="-1h"
+          onClick={() => onSetAt(formatLocalIso(addMinutes(selectedDate, -60)))}
+        />
+        <PlannerTimeButton
+          isActive={false}
+          label="+1h"
+          onClick={() => onSetAt(formatLocalIso(addMinutes(selectedDate, 60)))}
+        />
+        <PlannerTimeButton
+          isActive={false}
+          label="+2h"
+          onClick={() => onSetAt(formatLocalIso(addMinutes(selectedDate, 120)))}
+        />
+      </div>
+    </section>
+  );
+}
+
+function PlannerTimeButton({
+  isActive,
+  label,
+  onClick,
+}: {
+  isActive: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={[
+        "inline-flex min-h-11 items-center rounded border px-4 py-2 font-mono font-medium text-sm",
+        isActive
+          ? "border-swim-blue bg-swim-blue text-white"
+          : "border-swim-line bg-white text-swim-blue",
+      ].join(" ")}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
+function addMinutes(date: Date, minutes: number) {
+  return new Date(date.getTime() + minutes * 60_000);
+}
+
+function parseLocationIso(at: string) {
+  const match = at.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/,
+  );
+  if (!match) {
+    return new Date();
+  }
+
+  const [, year, month, day, hour, minute, second = "00"] = match;
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
+}
+
+function formatLocalIso(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function formatLocationIso(date: Date, location: AppBootstrapLocation) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: location.metadata.timezone,
+    year: "numeric",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:${values.second}`;
+}
+
+function formatPlannerTimeLabel(at: string) {
+  const match = at.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?$/,
+  );
+  if (!match) {
+    return at;
+  }
+
+  const [, year, month, day, hour, minute] = match;
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+  );
+
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function describeWaterMovement(

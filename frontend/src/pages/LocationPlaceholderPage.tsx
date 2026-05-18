@@ -72,7 +72,7 @@ export function LocationPlaceholderPage({
       {location.features.currents ? (
         <Link
           className="inline-flex min-h-11 items-center rounded bg-swim-blue px-4 py-2 font-medium text-white"
-          to={`/${effectiveCode}/currents`}
+          to={`/${effectiveCode}?planner=open`}
         >
           Currents
         </Link>

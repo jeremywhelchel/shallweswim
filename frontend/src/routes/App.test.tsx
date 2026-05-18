@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { components } from "../api/generated";
 import { ConditionsSummary, LocationPage } from "../pages/LocationPage";
@@ -128,20 +128,63 @@ const conditionsPayload: components["schemas"]["LocationConditions"] = {
   },
 };
 
-function renderLocation() {
+const currentsPayload: components["schemas"]["CurrentsResponse"] = {
+  location: {
+    code: "nyc",
+    name: "New York",
+    swim_location: "Grimaldo's Chair",
+  },
+  timestamp: "2026-05-13T08:30:00",
+  current: {
+    ...(conditionsPayload.current as components["schemas"]["CurrentInfo"]),
+    timestamp: "2026-05-13T08:30:00",
+    magnitude: 1.4,
+    trend: "easing",
+  },
+  legacy_chart: null,
+  current_chart_filename: null,
+  navigation: {
+    shift: 60,
+    next_hour: 120,
+    prev_hour: 0,
+    current_api_url: "/api/nyc/currents",
+    plot_url: "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
+    at: "2026-05-13T08:30:00",
+  },
+};
+
+function renderLocation({
+  bootstrap = bootstrapPayload,
+  initialEntry = "/",
+  locationCode = "nyc",
+}: {
+  bootstrap?: components["schemas"]["AppBootstrapResponse"];
+  initialEntry?: string;
+  locationCode?: string;
+} = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
     },
   });
-  queryClient.setQueryData(["location-conditions", "nyc"], conditionsPayload);
+  queryClient.setQueryData(["location-conditions", locationCode], {
+    ...conditionsPayload,
+    location: {
+      ...conditionsPayload.location,
+      code: locationCode,
+    },
+  });
+  queryClient.setQueryData(
+    ["location-currents", "nyc", "2026-05-13T08:30:00"],
+    currentsPayload,
+  );
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/"]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <LocationPage
-          bootstrap={bootstrapPayload}
-          locationCode="nyc"
+          bootstrap={bootstrap}
+          locationCode={locationCode}
           preserveDefaultUrl
         />
       </MemoryRouter>
@@ -221,6 +264,78 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByText(/peak 1.8 kt/)).toBeVisible();
   expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Temp source" })).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: "Plan another time" }),
+  ).toHaveAttribute("href", "/nyc?planner=open");
+});
+
+test("planner mode shifts the dashboard water movement and detail plot", async () => {
+  renderLocation({
+    initialEntry: "/nyc?planner=open&at=2026-05-13T08:30:00",
+  });
+
+  const panel = await screen.findByRole("region", {
+    name: "Planner mode",
+  });
+  expect(panel).toBeVisible();
+  expect(within(panel).getByText("New York planner")).toBeVisible();
+  expect(screen.getAllByText("May 13, 2026, 8:30 AM").length).toBeGreaterThan(
+    0,
+  );
+  expect(screen.getByText(/water is going out steadily/)).toBeVisible();
+  expect(screen.getByText("Ebb / going out")).toBeVisible();
+  expect(screen.getAllByText("rising").length).toBeGreaterThan(0);
+  expect(
+    screen.getByRole("img", {
+      name: "Tide and current plot for May 13, 2026, 8:30 AM",
+    }),
+  ).toHaveAttribute(
+    "src",
+    "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
+  );
+
+  fireEvent.click(within(panel).getByRole("button", { name: "+1h" }));
+  expect(
+    screen.getByRole("img", {
+      name: "Tide and current plot for May 13, 2026, 9:30 AM",
+    }),
+  ).toHaveAttribute(
+    "src",
+    "/api/nyc/plots/current_tide?at=2026-05-13T09%3A30%3A00",
+  );
+});
+
+test("ignores planner query state for unsupported locations", () => {
+  const bootstrap = {
+    ...bootstrapPayload,
+    location_order: ["nyc", "chi"],
+    locations: {
+      ...bootstrapPayload.locations,
+      chi: {
+        ...bootstrapPayload.locations.nyc,
+        metadata: {
+          ...bootstrapPayload.locations.nyc.metadata,
+          code: "chi",
+          name: "Chicago",
+          nav_label: "Chicago",
+          features: {
+            ...bootstrapPayload.locations.nyc.metadata.features,
+            currents: false,
+          },
+        },
+      },
+    },
+  };
+
+  renderLocation({
+    bootstrap,
+    initialEntry: "/chi?planner=open&at=2026-05-13T08:30:00",
+    locationCode: "chi",
+  });
+
+  expect(
+    screen.queryByRole("region", { name: "Planner mode" }),
+  ).not.toBeInTheDocument();
 });
 
 test("renders unavailable condition states on first-load failure", () => {

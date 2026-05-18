@@ -52,6 +52,12 @@
   previous/next times and currents API URLs from local app state. Keep
   `shift`, `at`, and `plot_url` unless a later frontend pass removes the
   backend-rendered tide/current plot dependency too.
+- Replace the temporary planner hour buttons with the intended time scrubber.
+  The current React planner mode proves URL and shifted-current wiring, but
+  `-1h` / `+1h` / `+2h` are scaffolding. The final interaction should use a
+  page-level slider/time bar with URL-backed `at` state, then add smart presets
+  such as next slack, peak ebb, and peak flood once the backend exposes those
+  timestamps.
 
 ## Future Tide Curve Source Upgrade
 

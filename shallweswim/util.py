@@ -1,12 +1,14 @@
 """Shared utilities."""
 
 # Standard library imports
+import dataclasses
 import datetime
 from typing import cast
 
 # Third-party imports
 import numpy as np
 import pandas as pd
+import pytz
 
 # Local application imports
 from shallweswim import api_types
@@ -14,6 +16,15 @@ from shallweswim import api_types
 # Time shift limits for current predictions (in minutes)
 MAX_SHIFT_LIMIT = 1440  # 24 hours forward
 MIN_SHIFT_LIMIT = -1440  # 24 hours backward
+
+
+@dataclasses.dataclass(frozen=True)
+class EffectiveTimeQuery:
+    """Resolved effective time for shift-aware endpoints."""
+
+    timestamp: datetime.datetime
+    shift_minutes: int
+    at: str | None = None
 
 
 def utc_now() -> datetime.datetime:
@@ -54,6 +65,80 @@ def effective_time(
 
     # Remove timezone info to return naive datetime
     return now.replace(tzinfo=None)
+
+
+def effective_time_query(
+    timezone: datetime.tzinfo,
+    *,
+    shift_minutes: int = 0,
+    at: str | None = None,
+    now_utc: datetime.datetime | None = None,
+) -> EffectiveTimeQuery:
+    """Resolve either a location-local ``at`` timestamp or a relative minute shift.
+
+    ``at`` is the canonical query parameter for planner-style URLs because it
+    names the target moment directly. ``shift_minutes`` remains supported for
+    existing callers and simple relative controls. When both are provided,
+    ``at`` wins.
+
+    Args:
+        timezone: Location timezone for the returned naive local timestamp.
+        shift_minutes: Relative shift in minutes from current time.
+        at: Location-local ISO-8601 timestamp without timezone offset.
+        now_utc: Optional aware UTC base time, primarily for tests.
+
+    Returns:
+        EffectiveTimeQuery with a naive local timestamp and equivalent shift.
+
+    Raises:
+        ValueError: If ``at`` is invalid, includes timezone information, or
+            falls outside the supported prediction window.
+    """
+    if now_utc is None:
+        now_utc = datetime.datetime.now(datetime.UTC)
+    elif now_utc.tzinfo is None or now_utc.utcoffset() is None:
+        raise ValueError("now_utc must be timezone-aware")
+    else:
+        now_utc = now_utc.astimezone(datetime.UTC)
+
+    if at is None:
+        return EffectiveTimeQuery(
+            timestamp=effective_time(timezone, shift_minutes=shift_minutes),
+            shift_minutes=shift_minutes,
+            at=None,
+        )
+
+    try:
+        target = datetime.datetime.fromisoformat(at.strip())
+    except ValueError as e:
+        raise ValueError("at must be a location-local ISO-8601 timestamp") from e
+
+    if target.tzinfo is not None or target.utcoffset() is not None:
+        raise ValueError("at must not include a timezone offset")
+
+    localize = getattr(timezone, "localize", None)
+    if callable(localize):
+        try:
+            # Be strict on DST gaps/repeated hours. Ambiguous planner links
+            # should fail loudly instead of guessing which local instant wins.
+            target_aware = localize(target, is_dst=None)
+        except pytz.exceptions.InvalidTimeError as e:
+            raise ValueError("at must be a valid location-local timestamp") from e
+    else:
+        # Fixed-offset fallback is primarily for tests. Production locations
+        # use pytz timezones so DST gaps and repeated hours are validated above.
+        target_aware = target.replace(tzinfo=timezone)
+
+    target_utc = target_aware.astimezone(datetime.UTC)
+    resolved_shift = round((target_utc - now_utc).total_seconds() / 60)
+    if not MIN_SHIFT_LIMIT <= resolved_shift <= MAX_SHIFT_LIMIT:
+        raise ValueError("at must be within 24 hours of the current time")
+
+    return EffectiveTimeQuery(
+        timestamp=target,
+        shift_minutes=resolved_shift,
+        at=target.isoformat(),
+    )
 
 
 def f_to_c(temp: float) -> float:

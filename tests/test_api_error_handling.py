@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 import pytz
 from fastapi.testclient import TestClient
+from freezegun import freeze_time
 
 from shallweswim import types as sw_types
 from shallweswim.api import register_routes
@@ -265,6 +266,44 @@ def test_plot_missing_tides_returns_503(app_with_mock_manager: Any) -> None:
 
     assert response.status_code == 503
     assert "tide/current data temporarily unavailable" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "at",
+    [
+        "2026-05-18T15:30:00-04:00",
+        "2026-05-18T19:30:00Z",
+    ],
+)
+def test_plot_rejects_at_with_timezone_offset(
+    app_with_mock_manager: Any, at: str
+) -> None:
+    """Plot endpoint validates local planner time before generating work."""
+    app, mock_manager = app_with_mock_manager
+    mock_manager.has_data = True
+
+    client = TestClient(app)
+    response = client.get("/api/nyc/plots/current_tide", params={"at": at})
+
+    assert response.status_code == 400
+    assert "must not include a timezone offset" in response.json()["detail"]
+    mock_manager.has_feed_data.assert_not_called()
+
+
+@freeze_time("2026-05-18T18:00:00Z")
+def test_plot_rejects_at_outside_prediction_window(
+    app_with_mock_manager: Any,
+) -> None:
+    """Plot endpoint validates planner range before generating work."""
+    app, mock_manager = app_with_mock_manager
+    mock_manager.has_data = True
+
+    client = TestClient(app)
+    response = client.get("/api/nyc/plots/current_tide?at=2026-05-19T14:01:00")
+
+    assert response.status_code == 400
+    assert "within 24 hours" in response.json()["detail"]
+    mock_manager.has_feed_data.assert_not_called()
 
 
 def test_plot_missing_currents_returns_503(app_with_mock_manager: Any) -> None:

@@ -82,12 +82,12 @@ detail surface lives in a planner overlay on the dashboard, opened via
 
 Query parameters carry app state. `planner=open` controls
 planner-overlay visibility; `at=...` carries the shifted planning time
-as an ISO-8601 timestamp:
+as a location-local ISO-8601 timestamp:
 
 ```text
 /app/nyc?planner=open
-/app/nyc?at=2026-05-18T15:30:00-04:00
-/app/nyc?planner=open&at=2026-05-18T15:30:00-04:00
+/app/nyc?at=2026-05-18T15:30:00
+/app/nyc?planner=open&at=2026-05-18T15:30:00
 ```
 
 See Milestone 3 below for the full route, URL state, and capability
@@ -1006,15 +1006,15 @@ webcam URLs, transit route IDs, citation links).
 
 #### URL state contract
 
-- `?at=` is an absolute ISO-8601 timestamp with timezone offset, e.g.
-  `?at=2026-05-18T15:30:00-04:00`. UI displays "3:30 PM" but state is
-  unambiguous around DST and day boundaries.
+- `?at=` is a location-local ISO-8601 timestamp without a timezone
+  offset, e.g. `?at=2026-05-18T15:30:00`. The location code supplies the
+  timezone; backend endpoints reject `Z`, explicit offsets, DST-ambiguous
+  local instants, and times outside the ±24h prediction window.
 - `?planner=open` controls overlay visibility independently of `?at=`.
-- Backend support for `?at=` is additive. 3.A's frontend computes
-  `shift_minutes = round((at − now) / 60)` and calls the existing
-  `/api/{loc}/currents?shift=…` and
-  `/api/{loc}/plots/current_tide?shift=…` endpoints. Existing inbound
-  `?shift=` links are normalized to `?at=` on first navigation.
+- Shift-aware backend endpoints accept `?at=` directly:
+  `/api/{loc}/currents?at=…` and
+  `/api/{loc}/plots/current_tide?at=…`. `?shift=` remains available for
+  simple relative controls and legacy callers; `at` wins if both are present.
 
 History semantics:
 
@@ -1084,10 +1084,9 @@ unlock; 3.C and 3.D add depth and breadth.
   Coney Island map, tide × current projection plot, NYC direction
   commentary, physics note ("currents lead the tide by 2 h here"),
   legacy harbor charts. "PLAN AHEAD →" trigger in Water Movement.
-  URL-backed `?at=` (frontend translates to `shift` for the existing
-  backend endpoints; backend unchanged). All NYC-specific content
-  hard-coded in `frontend/src/locations/nyc/`. Result: feature parity
-  with the existing Jinja currents page, no backend changes.
+  URL-backed `?at=` calls the shift-aware backend endpoints directly.
+  All NYC-specific content hard-coded in `frontend/src/locations/nyc/`.
+  Result: feature parity with the existing Jinja currents page.
 - **3.B · Sticky shifted-time bar:** the bar that transforms between
   now-anchor (right-now mode, after scroll) and page-level time
   control (planner mode, always pinned). Users keep scrubbing without
@@ -1120,9 +1119,6 @@ Optional, additive, none of these block 3.A or 3.B:
 - Named inflection-point timestamps in `/api/{loc}/currents`
   (`next_slack`, `next_peak_flood`, `next_peak_ebb`). Unblocks 3.C's
   smart presets without client-side arithmetic.
-- Accept `?at=` server-side alongside `?shift=` on shift-aware
-  endpoints. Removes the client-side translation step. Both params can
-  coexist during migration.
 - Replace `/api/{loc}/plots/current_tide` image endpoint with a JSON
   time-series so the projection plot renders client-side (interactive
   tooltips, sharper labels, dynamic time-window bound to the planner
@@ -1410,10 +1406,12 @@ Plots:
 - after retries are exhausted, show a per-plot unavailable message without
   breaking the rest of the page
 
-Currents page:
+Planner currents:
 
-- fetch immediately when the route loads
-- support `shift` as a query parameter
+- fetch immediately when `planner=open` or shifted `at=...` state needs current
+  detail
+- use `at` as the preferred query parameter for shift-aware backend endpoints;
+  `shift` remains available for simple relative controls and legacy callers
 - preserve the current behavior of keeping prior loaded data visible on refresh
   failure when refresh behavior is added
 
@@ -1478,7 +1476,7 @@ For feature parity, keep using the existing FastAPI plot image endpoints.
 /api/{location}/plots/live_temps
 /api/{location}/plots/historic_temps?period=2mo
 /api/{location}/plots/historic_temps?period=12mo
-/api/{location}/plots/current_tide
+/api/{location}/plots/current_tide?at=2026-05-18T15:30:00
 ```
 
 Reasons to keep plots as backend images for the first frontend milestone:

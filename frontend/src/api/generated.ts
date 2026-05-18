@@ -227,6 +227,7 @@ export interface paths {
          *     Args:
          *         location: Location code (e.g., 'nyc')
          *         shift: Time shift in minutes from current time (optional)
+         *         at: Location-local ISO-8601 timestamp within 24 hours; overrides shift
          *
          *     Returns:
          *         CurrentsResponse object with current prediction details
@@ -257,6 +258,7 @@ export interface paths {
          *     Args:
          *         location: Location code (e.g., "nyc", "san")
          *         shift: Time shift in minutes from current time
+         *         at: Location-local ISO-8601 timestamp within 24 hours; overrides shift
          *
          *     Returns:
          *         SVG image response with tide and current visualization
@@ -953,13 +955,8 @@ export interface components {
             /** @description Legacy chart info (only for locations with chart assets) */
             legacy_chart?: components["schemas"]["LegacyChartInfo"] | null;
             location: components["schemas"]["LocationInfo"];
-            /**
-             * Navigation
-             * @description Navigation parameters for time shifting
-             */
-            navigation: {
-                [key: string]: unknown;
-            };
+            /** @description Navigation parameters for time shifting */
+            navigation: components["schemas"]["NavigationInfo"];
             /**
              * Timestamp
              * @description ISO 8601 formatted timestamp of the prediction (in location's local timezone)
@@ -1183,6 +1180,45 @@ export interface components {
              * @description Specific swimming spot name
              */
             swim_location: string;
+        };
+        /**
+         * NavigationInfo
+         * @description Time navigation metadata for current prediction responses.
+         */
+        NavigationInfo: {
+            /**
+             * At
+             * @description Location-local planner timestamp when the request used at
+             */
+            at?: string | null;
+            /**
+             * Current Api Url
+             * @deprecated
+             * @description Base currents API URL. Legacy hypermedia convenience; removal candidate because the React app can derive this from the location code.
+             */
+            current_api_url: string;
+            /**
+             * Next Hour
+             * @deprecated
+             * @description Minute shift for the next-hour control. Legacy Jinja navigation compatibility; removal candidate once the React planner owns time controls.
+             */
+            next_hour: number;
+            /**
+             * Plot Url
+             * @description Matching tide/current plot URL
+             */
+            plot_url: string;
+            /**
+             * Prev Hour
+             * @deprecated
+             * @description Minute shift for the previous-hour control. Legacy Jinja navigation compatibility; removal candidate once the React planner owns time controls.
+             */
+            prev_hour: number;
+            /**
+             * Shift
+             * @description Resolved minute shift from current time
+             */
+            shift: number;
         };
         /**
          * TemperatureInfo
@@ -1529,6 +1565,7 @@ export interface operations {
         parameters: {
             query?: {
                 shift?: number;
+                at?: string | null;
             };
             header?: never;
             path: {
@@ -1562,6 +1599,7 @@ export interface operations {
         parameters: {
             query?: {
                 shift?: number;
+                at?: string | null;
             };
             header?: never;
             path: {

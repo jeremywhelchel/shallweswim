@@ -253,6 +253,43 @@ class LegacyChartInfo(BaseModel):
     map_title: str = Field(..., description="Title for the legacy map")
 
 
+class NavigationInfo(BaseModel):
+    """Time navigation metadata for current prediction responses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shift: int = Field(..., description="Resolved minute shift from current time")
+    next_hour: int = Field(
+        ...,
+        description=(
+            "Minute shift for the next-hour control. Legacy Jinja navigation "
+            "compatibility; removal candidate once the React planner owns time controls."
+        ),
+        deprecated=True,
+    )
+    prev_hour: int = Field(
+        ...,
+        description=(
+            "Minute shift for the previous-hour control. Legacy Jinja navigation "
+            "compatibility; removal candidate once the React planner owns time controls."
+        ),
+        deprecated=True,
+    )
+    current_api_url: str = Field(
+        ...,
+        description=(
+            "Base currents API URL. Legacy hypermedia convenience; removal "
+            "candidate because the React app can derive this from the location code."
+        ),
+        deprecated=True,
+    )
+    plot_url: str = Field(..., description="Matching tide/current plot URL")
+    at: str | None = Field(
+        default=None,
+        description="Location-local planner timestamp when the request used at",
+    )
+
+
 class FeedStatus(BaseModel):
     """Represents the status of a single data feed."""
 
@@ -470,7 +507,7 @@ class CurrentsResponse(BaseModel):
         default=None,
         description="Filename of the current chart image (only for locations with chart assets)",
     )
-    navigation: dict[str, object] = Field(
+    navigation: NavigationInfo = Field(
         ..., description="Navigation parameters for time shifting"
     )
 

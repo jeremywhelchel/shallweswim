@@ -524,6 +524,22 @@ async def test_currents_api(test_app: fastapi.FastAPI, location_code: str) -> No
                 shift_data = shift_response.json()
                 assert shift_data["navigation"]["shift"] == 60
 
+            at = (
+                (datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=60))
+                .astimezone(location_config.timezone)
+                .replace(tzinfo=None)
+                .isoformat()
+            )
+            at_response = await client.get(
+                f"/api/{location_code}/currents", params={"at": at}
+            )
+            validate_currents_response(at_response, location_code)
+            if at_response.status_code == 200:
+                at_data = at_response.json()
+                assert "at" in at_data["navigation"]
+                assert at_data["navigation"]["at"] == at
+                assert 55 <= at_data["navigation"]["shift"] <= 65
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -576,6 +592,29 @@ async def test_get_current_tide_plot_nyc(test_app: fastapi.FastAPI) -> None:
     assert len(svg_content) > 100  # Check it's not trivially small
     assert "<svg" in svg_content
     assert "</svg>" in svg_content
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_get_current_tide_plot_nyc_with_at(test_app: fastapi.FastAPI) -> None:
+    """Current/tide plot accepts location-local planner time."""
+    nyc_config = config.get("nyc")
+    assert nyc_config is not None
+    at = (
+        (datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=60))
+        .astimezone(nyc_config.timezone)
+        .replace(tzinfo=None)
+        .isoformat()
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=test_app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/nyc/plots/current_tide", params={"at": at})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert "<svg" in response.text
+    assert "</svg>" in response.text
 
 
 @pytest.mark.asyncio

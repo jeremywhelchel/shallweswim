@@ -7,6 +7,7 @@ This module contains FastAPI route handlers for the API endpoints and data manag
 import asyncio
 import io
 import logging
+import urllib.parse
 import warnings
 
 # Third-party imports
@@ -36,6 +37,7 @@ from shallweswim.api_types import (
     LocationInfo,
     LocationStatus,
     LocationSummary,
+    NavigationInfo,
     TemperatureInfo,
     TideEntry,
     TideInfo,
@@ -540,25 +542,31 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
     @app.get("/api/{location}/plots/current_tide")
     async def get_current_tide_plot(
-        location: str, shift: int = 0
+        location: str, shift: int = 0, at: str | None = None
     ) -> fastapi.responses.Response:
         """Generate and serve a tide and current plot for the specified location.
 
         Args:
             location: Location code (e.g., "nyc", "san")
             shift: Time shift in minutes from current time
+            at: Location-local ISO-8601 timestamp within 24 hours; overrides shift
 
         Returns:
             SVG image response with tide and current visualization
         """
         logging.info(
-            f"[{location}] Processing current tide plot request with shift={shift}"
+            f"[{location}] Processing current tide plot request with shift={shift}, at={at}"
         )
         # Get location config to access the timezone
         cfg = validate_location(location)
 
-        # Calculate effective time with shift relative to the location's timezone
-        ts = util.effective_time(cfg.timezone, shift_minutes=shift)
+        try:
+            time_query = util.effective_time_query(
+                cfg.timezone, shift_minutes=shift, at=at
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        ts = time_query.timestamp
 
         # Generate the tide/current plot
         data_manager = app.state.data_managers[location]
@@ -787,12 +795,15 @@ def register_routes(app: fastapi.FastAPI) -> None:
         return status_obj
 
     @app.get("/api/{location}/currents", response_model=CurrentsResponse)
-    async def location_currents(location: str, shift: int = 0) -> CurrentsResponse:
+    async def location_currents(
+        location: str, shift: int = 0, at: str | None = None
+    ) -> CurrentsResponse:
         """API endpoint that returns current predictions for a specific location.
 
         Args:
             location: Location code (e.g., 'nyc')
             shift: Time shift in minutes from current time (optional)
+            at: Location-local ISO-8601 timestamp within 24 hours; overrides shift
 
         Returns:
             CurrentsResponse object with current prediction details
@@ -800,7 +811,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Raises:
             HTTPException: If the location is not configured or doesn't support currents
         """
-        logging.info(f"[{location}] Processing currents request with shift={shift}")
+        logging.info(
+            f"[{location}] Processing currents request with shift={shift}, at={at}"
+        )
         # Validate location exists
         cfg = validate_location(location)
 
@@ -818,8 +831,14 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 detail=f"Current predictions for '{location}' are not available (observation-only)",
             )
 
-        # Calculate effective time with shift relative to the location's timezone
-        ts = util.effective_time(cfg.timezone, shift_minutes=shift)
+        try:
+            time_query = util.effective_time_query(
+                cfg.timezone, shift_minutes=shift, at=at
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        ts = time_query.timestamp
+        resolved_shift = time_query.shift_minutes
 
         try:
             # Get current prediction information
@@ -828,8 +847,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
             raise HTTPException(status_code=503, detail=str(e)) from e
 
         # Get fwd/back shift values for navigation
-        fwd = min(shift + 60, util.MAX_SHIFT_LIMIT)
-        back = max(shift - 60, util.MIN_SHIFT_LIMIT)
+        fwd = min(resolved_shift + 60, util.MAX_SHIFT_LIMIT)
+        back = max(resolved_shift - 60, util.MIN_SHIFT_LIMIT)
 
         # Format current_info data for the API response
         current_prediction = CurrentInfo(
@@ -869,6 +888,20 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     location_code=location,
                 )
 
+        plot_query = (
+            urllib.parse.urlencode({"at": time_query.at})
+            if time_query.at is not None
+            else urllib.parse.urlencode({"shift": resolved_shift})
+        )
+        navigation = NavigationInfo(
+            shift=resolved_shift,
+            next_hour=fwd,
+            prev_hour=back,
+            current_api_url=f"/api/{location}/currents",
+            plot_url=f"/api/{location}/plots/current_tide?{plot_query}",
+            at=time_query.at,
+        )
+
         # Return structured response
         return CurrentsResponse(
             location=LocationInfo(
@@ -878,13 +911,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             current=current_prediction,
             legacy_chart=legacy_chart,
             current_chart_filename=current_chart_filename,
-            navigation={
-                "shift": shift,
-                "next_hour": fwd,
-                "prev_hour": back,
-                "current_api_url": f"/api/{location}/currents",
-                "plot_url": f"/api/{location}/plots/current_tide?shift={shift}",
-            },
+            navigation=navigation,
         )
 
     @app.get(

@@ -14,6 +14,7 @@ import pytest
 import pytz
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
+from freezegun import freeze_time
 
 from shallweswim import types as sw_types
 
@@ -699,6 +700,104 @@ def test_currents_endpoint_serializes_current_range(
     )
     assert data["current"]["range"]["peak"]["magnitude"] == 1.4
     assert data["current"]["range"]["peak"]["phase"] == "flood"
+
+
+@freeze_time("2026-05-18T18:00:00Z")
+def test_currents_endpoint_accepts_local_at_parameter(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """The currents API accepts local planner time and computes shift metadata."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
+    mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
+        timestamp=mock_dt,
+        magnitude=0.753,
+        source_type=sw_types.DataSourceType.PREDICTION,
+        magnitude_pct=0.65,
+        direction=sw_types.CurrentDirection.FLOODING,
+        phase=sw_types.CurrentPhase.FLOOD,
+        strength=sw_types.CurrentStrength.MODERATE,
+        trend=sw_types.CurrentTrend.BUILDING,
+        state_description="moderate flood and building",
+    )
+
+    response = test_client.get("/api/nyc/currents?at=2026-05-18T15:30:00")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["timestamp"] == "2026-05-18T15:30:00"
+    assert data["navigation"]["shift"] == 90
+    assert data["navigation"]["at"] == "2026-05-18T15:30:00"
+    assert (
+        data["navigation"]["plot_url"]
+        == "/api/nyc/plots/current_tide?at=2026-05-18T15%3A30%3A00"
+    )
+    mock_manager.predict_flow_at_time.assert_called_once_with(mock_dt)
+
+
+@freeze_time("2026-05-18T18:00:00Z")
+def test_currents_endpoint_prefers_at_over_shift(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """When both are present, at is the canonical effective time."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
+    mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
+        timestamp=mock_dt,
+        magnitude=0.753,
+        source_type=sw_types.DataSourceType.PREDICTION,
+        magnitude_pct=0.65,
+        direction=sw_types.CurrentDirection.FLOODING,
+        phase=sw_types.CurrentPhase.FLOOD,
+        strength=sw_types.CurrentStrength.MODERATE,
+        trend=sw_types.CurrentTrend.BUILDING,
+        state_description="moderate flood and building",
+    )
+
+    response = test_client.get("/api/nyc/currents?shift=-180&at=2026-05-18T15:30:00")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["navigation"]["shift"] == 90
+    mock_manager.predict_flow_at_time.assert_called_once_with(mock_dt)
+
+
+@pytest.mark.parametrize(
+    "at",
+    [
+        "2026-05-18T15:30:00-04:00",
+        "2026-05-18T19:30:00Z",
+    ],
+)
+def test_currents_endpoint_rejects_at_with_timezone_offset(
+    at: str, test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Planner times are location-local and reject explicit offsets."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+
+    response = test_client.get("/api/nyc/currents", params={"at": at})
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "must not include a timezone offset" in response.json()["detail"]
+    mock_manager.predict_flow_at_time.assert_not_called()
+
+
+@freeze_time("2026-05-18T18:00:00Z")
+def test_currents_endpoint_rejects_at_outside_prediction_window(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Planner times must stay within the supported prediction window."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["nyc"]
+
+    response = test_client.get("/api/nyc/currents?at=2026-05-19T14:01:00")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "within 24 hours" in response.json()["detail"]
+    mock_manager.predict_flow_at_time.assert_not_called()
 
 
 def test_invalid_location_returns_404(

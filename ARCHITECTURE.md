@@ -77,8 +77,8 @@ such as `/api/{location}/conditions` and `/api/{location}/currents`.
 
 Known tech debt: `/api/{location}/plots/current_tide` still renders a Matplotlib
 SVG per request in the process pool. It should eventually cache or precompute
-common hourly `shift` values, while preserving on-demand fallback behavior for
-less common shifts.
+common hourly `at` / `shift` values, while preserving on-demand fallback
+behavior for less common planning times.
 
 ### Frontend App Serving
 

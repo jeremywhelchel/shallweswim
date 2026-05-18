@@ -625,10 +625,8 @@
             "$ref": "#/components/schemas/LocationInfo"
           },
           "navigation": {
-            "additionalProperties": true,
-            "description": "Navigation parameters for time shifting",
-            "title": "Navigation",
-            "type": "object"
+            "$ref": "#/components/schemas/NavigationInfo",
+            "description": "Navigation parameters for time shifting"
           },
           "timestamp": {
             "description": "ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
@@ -1015,6 +1013,61 @@
           "has_data"
         ],
         "title": "LocationSummary",
+        "type": "object"
+      },
+      "NavigationInfo": {
+        "additionalProperties": false,
+        "description": "Time navigation metadata for current prediction responses.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Location-local planner timestamp when the request used at",
+            "title": "At"
+          },
+          "current_api_url": {
+            "deprecated": true,
+            "description": "Base currents API URL. Legacy hypermedia convenience; removal candidate because the React app can derive this from the location code.",
+            "title": "Current Api Url",
+            "type": "string"
+          },
+          "next_hour": {
+            "deprecated": true,
+            "description": "Minute shift for the next-hour control. Legacy Jinja navigation compatibility; removal candidate once the React planner owns time controls.",
+            "title": "Next Hour",
+            "type": "integer"
+          },
+          "plot_url": {
+            "description": "Matching tide/current plot URL",
+            "title": "Plot Url",
+            "type": "string"
+          },
+          "prev_hour": {
+            "deprecated": true,
+            "description": "Minute shift for the previous-hour control. Legacy Jinja navigation compatibility; removal candidate once the React planner owns time controls.",
+            "title": "Prev Hour",
+            "type": "integer"
+          },
+          "shift": {
+            "description": "Resolved minute shift from current time",
+            "title": "Shift",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shift",
+          "next_hour",
+          "prev_hour",
+          "current_api_url",
+          "plot_url"
+        ],
+        "title": "NavigationInfo",
         "type": "object"
       },
       "TemperatureInfo": {
@@ -1480,7 +1533,7 @@
     },
     "/api/{location}/currents": {
       "get": {
-        "description": "API endpoint that returns current predictions for a specific location.\n\nArgs:\n    location: Location code (e.g., 'nyc')\n    shift: Time shift in minutes from current time (optional)\n\nReturns:\n    CurrentsResponse object with current prediction details\n\nRaises:\n    HTTPException: If the location is not configured or doesn't support currents",
+        "description": "API endpoint that returns current predictions for a specific location.\n\nArgs:\n    location: Location code (e.g., 'nyc')\n    shift: Time shift in minutes from current time (optional)\n    at: Location-local ISO-8601 timestamp within 24 hours; overrides shift\n\nReturns:\n    CurrentsResponse object with current prediction details\n\nRaises:\n    HTTPException: If the location is not configured or doesn't support currents",
         "operationId": "location_currents_api__location__currents_get",
         "parameters": [
           {
@@ -1500,6 +1553,22 @@
               "default": 0,
               "title": "Shift",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
             }
           }
         ],
@@ -1530,7 +1599,7 @@
     },
     "/api/{location}/plots/current_tide": {
       "get": {
-        "description": "Generate and serve a tide and current plot for the specified location.\n\nArgs:\n    location: Location code (e.g., \"nyc\", \"san\")\n    shift: Time shift in minutes from current time\n\nReturns:\n    SVG image response with tide and current visualization",
+        "description": "Generate and serve a tide and current plot for the specified location.\n\nArgs:\n    location: Location code (e.g., \"nyc\", \"san\")\n    shift: Time shift in minutes from current time\n    at: Location-local ISO-8601 timestamp within 24 hours; overrides shift\n\nReturns:\n    SVG image response with tide and current visualization",
         "operationId": "get_current_tide_plot_api__location__plots_current_tide_get",
         "parameters": [
           {
@@ -1550,6 +1619,22 @@
               "default": 0,
               "title": "Shift",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
             }
           }
         ],

@@ -30,6 +30,56 @@ def test_now() -> None:
     assert time_diff < 1  # Should be less than 1 second difference
 
 
+def test_effective_time_query_resolves_local_at_to_location_time() -> None:
+    """Location-local planner times resolve to naive timestamps and shift minutes."""
+    timezone = datetime.timezone(datetime.timedelta(hours=-4))
+    now_utc = datetime.datetime(2026, 5, 18, 18, 0, tzinfo=datetime.UTC)
+
+    result = util.effective_time_query(
+        timezone,
+        shift_minutes=999,
+        at="2026-05-18T15:30:00",
+        now_utc=now_utc,
+    )
+
+    assert result.timestamp == datetime.datetime(2026, 5, 18, 15, 30)
+    assert result.timestamp.tzinfo is None
+    assert result.shift_minutes == 90
+    assert result.at == "2026-05-18T15:30:00"
+
+
+@pytest.mark.parametrize(
+    "at",
+    [
+        "2026-05-18T15:30:00-04:00",
+        "2026-05-18T19:30:00Z",
+    ],
+)
+def test_effective_time_query_rejects_offset_for_at(at: str) -> None:
+    """Planner times are location-local and must not carry offsets."""
+    timezone = datetime.timezone(datetime.timedelta(hours=-4))
+    now_utc = datetime.datetime(2026, 5, 18, 18, 0, tzinfo=datetime.UTC)
+
+    with pytest.raises(ValueError, match="must not include a timezone offset"):
+        util.effective_time_query(timezone, at=at, now_utc=now_utc)
+
+
+@pytest.mark.parametrize(
+    "at",
+    [
+        "2026-05-17T13:59:00",
+        "2026-05-19T14:01:00",
+    ],
+)
+def test_effective_time_query_rejects_at_outside_prediction_window(at: str) -> None:
+    """Planner times must stay within the shift-aware prediction window."""
+    timezone = datetime.timezone(datetime.timedelta(hours=-4))
+    now_utc = datetime.datetime(2026, 5, 18, 18, 0, tzinfo=datetime.UTC)
+
+    with pytest.raises(ValueError, match="within 24 hours"):
+        util.effective_time_query(timezone, at=at, now_utc=now_utc)
+
+
 @pytest.mark.parametrize(
     "fahrenheit,expected_celsius",
     [

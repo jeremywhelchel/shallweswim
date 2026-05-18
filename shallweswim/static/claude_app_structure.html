@@ -1046,15 +1046,16 @@
           <p class="mono">
             /app/nyc<br />
             /app/nyc?planner=open<br />
-            /app/nyc?at=2026-05-18T15:30:00-04:00<br />
-            /app/nyc?planner=open&amp;at=2026-05-18T15:30:00-04:00<br />
+            /app/nyc?at=2026-05-18T15:30:00<br />
+            /app/nyc?planner=open&amp;at=2026-05-18T15:30:00<br />
             /app/locations
           </p>
           <p style="margin-top: 8px">
             <code>?at=</code> is the canonical app-state for the shifted
-            planning time — absolute ISO-8601 with timezone offset. The UI just
-            renders "3:30 PM"; the URL stays unambiguous around DST and day
-            boundaries.
+            planning time — location-local ISO-8601 without a timezone offset.
+            The location code supplies the timezone; the backend rejects
+            <code>Z</code>, explicit offsets, DST-ambiguous local instants, and
+            times outside the ±24h prediction window.
           </p>
         </div>
 
@@ -1573,15 +1574,17 @@ frontend/src/locations/
           <p class="section-note" style="margin-bottom: 8px">
             <code>?at=</code> is the canonical app-state parameter for the
             selected planning time. The wire format is an
-            <strong>absolute ISO-8601 timestamp with timezone offset</strong>
-            (no ambiguity around DST or day boundaries in shared links):
-            <code>?at=2026-05-18T15:30:00-04:00</code>. The UI just renders
-            "3:30 PM". The backend's existing <code>?shift=</code> minutes
-            parameter remains accepted; the frontend computes shift from
-            <code>at</code> when calling shift-aware endpoints (M1 ships this
-            translation client-side). Backend support for accepting
-            <code>?at=</code> directly is additive and can land later. Examples
-            in the table below use a short form for readability.
+            <strong
+              >location-local ISO-8601 timestamp without a timezone
+              offset</strong
+            >: <code>?at=2026-05-18T15:30:00</code>. The location code supplies
+            the timezone, and the backend rejects <code>Z</code>, explicit
+            offsets, DST-ambiguous local instants, and times outside the ±24h
+            prediction window. The UI just renders "3:30 PM". The backend's
+            existing <code>?shift=</code> minutes parameter remains accepted for
+            relative controls and legacy callers; shift-aware endpoints now
+            accept <code>?at=</code> directly. Examples in the table below use a
+            short form for readability.
           </p>
 
           <div class="matrix-wrap" style="margin-bottom: 12px">
@@ -2567,16 +2570,17 @@ frontend/src/locations/
             time scrubber locks to the top of the page; every prediction-based
             widget — Water Movement, current map, tide × current plot, prose
             summary — updates as the scrubber moves. Time is encoded as an
-            absolute moment in the URL (<code>?at=15:30</code>), so a link reads
-            as a moment in time. Temperature, webcam, trends, transit stay in
-            their right-now state.
+            location-local timestamp in the URL
+            (<code>?at=2026-05-18T15:30:00</code>), so a link reads as a moment
+            in time for that location. Temperature, webcam, trends, transit stay
+            in their right-now state.
           </p>
 
           <div class="wireframes">
             <div class="frame">
               <div class="frame-cap">
                 <span>NYC · Desktop · Planner mode</span>
-                <span class="url">/app/nyc?at=15:30</span>
+                <span class="url">/app/nyc?at=2026-05-18T15:30:00</span>
               </div>
               <div class="canvas">
                 <div class="block hero">
@@ -2771,12 +2775,12 @@ frontend/src/locations/
           <strong>Time-warp control inside the overlay:</strong> replace the
           three Jinja buttons (<code>−1h / now / +1h</code>) with a
           <strong>preset chip bar plus a slider</strong> backed by an
-          absolute-time URL parameter (<code>?at=HH:MM</code> alongside
-          <code>?planner=open</code>). The chips let casual visitors poke at
-          "next slack" or "peak ebb" without arithmetic; the slider gives
-          precision; the absolute time makes links shareable. The existing
-          <code>shift</code> minutes parameter is still accepted server-side for
-          back-compat.
+          location-local URL parameter (<code>?at=2026-05-18T15:30:00</code>
+          alongside <code>?planner=open</code>). The chips let casual visitors
+          poke at "next slack" or "peak ebb" without arithmetic; the slider
+          gives precision; the local timestamp makes links shareable. The
+          existing <code>shift</code> minutes parameter is still accepted
+          server-side for relative controls.
         </p>
         <p>
           <strong>This is a deliberate replacement</strong> for the earlier
@@ -2872,15 +2876,11 @@ frontend/src/locations/
               <code>shift</code> translation:</strong
             >
             the React app URL uses <code>?at=</code> (ISO timestamp) as
-            canonical state. Backend endpoints are unchanged in M1 — the
-            frontend computes
-            <code>shift_minutes = round((at − now) / 60)</code> when calling
-            <code>/api/{loc}/currents?shift=…</code> and
-            <code>/api/{loc}/plots/current_tide?shift=…</code>. Existing inbound
-            links with <code>?shift=</code> are normalized to
-            <code>?at=</code> on first navigation. Native
-            <code>?at=</code> support on the backend is additive and can land in
-            a later milestone without blocking this one.
+            canonical state. Backend endpoints accept
+            <code>/api/{loc}/currents?at=…</code> and
+            <code>/api/{loc}/plots/current_tide?at=…</code> directly. Existing
+            inbound links with <code>?shift=</code> can still work because
+            <code>shift</code> remains supported.
           </p>
           <p style="margin-top: 6px">
             <strong>Result:</strong> feature parity with the Jinja currents

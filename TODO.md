@@ -46,6 +46,12 @@
   then derive phase, strength, trend, slack/peak range, and API/UI state. Avoid
   blending harmonic constituents, offsets, or other model inputs up front unless
   we have a defensible physical model for doing so.
+- Remove legacy currents navigation fields after the React planner owns time
+  controls. `NavigationInfo.next_hour`, `prev_hour`, and `current_api_url` are
+  deprecated compatibility/convenience fields; the planner should derive
+  previous/next times and currents API URLs from local app state. Keep
+  `shift`, `at`, and `plot_url` unless a later frontend pass removes the
+  backend-rendered tide/current plot dependency too.
 
 ## Future Tide Curve Source Upgrade
 

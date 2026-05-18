@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Location Wireflow Concepts - NYC Hardcoded Deep Dive</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --blue: #000099;
+        --ink: #172033;
+        --muted: #526075;
+        --mist: #f0f4f8;
+        --line: #cbd5e1;
+        --panel: #ffffff;
+        --interactive: #eff6ff;
+        --interactive-border: #bfdbfe;
+        --accent: #2563eb;
+        --tide: #5b7f2a;
+        --current: #006b8f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--mist);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+
+      header.page-header {
+        background: #fff;
+        padding: 24px 20px;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 32px;
+      }
+
+      header.page-header h1 {
+        margin: 0 0 8px 0;
+        font-size: 24px;
+        color: var(--blue);
+      }
+
+      header.page-header p {
+        margin: 0;
+        color: var(--muted);
+        max-width: 800px;
+        line-height: 1.5;
+      }
+
+      main {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 20px 60px;
+      }
+
+      .concept-section {
+        margin-bottom: 64px;
+      }
+
+      .concept-header {
+        margin-bottom: 24px;
+      }
+
+      .concept-header h2 {
+        margin: 0 0 8px;
+        font-size: 20px;
+      }
+
+      .concept-header p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.5;
+        max-width: 900px;
+      }
+
+      .wireframe-container {
+        display: flex;
+        gap: 40px;
+        align-items: flex-start;
+        overflow-x: auto;
+        padding-bottom: 20px;
+      }
+
+      /* Phone Mockup */
+      .phone {
+        flex: 0 0 320px;
+        height: 650px;
+        background: #f8fafc; /* slightly off-white for contrast with cards */
+        border: 8px solid #334155;
+        border-radius: 32px;
+        overflow-y: auto;
+        position: relative;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Wireframe UI Elements */
+      .wf-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+        position: sticky;
+        top: 0;
+        background: #fff;
+        z-index: 10;
+      }
+
+      .wf-title {
+        font-weight: 800;
+        font-size: 18px;
+        color: var(--blue);
+        margin-bottom: 4px;
+      }
+
+      .wf-subtitle {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .wf-nav-tabs {
+        display: flex;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+        position: sticky;
+        top: 61px;
+        z-index: 9;
+      }
+
+      .wf-tab {
+        flex: 1;
+        text-align: center;
+        padding: 12px 4px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        border-bottom: 2px solid transparent;
+      }
+
+      .wf-tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+
+      .wf-content {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        flex: 1;
+      }
+
+      .wf-card-solid {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+
+      .wf-card-title {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .wf-text-block {
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--ink);
+      }
+
+      .wf-text-block ul {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      .wf-text-block strong {
+        color: var(--current);
+      }
+
+      .wf-placeholder-chart {
+        height: 100px;
+        background: #e2e8f0;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #64748b;
+        font-size: 12px;
+        margin-bottom: 8px;
+        border: 1px dashed #94a3b8;
+      }
+
+      .wf-button {
+        display: block;
+        text-align: center;
+        padding: 10px;
+        background: var(--interactive);
+        border: 1px solid var(--interactive-border);
+        color: var(--accent);
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        margin-top: 12px;
+      }
+
+      .wf-time-warp {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+        margin: 8px 0 16px 0;
+        padding: 12px;
+        background: #f1f5f9;
+        border-radius: 8px;
+      }
+
+      .wf-time-btn {
+        width: 48px;
+        height: 32px;
+        border-radius: 16px;
+        background: #fff;
+        border: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: var(--ink);
+        font-size: 12px;
+      }
+
+      .wf-back-link {
+        color: var(--accent);
+        font-size: 13px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .flow-arrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 24px;
+        padding: 0 10px;
+      }
+
+      .hardcoded-badge {
+        display: inline-block;
+        background: #fef08a;
+        color: #b45309;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-left: 8px;
+        text-transform: uppercase;
+        vertical-align: middle;
+      }
+
+      .wf-mini-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .wf-mini-bar {
+        height: 16px;
+        background: #e2e8f0;
+        border-radius: 8px;
+        position: relative;
+        overflow: hidden;
+      }
+      .wf-mini-fill.tide {
+        width: 70%;
+        background: var(--tide);
+        height: 100%;
+      }
+      .wf-mini-fill.current {
+        width: 50%;
+        background: var(--current);
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>App Structure & Wireflows: Adaptable NYC Focus</h1>
+      <p>
+        Exploring architectural patterns to incorporate rich, location-specific
+        data (NYC currents map, time warp, local commentary).
+        <strong>Core Philosophy:</strong> Highly specific NYC knowledge (e.g.,
+        "flooding flows west to east") and Time Warp UI logic are hard-coded in
+        React components targeted at <code>/app/nyc</code>. Generic locations
+        fallback to a simpler view without complex routing or over-engineered
+        API feature flags.
+      </p>
+    </header>
+
+    <main>
+      <!-- Concept 1: Hub and Spoke -->
+      <section class="concept-section">
+        <div class="concept-header">
+          <h2>1. Hub and Spoke (The "Dive Deeper" Model)</h2>
+          <p>
+            The main location page acts as a quick operational dashboard. For
+            NYC, a hard-coded "Dive Deeper" button routes the user to a
+            dedicated <code>/app/nyc/currents</code> React component containing
+            the Time Warp tool, legacy maps, and specific Grimaldo's commentary.
+            For a generic location, the button simply isn't rendered.
+          </p>
+        </div>
+
+        <div class="wireframe-container">
+          <!-- Main Dashboard NYC -->
+          <div class="phone">
+            <div class="wf-header">
+              <div class="wf-title">shall we swim today?</div>
+              <div class="wf-subtitle">
+                ...at Grimaldo's Chair
+                <span class="hardcoded-badge">NYC Specific</span>
+              </div>
+            </div>
+            <div class="wf-content">
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Verdict</div>
+                <div class="wf-text-block">
+                  The tide is falling, and the water is going out steadily and
+                  getting stronger.
+                </div>
+              </div>
+
+              <div
+                class="wf-card-solid"
+                style="border-left: 4px solid var(--accent)"
+              >
+                <div class="wf-card-title">Tide & Current</div>
+                <div class="wf-mini-bars">
+                  <div class="wf-mini-bar">
+                    <div class="wf-mini-fill tide"></div>
+                  </div>
+                  <div class="wf-mini-bar">
+                    <div class="wf-mini-fill current"></div>
+                  </div>
+                </div>
+                <!-- Hardcoded entry point -->
+                <a href="#" class="wf-button"
+                  >Deep Dive: Currents & Time Warp &rarr;</a
+                >
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-arrow">&rarr;</div>
+
+          <!-- Detail Page NYC -->
+          <div class="phone" style="border-color: #0f172a">
+            <div class="wf-header">
+              <a href="#" class="wf-back-link">&larr; Back to Grimaldo's</a>
+              <div class="wf-title">
+                Current Details <span class="hardcoded-badge">React Route</span>
+              </div>
+            </div>
+            <div class="wf-content">
+              <div class="wf-time-warp">
+                <div class="wf-time-btn">-1h</div>
+                <div style="font-weight: 600; font-size: 13px">
+                  Time Warp: 9:24 PM
+                </div>
+                <div class="wf-time-btn">+1h</div>
+              </div>
+
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Estimated Condition</div>
+                <div class="wf-text-block">
+                  At 9:24 PM, we estimate the current is <strong>ebb</strong> at
+                  <strong>1.1 knots</strong>.
+                </div>
+                <div
+                  class="wf-text-block"
+                  style="
+                    margin-top: 12px;
+                    padding-top: 12px;
+                    border-top: 1px solid var(--line);
+                  "
+                >
+                  <em>At Grimaldo's Chair:</em>
+                  <ul>
+                    <li>
+                      A <strong>flooding</strong> current flows from west to
+                      east (Coney Island &rarr; Manhattan Beach)
+                    </li>
+                    <li>
+                      An <strong>ebbing</strong> current flows from east to west
+                      (Manhattan Beach &rarr; Coney Island)
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Current Map</div>
+                <div class="wf-placeholder-chart" style="height: 120px">
+                  [current-chart.png]
+                </div>
+              </div>
+
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Legacy Map</div>
+                <div class="wf-text-block" style="margin-bottom: 8px">
+                  Many years ago, the US Dept of Commerce published hourly
+                  tides...
+                </div>
+                <div class="wf-placeholder-chart" style="height: 120px">
+                  [legacy-chart.png]
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-arrow">vs.</div>
+
+          <!-- Main Dashboard Generic -->
+          <div class="phone">
+            <div class="wf-header">
+              <div class="wf-title">shall we swim today?</div>
+              <div class="wf-subtitle">...at Generic Beach</div>
+            </div>
+            <div class="wf-content">
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Verdict</div>
+                <div class="wf-text-block">The tide is falling.</div>
+              </div>
+
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Tide</div>
+                <div class="wf-mini-bars">
+                  <div class="wf-mini-bar">
+                    <div class="wf-mini-fill tide"></div>
+                  </div>
+                </div>
+                <div
+                  class="wf-text-block"
+                  style="color: var(--muted); font-size: 11px; margin-top: 8px"
+                >
+                  No deeper current data available.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Concept 2: Segmented Tabs -->
+      <section class="concept-section">
+        <div class="concept-header">
+          <h2>2. Segmented Tabs (The "Context Switcher")</h2>
+          <p>
+            Everything lives on <code>/app/{loc}</code>. For NYC, a dedicated
+            "Water Data" tab holds the hardcoded time-warp and complex plots
+            alongside the live condition. For locations lacking this data, the
+            tabs either hide entirely or the "Water Data" tab only shows simple
+            tide lines.
+          </p>
+        </div>
+
+        <div class="wireframe-container">
+          <!-- Tabs NYC -->
+          <div class="phone">
+            <div class="wf-header">
+              <div class="wf-title">Grimaldo's Chair</div>
+              <div class="wf-subtitle">
+                New York, NY <span class="hardcoded-badge">NYC Specific</span>
+              </div>
+            </div>
+            <!-- Tabs -->
+            <div class="wf-nav-tabs">
+              <div class="wf-tab">Overview</div>
+              <div class="wf-tab active">Water Data</div>
+              <div class="wf-tab">Live</div>
+            </div>
+
+            <div class="wf-content">
+              <div class="wf-time-warp">
+                <div class="wf-time-btn">-1h</div>
+                <div style="font-weight: 600; font-size: 13px">
+                  Time Warp: Now
+                </div>
+                <div class="wf-time-btn">+1h</div>
+              </div>
+
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Local Knowledge</div>
+                <div class="wf-text-block">
+                  At Grimaldo's Chair, a <strong>flooding</strong> current flows
+                  from west to east...
+                </div>
+              </div>
+
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Area Flow Maps</div>
+                <div class="wf-placeholder-chart" style="height: 120px">
+                  [current-chart.png]
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-arrow">vs.</div>
+
+          <!-- Tabs Generic -->
+          <div class="phone">
+            <div class="wf-header">
+              <div class="wf-title">Generic River</div>
+              <div class="wf-subtitle">No currents data</div>
+            </div>
+            <!-- Tabs -->
+            <div class="wf-nav-tabs">
+              <div class="wf-tab active">Overview</div>
+              <div class="wf-tab" style="opacity: 0.3">Water Data (N/A)</div>
+              <div class="wf-tab">Live</div>
+            </div>
+
+            <div class="wf-content">
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Status</div>
+                <div class="wf-text-block">
+                  Conditions normal. River flow steady.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Concept 3: Progressive Disclosure -->
+      <section class="concept-section">
+        <div class="concept-header">
+          <h2>3. Progressive Disclosure (The "Modular Scroll")</h2>
+          <p>
+            A single scrolling page. For NYC, the "Currents & Tides" module has
+            an "Expand Deep Dive" button built directly into it via a hardcoded
+            React component switch, revealing the Time Warp and Local Knowledge
+            inline.
+          </p>
+        </div>
+
+        <div class="wireframe-container">
+          <div class="phone">
+            <div class="wf-header">
+              <div class="wf-title">Grimaldo's Chair</div>
+            </div>
+            <div class="wf-content">
+              <!-- Dashboard Level -->
+              <div
+                class="wf-card-solid"
+                style="border-left: 4px solid var(--accent)"
+              >
+                <div class="wf-card-title">Right Now</div>
+                <div class="wf-text-block">
+                  Going out, building. Tide falling.
+                </div>
+              </div>
+
+              <!-- Collapsible Module - Expanded NYC -->
+              <div class="wf-card-solid">
+                <div class="wf-card-title">
+                  <span>Currents & Tides</span>
+                  <span style="color: var(--accent); text-transform: none"
+                    >Collapse &uarr;</span
+                  >
+                </div>
+
+                <div class="wf-mini-bars">
+                  <div class="wf-mini-bar">
+                    <div class="wf-mini-fill tide"></div>
+                  </div>
+                  <div class="wf-mini-bar">
+                    <div class="wf-mini-fill current"></div>
+                  </div>
+                </div>
+
+                <!-- Expanded Hardcoded Content -->
+                <div
+                  style="
+                    border-top: 1px solid var(--line);
+                    margin-top: 16px;
+                    padding-top: 16px;
+                  "
+                >
+                  <div
+                    style="
+                      display: flex;
+                      justify-content: space-between;
+                      align-items: center;
+                      margin-bottom: 8px;
+                    "
+                  >
+                    <div style="font-size: 12px; font-weight: 600">
+                      Time Warp & Maps
+                    </div>
+                    <span class="hardcoded-badge">NYC Inline</span>
+                  </div>
+                  <div class="wf-time-warp" style="margin: 0 0 16px 0">
+                    <div class="wf-time-btn">-1h</div>
+                    <div style="font-weight: 600; font-size: 13px">9:24 PM</div>
+                    <div class="wf-time-btn">+1h</div>
+                  </div>
+                  <div
+                    class="wf-text-block"
+                    style="margin-bottom: 12px; font-size: 12px"
+                  >
+                    <em>Note: Flooding flows west to east.</em>
+                  </div>
+                  <div class="wf-placeholder-chart" style="height: 100px">
+                    [current-chart.png]
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Concept 4: Responsive Overlay (Inspired by Claude) -->
+      <section class="concept-section">
+        <div class="concept-header">
+          <h2>4. Responsive Overlay (The "App-Native" Model)</h2>
+          <p>
+            <em>Inspired by Claude's explorations.</em> The main location page
+            remains a clean dashboard. Deeper content like the Time Warp and
+            NYC's local maps are housed in a responsive overlay. On mobile, this
+            slides up as a full-screen sheet. On desktop, it slides in as a side
+            drawer. This keeps the user on a single URL without navigating away
+            or causing the main layout to jump around.
+          </p>
+        </div>
+
+        <div class="wireframe-container">
+          <div class="phone">
+            <div class="wf-header">
+              <div class="wf-title">Grimaldo's Chair</div>
+              <div class="wf-subtitle">...NYC Dashboard</div>
+            </div>
+            <div class="wf-content">
+              <div class="wf-card-solid">
+                <div class="wf-card-title">Verdict</div>
+                <div class="wf-text-block">Going out, building.</div>
+              </div>
+
+              <div
+                class="wf-card-solid"
+                style="border-left: 4px solid var(--accent); position: relative"
+              >
+                <div class="wf-card-title">Tide & Current</div>
+                <div class="wf-mini-bars">
+                  <div class="wf-mini-bar">
+                    <div class="wf-mini-fill tide"></div>
+                  </div>
+                  <div class="wf-mini-bar">
+                    <div class="wf-mini-fill current"></div>
+                  </div>
+                </div>
+                <a href="#" class="wf-button" style="margin-top: 16px"
+                  >Open Planner Overlay &uarr;</a
+                >
+              </div>
+            </div>
+
+            <!-- Mobile Overlay Simulation -->
+            <div
+              style="
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 85%;
+                background: #fff;
+                border-radius: 20px 20px 0 0;
+                box-shadow: 0 -10px 25px rgba(0, 0, 0, 0.15);
+                display: flex;
+                flex-direction: column;
+                z-index: 20;
+              "
+            >
+              <div
+                style="
+                  padding: 16px;
+                  border-bottom: 1px solid var(--line);
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                "
+              >
+                <div style="font-weight: 800; color: var(--blue)">
+                  Plan Ahead <span class="hardcoded-badge">NYC Inline</span>
+                </div>
+                <div style="color: var(--muted); font-weight: bold">
+                  &times;
+                </div>
+              </div>
+              <div style="padding: 16px; overflow-y: auto; flex: 1">
+                <div class="wf-time-warp" style="margin-top: 0">
+                  <div class="wf-time-btn">-1h</div>
+                  <div style="font-weight: 600; font-size: 13px">9:24 PM</div>
+                  <div class="wf-time-btn">+1h</div>
+                </div>
+                <div class="wf-text-block" style="margin-bottom: 16px">
+                  <em>At Grimaldo's Chair:</em> A
+                  <strong>flooding</strong> current flows west to east.
+                </div>
+                <div class="wf-placeholder-chart" style="height: 120px">
+                  [current-map.png]
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-arrow">&larr; Mobile Overlay</div>
+          <div class="flow-arrow" style="font-size: 14px">
+            Desktop Drawer &rarr;
+          </div>
+
+          <!-- Desktop Drawer Simulation -->
+          <div
+            class="phone"
+            style="width: 500px; flex: 0 0 500px; flex-direction: row"
+          >
+            <!-- Main Content Area -->
+            <div
+              style="
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                background: #f8fafc;
+              "
+            >
+              <div class="wf-header">
+                <div class="wf-title">Grimaldo's Chair</div>
+              </div>
+              <div class="wf-content">
+                <div class="wf-card-solid">
+                  <div class="wf-card-title">Verdict</div>
+                  <div class="wf-text-line"></div>
+                </div>
+                <div class="wf-card-solid">
+                  <div class="wf-card-title">Tide & Current</div>
+                  <div class="wf-text-line medium"></div>
+                </div>
+              </div>
+            </div>
+            <!-- Side Drawer -->
+            <div
+              style="
+                width: 240px;
+                background: #fff;
+                border-left: 1px solid var(--line);
+                box-shadow: -4px 0 15px rgba(0, 0, 0, 0.05);
+                display: flex;
+                flex-direction: column;
+                z-index: 10;
+              "
+            >
+              <div
+                style="
+                  padding: 16px;
+                  border-bottom: 1px solid var(--line);
+                  display: flex;
+                  justify-content: space-between;
+                "
+              >
+                <div style="font-weight: 800; color: var(--blue)">
+                  Plan Ahead
+                </div>
+                <div style="color: var(--muted); font-weight: bold">
+                  &times;
+                </div>
+              </div>
+              <div style="padding: 16px; overflow-y: auto; flex: 1">
+                <div class="wf-time-warp" style="margin-top: 0; padding: 8px">
+                  <div class="wf-time-btn" style="width: 32px">-1h</div>
+                  <div style="font-weight: 600; font-size: 11px">9:24 PM</div>
+                  <div class="wf-time-btn" style="width: 32px">+1h</div>
+                </div>
+                <div
+                  class="wf-text-block"
+                  style="font-size: 11px; margin-bottom: 16px"
+                >
+                  <em>Flooding flows west to east.</em>
+                </div>
+                <div class="wf-placeholder-chart" style="height: 100px">
+                  [map]
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

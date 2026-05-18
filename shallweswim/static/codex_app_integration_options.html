@@ -1,0 +1,1537 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shall We Swim - React App Integration Concepts</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --blue: #000099;
+        --ink: #172033;
+        --muted: #526075;
+        --mist: #fcffff;
+        --line: #d6e4e8;
+        --panel: #ffffff;
+        --soft: #f4f8fa;
+        --tide: #5b7f2a;
+        --tide-soft: #e6f0d5;
+        --current: #006b8f;
+        --current-soft: #d7eef5;
+        --river: #4d6585;
+        --warn: #a64b00;
+        --shadow: 0 14px 30px rgba(23, 32, 51, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--mist);
+        color: var(--ink);
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      main {
+        width: min(1240px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 64px;
+      }
+
+      .kicker {
+        margin: 0 0 8px;
+        color: var(--current);
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        color: var(--blue);
+        font-size: clamp(34px, 5vw, 58px);
+        line-height: 0.96;
+        letter-spacing: 0;
+      }
+
+      h2,
+      h3 {
+        margin: 0;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: 24px;
+      }
+
+      h3 {
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .intro {
+        max-width: 850px;
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.45;
+      }
+
+      .section {
+        margin-top: 34px;
+      }
+
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: end;
+        margin-bottom: 14px;
+      }
+
+      .section-note {
+        max-width: 780px;
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.42;
+      }
+
+      .tag {
+        flex: none;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 10px;
+        color: var(--current);
+        background: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .card-head {
+        border-bottom: 1px solid var(--line);
+        background: linear-gradient(#ffffff, #f8fbfc);
+        padding: 15px 17px 13px;
+      }
+
+      .card-body {
+        padding: 17px;
+      }
+
+      .card-note {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.38;
+      }
+
+      .flow {
+        display: grid;
+        gap: 10px;
+      }
+
+      .flow-row {
+        display: grid;
+        grid-template-columns: 100px 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .flow-label {
+        color: var(--current);
+        font-size: 11px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .flow-box {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--soft);
+        padding: 10px 12px;
+        line-height: 1.35;
+      }
+
+      .flow-box strong {
+        color: var(--ink);
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .pill {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        padding: 5px 9px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .app-frame {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .app-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        background: #f7fbfc;
+        padding: 10px 12px;
+      }
+
+      .app-title {
+        color: var(--blue);
+        font-size: 20px;
+        font-weight: 850;
+      }
+
+      .app-nav {
+        display: flex;
+        gap: 6px;
+      }
+
+      .nav-chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        padding: 5px 9px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .nav-chip.active {
+        border-color: var(--current);
+        color: var(--current);
+      }
+
+      .mock-page {
+        padding: 14px;
+      }
+
+      .hero-summary {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 210px;
+        gap: 14px;
+        align-items: start;
+      }
+
+      .headline {
+        color: var(--current);
+        font-size: clamp(28px, 4vw, 44px);
+        font-weight: 900;
+        line-height: 0.98;
+      }
+
+      .subcopy {
+        margin-top: 9px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+
+      .metric-stack {
+        display: grid;
+        gap: 8px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--soft);
+        padding: 9px 10px;
+      }
+
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 16px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .detail-grid {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .module {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 12px;
+      }
+
+      .module.soft {
+        background: var(--soft);
+      }
+
+      .module-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .time-strip {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .time-button {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        padding: 8px 6px;
+        text-align: center;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .time-button.active {
+        border-color: var(--current);
+        background: var(--current-soft);
+        color: var(--current);
+      }
+
+      .plot {
+        position: relative;
+        height: 230px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background:
+          linear-gradient(
+            180deg,
+            transparent 49%,
+            #eef3f5 50%,
+            transparent 51%
+          ),
+          linear-gradient(90deg, #f7fafb, #fff);
+        overflow: hidden;
+      }
+
+      .plot svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .map-panel {
+        min-height: 230px;
+        background:
+          linear-gradient(135deg, rgba(0, 107, 143, 0.12), transparent 55%),
+          linear-gradient(
+            165deg,
+            transparent 40%,
+            rgba(91, 127, 42, 0.16) 41% 68%,
+            transparent 69%
+          ),
+          #f7fbfc;
+      }
+
+      .map-arrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 10px 0 0 12px;
+        color: var(--current);
+        font-weight: 850;
+      }
+
+      .map-arrow b {
+        font-size: 32px;
+      }
+
+      .callout {
+        border-left: 4px solid var(--warn);
+        background: #fffaf5;
+        padding: 10px 12px;
+        color: #6d3b00;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .capability {
+        display: grid;
+        gap: 9px;
+      }
+
+      .cap-row {
+        display: grid;
+        grid-template-columns: 120px repeat(4, 1fr);
+        gap: 6px;
+        align-items: stretch;
+        font-size: 12px;
+      }
+
+      .cap-row.header {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .cap-cell {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        padding: 8px;
+        min-height: 42px;
+      }
+
+      .cap-cell.yes {
+        background: #f4faef;
+        color: var(--tide);
+        font-weight: 800;
+      }
+
+      .cap-cell.partial {
+        background: #f2f8fb;
+        color: var(--current);
+        font-weight: 800;
+      }
+
+      .cap-cell.no {
+        color: #8793a0;
+      }
+
+      .roadmap {
+        counter-reset: step;
+        display: grid;
+        gap: 10px;
+      }
+
+      .step {
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 12px 12px 12px 48px;
+      }
+
+      .step::before {
+        counter-increment: step;
+        content: counter(step);
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--current);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .step strong {
+        display: block;
+        margin-bottom: 3px;
+      }
+
+      .step span {
+        color: var(--muted);
+        line-height: 1.38;
+      }
+
+      .wide {
+        grid-column: 1 / -1;
+      }
+
+      .mono {
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      .code-block {
+        margin: 12px 0 0;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #f7fbfc;
+        padding: 12px;
+        overflow-x: auto;
+        color: var(--ink);
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .principle-list {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .principle {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 13px;
+      }
+
+      .principle strong {
+        display: block;
+        margin-bottom: 5px;
+      }
+
+      .principle span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.38;
+      }
+
+      @media (max-width: 880px) {
+        main {
+          width: min(100vw - 20px, 720px);
+          padding-top: 18px;
+        }
+
+        .section-head {
+          display: block;
+        }
+
+        .tag {
+          display: inline-block;
+          margin-top: 10px;
+        }
+
+        .grid,
+        .grid.three,
+        .hero-summary,
+        .detail-grid,
+        .principle-list {
+          grid-template-columns: 1fr;
+        }
+
+        .app-top {
+          display: block;
+        }
+
+        .app-nav {
+          margin-top: 8px;
+          overflow-x: auto;
+          padding-bottom: 2px;
+        }
+
+        .time-strip {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .flow-row,
+        .cap-row {
+          grid-template-columns: 1fr;
+        }
+
+        .cap-row.header {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="kicker">React app migration workshop</p>
+        <h1>incorporating the full HTML app</h1>
+        <p class="intro">
+          A standalone design artifact for moving the richer existing HTML
+          experience into the React app: current detail pages, maps, plots,
+          local swim commentary, and time shifting, while keeping the app
+          adaptable across tidal beaches, rivers, webcam-only locations, and
+          simpler temperature/tide locations.
+        </p>
+      </header>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>North Star</h2>
+            <p class="section-note">
+              Keep the home page as a quick answer. Put deeper,
+              location-specific interpretation in capability-aware detail pages
+              that reuse backend APIs and degrade cleanly when a location lacks
+              predictions, maps, tides, webcams, transit, or static chart
+              assets. For NYC, treat local swim knowledge as product content
+              that can live directly in the React app when that is simpler than
+              building a generalized configuration system.
+            </p>
+          </div>
+          <span class="tag">recommended direction</span>
+        </div>
+        <div class="grid three">
+          <article class="card">
+            <div class="card-head">
+              <h3>1. Today</h3>
+              <p class="card-note">Fast, deterministic, glanceable.</p>
+            </div>
+            <div class="card-body">
+              <div class="flow">
+                <div class="flow-row">
+                  <div class="flow-label">Route</div>
+                  <div class="flow-box"><strong>/app/:location</strong></div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Role</div>
+                  <div class="flow-box">
+                    Should I swim today? What are the major signals right now?
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Modules</div>
+                  <div class="flow-box">
+                    Temperature, water movement, forecast, webcam, trends,
+                    transit, sources.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <h3>2. Explain</h3>
+              <p class="card-note">
+                The current page becomes a true detail view.
+              </p>
+            </div>
+            <div class="card-body">
+              <div class="flow">
+                <div class="flow-row">
+                  <div class="flow-label">Route</div>
+                  <div class="flow-box">
+                    <strong>/app/:location/currents</strong>
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Role</div>
+                  <div class="flow-box">
+                    What is the current doing, why, and how should I use that
+                    while planning a swim?
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Modules</div>
+                  <div class="flow-box">
+                    Time shift, current state, tide/current projection, map,
+                    local knowledge, sources.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <h3>3. Adapt</h3>
+              <p class="card-note">
+                One app shape, location-specific capabilities.
+              </p>
+            </div>
+            <div class="card-body">
+              <div class="flow">
+                <div class="flow-row">
+                  <div class="flow-label">Model</div>
+                  <div class="flow-box">
+                    Render dynamic data from feature flags and source type, but
+                    allow small location-specific React modules for rich local
+                    interpretation.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Rule</div>
+                  <div class="flow-box">
+                    NYC gets a richer current guide with hard-coded local
+                    knowledge, custom maps, and caveats. Other locations get the
+                    same frame with unavailable modules removed.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Fallback</div>
+                  <div class="flow-box">
+                    Observation-only rivers show live flow cards, not future
+                    time shifting.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>NYC Local Knowledge Should Be First-Class</h2>
+            <p class="section-note">
+              The app is a single frontend/backend release, so not every piece
+              of location-specific presentation has to flow through bootstrap.
+              Use the API for live/predicted values and asset filenames. Put
+              stable editorial knowledge, map labels, and swim-direction
+              interpretation in app code when that is clearer.
+            </p>
+          </div>
+          <span class="tag">simpler than config</span>
+        </div>
+        <div class="principle-list">
+          <div class="principle">
+            <strong>Hard-code stable local knowledge</strong>
+            <span>
+              NYC-specific facts like "flood carries east" and "ebb carries
+              west", the Aquarium reversal caveat, and how to use the current
+              for out-and-back swims can live in a
+              <span class="mono">NycCurrentGuide</span> component.
+            </span>
+          </div>
+          <div class="principle">
+            <strong>Keep dynamic water state in the API</strong>
+            <span>
+              Current magnitude, phase, trend, shift navigation, plot URLs, and
+              current map filenames should still come from
+              <span class="mono">/api/:location/currents</span>.
+            </span>
+          </div>
+          <div class="principle">
+            <strong>Use config only for reusable presentation</strong>
+            <span>
+              Bootstrap is still useful for feature flags, citations, station
+              labels, and links. Avoid turning it into a CMS for one-off local
+              storytelling.
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Information Architecture Options</h2>
+            <p class="section-note">
+              Three plausible ways to fold the old current page into the app.
+              The recommendation is a hybrid of option A and option C, with the
+              option B overlay pattern kept as a later enhancement if the
+              dedicated route starts to feel too disconnected from the Today
+              surface.
+            </p>
+          </div>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="card-head">
+              <h3>A. Dedicated Current Detail Page</h3>
+              <p class="card-note">
+                Keep the main page light. Current details live at
+                <span class="mono">/app/:location/currents</span>.
+              </p>
+            </div>
+            <div class="card-body">
+              <div class="flow">
+                <div class="flow-row">
+                  <div class="flow-label">Entry</div>
+                  <div class="flow-box">
+                    Water Movement card has a stronger "Current details" action
+                    when prediction data exists.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Best for</div>
+                  <div class="flow-box">
+                    NYC: maps, local caveats, plots, legacy chart, and time
+                    shifting need room.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Risk</div>
+                  <div class="flow-box">
+                    Important current information can feel one tap away.
+                    Mitigate with a preview strip on the main page.
+                  </div>
+                </div>
+              </div>
+              <div class="pill-row">
+                <span class="pill">Best default</span>
+                <span class="pill">Deep linking</span>
+                <span class="pill">Preserves /currents?shift=60</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <h3>B. Expandable Same-Page Details</h3>
+              <p class="card-note">
+                The main location page grows accordions for maps, plots, and
+                local explanation.
+              </p>
+            </div>
+            <div class="card-body">
+              <div class="flow">
+                <div class="flow-row">
+                  <div class="flow-label">Entry</div>
+                  <div class="flow-box">
+                    "Show planning details" expands below Water Movement.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Best for</div>
+                  <div class="flow-box">
+                    Mobile users who dislike page transitions and just want one
+                    scroll.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Risk</div>
+                  <div class="flow-box">
+                    The home page stops being quick. NYC dominates the layout
+                    while other locations look sparse.
+                  </div>
+                </div>
+              </div>
+              <div class="pill-row">
+                <span class="pill">Fast browsing</span>
+                <span class="pill">Harder IA</span>
+                <span class="pill">Can overload Today</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="card wide">
+            <div class="card-head">
+              <h3>C. Capability-Aware Detail Hub</h3>
+              <p class="card-note">
+                Detail pages share a module system: current, tide, temperature,
+                forecast, webcam, and local notes. NYC activates more modules;
+                river locations activate different modules.
+              </p>
+            </div>
+            <div class="card-body">
+              <div class="flow">
+                <div class="flow-row">
+                  <div class="flow-label">Routes</div>
+                  <div class="flow-box">
+                    Start with <strong>/app/:location/currents</strong>. Later
+                    add <strong>/app/:location/temperature</strong> or
+                    <strong>/app/:location/planning</strong> only if needed.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Modules</div>
+                  <div class="flow-box">
+                    Summary, time controls, projection plot, map, local
+                    guidance, source notes, fallback explanation. For NYC, the
+                    local guidance module can be imported directly from app code
+                    instead of described by API metadata.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Decision</div>
+                  <div class="flow-box">
+                    Use this as the implementation model even if the initial UI
+                    exposes only the currents page.
+                  </div>
+                </div>
+              </div>
+              <div class="pill-row">
+                <span class="pill">Recommended architecture</span>
+                <span class="pill">Feature-flag friendly</span>
+                <span class="pill">Works beyond NYC</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Borrowed From The Other Sketches</h2>
+            <p class="section-note">
+              The other two artifacts mostly reinforce the same direction:
+              hard-code NYC depth in app-side modules, keep generic locations
+              sparse by default, and avoid pretending every location has a
+              tide/current/time-warp story.
+            </p>
+          </div>
+          <span class="tag">comparison pass</span>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="card-head">
+              <h3>1. Per-location modules</h3>
+              <p class="card-note">
+                The strongest architectural idea is a static React registry:
+                generic shell first, then location-specific components where the
+                local knowledge is actually worth maintaining.
+              </p>
+            </div>
+            <div class="card-body">
+              <div class="flow">
+                <div class="flow-row">
+                  <div class="flow-label">Borrow</div>
+                  <div class="flow-box">
+                    Co-locate NYC commentary, annotated maps, caveats, and
+                    route-specific planning copy under a NYC module instead of
+                    forcing it through bootstrap.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Fallback</div>
+                  <div class="flow-box">
+                    Unknown or simpler locations use generic current, tide,
+                    river, webcam, and temperature panels based on available
+                    data.
+                  </div>
+                </div>
+              </div>
+              <pre class="code-block">
+frontend/src/locations/
+  shared/
+    CurrentsDetailShell.tsx
+    GenericCurrentGuide.tsx
+    RiverObservationGuide.tsx
+  nyc/
+    NycCurrentGuide.tsx
+    NycCurrentMap.tsx
+    NycPlanningNotes.tsx
+  registry.ts</pre
+              >
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <h3>2. Hub-and-spoke entry</h3>
+              <p class="card-note">
+                The cleanest mobile flow is still a quick Today page with a
+                conditional deep-dive action for NYC and other capable tidal
+                locations.
+              </p>
+            </div>
+            <div class="card-body">
+              <div class="flow">
+                <div class="flow-row">
+                  <div class="flow-label">Borrow</div>
+                  <div class="flow-box">
+                    Render a clear "Plan with currents" action only when the
+                    location has enough current detail to justify it.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Omit</div>
+                  <div class="flow-box">
+                    For tide-only, temp-only, or webcam-only locations, do not
+                    show a disabled deep-dive control. The page should simply be
+                    quieter.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Preview</div>
+                  <div class="flow-box">
+                    The Today card should expose one useful sentence: current
+                    direction now, next flip/peak if known, and whether that
+                    helps or hurts the common swim direction.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card wide">
+            <div class="card-head">
+              <h3>3. Planner overlay as phase two</h3>
+              <p class="card-note">
+                A responsive planner sheet is a good interaction model, but it
+                is more engineering than the first migration needs.
+              </p>
+            </div>
+            <div class="card-body">
+              <div class="flow">
+                <div class="flow-row">
+                  <div class="flow-label">Keep</div>
+                  <div class="flow-box">
+                    The dedicated route should be implemented first because it
+                    maps directly to existing URLs, backend responses, and
+                    shareable time-shift state.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Later</div>
+                  <div class="flow-box">
+                    If users keep bouncing between Today and Currents, reuse the
+                    same detail components inside a mobile full-screen sheet and
+                    desktop side drawer, with URL state like
+                    <span class="mono">?planner=open&amp;shift=60</span>.
+                  </div>
+                </div>
+                <div class="flow-row">
+                  <div class="flow-label">Guardrail</div>
+                  <div class="flow-box">
+                    The overlay must not become a second implementation. It
+                    should mount the same current detail modules as the route.
+                  </div>
+                </div>
+              </div>
+              <div class="pill-row">
+                <span class="pill">Route first</span>
+                <span class="pill">Overlay later</span>
+                <span class="pill">Same modules</span>
+                <span class="pill">URL-backed state</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Recommended Current Detail Wireframe</h2>
+            <p class="section-note">
+              This keeps the current React home page focused, but gives NYC a
+              rich planning view that preserves the old page's main affordances:
+              time warp, map, projection plot, local commentary, and sources.
+            </p>
+          </div>
+          <span class="tag">/app/nyc/currents?shift=60</span>
+        </div>
+
+        <div class="app-frame">
+          <div class="app-top">
+            <div class="app-title">shall we swim today?</div>
+            <div class="app-nav">
+              <span class="nav-chip">Today</span>
+              <span class="nav-chip active">Currents</span>
+              <span class="nav-chip">Locations</span>
+            </div>
+          </div>
+
+          <div class="mock-page">
+            <div class="hero-summary">
+              <div>
+                <p class="kicker">New York - Grimaldo's Chair</p>
+                <p class="headline">Ebb is building</p>
+                <p class="subcopy">
+                  At 9:24 PM, the water is going out at 1.1 kt. Peak ebb is
+                  expected around 11:26 PM. If you are planning a loop, expect
+                  more push before it starts to ease.
+                </p>
+                <div class="pill-row">
+                  <span class="pill">Current time</span>
+                  <span class="pill">-1 hour</span>
+                  <span class="pill">+1 hour</span>
+                  <span class="pill">Evening peak</span>
+                </div>
+              </div>
+              <div class="metric-stack">
+                <div class="metric">
+                  <span>Current</span>
+                  <strong>1.1 kt ebb</strong>
+                </div>
+                <div class="metric">
+                  <span>Trend</span>
+                  <strong>building</strong>
+                </div>
+                <div class="metric">
+                  <span>Time shift</span>
+                  <strong>+60 min</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-grid">
+              <div class="module soft">
+                <div class="module-title">
+                  <span>Time warp</span>
+                  <span>near future predictions</span>
+                </div>
+                <div class="time-strip">
+                  <div class="time-button">-2h</div>
+                  <div class="time-button">-1h</div>
+                  <div class="time-button active">Now</div>
+                  <div class="time-button">+1h</div>
+                  <div class="time-button">+2h</div>
+                </div>
+                <p class="card-note">
+                  URL state should remain the source of truth:
+                  <span class="mono">?shift=60</span>. Buttons update route
+                  params and refetch the currents response and plot image.
+                </p>
+              </div>
+
+              <div class="module">
+                <div class="module-title">
+                  <span>Local swim direction</span>
+                  <span>NYC-specific</span>
+                </div>
+                <p class="subcopy">
+                  Flood generally carries swimmers east toward Manhattan Beach.
+                  Ebb generally carries swimmers west toward Coney Island. Near
+                  the Aquarium/pier area, the local flow can reverse, so the
+                  Grimaldo's estimate needs an explicit place-based caveat.
+                </p>
+              </div>
+            </div>
+
+            <div class="detail-grid">
+              <div class="module">
+                <div class="module-title">
+                  <span>Tide + current projection</span>
+                  <span>backend plot</span>
+                </div>
+                <div class="plot">
+                  <svg viewBox="0 0 700 230" aria-hidden="true">
+                    <path
+                      d="M20 148 C105 188 190 182 270 120 C345 62 435 42 520 78 C595 110 640 150 680 172"
+                      fill="none"
+                      stroke="#5b7f2a"
+                      stroke-width="5"
+                    />
+                    <path
+                      d="M20 128 C85 86 148 72 205 96 C260 120 310 176 380 178 C455 180 505 108 570 82 C620 62 658 86 680 102"
+                      fill="none"
+                      stroke="#006b8f"
+                      stroke-width="5"
+                    />
+                    <line
+                      x1="500"
+                      x2="500"
+                      y1="24"
+                      y2="205"
+                      stroke="#172033"
+                      stroke-width="3"
+                    />
+                    <circle cx="500" cy="84" r="7" fill="#172033" />
+                    <text
+                      x="512"
+                      y="82"
+                      fill="#172033"
+                      font-size="15"
+                      font-weight="800"
+                    >
+                      selected time
+                    </text>
+                  </svg>
+                </div>
+              </div>
+
+              <div class="module map-panel">
+                <div class="module-title">
+                  <span>Current map</span>
+                  <span>static assets</span>
+                </div>
+                <div class="map-arrow"><b>&lt;-</b> ebb near Grimaldo's</div>
+                <div class="map-arrow"><b>-&gt;</b> reversal near pier</div>
+                <p class="card-note">
+                  Show only when
+                  <span class="mono">current_chart_filename</span>
+                  exists. For other locations, replace with station context or
+                  omit entirely.
+                </p>
+              </div>
+            </div>
+
+            <div class="detail-grid">
+              <div class="module">
+                <div class="module-title">
+                  <span>How to use this</span>
+                  <span>hard-coded NYC guide</span>
+                </div>
+                <p class="subcopy">
+                  Start a longer swim into the current when you are fresh, so
+                  the return trip is easier. Swims near a tide flip should plan
+                  for the current to change during the route.
+                </p>
+              </div>
+
+              <div class="module">
+                <div class="module-title">
+                  <span>Where estimates come from</span>
+                  <span>hard-coded explainer + API data</span>
+                </div>
+                <p class="subcopy">
+                  NYC blends two nearby NOAA prediction stations into a local
+                  swim-area estimate. Wind and hyper-local jetty effects are not
+                  modeled.
+                </p>
+              </div>
+            </div>
+
+            <div class="callout" style="margin-top: 14px">
+              NYC caveat: the current effectively reverses near the Aquarium.
+              The direction near the pier can be opposite of the direction at
+              Grimaldo's.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Adaptive Location Matrix</h2>
+            <p class="section-note">
+              The detail page should render from capabilities, not from a
+              one-size-fits-all assumption that every location behaves like NYC.
+            </p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-body capability">
+            <div class="cap-row header">
+              <div>Location type</div>
+              <div>Current module</div>
+              <div>Time shift</div>
+              <div>Map / charts</div>
+              <div>Local guidance</div>
+            </div>
+            <div class="cap-row">
+              <div class="cap-cell"><strong>NYC tidal prediction</strong></div>
+              <div class="cap-cell yes">Current state + drift bar</div>
+              <div class="cap-cell yes">Yes, via shift</div>
+              <div class="cap-cell yes">Current map + legacy chart + plot</div>
+              <div class="cap-cell yes">React-side NYC guide component</div>
+            </div>
+            <div class="cap-row">
+              <div class="cap-cell">
+                <strong>Other tidal prediction</strong>
+              </div>
+              <div class="cap-cell yes">Current state if configured</div>
+              <div class="cap-cell yes">Yes, if prediction source</div>
+              <div class="cap-cell partial">
+                Projection plot only, if data exists
+              </div>
+              <div class="cap-cell partial">
+                Generic tide/current explanation
+              </div>
+            </div>
+            <div class="cap-row">
+              <div class="cap-cell"><strong>River observation</strong></div>
+              <div class="cap-cell yes">Live flow / velocity</div>
+              <div class="cap-cell no">No future prediction</div>
+              <div class="cap-cell no">No tide plot</div>
+              <div class="cap-cell partial">River-specific safety context</div>
+            </div>
+            <div class="cap-row">
+              <div class="cap-cell"><strong>Tide only</strong></div>
+              <div class="cap-cell no">No current module</div>
+              <div class="cap-cell no">No</div>
+              <div class="cap-cell partial">Tide detail later</div>
+              <div class="cap-cell partial">Tide timing guidance</div>
+            </div>
+            <div class="cap-row">
+              <div class="cap-cell"><strong>Temperature only</strong></div>
+              <div class="cap-cell no">No current module</div>
+              <div class="cap-cell no">No</div>
+              <div class="cap-cell no">No</div>
+              <div class="cap-cell partial">Temperature trend guidance</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Implementation Shape</h2>
+            <p class="section-note">
+              A practical path that preserves the existing backend split and
+              avoids moving NOAA/USGS/plot logic into the browser.
+            </p>
+          </div>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="card-head">
+              <h3>Frontend modules</h3>
+              <p class="card-note">
+                Capability-aware shell, with explicit NYC-specific content
+                modules where useful.
+              </p>
+            </div>
+            <div class="card-body roadmap">
+              <div class="step">
+                <strong>CurrentsDetailPage</strong>
+                <span>
+                  Replaces the placeholder route. Reads
+                  <span class="mono">shift</span> from search params and calls
+                  <span class="mono">/api/:location/currents</span>.
+                </span>
+              </div>
+              <div class="step">
+                <strong>Location detail registry</strong>
+                <span>
+                  Selects optional app-side modules by location code:
+                  <span class="mono">nyc</span> gets the custom guide and map
+                  overlays; other locations fall back to generic tidal or river
+                  detail components.
+                </span>
+              </div>
+              <div class="step">
+                <strong>TimeShiftControls</strong>
+                <span>
+                  URL-backed controls: now, -1h, +1h, and later presets like
+                  next slack / next peak when the API exposes them.
+                </span>
+              </div>
+              <div class="step">
+                <strong>CurrentMapPanel</strong>
+                <span>
+                  Renders only when
+                  <span class="mono">current_chart_filename</span>
+                  is present. Otherwise omitted or replaced by source context.
+                </span>
+              </div>
+              <div class="step">
+                <strong>NycCurrentGuide</strong>
+                <span>
+                  A normal React component, not API data. Contains the local
+                  swim-direction explanation, Aquarium reversal warning, map
+                  overlay captions, and practical route advice.
+                </span>
+              </div>
+              <div class="step">
+                <strong>ProjectionPlot</strong>
+                <span>
+                  Uses existing <span class="mono">navigation.plot_url</span>
+                  or builds the current-tide plot URL with shift.
+                </span>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <h3>API / data needs</h3>
+              <p class="card-note">
+                Most of phase one can use existing endpoints.
+              </p>
+            </div>
+            <div class="card-body roadmap">
+              <div class="step">
+                <strong>Phase 1: no backend rewrite</strong>
+                <span>
+                  Use current response fields: current state, navigation,
+                  plot_url, current_chart_filename, and legacy_chart.
+                </span>
+              </div>
+              <div class="step">
+                <strong>Phase 2: app-side NYC content</strong>
+                <span>
+                  Implement stable NYC local knowledge directly in React. Use
+                  small hard-coded maps/labels/caveats where that is simpler
+                  than pushing one-off content through bootstrap.
+                </span>
+              </div>
+              <div class="step">
+                <strong>Phase 3: optional planner overlay</strong>
+                <span>
+                  If the route feels too separated from Today, mount the same
+                  currents detail modules inside a responsive planner sheet.
+                  Keep routing/search params as the canonical state.
+                </span>
+              </div>
+              <div class="step">
+                <strong>Phase 4: richer prediction events</strong>
+                <span>
+                  Add next slack / next peak / time-to-flip fields so the UI can
+                  offer smarter time warp presets than fixed one-hour steps.
+                </span>
+              </div>
+              <div class="step">
+                <strong>Phase 5: structured curves</strong>
+                <span>
+                  Replace or supplement image plots with sampled tide/current
+                  series only if interactive charting becomes worth the added
+                  API surface.
+                </span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Recommended First Milestone</h2>
+            <p class="section-note">
+              Build the smallest useful React current detail page first, with
+              NYC-specific guidance in app code and dynamic values from the
+              existing currents API.
+            </p>
+          </div>
+          <span class="tag">low-risk migration</span>
+        </div>
+        <div class="card">
+          <div class="card-body roadmap">
+            <div class="step">
+              <strong>Replace the currents placeholder</strong>
+              <span>
+                Fetch
+                <span class="mono">/api/:location/currents?shift=...</span>,
+                render current state, time controls, projection plot, and source
+                links. Keep old HTML page live during rollout.
+              </span>
+            </div>
+            <div class="step">
+              <strong>Gate modules by response fields</strong>
+              <span>
+                If <span class="mono">current_chart_filename</span> exists, show
+                the current map. If <span class="mono">legacy_chart</span>
+                exists, show the legacy map. If API returns 404 for
+                observation-only current, show a live-flow detail variant later.
+              </span>
+            </div>
+            <div class="step">
+              <strong>Add a hard-coded NYC guide module</strong>
+              <span>
+                Keep this pragmatic: local current flips, swim-direction advice,
+                static overlay captions, and source explainers can live in the
+                React app. This is one shipped app, not an independently
+                versioned frontend consuming a public CMS-like API.
+              </span>
+            </div>
+            <div class="step">
+              <strong>Promote entry points from Today</strong>
+              <span>
+                The Water Movement card should preview the next actionable event
+                and link to the detail page with the current shift state.
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Questions To Resolve</h2>
+            <p class="section-note">
+              These are the few decisions that should be explicit before the
+              React current detail work becomes implementation work.
+            </p>
+          </div>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="card-head">
+              <h3>Unsupported routes</h3>
+              <p class="card-note">
+                What should <span class="mono">/app/:location/currents</span>
+                do when a location has no current detail?
+              </p>
+            </div>
+            <div class="card-body">
+              <p class="subcopy">
+                My preference: no entry link from Today, and if someone lands
+                there directly, show a concise unsupported detail state with a
+                route back to the location page. Avoid a hard 404 unless the
+                location itself does not exist.
+              </p>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <h3>River detail model</h3>
+              <p class="card-note">
+                Louisville and future rivers should not inherit tidal language.
+              </p>
+            </div>
+            <div class="card-body">
+              <p class="subcopy">
+                Build a separate observation-detail variant when it is needed:
+                live velocity/flow, recent trend, source freshness, and safety
+                context. No time warp unless there is a real forecast source.
+              </p>
+            </div>
+          </article>
+
+          <article class="card wide">
+            <div class="card-head">
+              <h3>What remains outside React</h3>
+              <p class="card-note">
+                The old HTML app, embeddable widgets, and static charts can
+                coexist during the migration.
+              </p>
+            </div>
+            <div class="card-body">
+              <p class="subcopy">
+                Keep the old HTML current page alive until the React route has
+                parity for NYC. Move only the user-facing app experience first;
+                decide separately whether older widgets need to become React or
+                stay as stable server-rendered surfaces.
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

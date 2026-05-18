@@ -3,14 +3,20 @@ import { apiClient } from "./client";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
-export function useLocationConditions(locationCode: string) {
+export function useLocationConditions(
+  locationCode: string,
+  at?: string | null,
+) {
   return useQuery({
-    queryKey: ["location-conditions", locationCode],
+    queryKey: ["location-conditions", locationCode, at ?? null],
     queryFn: async () => {
       const { data, error } = await apiClient.GET(
         "/api/{location}/conditions",
         {
-          params: { path: { location: locationCode } },
+          params: {
+            path: { location: locationCode },
+            query: at ? { at } : undefined,
+          },
         },
       );
 
@@ -22,7 +28,7 @@ export function useLocationConditions(locationCode: string) {
     },
     enabled: Boolean(locationCode),
     placeholderData: keepPreviousData,
-    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchInterval: at ? false : REFRESH_INTERVAL_MS,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });

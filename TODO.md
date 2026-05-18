@@ -52,8 +52,13 @@
   previous/next times and currents API URLs from local app state. Keep
   `shift`, `at`, and `plot_url` unless a later frontend pass removes the
   backend-rendered tide/current plot dependency too.
-- Refine the planner time scrubber. The current React planner uses a basic
-  page-level slider with URL-backed `at` state; the final interaction should add
+- Reassess whether `/api/{location}/currents` is still needed outside the legacy
+  HTML currents page. The React Water Movement card now uses
+  `/api/{location}/conditions?at=...` as the single source for shifted tide and
+  current state; if the legacy page is removed or migrated, mark the currents
+  endpoint and `NavigationInfo` response model as removal candidates.
+- Refine the planner time scrubber. The current React planner uses a compact
+  in-card slider with URL-backed `at` state; the final interaction should add
   clearer time ticks, stronger mobile styling, debounced updates if needed, and
   smart presets such as next slack, peak ebb, and peak flood once the backend
   exposes those timestamps.
@@ -63,7 +68,7 @@
   the React app against a FastAPI test server with mocked data managers so URL
   state and backend query behavior are verified together. Illustrative case:
   load `/app/nyc?planner=open&at=2026-05-13T08:30:00`, return distinct
-  now-vs-shifted payloads from `/api/nyc/conditions`, `/api/nyc/currents`, and
+  now-vs-shifted payloads from `/api/nyc/conditions` and
   `/api/nyc/plots/current_tide`, then assert the tide bar, current bar, detail
   plot URL, and recorded backend requests all use the same `at` value.
 

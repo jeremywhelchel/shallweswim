@@ -9,7 +9,6 @@ import {
 } from "react-feather";
 import { Link, useSearchParams } from "react-router-dom";
 import { useLocationConditions } from "../api/conditions";
-import { useLocationCurrents } from "../api/currents";
 import type { components } from "../api/generated";
 import { useTransitRoute } from "../api/transit";
 import { useDeferredImage } from "../hooks/useDeferredImage";
@@ -32,6 +31,10 @@ type TransitRouteConfig = components["schemas"]["TransitRouteConfig"];
 type YouTubeLiveConfig = components["schemas"]["YouTubeLiveConfig"];
 
 const METER_SEGMENT_COUNT = 32;
+const PLANNER_MIN_MINUTES = -180;
+const PLANNER_MAX_MINUTES = 1440;
+const PLANNER_STEP_MINUTES = 15;
+const PLANNER_TICKS = [-180, 0, 360, 720, 1080, 1440];
 
 type LocationPageProps = {
   bootstrap: AppBootstrapResponse;
@@ -66,18 +69,18 @@ export function LocationPage({
   preserveDefaultUrl = false,
 }: LocationPageProps) {
   const location = bootstrap.locations[locationCode];
-  const conditions = useLocationConditions(locationCode);
   const [searchParams, setSearchParams] = useSearchParams();
-  const firstConditionsSettled = !conditions.isPending;
-  const supportsPlanner =
+  const supportsWaterMovementPlanning =
     locationCode === "nyc" && Boolean(location?.metadata.features.currents);
-  const plannerOpen = supportsPlanner && searchParams.get("planner") === "open";
-  const plannerAt = supportsPlanner ? searchParams.get("at") : null;
-  const shiftedCurrents = useLocationCurrents(
-    locationCode,
-    plannerAt,
-    plannerOpen,
-  );
+  const plannerOpen =
+    supportsWaterMovementPlanning && searchParams.get("planner") === "open";
+  const detailOpen =
+    supportsWaterMovementPlanning && searchParams.get("detail") === "open";
+  const plannerAt = supportsWaterMovementPlanning
+    ? searchParams.get("at")
+    : null;
+  const conditions = useLocationConditions(locationCode, plannerAt);
+  const firstConditionsSettled = !conditions.isPending;
 
   if (!location) {
     return (
@@ -107,13 +110,28 @@ export function LocationPage({
     }
     setSearchParams(next, { replace: true });
   };
+  const openPlanner = () => {
+    const next = new URLSearchParams(searchParams);
+    next.set("planner", "open");
+    setSearchParams(next, { replace: false });
+  };
   const closePlanner = () => {
     const next = new URLSearchParams(searchParams);
     next.delete("planner");
     setSearchParams(next, { replace: true });
   };
-  const plannerPlotUrl =
-    plannerOpen && supportsPlanner
+  const openDetail = () => {
+    const next = new URLSearchParams(searchParams);
+    next.set("detail", "open");
+    setSearchParams(next, { replace: false });
+  };
+  const closeDetail = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("detail");
+    setSearchParams(next, { replace: true });
+  };
+  const detailPlotUrl =
+    detailOpen && supportsWaterMovementPlanning
       ? `/api/${locationCode}/plots/current_tide${
           plannerAt ? `?at=${encodeURIComponent(plannerAt)}` : ""
         }`
@@ -139,33 +157,26 @@ export function LocationPage({
         </p>
       </header>
 
-      {plannerOpen ? (
-        <PlannerControls
-          at={plannerAt}
-          location={location}
-          onClose={closePlanner}
-          onSetAt={setPlannerAt}
-        />
-      ) : null}
-
       <ConditionsSummary
         conditions={conditions.data}
-        currentOverride={
-          plannerOpen ? shiftedCurrents.data?.current : undefined
-        }
         hasError={conditions.isError && !conditions.data}
         isLoading={conditions.isPending}
-        locationCode={locationCode}
-        plannerContext={
-          plannerOpen
+        waterMovementControls={
+          supportsWaterMovementPlanning
             ? {
                 at: plannerAt,
-                currentsError: shiftedCurrents.isError,
-                currentsLoading: shiftedCurrents.isPending,
+                detailOpen,
                 label: plannerAt
                   ? formatPlannerTimeLabel(plannerAt)
                   : "Current conditions",
-                plotUrl: plannerPlotUrl,
+                location,
+                onCloseDetail: closeDetail,
+                onClosePlanner: closePlanner,
+                onOpenDetail: openDetail,
+                onOpenPlanner: openPlanner,
+                onSetAt: setPlannerAt,
+                plannerOpen,
+                plotUrl: detailPlotUrl,
               }
             : undefined
         }
@@ -212,18 +223,14 @@ export function LocationPage({
 
 export function ConditionsSummary({
   conditions,
-  currentOverride,
   hasError,
   isLoading,
-  locationCode,
-  plannerContext,
+  waterMovementControls,
 }: {
   conditions?: LocationConditions;
-  currentOverride?: CurrentInfo | null;
   hasError: boolean;
   isLoading: boolean;
-  locationCode: string;
-  plannerContext?: PlannerContext;
+  waterMovementControls?: WaterMovementControls;
 }) {
   if (isLoading) {
     return <ShellMessage title="Loading latest conditions" />;
@@ -233,22 +240,25 @@ export function ConditionsSummary({
     <section className="grid gap-0 overflow-hidden rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:overflow-visible md:border-0 md:bg-transparent">
       <TemperatureSummary conditions={conditions} hasError={hasError} />
       <WaterMovementSummary
-        current={
-          hasError ? undefined : (currentOverride ?? conditions?.current)
-        }
-        locationCode={locationCode}
-        plannerContext={plannerContext}
+        current={hasError ? undefined : conditions?.current}
         tides={hasError ? undefined : conditions?.tides}
+        waterMovementControls={waterMovementControls}
       />
     </section>
   );
 }
 
-type PlannerContext = {
+type WaterMovementControls = {
   at: string | null;
-  currentsError: boolean;
-  currentsLoading: boolean;
+  detailOpen: boolean;
   label: string;
+  location: AppBootstrapLocation;
+  onCloseDetail: () => void;
+  onClosePlanner: () => void;
+  onOpenDetail: () => void;
+  onOpenPlanner: () => void;
+  onSetAt: (at: string | null) => void;
+  plannerOpen: boolean;
   plotUrl: string | null;
 };
 
@@ -303,199 +313,215 @@ function TemperatureSummary({
 
 function WaterMovementSummary({
   current,
-  locationCode,
-  plannerContext,
   tides,
+  waterMovementControls,
 }: {
   current?: CurrentInfo | null;
-  locationCode: string;
-  plannerContext?: PlannerContext;
   tides?: LocationConditions["tides"];
+  waterMovementControls?: WaterMovementControls;
 }) {
   const pastTide = tides?.past?.at(-1);
   const nextTide = tides?.next?.[0];
   const description = describeWaterMovement(tides?.state, current);
+  const plannedLabel =
+    waterMovementControls?.plannerOpen && waterMovementControls.at
+      ? waterMovementControls.label
+      : null;
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="font-semibold text-base md:text-lg">Water Movement</h2>
-          {plannerContext ? (
+          {plannedLabel ? (
             <p className="mt-0.5 text-xs text-slate-600 md:text-sm">
               Planned for{" "}
-              <span className="font-mono text-swim-blue">
-                {plannerContext.label}
-              </span>
+              <span className="font-mono text-swim-blue">{plannedLabel}</span>
             </p>
           ) : null}
         </div>
-        {plannerContext ? (
-          <span className="rounded bg-[#eff7fa] px-2 py-1 font-mono text-[11px] text-swim-current uppercase">
-            Planner mode
-          </span>
+        {waterMovementControls ? (
+          <WaterMovementActions controls={waterMovementControls} />
         ) : null}
       </div>
-      {plannerContext?.currentsLoading ? (
-        <p className="mt-2 text-sm text-slate-600">
-          Loading planned water movement.
-        </p>
-      ) : plannerContext?.currentsError ? (
-        <p className="mt-2 text-sm text-swim-alert">
-          Planned current prediction is unavailable for this time.
-        </p>
-      ) : (
-        <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
-          {description}
-        </p>
-      )}
-      <WaterMovementBadges current={current} tideState={tides?.state} />
+      {waterMovementControls?.plannerOpen ? (
+        <PlannerControls
+          at={waterMovementControls.at}
+          label={waterMovementControls.label}
+          location={waterMovementControls.location}
+          onClose={waterMovementControls.onClosePlanner}
+          onSetAt={waterMovementControls.onSetAt}
+        />
+      ) : null}
+      <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
+        {description}
+      </p>
       <TideInstrument
         nextTide={nextTide}
         previousTide={pastTide}
         state={tides?.state}
       />
       <CurrentInstrument current={current} />
-      {plannerContext?.plotUrl ? (
-        <details
+      {waterMovementControls?.detailOpen && waterMovementControls.plotUrl ? (
+        <section
+          aria-label="Current and tide detail chart"
           className="mt-3 rounded border border-swim-line bg-[#f8fbfc] p-3"
-          open
         >
-          <summary className="cursor-pointer font-medium text-sm text-swim-blue">
-            Current and tide detail chart
-          </summary>
-          <img
-            alt={`Tide and current plot for ${plannerContext.label}`}
-            className="mt-3 w-full"
-            key={plannerContext.plotUrl}
-            src={plannerContext.plotUrl}
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-medium text-sm text-swim-blue">
+              Current and tide detail chart
+            </h3>
+            <button
+              aria-label="Close current and tide detail chart"
+              className="rounded border border-swim-line bg-white px-2 py-1 text-xs text-swim-ink"
+              onClick={waterMovementControls.onCloseDetail}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
+          <PlannerPlotImage
+            alt={`Tide and current plot for ${waterMovementControls.label}`}
+            src={waterMovementControls.plotUrl}
           />
-        </details>
-      ) : null}
-      {current?.direction ? (
-        <Link
-          className="mt-1 inline-block text-xs text-swim-blue underline md:mt-2 md:text-sm"
-          to={`/${locationCode}?planner=open`}
-        >
-          Plan another time
-        </Link>
+        </section>
       ) : null}
     </div>
   );
 }
 
-function WaterMovementBadges({
-  current,
-  tideState,
+function WaterMovementActions({
+  controls,
 }: {
-  current?: CurrentInfo | null;
-  tideState?: TideState | null;
+  controls: WaterMovementControls;
 }) {
-  const currentLabel = currentPhaseLabel(current);
-  const tideLabel = tideStateLabel(tideState);
-
-  if (!currentLabel && !tideLabel) {
-    return null;
-  }
-
   return (
-    <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-      {currentLabel ? (
-        <div className="rounded border border-swim-line bg-[#eff7fa] px-3 py-2">
-          <dt className="font-medium text-slate-600">Current</dt>
-          <dd className="mt-0.5 font-mono text-swim-current">{currentLabel}</dd>
-        </div>
-      ) : null}
-      {tideLabel ? (
-        <div className="rounded border border-swim-line bg-[#f6f9f1] px-3 py-2">
-          <dt className="font-medium text-slate-600">Tide</dt>
-          <dd className="mt-0.5 font-mono text-swim-tide">{tideLabel}</dd>
-        </div>
-      ) : null}
-    </dl>
+    <div className="flex shrink-0 items-center gap-1">
+      <button
+        aria-pressed={controls.detailOpen}
+        className={[
+          "rounded border px-2 py-1 text-xs",
+          controls.detailOpen
+            ? "border-swim-blue bg-swim-blue text-white"
+            : "border-swim-line bg-white text-swim-blue",
+        ].join(" ")}
+        onClick={
+          controls.detailOpen ? controls.onCloseDetail : controls.onOpenDetail
+        }
+        type="button"
+      >
+        Details
+      </button>
+      <button
+        aria-pressed={controls.plannerOpen}
+        className={[
+          "rounded border px-2 py-1 text-xs",
+          controls.plannerOpen
+            ? "border-swim-blue bg-swim-blue text-white"
+            : "border-swim-line bg-white text-swim-blue",
+        ].join(" ")}
+        onClick={
+          controls.plannerOpen
+            ? controls.onClosePlanner
+            : controls.onOpenPlanner
+        }
+        type="button"
+      >
+        Plan
+      </button>
+    </div>
   );
 }
 
-function currentPhaseLabel(current?: CurrentInfo | null) {
-  if (!current) {
-    return null;
-  }
+function PlannerPlotImage({ alt, src }: { alt: string; src: string }) {
+  const [displayed, setDisplayed] = useState({ alt, src });
+  const [isLoadingNext, setIsLoadingNext] = useState(false);
 
-  if (current.phase === "ebb" || current.direction === "ebbing") {
-    return "Ebb / going out";
-  }
-  if (current.phase === "flood" || current.direction === "flooding") {
-    return "Flood / coming in";
-  }
-  if (current.phase === "slack_before_flood") {
-    return "Slack before flood";
-  }
-  if (current.phase === "slack_before_ebb") {
-    return "Slack before ebb";
-  }
-  if (current.phase === "slack") {
-    return "Slack";
-  }
+  useEffect(() => {
+    if (src === displayed.src) {
+      setDisplayed({ alt, src });
+      setIsLoadingNext(false);
+      return;
+    }
 
-  return current.phase ?? current.direction ?? null;
-}
+    let cancelled = false;
+    const image = new Image();
+    setIsLoadingNext(true);
+    image.onload = () => {
+      if (!cancelled) {
+        setDisplayed({ alt, src });
+        setIsLoadingNext(false);
+      }
+    };
+    image.onerror = () => {
+      if (!cancelled) {
+        setIsLoadingNext(false);
+      }
+    };
+    image.src = src;
 
-function tideStateLabel(tideState?: TideState | null) {
-  if (!tideState?.trend) {
-    return null;
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [alt, displayed.src, src]);
 
-  const position = describeTidePosition(tideState);
-  if (position === "near high tide") {
-    return `Near high / ${tideState.trend}`;
-  }
-  if (position === "near low tide") {
-    return `Near low / ${tideState.trend}`;
-  }
-
-  return tideState.trend;
+  return (
+    <div className="relative mt-3">
+      <img alt={displayed.alt} className="w-full" src={displayed.src} />
+      {isLoadingNext ? (
+        <div className="absolute right-2 top-2 rounded bg-white/90 px-2 py-1 font-mono text-[11px] text-slate-600 shadow-sm">
+          Updating
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function PlannerControls({
   at,
+  label,
   location,
   onClose,
   onSetAt,
 }: {
   at: string | null;
+  label: string;
   location: AppBootstrapLocation;
   onClose: () => void;
   onSetAt: (at: string | null) => void;
 }) {
-  const plannerLabel = at ? formatPlannerTimeLabel(at) : "Current conditions";
-  const selectedAt = at ?? formatLocationIso(new Date(), location);
-  const selectedDate = parseLocationIso(selectedAt);
+  const baseAtRef = useRef(formatLocationIso(new Date(), location));
+  const baseDate = parseLocationIso(baseAtRef.current);
+  const sliderValue = at
+    ? clamp(
+        Math.round(
+          (parseLocationIso(at).getTime() - baseDate.getTime()) /
+            60_000 /
+            PLANNER_STEP_MINUTES,
+        ) * PLANNER_STEP_MINUTES,
+        PLANNER_MIN_MINUTES,
+        PLANNER_MAX_MINUTES,
+      )
+    : 0;
+  const setMinuteOffset = (minutes: number) => {
+    onSetAt(
+      minutes === 0 ? null : formatLocalIso(addMinutes(baseDate, minutes)),
+    );
+  };
 
   return (
     <section
-      aria-labelledby="planner-title"
-      className="rounded border border-swim-line bg-white p-3 shadow-sm sm:p-4"
+      aria-label="Planner mode"
+      className="mt-3 rounded border border-swim-line bg-[#f8fbfc] px-3 py-2"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="font-medium text-swim-current text-xs uppercase sm:text-sm">
-            {location.metadata.name} planner
-          </p>
-          <h2
-            className="mt-1 font-semibold text-2xl text-swim-ink"
-            id="planner-title"
-          >
-            Planner mode
-          </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Dashboard readings are shown for{" "}
-            <span className="font-mono text-swim-blue">{plannerLabel}</span>{" "}
-            where shifted predictions are available.
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-slate-600">
+          Plan water movement{" "}
+          <span className="font-mono text-swim-blue">{label}</span>
+        </p>
         <button
           aria-label="Close planner"
-          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded border border-swim-line bg-white px-3 py-2 text-sm text-swim-ink"
+          className="inline-flex min-h-8 shrink-0 items-center justify-center rounded border border-swim-line bg-white px-2 py-1 text-xs text-swim-ink"
           onClick={onClose}
           type="button"
         >
@@ -503,59 +529,98 @@ function PlannerControls({
         </button>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <PlannerTimeButton
-          isActive={!at}
-          label="Now"
-          onClick={() => onSetAt(null)}
-        />
-        <PlannerTimeButton
-          isActive={false}
-          label="-1h"
-          onClick={() => onSetAt(formatLocalIso(addMinutes(selectedDate, -60)))}
-        />
-        <PlannerTimeButton
-          isActive={false}
-          label="+1h"
-          onClick={() => onSetAt(formatLocalIso(addMinutes(selectedDate, 60)))}
-        />
-        <PlannerTimeButton
-          isActive={false}
-          label="+2h"
-          onClick={() => onSetAt(formatLocalIso(addMinutes(selectedDate, 120)))}
-        />
+      <div className="mt-2 grid gap-1">
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+          <button
+            className={[
+              "inline-flex min-h-8 items-center rounded border px-2 py-1 font-mono font-medium text-xs",
+              !at
+                ? "border-swim-blue bg-swim-blue text-white"
+                : "border-swim-line bg-white text-swim-blue",
+            ].join(" ")}
+            onClick={() => onSetAt(null)}
+            type="button"
+          >
+            Now
+          </button>
+          <label className="sr-only" htmlFor="planner-time-slider">
+            Planner time
+          </label>
+          <input
+            aria-valuetext={`${label}, ${formatPlannerOffset(sliderValue)}`}
+            className="h-7 min-w-0 accent-swim-blue"
+            id="planner-time-slider"
+            max={PLANNER_MAX_MINUTES}
+            min={PLANNER_MIN_MINUTES}
+            onChange={(event) =>
+              setMinuteOffset(Number(event.currentTarget.value))
+            }
+            step={PLANNER_STEP_MINUTES}
+            type="range"
+            value={sliderValue}
+          />
+          <p className="w-12 text-right font-mono text-xs text-swim-ink">
+            {formatPlannerOffset(sliderValue)}
+          </p>
+        </div>
+        <div className="relative hidden h-4 font-mono text-[10px] text-slate-500 sm:block">
+          {PLANNER_TICKS.map((minutes) => (
+            <span
+              className={[
+                "absolute top-0 -translate-x-1/2",
+                minutes === PLANNER_MIN_MINUTES ? "translate-x-0" : "",
+                minutes === PLANNER_MAX_MINUTES
+                  ? "right-0 translate-x-0 text-right"
+                  : "",
+              ].join(" ")}
+              key={minutes}
+              style={
+                minutes === PLANNER_MAX_MINUTES
+                  ? undefined
+                  : { left: `${plannerTickPercent(minutes)}%` }
+              }
+            >
+              {formatPlannerOffset(minutes)}
+            </span>
+          ))}
+        </div>
       </div>
     </section>
   );
 }
 
-function PlannerTimeButton({
-  isActive,
-  label,
-  onClick,
-}: {
-  isActive: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className={[
-        "inline-flex min-h-11 items-center rounded border px-4 py-2 font-mono font-medium text-sm",
-        isActive
-          ? "border-swim-blue bg-swim-blue text-white"
-          : "border-swim-line bg-white text-swim-blue",
-      ].join(" ")}
-      onClick={onClick}
-      type="button"
-    >
-      {label}
-    </button>
-  );
-}
-
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60_000);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function formatPlannerOffset(minutes: number) {
+  if (minutes === 0) {
+    return "now";
+  }
+
+  const sign = minutes > 0 ? "+" : "-";
+  const absolute = Math.abs(minutes);
+  const hours = Math.floor(absolute / 60);
+  const remainingMinutes = absolute % 60;
+  if (remainingMinutes === 0) {
+    return `${sign}${hours}h`;
+  }
+  if (hours === 0) {
+    return `${sign}${remainingMinutes}m`;
+  }
+  return `${sign}${hours}h ${remainingMinutes}m`;
+}
+
+function plannerTickPercent(minutes: number) {
+  return (
+    ((minutes - PLANNER_MIN_MINUTES) /
+      (PLANNER_MAX_MINUTES - PLANNER_MIN_MINUTES)) *
+    100
+  );
 }
 
 function parseLocationIso(at: string) {

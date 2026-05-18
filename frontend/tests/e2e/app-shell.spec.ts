@@ -153,45 +153,58 @@ const conditionsPayload = {
   },
 };
 
-const currentsPayload = {
-  location: {
-    code: "nyc",
-    name: "New York",
-    swim_location: "Grimaldo's Chair",
-  },
-  timestamp: "2026-05-13T08:30:00",
-  current: {
-    ...conditionsPayload.current,
-    timestamp: "2026-05-13T08:30:00",
-    magnitude: 1.4,
-    trend: "easing",
-  },
-  legacy_chart: null,
-  current_chart_filename: null,
-  navigation: {
-    shift: 60,
-    next_hour: 120,
-    prev_hour: 0,
-    current_api_url: "/api/nyc/currents",
-    plot_url: "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
-    at: "2026-05-13T08:30:00",
-  },
-};
-
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
 );
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const fixedNow = new Date("2026-05-13T11:30:00Z").valueOf();
+    const RealDate = Date;
+    class MockDate extends RealDate {
+      constructor(...args: ConstructorParameters<DateConstructor>) {
+        if (args.length === 0) {
+          super(fixedNow);
+        } else {
+          super(...args);
+        }
+      }
+
+      static now() {
+        return fixedNow;
+      }
+    }
+    window.Date = MockDate as DateConstructor;
+  });
   await page.route("**/api/app/bootstrap", async (route) => {
     await route.fulfill({ json: bootstrapPayload });
   });
-  await page.route("**/api/nyc/conditions", async (route) => {
-    await route.fulfill({ json: conditionsPayload });
-  });
-  await page.route("**/api/nyc/currents**", async (route) => {
-    await route.fulfill({ json: currentsPayload });
+  await page.route("**/api/nyc/conditions**", async (route) => {
+    const at = new URL(route.request().url()).searchParams.get("at");
+    await route.fulfill({
+      json: at
+        ? {
+            ...conditionsPayload,
+            current: {
+              ...conditionsPayload.current,
+              timestamp: "2026-05-13T08:30:00",
+              magnitude: 1.4,
+              trend: "easing",
+            },
+            tides: {
+              ...conditionsPayload.tides,
+              state: {
+                timestamp: "2026-05-13T08:30:00-04:00",
+                estimated_height: 2.2,
+                units: "ft",
+                trend: "rising",
+                height_pct: 0.52,
+              },
+            },
+          }
+        : conditionsPayload,
+    });
   });
   await page.route("https://goodservice.io/api/routes/**", async (route) => {
     await route.fulfill({
@@ -326,13 +339,23 @@ test("planner mode shifts dashboard water movement from URL state", async ({
 
   const panel = page.getByRole("region", { name: "Planner mode" });
   await expect(panel).toBeVisible();
-  await expect(panel.getByText("New York planner")).toBeVisible();
+  await expect(panel.getByText(/Plan water movement/)).toBeVisible();
   await expect(
     page.getByText("May 13, 2026, 8:30 AM", { exact: true }).first(),
   ).toBeVisible();
   await expect(page.getByText(/water is going out steadily/)).toBeVisible();
-  await expect(page.getByText("Ebb / going out")).toBeVisible();
-  await expect(page.getByText("rising", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("rising", { exact: true })).toHaveCount(2);
+  await expect(panel.getByLabel("Planner time")).toHaveAttribute("max", "1440");
+  await expect(page.locator('img[alt^="Tide and current plot"]')).toHaveCount(
+    0,
+  );
+
+  await page.goto("/app/nyc?detail=open&at=2026-05-13T08:30:00");
+  await expect(page.getByRole("region", { name: "Planner mode" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText(/water is going out steadily/)).toBeVisible();
+  await expect(page.getByText("2.2 ft", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("img", {
       name: "Tide and current plot for May 13, 2026, 8:30 AM",
@@ -342,13 +365,10 @@ test("planner mode shifts dashboard water movement from URL state", async ({
     "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
   );
 
-  await panel.getByRole("button", { name: "+1h" }).click();
-  await expect(
-    page.getByRole("img", {
-      name: "Tide and current plot for May 13, 2026, 9:30 AM",
-    }),
-  ).toHaveAttribute(
-    "src",
-    "/api/nyc/plots/current_tide?at=2026-05-13T09%3A30%3A00",
+  await page.goto("/app/nyc?at=2026-05-13T08:30:00");
+  await expect(page.getByText(/water is going out steadily/)).toBeVisible();
+  await expect(page.getByText("2.2 ft", { exact: true })).toBeVisible();
+  await expect(page.locator('img[alt^="Tide and current plot"]')).toHaveCount(
+    0,
   );
 });

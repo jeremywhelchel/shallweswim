@@ -128,28 +128,24 @@ const conditionsPayload: components["schemas"]["LocationConditions"] = {
   },
 };
 
-const currentsPayload: components["schemas"]["CurrentsResponse"] = {
-  location: {
-    code: "nyc",
-    name: "New York",
-    swim_location: "Grimaldo's Chair",
-  },
-  timestamp: "2026-05-13T08:30:00",
+const shiftedConditionsPayload: components["schemas"]["LocationConditions"] = {
+  ...conditionsPayload,
   current: {
     ...(conditionsPayload.current as components["schemas"]["CurrentInfo"]),
     timestamp: "2026-05-13T08:30:00",
     magnitude: 1.4,
     trend: "easing",
   },
-  legacy_chart: null,
-  current_chart_filename: null,
-  navigation: {
-    shift: 60,
-    next_hour: 120,
-    prev_hour: 0,
-    current_api_url: "/api/nyc/currents",
-    plot_url: "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
-    at: "2026-05-13T08:30:00",
+  tides: {
+    past: conditionsPayload.tides?.past ?? [],
+    next: conditionsPayload.tides?.next ?? [],
+    state: {
+      timestamp: "2026-05-13T08:30:00-04:00",
+      estimated_height: 2.2,
+      units: "ft",
+      trend: "rising",
+      height_pct: 0.52,
+    },
   },
 };
 
@@ -167,7 +163,7 @@ function renderLocation({
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
     },
   });
-  queryClient.setQueryData(["location-conditions", locationCode], {
+  queryClient.setQueryData(["location-conditions", locationCode, null], {
     ...conditionsPayload,
     location: {
       ...conditionsPayload.location,
@@ -175,10 +171,15 @@ function renderLocation({
     },
   });
   queryClient.setQueryData(
-    ["location-currents", "nyc", "2026-05-13T08:30:00"],
-    currentsPayload,
+    ["location-conditions", locationCode, "2026-05-13T08:30:00"],
+    {
+      ...shiftedConditionsPayload,
+      location: {
+        ...shiftedConditionsPayload.location,
+        code: locationCode,
+      },
+    },
   );
-
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
@@ -204,7 +205,6 @@ function renderConditions(
         }}
         hasError={false}
         isLoading={false}
-        locationCode="nyc"
       />
     </MemoryRouter>,
   );
@@ -264,12 +264,15 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByText(/peak 1.8 kt/)).toBeVisible();
   expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Temp source" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Details" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Plan" })).toBeVisible();
+  expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();
   expect(
-    screen.getByRole("link", { name: "Plan another time" }),
-  ).toHaveAttribute("href", "/nyc?planner=open");
+    screen.queryByRole("img", { name: /^Tide and current plot/ }),
+  ).not.toBeInTheDocument();
 });
 
-test("planner mode shifts the dashboard water movement and detail plot", async () => {
+test("planner mode shifts all time-aware water movement elements", async () => {
   renderLocation({
     initialEntry: "/nyc?planner=open&at=2026-05-13T08:30:00",
   });
@@ -278,31 +281,61 @@ test("planner mode shifts the dashboard water movement and detail plot", async (
     name: "Planner mode",
   });
   expect(panel).toBeVisible();
-  expect(within(panel).getByText("New York planner")).toBeVisible();
+  expect(within(panel).getByText(/Plan water movement/)).toBeVisible();
   expect(screen.getAllByText("May 13, 2026, 8:30 AM").length).toBeGreaterThan(
     0,
   );
   expect(screen.getByText(/water is going out steadily/)).toBeVisible();
-  expect(screen.getByText("Ebb / going out")).toBeVisible();
   expect(screen.getAllByText("rising").length).toBeGreaterThan(0);
+  expect(screen.getByText("1.4 kt")).toBeVisible();
+  expect(within(panel).getByLabelText("Planner time")).toHaveAttribute(
+    "max",
+    "1440",
+  );
   expect(
-    screen.getByRole("img", {
-      name: "Tide and current plot for May 13, 2026, 8:30 AM",
-    }),
-  ).toHaveAttribute(
+    screen.queryByRole("img", { name: /^Tide and current plot/ }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("2.2 ft")).toBeVisible();
+  expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
+
+  fireEvent.change(within(panel).getByLabelText("Planner time"), {
+    target: { value: "120" },
+  });
+  expect(within(panel).getByText("+2h")).toBeVisible();
+});
+
+test("detail mode shows the current and tide plot independently", async () => {
+  renderLocation({
+    initialEntry: "/nyc?detail=open&at=2026-05-13T08:30:00",
+  });
+
+  expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();
+  expect(screen.getByText(/water is going out steadily/)).toBeVisible();
+  expect(screen.getByText("1.4 kt")).toBeVisible();
+  expect(screen.getByText("2.2 ft")).toBeVisible();
+  expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
+  const shiftedPlot = screen.getByRole("img", {
+    name: "Tide and current plot for May 13, 2026, 8:30 AM",
+  });
+  expect(shiftedPlot).toHaveAttribute(
     "src",
     "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
   );
+});
 
-  fireEvent.click(within(panel).getByRole("button", { name: "+1h" }));
+test("at shifts water movement without opening planner or detail panels", async () => {
+  renderLocation({
+    initialEntry: "/nyc?at=2026-05-13T08:30:00",
+  });
+
+  expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();
   expect(
-    screen.getByRole("img", {
-      name: "Tide and current plot for May 13, 2026, 9:30 AM",
-    }),
-  ).toHaveAttribute(
-    "src",
-    "/api/nyc/plots/current_tide?at=2026-05-13T09%3A30%3A00",
-  );
+    screen.queryByRole("img", { name: /^Tide and current plot/ }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(/water is going out steadily/)).toBeVisible();
+  expect(screen.getByText("1.4 kt")).toBeVisible();
+  expect(screen.getByText("2.2 ft")).toBeVisible();
+  expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
 });
 
 test("ignores planner query state for unsupported locations", () => {
@@ -341,7 +374,7 @@ test("ignores planner query state for unsupported locations", () => {
 test("renders unavailable condition states on first-load failure", () => {
   render(
     <MemoryRouter>
-      <ConditionsSummary hasError isLoading={false} locationCode="nyc" />
+      <ConditionsSummary hasError isLoading={false} />
     </MemoryRouter>,
   );
 
@@ -368,7 +401,6 @@ test("keeps water movement summary when tide state is unavailable", () => {
         }}
         hasError={false}
         isLoading={false}
-        locationCode="nyc"
       />
     </MemoryRouter>,
   );

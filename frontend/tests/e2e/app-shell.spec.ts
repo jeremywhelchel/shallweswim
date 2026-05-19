@@ -305,7 +305,7 @@ test("renders the NYC location vertical slice", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(
-      "The tide is rising, and the water is going out steadily and getting stronger.",
+      "The tide is rising, and the water is going out fast and getting stronger.",
     ),
   ).toBeVisible();
   await expect(page.getByText("TIDE", { exact: true })).toBeVisible();
@@ -343,7 +343,7 @@ test("planner mode shifts dashboard water movement from URL state", async ({
   await expect(
     page.getByText("May 13, 2026, 8:30 AM", { exact: true }).first(),
   ).toBeVisible();
-  await expect(page.getByText(/water is going out steadily/)).toBeVisible();
+  await expect(page.getByText(/water is going out fast/)).toBeVisible();
   await expect(page.getByText("rising", { exact: true })).toHaveCount(2);
   await expect(panel.getByLabel("Planner time")).toHaveAttribute("max", "1440");
   await expect(page.locator('img[alt^="Tide and current plot"]')).toHaveCount(
@@ -354,7 +354,7 @@ test("planner mode shifts dashboard water movement from URL state", async ({
   await expect(page.getByRole("region", { name: "Planner mode" })).toHaveCount(
     0,
   );
-  await expect(page.getByText(/water is going out steadily/)).toBeVisible();
+  await expect(page.getByText(/water is going out fast/)).toBeVisible();
   await expect(page.getByText("2.2 ft", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("img", {
@@ -366,7 +366,7 @@ test("planner mode shifts dashboard water movement from URL state", async ({
   );
 
   await page.goto("/app/nyc?at=2026-05-13T08:30:00");
-  await expect(page.getByText(/water is going out steadily/)).toBeVisible();
+  await expect(page.getByText(/water is going out fast/)).toBeVisible();
   await expect(page.getByText("2.2 ft", { exact: true })).toBeVisible();
   await expect(page.locator('img[alt^="Tide and current plot"]')).toHaveCount(
     0,

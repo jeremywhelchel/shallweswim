@@ -243,7 +243,7 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByRole("heading", { name: "Water Movement" })).toBeVisible();
   expect(
     screen.getByText(
-      "The tide is rising, and the water is going out steadily and getting stronger.",
+      "The tide is rising, and the water is going out fast and getting stronger.",
     ),
   ).toBeVisible();
   expect(screen.getByText("TIDE")).toBeVisible();
@@ -285,7 +285,7 @@ test("planner mode shifts all time-aware water movement elements", async () => {
   expect(screen.getAllByText("May 13, 2026, 8:30 AM").length).toBeGreaterThan(
     0,
   );
-  expect(screen.getByText(/water is going out steadily/)).toBeVisible();
+  expect(screen.getByText(/water is going out fast/)).toBeVisible();
   expect(screen.getAllByText("rising").length).toBeGreaterThan(0);
   expect(screen.getByText("1.4 kt")).toBeVisible();
   expect(within(panel).getByLabelText("Planner time")).toHaveAttribute(
@@ -310,7 +310,7 @@ test("detail mode shows the current and tide plot independently", async () => {
   });
 
   expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();
-  expect(screen.getByText(/water is going out steadily/)).toBeVisible();
+  expect(screen.getByText(/water is going out fast/)).toBeVisible();
   expect(screen.getByText("1.4 kt")).toBeVisible();
   expect(screen.getByText("2.2 ft")).toBeVisible();
   expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
@@ -332,7 +332,7 @@ test("at shifts water movement without opening planner or detail panels", async 
   expect(
     screen.queryByRole("img", { name: /^Tide and current plot/ }),
   ).not.toBeInTheDocument();
-  expect(screen.getByText(/water is going out steadily/)).toBeVisible();
+  expect(screen.getByText(/water is going out fast/)).toBeVisible();
   expect(screen.getByText("1.4 kt")).toBeVisible();
   expect(screen.getByText("2.2 ft")).toBeVisible();
   expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
@@ -408,7 +408,7 @@ test("keeps water movement summary when tide state is unavailable", () => {
   expect(screen.queryByText("TIDE")).not.toBeInTheDocument();
   expect(
     screen.getByText(
-      "Right now, the water is going out steadily and getting stronger.",
+      "Right now, the water is going out fast and getting stronger.",
     ),
   ).toBeVisible();
   expect(screen.queryByText("Last tide")).not.toBeInTheDocument();
@@ -443,6 +443,7 @@ test.each([
       direction: "ebbing",
       phase: "ebb",
       strength: "moderate",
+      magnitude: 0.8,
       trend: "building",
     }),
     expected:
@@ -455,6 +456,7 @@ test.each([
       direction: "flooding",
       phase: "flood",
       strength: "light",
+      magnitude: 0.25,
       trend: "steady",
     }),
     expected:
@@ -467,6 +469,7 @@ test.each([
       direction: "flooding",
       phase: "flood",
       strength: "strong",
+      magnitude: 1.1,
       trend: "building",
     }),
     expected:
@@ -479,14 +482,54 @@ test.each([
       direction: "ebbing",
       phase: "ebb",
       strength: "strong",
+      magnitude: 1.1,
       trend: "easing",
     }),
     expected:
       "Near low tide, the water is going out fast, but starting to ease.",
   },
   {
+    name: "at low tide with slack",
+    tides: tideState("falling", 0.02),
+    current: currentState({
+      direction: null,
+      phase: "slack",
+      strength: null,
+      trend: null,
+      magnitude: 0,
+      magnitude_pct: 0,
+    }),
+    expected: "It's at low tide and calm.",
+  },
+  {
+    name: "at high tide with gentle absolute current",
+    tides: tideState("rising", 0.99),
+    current: currentState({
+      direction: "flooding",
+      phase: "flood",
+      strength: "strong",
+      magnitude: 0.35,
+      trend: "building",
+    }),
+    expected:
+      "At high tide, the water is coming in gently and getting stronger.",
+  },
+  {
+    name: "moderate relative current but fast absolute current",
+    tides: tideState("falling", 0.45),
+    current: currentState({
+      direction: "ebbing",
+      phase: "ebb",
+      strength: "moderate",
+      magnitude: 1.2,
+      trend: "steady",
+    }),
+    expected:
+      "The tide is falling, and the water is going out fast and holding steady.",
+  },
+  {
     name: "near low tide and slack",
-    tides: tideState("falling", 0.05),
+    tides: tideState("falling", 0.1),
     current: currentState({
       direction: null,
       phase: "slack",

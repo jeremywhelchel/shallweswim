@@ -35,6 +35,10 @@ const PLANNER_MIN_MINUTES = -180;
 const PLANNER_MAX_MINUTES = 1440;
 const PLANNER_STEP_MINUTES = 15;
 const PLANNER_TICKS = [-180, 0, 360, 720, 1080, 1440];
+const AT_TIDE_EDGE_PCT = 0.07;
+const NEAR_TIDE_EDGE_PCT = 0.15;
+const GENTLE_CURRENT_MAX_KT = 0.4;
+const FAST_CURRENT_MIN_KT = 1.0;
 
 type LocationPageProps = {
   bootstrap: AppBootstrapResponse;
@@ -748,10 +752,16 @@ function describeTidePosition(tideState?: TideState | null) {
   if (typeof tideState?.height_pct !== "number") {
     return null;
   }
-  if (tideState.height_pct <= 0.15) {
+  if (tideState.height_pct <= AT_TIDE_EDGE_PCT) {
+    return "at low tide";
+  }
+  if (tideState.height_pct <= NEAR_TIDE_EDGE_PCT) {
     return "near low tide";
   }
-  if (tideState.height_pct >= 0.85) {
+  if (tideState.height_pct >= 1 - AT_TIDE_EDGE_PCT) {
+    return "at high tide";
+  }
+  if (tideState.height_pct >= 1 - NEAR_TIDE_EDGE_PCT) {
     return "near high tide";
   }
   return null;
@@ -780,6 +790,16 @@ function currentDirectionPhrase(current: CurrentInfo) {
 }
 
 function currentSpeedPhrase(current: CurrentInfo) {
+  if (Number.isFinite(current.magnitude)) {
+    if (current.magnitude < GENTLE_CURRENT_MAX_KT) {
+      return "gently";
+    }
+    if (current.magnitude >= FAST_CURRENT_MIN_KT) {
+      return "fast";
+    }
+    return "steadily";
+  }
+
   switch (current.strength) {
     case "strong":
       return "fast";

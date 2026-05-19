@@ -170,6 +170,39 @@ Serving the frontend under the same origin keeps API requests simple:
 
 This avoids CORS configuration during the initial migration.
 
+## Durable Web And App-Only Future
+
+The long-term direction may be to make the React app the only user-facing
+interface and eventually remove the `/app` prefix from canonical location URLs.
+That should not mean shipping a blank JavaScript shell as the public web
+surface. If React replaces the Jinja pages, the replacement should preserve the
+old-web virtues that matter for this project:
+
+- location URLs should remain useful to a human, bot, archive, or agent that
+  fetches HTML without executing JavaScript
+- structured JSON APIs should stay first-class and discoverable from the page
+- app HTML should include meaningful title/meta/canonical data, API links, and
+  enough fallback content to identify the location and latest conditions
+- search engines and agents should be able to understand the page through
+  ordinary HTML plus machine-readable structured data such as JSON-LD or an
+  embedded bootstrap JSON payload
+- curl/no-JavaScript checks should be part of the migration acceptance criteria
+  before replacing the existing template-rendered location URLs
+
+Possible implementation paths:
+
+- FastAPI can serve a location-aware app HTML template instead of one generic
+  Vite `index.html`, embedding a small server-rendered fallback summary and
+  links such as `/api/{loc}/conditions`.
+- React can continue to hydrate/enhance that page in the browser after load.
+- If static fallback HTML becomes too limiting, evaluate server-rendered or
+  pre-rendered React output, but avoid adding a second production backend runtime
+  unless the benefit is clear.
+
+Open question: when the React app reaches parity, should `/nyc` and other
+location URLs serve the progressively enhanced React app directly, with `/app`
+retained only as a transition path or removed entirely?
+
 ## Build And Deploy Integration
 
 Production deploys currently build one Docker image through Cloud Build and

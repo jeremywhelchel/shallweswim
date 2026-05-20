@@ -241,7 +241,7 @@ uv run pytest --cov=shallweswim
 uv run pytest --cov=shallweswim --cov-report=html
 ```
 
-Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser smoke tests are also opt-in; they use Playwright to run a real Chromium browser against a local mocked app and are skipped unless `--run-browser` is passed.
+Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser tests are also opt-in; they use Playwright to run a real Chromium browser and are skipped unless `--run-browser` is passed.
 
 #### Optional Browser Smoke Tests
 
@@ -255,8 +255,13 @@ uv run playwright install chromium
 # If your Linux container/VM is missing browser system libraries, install them too
 uv run playwright install-deps chromium
 
-# Run the optional browser smoke test
+# Run the optional Jinja browser smoke tests
 uv run pytest tests/test_frontend_browser.py -v --run-browser
+
+# Run the optional React/FastAPI browser stack test
+corepack pnpm@10.18.3 --dir frontend install --frozen-lockfile
+corepack pnpm@10.18.3 --dir frontend build
+uv run pytest tests/test_react_stack_browser.py -v --run-browser
 ```
 
 `playwright install-deps chromium` modifies system packages with `apt` on Linux,
@@ -308,7 +313,7 @@ unavailable state instead of leaving placeholder text on screen.
 
 ### Testing Philosophy
 
-The test suite uses a three-tier strategy:
+The test suite uses a tiered strategy:
 
 | Tier | Files | External APIs | Config | Run By Default |
 |------|-------|---------------|--------|----------------|
@@ -316,6 +321,7 @@ The test suite uses a three-tier strategy:
 | **E2E Stack** | `test_mocked_stack.py` | Mocked | Fake test configs | Yes |
 | **Integration** | `test_*_integration.py` | Real NOAA/USGS | Real configs | No (`--run-integration`) |
 | **Browser Smoke** | `test_frontend_browser.py` | Mocked | Real templates/static assets | No (`--run-browser`) |
+| **React Browser Stack** | `test_react_stack_browser.py` | Mocked | Real FastAPI routes + built React app | No (`--run-browser`) |
 
 **Key principles:**
 

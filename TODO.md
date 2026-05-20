@@ -70,15 +70,13 @@
   clearer time ticks, stronger mobile styling, debounced updates if needed, and
   smart presets such as next slack, peak ebb, and peak flood once the backend
   exposes those timestamps.
-- Add joint frontend/backend stack coverage for React planner state. The current
-  frontend Playwright tests mock API responses at the browser boundary, while
-  backend tests validate endpoints separately; add at least one test that runs
-  the React app against a FastAPI test server with mocked data managers so URL
-  state and backend query behavior are verified together. Illustrative case:
-  load `/app/nyc?planner=open&at=2026-05-13T08:30:00`, return distinct
-  now-vs-shifted payloads from `/api/nyc/conditions` and
-  `/api/nyc/plots/current_tide`, then assert the tide bar, current bar, detail
-  plot URL, and recorded backend requests all use the same `at` value.
+- Expand joint frontend/backend stack coverage as React planner behavior grows.
+  The first optional Python Playwright test now runs the built React app against
+  real FastAPI routes with mocked data managers and verifies that URL `at` state,
+  rendered tide/current bars, detail plot URL, and backend calls all agree. Add
+  more cases here when new cross-stack behavior lands, such as smart presets,
+  non-NYC fallback behavior, predicted water temperature, and user-facing API
+  error states.
 
 ## Future Tide Curve Source Upgrade
 

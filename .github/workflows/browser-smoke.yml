@@ -23,16 +23,38 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.3 --activate
+          pnpm --version
+
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Build React frontend
+        run: pnpm --dir frontend build
+
       - name: Install Playwright Chromium
         run: uv run playwright install --with-deps chromium
 
       - name: Run browser smoke tests
         run: uv run pytest tests/test_frontend_browser.py -v --run-browser --junitxml=browser-smoke-results.xml
 
+      - name: Run React/FastAPI browser stack tests
+        run: uv run pytest tests/test_react_stack_browser.py -v --run-browser --junitxml=react-stack-browser-results.xml
+
       - name: Upload test results on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: browser-smoke-results
-          path: browser-smoke-results.xml
+          path: |
+            browser-smoke-results.xml
+            react-stack-browser-results.xml
           retention-days: 7

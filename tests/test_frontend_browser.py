@@ -1,4 +1,4 @@
-"""Optional browser smoke tests for frontend behavior.
+"""Optional browser tests for frontend behavior.
 
 Run with:
     uv run pytest tests/test_frontend_browser.py -v --run-browser
@@ -36,8 +36,8 @@ pytestmark = pytest.mark.browser
 
 
 @dataclass
-class BrowserSmokeServer:
-    """Local test server details for browser smoke tests."""
+class BrowserTestServer:
+    """Local test server details for browser tests."""
 
     base_url: str
     request_counts: dict[str, int]
@@ -122,7 +122,7 @@ def _transit_payload(status: str = "Good Service") -> dict[str, Any]:
 
 
 @pytest.fixture
-def browser_smoke_server() -> Generator[BrowserSmokeServer]:
+def browser_test_server() -> Generator[BrowserTestServer]:
     """Serve a small app with real templates/static assets and mocked API data."""
     app = fastapi.FastAPI()
     app.mount("/static", StaticFiles(directory="shallweswim/static"), name="static")
@@ -207,9 +207,9 @@ def browser_smoke_server() -> Generator[BrowserSmokeServer]:
     else:
         server.should_exit = True
         thread.join(timeout=5)
-        raise RuntimeError("Browser smoke test server did not start")
+        raise RuntimeError("Browser test server did not start")
 
-    yield BrowserSmokeServer(
+    yield BrowserTestServer(
         base_url=base_url,
         request_counts=request_counts,
         request_order=request_order,
@@ -286,7 +286,7 @@ def _mock_transit_failure(route: Route) -> None:
 
 
 def test_location_page_updates_conditions_once(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """The main page loads mocked API data and updates condition placeholders."""
     playwright, browser = _launch_chromium()
@@ -295,7 +295,7 @@ def test_location_page_updates_conditions_once(
         page: Page = browser.new_page()
         page.route("**/*", _block_external_requests)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         expect(page.locator("#water-temp")).to_have_text("53.1°F")
         expect(page.locator("#temp-station-info")).to_contain_text("The Battery, NY")
@@ -308,14 +308,14 @@ def test_location_page_updates_conditions_once(
         expect(page.locator("#current-magnitude")).to_have_text("1.4")
         expect(page.locator("#conditions-status")).to_be_hidden()
 
-        assert browser_smoke_server.request_counts["conditions"] == 1
+        assert browser_test_server.request_counts["conditions"] == 1
     finally:
         browser.close()
         playwright.stop()
 
 
 def test_transit_status_updates_when_goodservice_responds(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """NYC transit cards render train status independently from conditions."""
     playwright, browser = _launch_chromium()
@@ -324,7 +324,7 @@ def test_transit_status_updates_when_goodservice_responds(
         page: Page = browser.new_page()
         page.route("**/*", _mock_transit_success)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         expect(page.locator("#water-temp")).to_have_text("53.1°F")
         expect(page.locator("#Q_status")).to_have_text("Good Service")
@@ -339,7 +339,7 @@ def test_transit_status_updates_when_goodservice_responds(
 
 
 def test_transit_failure_shows_unavailable_state(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """A failed transit lookup does not leave train cards stuck on placeholders."""
     playwright, browser = _launch_chromium()
@@ -348,7 +348,7 @@ def test_transit_failure_shows_unavailable_state(
         page: Page = browser.new_page()
         page.route("**/*", _mock_transit_failure)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         expect(page.locator("#water-temp")).to_have_text("53.1°F")
         expect(page.locator("#Q_status")).to_have_text("Unavailable")
@@ -363,7 +363,7 @@ def test_transit_failure_shows_unavailable_state(
 
 
 def test_deferred_plots_load_after_conditions(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """Temperature plots wait until the first conditions request has completed."""
     playwright, browser = _launch_chromium()
@@ -372,7 +372,7 @@ def test_deferred_plots_load_after_conditions(
         page: Page = browser.new_page()
         page.route("**/*", _block_external_requests)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         expect(page.locator("#water-temp")).to_have_text("53.1°F")
         live_plot = page.locator('img[data-src="/api/nyc/plots/live_temps"]')
@@ -380,16 +380,16 @@ def test_deferred_plots_load_after_conditions(
             "src", re.compile(r"/api/nyc/plots/live_temps$")
         )
 
-        assert browser_smoke_server.request_order[0] == "conditions"
-        assert browser_smoke_server.request_counts["conditions"] == 1
-        assert browser_smoke_server.request_counts["plots"] >= 1
+        assert browser_test_server.request_order[0] == "conditions"
+        assert browser_test_server.request_counts["conditions"] == 1
+        assert browser_test_server.request_counts["plots"] >= 1
     finally:
         browser.close()
         playwright.stop()
 
 
 def test_deferred_plot_loading_retries_transient_failures(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """A cold-start plot 503 is retried instead of sticking as a broken image."""
     playwright, browser = _launch_chromium()
@@ -415,7 +415,7 @@ def test_deferred_plot_loading_retries_transient_failures(
         page: Page = browser.new_page()
         page.route("**/*", fail_first_live_plot_request)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         expect(page.locator("#water-temp")).to_have_text("53.1°F")
         live_plot = page.locator('img[data-src="/api/nyc/plots/live_temps"]')
@@ -425,14 +425,14 @@ def test_deferred_plot_loading_retries_transient_failures(
         expect(live_plot).to_have_attribute("data-status", "loaded")
 
         assert live_plot_attempts >= 2
-        assert browser_smoke_server.request_counts["plots"] >= 1
+        assert browser_test_server.request_counts["plots"] >= 1
     finally:
         browser.close()
         playwright.stop()
 
 
 def test_deferred_plot_loading_shows_unavailable_after_retries(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """A plot that never becomes ready gets a quiet per-plot unavailable note."""
     playwright, browser = _launch_chromium()
@@ -453,7 +453,7 @@ def test_deferred_plot_loading_shows_unavailable_after_retries(
         page.add_init_script("window.SWS_DEFERRED_PLOT_RETRY_DELAYS = [10];")
         page.route("**/*", fail_live_plot_request)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         expect(page.locator("#water-temp")).to_have_text("53.1°F")
         live_plot = page.locator('img[data-src="/api/nyc/plots/live_temps"]')
@@ -467,7 +467,7 @@ def test_deferred_plot_loading_shows_unavailable_after_retries(
 
 
 def test_currents_page_updates_prediction(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """The currents page loads mocked prediction data and clears status text."""
     playwright, browser = _launch_chromium()
@@ -476,7 +476,7 @@ def test_currents_page_updates_prediction(
         page: Page = browser.new_page()
         page.route("**/*", _block_external_requests)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc/currents")
+        page.goto(f"{browser_test_server.base_url}/nyc/currents")
 
         expect(page.locator("#timestamp")).to_contain_text("5/12/2026")
         expect(page.locator("#state")).to_have_text("moderate ebb and building")
@@ -489,14 +489,14 @@ def test_currents_page_updates_prediction(
             "href", re.compile(r"/nyc/currents\?shift=60$")
         )
 
-        assert browser_smoke_server.request_counts["currents"] == 1
+        assert browser_test_server.request_counts["currents"] == 1
     finally:
         browser.close()
         playwright.stop()
 
 
 def test_initial_currents_failure_shows_unavailable_state(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """A failed first currents load does not leave placeholders spinning."""
     playwright, browser = _launch_chromium()
@@ -505,7 +505,7 @@ def test_initial_currents_failure_shows_unavailable_state(
         page: Page = browser.new_page()
         page.route("**/*", _block_external_and_fail_currents)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc/currents")
+        page.goto(f"{browser_test_server.base_url}/nyc/currents")
 
         expect(page.locator("#currents-status")).to_have_text(
             "Unable to load current prediction. Please try again later."
@@ -514,14 +514,14 @@ def test_initial_currents_failure_shows_unavailable_state(
         expect(page.locator("#state")).to_have_text("unavailable")
         expect(page.locator("#magnitude")).to_have_text("N/A")
 
-        assert browser_smoke_server.request_counts["currents"] == 0
+        assert browser_test_server.request_counts["currents"] == 0
     finally:
         browser.close()
         playwright.stop()
 
 
 def test_currents_refresh_failure_keeps_loaded_data(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """A currents refresh failure keeps prior values and marks them as stale."""
     playwright, browser = _launch_chromium()
@@ -547,7 +547,7 @@ def test_currents_refresh_failure_keeps_loaded_data(
         page: Page = browser.new_page()
         page.route("**/*", route_currents_once_then_fail)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc/currents")
+        page.goto(f"{browser_test_server.base_url}/nyc/currents")
 
         expect(page.locator("#state")).to_have_text("moderate ebb and building")
         expect(page.locator("#magnitude")).to_have_text("1.2")
@@ -561,7 +561,7 @@ def test_currents_refresh_failure_keeps_loaded_data(
         expect(page.locator("#state")).to_have_text("moderate ebb and building")
         expect(page.locator("#magnitude")).to_have_text("1.2")
 
-        assert browser_smoke_server.request_counts["currents"] == 1
+        assert browser_test_server.request_counts["currents"] == 1
         assert current_attempts == 2
     finally:
         browser.close()
@@ -569,7 +569,7 @@ def test_currents_refresh_failure_keeps_loaded_data(
 
 
 def test_initial_conditions_failure_shows_unavailable_state(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """A failed first conditions load does not leave placeholders spinning."""
     playwright, browser = _launch_chromium()
@@ -578,7 +578,7 @@ def test_initial_conditions_failure_shows_unavailable_state(
         page: Page = browser.new_page()
         page.route("**/*", _block_external_and_fail_conditions)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         expect(page.locator("#conditions-status")).to_have_text(
             "Unable to load latest conditions. Please try again later."
@@ -595,14 +595,14 @@ def test_initial_conditions_failure_shows_unavailable_state(
         expect(page.locator("#current-state-summary")).to_have_text("unavailable")
         expect(page.locator("#current-magnitude")).to_have_text("N/A")
 
-        assert browser_smoke_server.request_counts["conditions"] == 0
+        assert browser_test_server.request_counts["conditions"] == 0
     finally:
         browser.close()
         playwright.stop()
 
 
 def test_conditions_refresh_failure_keeps_loaded_data(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """A refresh failure keeps prior values and marks them as stale."""
     playwright, browser = _launch_chromium()
@@ -628,7 +628,7 @@ def test_conditions_refresh_failure_keeps_loaded_data(
         page: Page = browser.new_page()
         page.route("**/*", route_conditions_once_then_fail)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         expect(page.locator("#water-temp")).to_have_text("53.1°F")
         expect(page.locator("#past-tide-type")).to_have_text("high")
@@ -649,7 +649,7 @@ def test_conditions_refresh_failure_keeps_loaded_data(
         )
         expect(page.locator("#current-magnitude")).to_have_text("1.4")
 
-        assert browser_smoke_server.request_counts["conditions"] == 1
+        assert browser_test_server.request_counts["conditions"] == 1
         assert condition_attempts == 2
     finally:
         browser.close()
@@ -657,7 +657,7 @@ def test_conditions_refresh_failure_keeps_loaded_data(
 
 
 def test_debug_tool_is_quiet_without_debug_parameter(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """The debug script passively tracks data without visible UI or console noise."""
     playwright, browser = _launch_chromium()
@@ -668,7 +668,7 @@ def test_debug_tool_is_quiet_without_debug_parameter(
         page.on("console", lambda message: console_messages.append(message.text))
         page.route("**/*", _block_external_requests)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         expect(page.locator("#water-temp")).to_have_text("53.1°F")
         expect(page.locator("#sws-debug-btn")).to_have_count(0)
@@ -686,7 +686,7 @@ def test_debug_tool_is_quiet_without_debug_parameter(
 
 
 def test_debug_tool_panel_opens_with_debug_parameter(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """The opt-in debug UI opens and renders captured state safely."""
     playwright, browser = _launch_chromium()
@@ -695,7 +695,7 @@ def test_debug_tool_panel_opens_with_debug_parameter(
         page: Page = browser.new_page()
         page.route("**/*", _block_external_requests)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc?debug=1")
+        page.goto(f"{browser_test_server.base_url}/nyc?debug=1")
 
         expect(page.locator("#water-temp")).to_have_text("53.1°F")
         debug_button = page.locator("#sws-debug-btn")
@@ -716,7 +716,7 @@ def test_debug_tool_panel_opens_with_debug_parameter(
 
 
 def test_windy_embed_uses_expected_parameters_and_layout(
-    browser_smoke_server: BrowserSmokeServer,
+    browser_test_server: BrowserTestServer,
 ) -> None:
     """The Windy iframe keeps our expected URL contract and responsive layout."""
     playwright, browser = _launch_chromium()
@@ -725,7 +725,7 @@ def test_windy_embed_uses_expected_parameters_and_layout(
         page: Page = browser.new_page(viewport={"width": 1280, "height": 900})
         page.route("**/*", _block_external_requests)
 
-        page.goto(f"{browser_smoke_server.base_url}/nyc")
+        page.goto(f"{browser_test_server.base_url}/nyc")
 
         windy_frame = page.locator("iframe.windyframe")
         expect(windy_frame).to_have_count(1)

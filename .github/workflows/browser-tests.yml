@@ -1,15 +1,15 @@
-name: Browser Smoke Tests
-# Run deterministic browser smoke tests on pushes, PRs, and manual dispatches.
+name: Browser Tests
+# Run deterministic browser and React/FastAPI stack tests.
 on:
   push:
   pull_request:
   workflow_dispatch:
 
 jobs:
-  browser-smoke-tests:
+  browser-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    name: Run Browser Smoke Tests
+    name: Run Browser Tests
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -43,8 +43,8 @@ jobs:
       - name: Install Playwright Chromium
         run: uv run playwright install --with-deps chromium
 
-      - name: Run browser smoke tests
-        run: uv run pytest tests/test_frontend_browser.py -v --run-browser --junitxml=browser-smoke-results.xml
+      - name: Run browser tests
+        run: uv run pytest tests/test_frontend_browser.py -v --run-browser --junitxml=jinja-browser-results.xml
 
       - name: Run React/FastAPI browser stack tests
         run: uv run pytest tests/test_react_stack_browser.py -v --run-browser --junitxml=react-stack-browser-results.xml
@@ -53,8 +53,8 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: browser-smoke-results
+          name: browser-test-results
           path: |
-            browser-smoke-results.xml
+            jinja-browser-results.xml
             react-stack-browser-results.xml
           retention-days: 7

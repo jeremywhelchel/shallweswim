@@ -116,7 +116,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--run-browser",
         action="store_true",
         default=False,
-        help="Run browser smoke tests that require Playwright browser binaries",
+        help="Run browser tests that require Playwright browser binaries",
     )
     parser.addoption(
         "--run-performance",

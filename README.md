@@ -203,7 +203,7 @@ uv run pytest -v -k "not integration"
 # Run integration tests (connects to external APIs)
 uv run pytest -v -m integration --run-integration
 
-# Run optional browser smoke tests (requires Playwright browser dependencies)
+# Run optional browser tests (requires Playwright browser dependencies)
 uv run playwright install chromium
 uv run pytest tests/test_frontend_browser.py -v --run-browser
 
@@ -243,9 +243,9 @@ uv run pytest --cov=shallweswim --cov-report=html
 
 Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser tests are also opt-in; they use Playwright to run a real Chromium browser and are skipped unless `--run-browser` is passed.
 
-#### Optional Browser Smoke Tests
+#### Optional Browser Tests
 
-Browser smoke tests exercise the frontend JavaScript in a real Chromium browser.
+Browser tests exercise the frontend JavaScript in a real Chromium browser.
 They are not part of the default test run.
 
 ```bash
@@ -255,7 +255,7 @@ uv run playwright install chromium
 # If your Linux container/VM is missing browser system libraries, install them too
 uv run playwright install-deps chromium
 
-# Run the optional Jinja browser smoke tests
+# Run the optional Jinja browser tests
 uv run pytest tests/test_frontend_browser.py -v --run-browser
 
 # Run the optional React/FastAPI browser stack test
@@ -320,7 +320,7 @@ The test suite uses a tiered strategy:
 | **Unit** | `test_*.py` (most) | Mocked | Fake test configs | Yes |
 | **E2E Stack** | `test_mocked_stack.py` | Mocked | Fake test configs | Yes |
 | **Integration** | `test_*_integration.py` | Real NOAA/USGS | Real configs | No (`--run-integration`) |
-| **Browser Smoke** | `test_frontend_browser.py` | Mocked | Real templates/static assets | No (`--run-browser`) |
+| **Browser Jinja** | `test_frontend_browser.py` | Mocked | Real templates/static assets | No (`--run-browser`) |
 | **React Browser Stack** | `test_react_stack_browser.py` | Mocked | Real FastAPI routes + built React app | No (`--run-browser`) |
 
 **Key principles:**
@@ -372,5 +372,9 @@ GitHub Actions workflows automatically verify the following on every push:
 - **Unit Tests**: All unit tests pass
 - **Type Checking**: No type errors found by pyrefly
 - **Code Quality**: Ruff linting and formatting checks pass
+- **Frontend**: React linting, type checking, unit tests, build, generated API
+  freshness, and frontend Playwright browser tests pass
+- **Browser Tests**: Python Playwright browser tests pass against the Jinja
+  frontend and the built React/FastAPI stack
 
 Additionally, a separate integration test workflow runs daily to ensure compatibility with external APIs.

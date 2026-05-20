@@ -491,7 +491,7 @@ The existing Python workflows should remain in place:
 - unit tests
 - Ruff
 - Pyrefly
-- existing Python Playwright browser smoke tests for the Jinja frontend
+- existing Python Playwright browser tests for the Jinja frontend
 - integration and performance workflows
 
 Do not run full frontend builds or Playwright from pre-commit hooks. Keep
@@ -688,7 +688,7 @@ frontend bootstrap endpoint.
 - render core summary, tides, current estimate, Windy iframe, YouTube webcam,
   temperature plot images, NYC transit cards, citations, and location nav
 - match current loading/unavailable/stale-data behavior
-- add mobile and desktop Playwright smoke coverage
+- add mobile and desktop Playwright browser coverage
 
 #### Milestone 2 Implementation Spec
 
@@ -820,7 +820,7 @@ Acceptance checks:
   `pnpm check:api`, and `pnpm test:e2e` pass.
 - Add unit/component tests for formatting helpers and at least the conditions
   summary unavailable/success states.
-- Add Playwright smoke tests for `/app` and `/app/nyc` on mobile and desktop
+- Add Playwright browser tests for `/app` and `/app/nyc` on mobile and desktop
   that verify the real NYC page renders the header, conditions summary, Windy
   section, webcam section, temperature trends, transit section, and sources.
 - Add Playwright coverage that `/app` does not redirect away from `/app`.
@@ -1188,7 +1188,7 @@ Milestone acceptance checks:
 - `pnpm build`
 - `pnpm typecheck`
 - `pnpm test`
-- `pnpm test:e2e` with JavaScript Playwright smoke tests under `frontend/`
+- `pnpm test:e2e` with JavaScript Playwright browser tests under `frontend/`
 - existing backend unit tests
 - OpenAPI/generated-client freshness check
 

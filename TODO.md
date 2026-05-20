@@ -70,6 +70,16 @@
   clearer time ticks, stronger mobile styling, debounced updates if needed, and
   smart presets such as next slack, peak ebb, and peak flood once the backend
   exposes those timestamps.
+- Deepen the NYC local water-movement detail soon, with an explicit swimmer
+  guidance review. The current React detail panel has the right raw ingredients
+  — Grimaldo's Chair direction guidance, local current maps, tide/current timing
+  notes, and historic harbor charts — but needs a focused product/copy pass to
+  decide whether the wording is actually practical for swimmers making a plan.
+  Show the current guidance to local swimmers, collect feedback on what is
+  useful/confusing, and spend time on the exact language. Candidate improvements:
+  show "flood carries east / ebb carries west" closer to the current instrument,
+  tighten map/chart captions, make slack/flip guidance more explicit, and better
+  connect the local map and harbor chart to the selected planner time.
 - Expand joint frontend/backend stack coverage as React planner behavior grows.
   The first optional Python Playwright test now runs the built React app against
   real FastAPI routes with mocked data managers and verifies that URL `at` state,

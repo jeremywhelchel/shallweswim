@@ -57,6 +57,14 @@
   `/api/{location}/conditions?at=...` as the single source for shifted tide and
   current state; if the legacy page is removed or migrated, mark the currents
   endpoint and `NavigationInfo` response model as removal candidates.
+- Treat durable app HTML as its own future migration project, not an incidental
+  test-only task. Before replacing the Jinja location pages or removing the
+  `/app` prefix, define and implement a progressively enhanced React page that is
+  useful when fetched without JavaScript: location-aware HTML, canonical/meta
+  tags, links to structured JSON APIs, and machine-readable data such as JSON-LD
+  or embedded bootstrap JSON. Add curl/no-JS acceptance tests only when that
+  feature work is being implemented so the normal suite never carries expected
+  failures.
 - Refine the planner time scrubber. The current React planner uses a compact
   in-card slider with URL-backed `at` state; the final interaction should add
   clearer time ticks, stronger mobile styling, debounced updates if needed, and

@@ -388,10 +388,200 @@ function WaterMovementSummary({
             alt={`Tide and current plot for ${waterMovementControls.label}`}
             src={waterMovementControls.plotUrl}
           />
+          {waterMovementControls.location.metadata.code === "nyc" ? (
+            <NycWaterMovementDetail current={current} tides={tides} />
+          ) : null}
         </section>
       ) : null}
     </div>
   );
+}
+
+function NycWaterMovementDetail({
+  current,
+  tides,
+}: {
+  current?: CurrentInfo | null;
+  tides?: LocationConditions["tides"];
+}) {
+  const currentMap = nycCurrentMap(current);
+  const legacyChart = nycLegacyChart(tides, current?.timestamp);
+  const swimAdvice = nycSwimDirectionAdvice(current);
+
+  return (
+    <div className="mt-4 space-y-4 border-swim-line border-t pt-4">
+      <section aria-label="Grimaldo's Chair current guidance">
+        <h4 className="font-semibold text-sm text-swim-blue">
+          Grimaldo&apos;s Chair local read
+        </h4>
+        <p className="mt-1 text-sm text-swim-ink leading-relaxed">
+          {swimAdvice}
+        </p>
+        <dl className="mt-2 grid gap-1 text-xs text-slate-700 sm:grid-cols-2">
+          <div>
+            <dt className="font-semibold text-swim-current">Flood</dt>
+            <dd>Coney Island toward Manhattan Beach, west to east.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-swim-current">Ebb</dt>
+            <dd>Manhattan Beach toward Coney Island, east to west.</dd>
+          </div>
+        </dl>
+        <p className="mt-2 text-xs text-slate-600">
+          Near the Aquarium, the beach current can reverse; the pier-side
+          current may run opposite the Grimaldo&apos;s read.
+        </p>
+      </section>
+
+      {currentMap ? (
+        <section aria-label="Coney Island current map">
+          <h4 className="font-semibold text-sm text-swim-blue">
+            Local current map
+          </h4>
+          <div className="overflow-hidden rounded border border-swim-line bg-white">
+            <PlannerPlotImage
+              alt={currentMap.alt}
+              containerClassName="relative"
+              src={currentMap.src}
+            />
+          </div>
+          <p className="mt-1 text-xs text-slate-600">
+            Arrow size approximates current strength. Direction is interpreted
+            for the Grimaldo&apos;s Chair swim area from local knowledge.
+          </p>
+        </section>
+      ) : null}
+
+      <section aria-label="NYC tide current notes">
+        <h4 className="font-semibold text-sm text-swim-blue">
+          Tide and current timing
+        </h4>
+        <p className="mt-1 text-sm text-slate-700 leading-relaxed">
+          In this swim area, currents lead the tide by about two hours: max
+          flood is roughly two hours before high tide, and max ebb is roughly
+          two hours before low tide. Positive values in the projection indicate
+          flood; negative values indicate ebb.
+        </p>
+      </section>
+
+      {legacyChart ? (
+        <section aria-label="Historic New York Harbor current chart">
+          <h4 className="font-semibold text-sm text-swim-blue">
+            Historic harbor chart
+          </h4>
+          <p className="mt-1 text-xs text-slate-600">{legacyChart.title}</p>
+          <div className="mt-2 overflow-hidden rounded border border-swim-line bg-white">
+            <PlannerPlotImage
+              alt={`Historic New York Harbor chart: ${legacyChart.title}`}
+              containerClassName="relative"
+              src={legacyChart.src}
+            />
+          </div>
+        </section>
+      ) : null}
+
+      <section aria-label="NYC current estimate methodology">
+        <h4 className="font-semibold text-sm text-swim-blue">
+          Estimate source
+        </h4>
+        <p className="mt-1 text-sm text-slate-700 leading-relaxed">
+          The NYC estimate averages nearby NOAA current prediction stations at
+          opposite ends of the Coney/Brighton water. That gives a useful
+          flood/ebb curve for planning, but it cannot account for wind, jetties,
+          or every local eddy.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function nycSwimDirectionAdvice(current?: CurrentInfo | null) {
+  if (current?.phase === "flood" || current?.direction === "flooding") {
+    return "At Grimaldo's, flood usually carries you east toward Manhattan Beach. Start westbound toward Coney Island if you want the current against you first, or ride it east if you are planning around a tide flip.";
+  }
+  if (current?.phase === "ebb" || current?.direction === "ebbing") {
+    return "At Grimaldo's, ebb usually carries you west toward Coney Island. Start eastbound toward Manhattan Beach if you want the current against you first, then use the ebb on the way back.";
+  }
+  if (
+    current?.phase === "slack" ||
+    current?.phase === "slack_before_flood" ||
+    current?.phase === "slack_before_ebb"
+  ) {
+    return "The current is near slack, so direction matters less right now. Watch the next build: flood favors eastward movement, while ebb favors westward movement.";
+  }
+  return "Use the current direction as a planning input, then confirm with what you see in the water before committing to a longer swim.";
+}
+
+function nycCurrentMap(current?: CurrentInfo | null) {
+  if (!current?.direction || typeof current.magnitude_pct !== "number") {
+    return null;
+  }
+
+  const direction =
+    current.phase === "flood" || current.direction === "flooding"
+      ? "flooding"
+      : current.phase === "ebb" || current.direction === "ebbing"
+        ? "ebbing"
+        : null;
+  if (!direction) {
+    return null;
+  }
+
+  const magnitudeBin = binCurrentMagnitude(current.magnitude_pct);
+  return {
+    src: `/static/plots/nyc/current_chart_${direction}_${magnitudeBin}.png`,
+    alt: `Coney Island ${direction} current map at ${magnitudeBin}% strength`,
+  };
+}
+
+function binCurrentMagnitude(magnitudePct: number) {
+  const bins = [0, 10, 30, 45, 55, 70, 90, 100];
+  const pct = clamp(magnitudePct * 100, 0, 100);
+  return bins.find((bin) => pct <= bin) ?? 100;
+}
+
+function nycLegacyChart(
+  tides?: LocationConditions["tides"],
+  timestamp?: string,
+) {
+  const previousTide = tides?.past?.at(-1);
+  if (!previousTide || !timestamp) {
+    return null;
+  }
+
+  const targetDate = parseApiLocalWallDate(timestamp);
+  const tideDate = parseApiLocalWallDate(previousTide.time);
+  const offsetHours = (targetDate.getTime() - tideDate.getTime()) / 3_600_000;
+  if (!Number.isFinite(offsetHours) || offsetHours < 0) {
+    return null;
+  }
+
+  const tideType =
+    previousTide.type === "high" || previousTide.type === "low"
+      ? previousTide.type
+      : null;
+  if (!tideType) {
+    return null;
+  }
+
+  const chart =
+    offsetHours > 5.5
+      ? { hours: 0, type: invertTideType(tideType) }
+      : { hours: Math.round(offsetHours), type: tideType };
+  const tideLabel = `${capitalize(chart.type)} Water at New York`;
+  const title =
+    chart.hours > 0
+      ? `${chart.hours} Hour${chart.hours > 1 ? "s" : ""} after ${tideLabel}`
+      : tideLabel;
+
+  return {
+    src: `/static/tidecharts/${chart.type}+${chart.hours}.png`,
+    title,
+  };
+}
+
+function invertTideType(type: "high" | "low") {
+  return type === "high" ? "low" : "high";
 }
 
 function WaterMovementActions({
@@ -437,7 +627,15 @@ function WaterMovementActions({
   );
 }
 
-function PlannerPlotImage({ alt, src }: { alt: string; src: string }) {
+function PlannerPlotImage({
+  alt,
+  containerClassName = "relative mt-3",
+  src,
+}: {
+  alt: string;
+  containerClassName?: string;
+  src: string;
+}) {
   const [displayed, setDisplayed] = useState({ alt, src });
   const [isLoadingNext, setIsLoadingNext] = useState(false);
 
@@ -470,7 +668,7 @@ function PlannerPlotImage({ alt, src }: { alt: string; src: string }) {
   }, [alt, displayed.src, src]);
 
   return (
-    <div className="relative mt-3">
+    <div className={containerClassName}>
       <img alt={displayed.alt} className="w-full" src={displayed.src} />
       {isLoadingNext ? (
         <div className="absolute right-2 top-2 rounded bg-white/90 px-2 py-1 font-mono text-[11px] text-slate-600 shadow-sm">
@@ -633,6 +831,34 @@ function parseLocationIso(at: string) {
   );
   if (!match) {
     return new Date();
+  }
+
+  const [, year, month, day, hour, minute, second = "00"] = match;
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
+}
+
+function parseApiDate(value: string) {
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  return parseLocationIso(value);
+}
+
+function parseApiLocalWallDate(value: string) {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/,
+  );
+  if (!match) {
+    return parseApiDate(value);
   }
 
   const [, year, month, day, hour, minute, second = "00"] = match;
@@ -1445,11 +1671,33 @@ function SourcesList({
           label="Tides"
           html={citations.tides}
         />
-        <SourceHtml
-          icon={<Shuffle aria-hidden="true" />}
-          label="Currents"
-          html={citations.currents}
-        />
+        {location.metadata.code === "nyc" ? (
+          <>
+            <SourceHtml
+              icon={<Shuffle aria-hidden="true" />}
+              label="Currents"
+              html={
+                'Current predictions combine <a href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=NYH1905_12">NOAA CO-OPS Station NYH1905_12</a> (Rockaway Inlet Entrance) and <a href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=ACT3876">NOAA CO-OPS Station ACT3876</a> (Coney Island Channel west end).'
+              }
+            />
+            <SourceLink
+              icon={<Anchor aria-hidden="true" />}
+              label="Harbor charts"
+              link={{
+                label: "Tidal current charts, New York Harbor",
+                url: "https://catalog.hathitrust.org/Record/011421935",
+                description:
+                  "U.S. Department of Commerce, Coast and Geodetic Survey, 1946",
+              }}
+            />
+          </>
+        ) : (
+          <SourceHtml
+            icon={<Shuffle aria-hidden="true" />}
+            label="Currents"
+            html={citations.currents}
+          />
+        )}
         <SourceLink
           icon={<Video aria-hidden="true" />}
           includeLabel={false}

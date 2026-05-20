@@ -221,6 +221,12 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/nyc/plots/**", async (route) => {
     await route.fulfill({ body: onePixelPng, contentType: "image/png" });
   });
+  await page.route("**/static/plots/nyc/**", async (route) => {
+    await route.fulfill({ body: onePixelPng, contentType: "image/png" });
+  });
+  await page.route("**/static/tidecharts/**", async (route) => {
+    await route.fulfill({ body: onePixelPng, contentType: "image/png" });
+  });
   await page.route("https://embed.windy.com/**", async (route) => {
     await route.fulfill({ body: "<html><body>Windy</body></html>" });
   });
@@ -323,6 +329,17 @@ test("renders the NYC location vertical slice", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Earth Cam Coney Island" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "NOAA CO-OPS Station NYH1905_12" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "NOAA CO-OPS Station ACT3876" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", {
+      name: "Tidal current charts, New York Harbor",
+    }),
+  ).toBeVisible();
   await expect(page.getByText("Alternate:")).toBeVisible();
   await expect(page.getByText("Alternative option:")).toHaveCount(0);
 
@@ -364,6 +381,22 @@ test("planner mode shifts dashboard water movement from URL state", async ({
     "src",
     "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
   );
+  await expect(
+    page.getByRole("heading", { name: "Grimaldo's Chair local read" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Start eastbound toward Manhattan Beach/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Coney Island ebbing current map at 55% strength",
+    }),
+  ).toHaveAttribute("src", "/static/plots/nyc/current_chart_ebbing_55.png");
+  await expect(
+    page.getByRole("img", {
+      name: "Historic New York Harbor chart: 3 Hours after Low Water at New York",
+    }),
+  ).toHaveAttribute("src", "/static/tidecharts/low+3.png");
 
   await page.goto("/app/nyc?at=2026-05-13T08:30:00");
   await expect(page.getByText(/water is going out fast/)).toBeVisible();

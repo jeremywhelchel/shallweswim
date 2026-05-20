@@ -264,6 +264,18 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByText(/peak 1.8 kt/)).toBeVisible();
   expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Temp source" })).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: "NOAA CO-OPS Station NYH1905_12" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: "NOAA CO-OPS Station ACT3876" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("link", { name: "Current source" })).toBeNull();
+  expect(
+    screen.getByRole("link", {
+      name: "Tidal current charts, New York Harbor",
+    }),
+  ).toBeVisible();
   expect(screen.getByRole("button", { name: "Details" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Plan" })).toBeVisible();
   expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();
@@ -321,6 +333,22 @@ test("detail mode shows the current and tide plot independently", async () => {
     "src",
     "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
   );
+  expect(
+    screen.getByRole("heading", { name: "Grimaldo's Chair local read" }),
+  ).toBeVisible();
+  expect(
+    screen.getByText(/Start eastbound toward Manhattan Beach/),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("img", {
+      name: "Coney Island ebbing current map at 55% strength",
+    }),
+  ).toHaveAttribute("src", "/static/plots/nyc/current_chart_ebbing_55.png");
+  expect(
+    screen.getByRole("img", {
+      name: "Historic New York Harbor chart: 3 Hours after Low Water at New York",
+    }),
+  ).toHaveAttribute("src", "/static/tidecharts/low+3.png");
 });
 
 test("at shifts water movement without opening planner or detail panels", async () => {

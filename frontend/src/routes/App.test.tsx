@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { components } from "../api/generated";
 import { ConditionsSummary, LocationPage } from "../pages/LocationPage";
@@ -317,6 +323,7 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   ).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "Details" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Plan" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Now" })).toBeNull();
   expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();
   expect(
     screen.queryByRole("img", { name: /^Tide and current plot/ }),
@@ -331,11 +338,14 @@ test("planner mode shifts all time-aware water movement elements", async () => {
   const panel = await screen.findByRole("region", {
     name: "Planner mode",
   });
+  const controls = screen.getByRole("region", {
+    name: "Water movement controls",
+  });
   expect(panel).toBeVisible();
-  expect(within(panel).getByText(/Plan water movement/)).toBeVisible();
-  expect(screen.getAllByText("May 13, 2026, 8:30 AM").length).toBeGreaterThan(
-    0,
-  );
+  expect(controls).toHaveClass("sticky");
+  expect(within(controls).getByText("Water Movement")).toBeVisible();
+  expect(within(controls).getByRole("button", { name: "Now" })).toBeVisible();
+  expect(screen.getByText("May 13, 2026, 8:30 AM")).toBeVisible();
   expect(screen.getByText(/water is going out fast/)).toBeVisible();
   expect(screen.getAllByText("rising").length).toBeGreaterThan(0);
   expect(screen.getByText("1.4 kt")).toBeVisible();
@@ -444,6 +454,20 @@ test("at shifts water movement without opening planner or detail panels", async 
   expect(screen.getByText("1.4 kt")).toBeVisible();
   expect(screen.getByText("2.2 ft")).toBeVisible();
   expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
+  expect(screen.getByText("May 13, 2026, 8:30 AM")).toBeVisible();
+
+  fireEvent.click(
+    within(
+      screen.getByRole("region", { name: "Water movement controls" }),
+    ).getByRole("button", { name: "Now" }),
+  );
+  await waitFor(() => {
+    expect(screen.getByText("1.6 ft")).toBeVisible();
+  });
+  expect(screen.queryByText("2.2 ft")).not.toBeInTheDocument();
+  expect(screen.queryByText("May 13, 2026, 8:30 AM")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Now" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();
 });
 
 test("ignores planner query state for unsupported locations", () => {

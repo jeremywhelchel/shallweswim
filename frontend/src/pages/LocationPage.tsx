@@ -35,7 +35,6 @@ const METER_SEGMENT_COUNT = 32;
 const PLANNER_MIN_MINUTES = -180;
 const PLANNER_MAX_MINUTES = 1440;
 const PLANNER_STEP_MINUTES = 15;
-const PLANNER_TICKS = [-180, 0, 360, 720, 1080, 1440];
 const AT_TIDE_EDGE_PCT = 0.07;
 const NEAR_TIDE_EDGE_PCT = 0.15;
 const GENTLE_CURRENT_MAX_KT = 0.4;
@@ -110,6 +109,11 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
     }
     setSearchParams(next, { replace: true });
   };
+  const resetPlannerAt = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("at");
+    setSearchParams(next, { replace: true });
+  };
   const openPlanner = () => {
     const next = new URLSearchParams(searchParams);
     next.set("planner", "open");
@@ -174,6 +178,7 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
                 onClosePlanner: closePlanner,
                 onOpenDetail: openDetail,
                 onOpenPlanner: openPlanner,
+                onResetAt: resetPlannerAt,
                 onSetAt: setPlannerAt,
                 plannerOpen,
                 plotUrl: detailPlotUrl,
@@ -237,7 +242,7 @@ export function ConditionsSummary({
   }
 
   return (
-    <section className="grid gap-0 overflow-hidden rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:overflow-visible md:border-0 md:bg-transparent">
+    <section className="grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent">
       <TemperatureSummary conditions={conditions} hasError={hasError} />
       <WaterMovementSummary
         current={hasError ? undefined : conditions?.current}
@@ -257,6 +262,7 @@ type WaterMovementControls = {
   onClosePlanner: () => void;
   onOpenDetail: () => void;
   onOpenPlanner: () => void;
+  onResetAt: () => void;
   onSetAt: (at: string | null) => void;
   plannerOpen: boolean;
   plotUrl: string | null;
@@ -323,36 +329,46 @@ function WaterMovementSummary({
   const pastTide = tides?.past?.at(-1);
   const nextTide = tides?.next?.[0];
   const description = describeWaterMovement(tides?.state, current);
-  const plannedLabel =
-    waterMovementControls?.plannerOpen && waterMovementControls.at
-      ? waterMovementControls.label
-      : null;
+  const plannedLabel = waterMovementControls?.at
+    ? waterMovementControls.label
+    : null;
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+      <section
+        aria-label="Water movement controls"
+        className="sticky top-0 z-20 -mx-3 -mt-3 bg-white/95 px-3 py-2 backdrop-blur md:-mx-4 md:-mt-4 md:px-4"
+      >
+        <div className="flex items-start justify-between gap-2">
           <h2 className="font-semibold text-base md:text-lg">Water Movement</h2>
-          {plannedLabel ? (
-            <p className="mt-0.5 text-xs text-slate-600 md:text-sm">
+          {waterMovementControls ? (
+            <WaterMovementActions controls={waterMovementControls} />
+          ) : null}
+        </div>
+        {plannedLabel ? (
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 md:text-sm">
+            <button
+              className="inline-flex h-6 items-center rounded border border-swim-line bg-white px-2 font-mono text-[11px] text-swim-blue"
+              onClick={waterMovementControls?.onResetAt}
+              type="button"
+            >
+              Now
+            </button>
+            <p>
               Planned for{" "}
               <span className="font-mono text-swim-blue">{plannedLabel}</span>
             </p>
-          ) : null}
-        </div>
-        {waterMovementControls ? (
-          <WaterMovementActions controls={waterMovementControls} />
+          </div>
         ) : null}
-      </div>
-      {waterMovementControls?.plannerOpen ? (
-        <PlannerControls
-          at={waterMovementControls.at}
-          label={waterMovementControls.label}
-          location={waterMovementControls.location}
-          onClose={waterMovementControls.onClosePlanner}
-          onSetAt={waterMovementControls.onSetAt}
-        />
-      ) : null}
+        {waterMovementControls?.plannerOpen ? (
+          <PlannerControls
+            at={waterMovementControls.at}
+            label={waterMovementControls.label}
+            location={waterMovementControls.location}
+            onSetAt={waterMovementControls.onSetAt}
+          />
+        ) : null}
+      </section>
       <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
         {description}
       </p>
@@ -679,13 +695,11 @@ function PlannerControls({
   at,
   label,
   location,
-  onClose,
   onSetAt,
 }: {
   at: string | null;
   label: string;
   location: AppBootstrapLocation;
-  onClose: () => void;
   onSetAt: (at: string | null) => void;
 }) {
   const baseAtRef = useRef(formatLocationIso(new Date(), location));
@@ -708,80 +722,27 @@ function PlannerControls({
   };
 
   return (
-    <section
-      aria-label="Planner mode"
-      className="mt-3 rounded border border-swim-line bg-[#f8fbfc] px-3 py-2"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-600">
-          Plan water movement{" "}
-          <span className="font-mono text-swim-blue">{label}</span>
+    <section aria-label="Planner mode" className="mt-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+        <label className="sr-only" htmlFor="planner-time-slider">
+          Planner time
+        </label>
+        <input
+          aria-valuetext={`${label}, ${formatPlannerOffset(sliderValue)}`}
+          className="h-8 min-w-0 accent-swim-blue"
+          id="planner-time-slider"
+          max={PLANNER_MAX_MINUTES}
+          min={PLANNER_MIN_MINUTES}
+          onChange={(event) =>
+            setMinuteOffset(Number(event.currentTarget.value))
+          }
+          step={PLANNER_STEP_MINUTES}
+          type="range"
+          value={sliderValue}
+        />
+        <p className="w-20 whitespace-nowrap text-right font-mono text-xs text-swim-ink tabular-nums">
+          {formatPlannerOffset(sliderValue)}
         </p>
-        <button
-          aria-label="Close planner"
-          className="inline-flex min-h-8 shrink-0 items-center justify-center rounded border border-swim-line bg-white px-2 py-1 text-xs text-swim-ink"
-          onClick={onClose}
-          type="button"
-        >
-          Close
-        </button>
-      </div>
-
-      <div className="mt-2 grid gap-1">
-        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
-          <button
-            className={[
-              "inline-flex min-h-8 items-center rounded border px-2 py-1 font-mono font-medium text-xs",
-              !at
-                ? "border-swim-blue bg-swim-blue text-white"
-                : "border-swim-line bg-white text-swim-blue",
-            ].join(" ")}
-            onClick={() => onSetAt(null)}
-            type="button"
-          >
-            Now
-          </button>
-          <label className="sr-only" htmlFor="planner-time-slider">
-            Planner time
-          </label>
-          <input
-            aria-valuetext={`${label}, ${formatPlannerOffset(sliderValue)}`}
-            className="h-7 min-w-0 accent-swim-blue"
-            id="planner-time-slider"
-            max={PLANNER_MAX_MINUTES}
-            min={PLANNER_MIN_MINUTES}
-            onChange={(event) =>
-              setMinuteOffset(Number(event.currentTarget.value))
-            }
-            step={PLANNER_STEP_MINUTES}
-            type="range"
-            value={sliderValue}
-          />
-          <p className="w-12 text-right font-mono text-xs text-swim-ink">
-            {formatPlannerOffset(sliderValue)}
-          </p>
-        </div>
-        <div className="relative hidden h-4 font-mono text-[10px] text-slate-500 sm:block">
-          {PLANNER_TICKS.map((minutes) => (
-            <span
-              className={[
-                "absolute top-0 -translate-x-1/2",
-                minutes === PLANNER_MIN_MINUTES ? "translate-x-0" : "",
-                minutes === PLANNER_MAX_MINUTES
-                  ? "right-0 translate-x-0 text-right"
-                  : "",
-              ].join(" ")}
-              key={minutes}
-              style={
-                minutes === PLANNER_MAX_MINUTES
-                  ? undefined
-                  : { left: `${plannerTickPercent(minutes)}%` }
-              }
-            >
-              {formatPlannerOffset(minutes)}
-            </span>
-          ))}
-        </div>
       </div>
     </section>
   );
@@ -811,14 +772,6 @@ function formatPlannerOffset(minutes: number) {
     return `${sign}${remainingMinutes}m`;
   }
   return `${sign}${hours}h ${remainingMinutes}m`;
-}
-
-function plannerTickPercent(minutes: number) {
-  return (
-    ((minutes - PLANNER_MIN_MINUTES) /
-      (PLANNER_MAX_MINUTES - PLANNER_MIN_MINUTES)) *
-    100
-  );
 }
 
 function parseLocationIso(at: string) {

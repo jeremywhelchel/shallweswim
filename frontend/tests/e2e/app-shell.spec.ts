@@ -365,8 +365,12 @@ test("planner mode shifts dashboard water movement from URL state", async ({
   await page.goto("/app/nyc?planner=open&at=2026-05-13T08:30:00");
 
   const panel = page.getByRole("region", { name: "Planner mode" });
+  const controls = page.getByRole("region", {
+    name: "Water movement controls",
+  });
   await expect(panel).toBeVisible();
-  await expect(panel.getByText(/Plan water movement/)).toBeVisible();
+  await expect(controls).toHaveCSS("position", "sticky");
+  await expect(controls.getByText("Water Movement")).toBeVisible();
   await expect(
     page.getByText("May 13, 2026, 8:30 AM", { exact: true }).first(),
   ).toBeVisible();
@@ -411,7 +415,25 @@ test("planner mode shifts dashboard water movement from URL state", async ({
   await page.goto("/app/nyc?at=2026-05-13T08:30:00");
   await expect(page.getByText(/water is going out fast/)).toBeVisible();
   await expect(page.getByText("2.2 ft", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("May 13, 2026, 8:30 AM", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Water movement controls" })
+      .getByRole("button", { name: "Now" }),
+  ).toBeVisible();
   await expect(page.locator('img[alt^="Tide and current plot"]')).toHaveCount(
+    0,
+  );
+  await page
+    .getByRole("region", { name: "Water movement controls" })
+    .getByRole("button", { name: "Now" })
+    .click();
+  await expect(page.getByText("1.6 ft", { exact: true })).toBeVisible();
+  await expect(page.getByText("2.2 ft", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Now" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Planner mode" })).toHaveCount(
     0,
   );
 });

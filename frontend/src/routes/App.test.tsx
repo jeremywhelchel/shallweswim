@@ -189,6 +189,30 @@ function renderLocation({
   );
 }
 
+function renderLocationWithConditions({
+  conditions,
+  initialEntry = "/nyc?detail=open",
+}: {
+  conditions: components["schemas"]["LocationConditions"];
+  initialEntry?: string;
+}) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+    },
+  });
+  const at = new URL(`http://test${initialEntry}`).searchParams.get("at");
+  queryClient.setQueryData(["location-conditions", "nyc", at], conditions);
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <LocationPage bootstrap={bootstrapPayload} locationCode="nyc" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 function renderConditions(
   overrides: Partial<components["schemas"]["LocationConditions"]> = {},
 ) {
@@ -345,6 +369,47 @@ test("detail mode shows the current and tide plot independently", async () => {
       name: "Historic New York Harbor chart: 3 Hours after Low Water at New York",
     }),
   ).toHaveAttribute("src", "/static/tidecharts/low+3.png");
+});
+
+test("NYC local map and harbor chart derive from selected time state", () => {
+  const floodConditions: components["schemas"]["LocationConditions"] = {
+    ...shiftedConditionsPayload,
+    current: currentState({
+      timestamp: "2026-05-13T09:30:00",
+      direction: "flooding",
+      phase: "flood",
+      magnitude: 1.7,
+      magnitude_pct: 0.91,
+      trend: "building",
+    }),
+    tides: {
+      past: [
+        {
+          time: "2026-05-13T06:00:00-04:00",
+          type: "high",
+          prediction: 4.8,
+        },
+      ],
+      next: shiftedConditionsPayload.tides?.next ?? [],
+      state: shiftedConditionsPayload.tides?.state ?? null,
+    },
+  };
+
+  renderLocationWithConditions({
+    conditions: floodConditions,
+    initialEntry: "/nyc?detail=open&at=2026-05-13T09:30:00",
+  });
+
+  expect(
+    screen.getByRole("img", {
+      name: "Coney Island flooding current map at 100% strength",
+    }),
+  ).toHaveAttribute("src", "/static/plots/nyc/current_chart_flooding_100.png");
+  expect(
+    screen.getByRole("img", {
+      name: "Historic New York Harbor chart: 4 Hours after High Water at New York",
+    }),
+  ).toHaveAttribute("src", "/static/tidecharts/high+4.png");
 });
 
 test("at shifts water movement without opening planner or detail panels", async () => {

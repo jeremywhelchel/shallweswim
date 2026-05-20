@@ -282,18 +282,19 @@ def test_react_planner_uses_conditions_and_plot_with_same_at(
     playwright, browser = _launch_chromium()
     target_at = react_stack_server.manager.expected_at.isoformat()
     api_urls: list[str] = []
+    asset_urls: list[str] = []
+
+    def capture_stack_request(request: Any) -> None:
+        path = urlparse(request.url).path
+        if path.startswith("/api/"):
+            api_urls.append(request.url)
+        elif path.startswith(("/static/plots/nyc/", "/static/tidecharts/")):
+            asset_urls.append(request.url)
 
     try:
         page: Page = browser.new_page(viewport={"width": 1280, "height": 900})
         page.route("**/*", _block_external_requests)
-        page.on(
-            "request",
-            lambda request: (
-                api_urls.append(request.url)
-                if urlparse(request.url).path.startswith("/api/")
-                else None
-            ),
-        )
+        page.on("request", capture_stack_request)
 
         page.goto(
             f"{react_stack_server.base_url}/app/nyc"
@@ -315,6 +316,19 @@ def test_react_planner_uses_conditions_and_plot_with_same_at(
             "src",
             f"/api/nyc/plots/current_tide?at={target_at.replace(':', '%3A')}",
         )
+        local_current_map = page.get_by_role(
+            "img", name="Coney Island ebbing current map at 90% strength"
+        )
+        expect(local_current_map).to_be_visible()
+        expect(local_current_map).to_have_attribute(
+            "src", "/static/plots/nyc/current_chart_ebbing_90.png"
+        )
+        harbor_chart = page.get_by_role(
+            "img",
+            name="Historic New York Harbor chart: 3 Hours after Low Water at New York",
+        )
+        expect(harbor_chart).to_be_visible()
+        expect(harbor_chart).to_have_attribute("src", "/static/tidecharts/low+3.png")
 
         condition_urls = [
             url for url in api_urls if urlparse(url).path == "/api/nyc/conditions"
@@ -337,6 +351,13 @@ def test_react_planner_uses_conditions_and_plot_with_same_at(
         )
         assert all(
             parse_qs(urlparse(url).query).get("at") == [target_at] for url in plot_urls
+        )
+        assert any(
+            urlparse(url).path == "/static/plots/nyc/current_chart_ebbing_90.png"
+            for url in asset_urls
+        )
+        assert any(
+            urlparse(url).path == "/static/tidecharts/low+3.png" for url in asset_urls
         )
 
         manager = react_stack_server.manager

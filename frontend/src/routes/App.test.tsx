@@ -183,11 +183,7 @@ function renderLocation({
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
-        <LocationPage
-          bootstrap={bootstrap}
-          locationCode={locationCode}
-          preserveDefaultUrl
-        />
+        <LocationPage bootstrap={bootstrap} locationCode={locationCode} />
       </MemoryRouter>
     </QueryClientProvider>,
   );

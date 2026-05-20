@@ -32,7 +32,6 @@ function DefaultLocationPage() {
     <LocationPage
       bootstrap={bootstrap.data}
       locationCode={bootstrap.data.default_location_code}
-      preserveDefaultUrl
     />
   );
 }

@@ -43,7 +43,6 @@ const FAST_CURRENT_MIN_KT = 1.0;
 type LocationPageProps = {
   bootstrap: AppBootstrapResponse;
   locationCode: string;
-  preserveDefaultUrl?: boolean;
 };
 
 declare global {
@@ -67,11 +66,7 @@ declare global {
   }
 }
 
-export function LocationPage({
-  bootstrap,
-  locationCode,
-  preserveDefaultUrl = false,
-}: LocationPageProps) {
+export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
   const location = bootstrap.locations[locationCode];
   const [searchParams, setSearchParams] = useSearchParams();
   const supportsWaterMovementPlanning =
@@ -145,7 +140,7 @@ export function LocationPage({
     <div className="space-y-5 sm:space-y-8">
       <header>
         <p className="font-medium text-swim-current text-xs uppercase sm:text-sm">
-          {preserveDefaultUrl ? "Default location" : location.metadata.name}
+          {location.metadata.name}
         </p>
         <h1 className="mt-0.5 font-semibold text-2xl text-swim-blue sm:mt-1 sm:text-3xl">
           shall we swim today?

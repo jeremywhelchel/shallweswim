@@ -296,6 +296,25 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
       name: "Tidal current charts, New York Harbor",
     }),
   ).toBeVisible();
+  expect(
+    screen.getAllByText((_, element) => {
+      const text = element?.textContent?.replace(/\s+/g, " ").trim();
+      return Boolean(
+        text?.includes("Tidal current charts, New York Harbor from U.S."),
+      );
+    }).length,
+  ).toBeGreaterThan(0);
+  expect(screen.getByRole("img", { name: "Map credit" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "Liam Hartigan" })).toBeVisible();
+  expect(
+    screen.getAllByText((_, element) => {
+      const text = element?.textContent?.replace(/\s+/g, " ").trim();
+      return (
+        text ===
+        "Coney Island Brighton Beach Map, Gary Atlas 5000 Edition, by Liam Hartigan"
+      );
+    }).length,
+  ).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "Details" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Plan" })).toBeVisible();
   expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();

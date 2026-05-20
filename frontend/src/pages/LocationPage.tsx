@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   Anchor,
   GitHub,
+  Map as MapIcon,
   Shuffle,
   Thermometer,
   Truck,
@@ -1676,13 +1677,26 @@ function SourcesList({
               }
             />
             <SourceLink
+              icon={<MapIcon aria-hidden="true" />}
+              label="Map credit"
+              includeLabel={false}
+              link={{
+                label: "Liam Hartigan",
+                url: "http://www.sheahartigan.com",
+                description:
+                  "Coney Island Brighton Beach Map, Gary Atlas 5000 Edition, by",
+              }}
+            />
+            <SourceLink
               icon={<Anchor aria-hidden="true" />}
               label="Harbor charts"
+              includeLabel={false}
+              linkFirst
               link={{
                 label: "Tidal current charts, New York Harbor",
                 url: "https://catalog.hathitrust.org/Record/011421935",
                 description:
-                  "U.S. Department of Commerce, Coast and Geodetic Survey, 1946",
+                  "from U.S. Department of Commerce, Coast and Geodetic Survey, 1946",
               }}
             />
           </>
@@ -1704,11 +1718,13 @@ function SourcesList({
         />
         <SourceLink
           icon={<Truck aria-hidden="true" />}
+          includeLabel={false}
           label="Transit"
           link={location.integrations.transit_source}
         />
         <SourceLink
           icon={<GitHub aria-hidden="true" />}
+          includeLabel={false}
           label="GitHub"
           link={bootstrap.source_code_link}
         />

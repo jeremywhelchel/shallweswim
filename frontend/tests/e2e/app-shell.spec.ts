@@ -340,6 +340,16 @@ test("renders the NYC location vertical slice", async ({ page }) => {
       name: "Tidal current charts, New York Harbor",
     }),
   ).toBeVisible();
+  await expect(
+    page.getByText(/Tidal current charts, New York Harbor from U\.S\./),
+  ).toBeVisible();
+  await expect(page.getByRole("img", { name: "Map credit" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Liam Hartigan" })).toBeVisible();
+  await expect(
+    page.getByText(
+      /Coney Island Brighton Beach Map, Gary Atlas 5000 Edition, by Liam Hartigan/,
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Alternate:")).toBeVisible();
   await expect(page.getByText("Alternative option:")).toHaveCount(0);
 

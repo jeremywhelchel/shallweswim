@@ -37,6 +37,38 @@
   `up 1.2°F in 24h`, `down 3.0°F this week`, or `near seasonal range`. Do this
   from structured historical/live temperature data rather than inferring it from
   plot images or adding filler copy in the frontend.
+- Extract historical temperature conditioning from `plot.py` into a named core
+  layer if it becomes more than plot-local presentation logic. The likely
+  architecture is `feed fetch -> conditioning/derivation -> serving/plotting`:
+  feeds preserve normalized source measurements and configured known-bad
+  outliers; conditioning owns named derived products such as a visualization
+  plot series, forecast training series, or seasonal baseline; plotting and
+  serving only render or serialize those products. Do this before reusing the
+  current plot-only visual artifact suppression in API responses, summaries,
+  frontend-rendered charts, or other product behavior. When this graduates,
+  keep the current plot artifact masks separate from modeling/forecast
+  conditioning so unusual but real years still inform seasonal spread and tail
+  risk.
+- Improve historical temperature plot artifact auditability before tuning gets
+  serious. The inspection script currently reports suppressed points by
+  stage/year; add segment-level output with start/end, duration, min/max source
+  temperature, residual range, and neighboring valid context so a contiguous bad
+  tail is distinguishable from scattered isolated artifacts. Consider requiring
+  a minimum number of comparison years before applying cross-year artifact
+  suppression, and add per-location/source threshold overrides only once
+  repeated tuning pressure shows the global defaults are insufficient.
+- Add a lightweight water-temperature projection cone. Start with a deterministic
+  forecast rather than a heavy model: build a seasonal climatology from prior
+  years, calculate historical spread/quantiles by day-of-year, compare the
+  current year's recent actuals to the seasonal baseline, decay that anomaly
+  forward over the horizon, and widen the uncertainty cone with horizon and
+  observed volatility. This should use a modeling-specific conditioning product,
+  not the private plot artifact suppression frame, so legitimate extreme years
+  still inform the tails while known-bad source measurements remain excluded.
+  Likely supporting work: named historical temperature conditioning module,
+  per-location/source QC thresholds, explicit segment-level audit output,
+  structured API data for the frontend chart, and tests for sparse-year,
+  current-year, and unusually hot/cold-year behavior.
 - Preserve NYC as a derived current location if we upgrade current prediction
   sources. NYC currently estimates local swim-area current by averaging nearby
   NOAA current prediction station velocity curves. A future NOAA curve/covariate

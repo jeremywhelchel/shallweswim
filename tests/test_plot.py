@@ -1,6 +1,7 @@
 """Tests for plotting validation helpers."""
 
 import datetime
+import logging
 
 import numpy as np
 import pandas as pd
@@ -54,6 +55,29 @@ def test_historic_yearly_plot_breaks_long_missing_temperature_gaps() -> None:
     assert not np.isinf(y_values).any()
 
 
+def test_multi_year_plot_styles_current_year_as_primary() -> None:
+    index = pd.date_range("2020-01-01", periods=4, freq="h")
+    df = pd.DataFrame(
+        {
+            2023: [50.0, 51.0, 52.0, 53.0],
+            2024: [51.0, 52.0, 53.0, 54.0],
+            2025: [52.0, 53.0, 54.0, 55.0],
+        },
+        index=index,
+    )
+
+    ax = plot.multi_year_plot(df, plot.create_standard_figure(), "Title", "Subtitle")
+
+    data_lines = ax.lines[:3]
+    assert data_lines[0].get_linestyle() == "-"
+    assert data_lines[1].get_linestyle() == "--"
+    assert data_lines[0].get_linewidth() < data_lines[-1].get_linewidth()
+    assert data_lines[1].get_alpha() < data_lines[-1].get_alpha()
+    assert data_lines[-1].get_linestyle() == "-"
+    assert data_lines[-1].get_linewidth() == 3
+    assert data_lines[-1].get_color() == "r"
+
+
 def test_historic_temperature_plot_frame_bridges_short_gaps() -> None:
     index = pd.date_range("2020-01-01", periods=10 * 24, freq="h")
     water_temp_by_year = pd.DataFrame({2025: [60.0] * len(index)}, index=index)
@@ -74,6 +98,173 @@ def test_historic_temperature_plot_frame_preserves_long_gaps() -> None:
     plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
 
     assert plot_frame.loc[long_gap, 2025].isna().all()
+
+
+def test_historic_temperature_plot_frame_suppresses_isolated_spike_artifacts() -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame({2025: [50.0] * len(index)}, index=index)
+    spike_time = pd.Timestamp("2020-01-15 12:00:00")
+    water_temp_by_year.loc[spike_time, 2025] = 80.0
+
+    plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
+
+    assert plot_frame.loc[spike_time, 2025] == pytest.approx(50.0)
+
+
+def test_historic_temperature_plot_spike_artifact_counts_by_year() -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame(
+        {
+            2024: [50.0] * len(index),
+            2025: [51.0] * len(index),
+        },
+        index=index,
+    )
+    water_temp_by_year.loc[pd.Timestamp("2020-01-15 12:00:00"), 2024] = 80.0
+    water_temp_by_year.loc[pd.Timestamp("2020-01-16 12:00:00"), 2025] = 20.0
+    water_temp_by_year.loc[pd.Timestamp("2020-01-17 12:00:00"), 2025] = 82.0
+
+    counts = plot._historic_temperature_plot_spike_artifact_counts(water_temp_by_year)
+
+    assert counts == {"2024": 1, "2025": 2}
+
+
+def test_historic_temperature_plot_logs_visual_artifact_counts_by_year(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame({2025: [50.0] * len(index)}, index=index)
+    water_temp_by_year.loc[pd.Timestamp("2020-01-15 12:00:00"), 2025] = 80.0
+
+    with caplog.at_level(logging.INFO):
+        plot._log_historic_temperature_plot_artifact_counts("bos", water_temp_by_year)
+
+    assert (
+        "[bos] Historical temperature plot visual artifact suppression flagged "
+        "1 raw points by year: {'2025': 1}; "
+        "0 cross-year smoothed points by year: {}; "
+        "0 volatile smoothed points by year: {}; "
+        "0 short-segment smoothed points by year: {}"
+    ) in caplog.text
+
+
+def test_historic_temperature_plot_frame_suppresses_cross_year_artifacts() -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame(
+        {
+            2022: [50.0] * len(index),
+            2023: [51.0] * len(index),
+            2024: [49.0] * len(index),
+            2025: [50.5] * len(index),
+        },
+        index=index,
+    )
+    artifact = pd.date_range("2020-01-15", periods=7 * 24, freq="h")
+    water_temp_by_year.loc[artifact, 2025] = 65.0
+
+    plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
+
+    assert plot_frame.loc[artifact, 2025].isna().all()
+    assert not plot_frame.loc[artifact, 2022].isna().any()
+
+
+def test_historic_temperature_plot_cross_year_artifact_counts() -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame(
+        {
+            2022: [50.0] * len(index),
+            2023: [51.0] * len(index),
+            2024: [49.0] * len(index),
+            2025: [50.5] * len(index),
+        },
+        index=index,
+    )
+    artifact = pd.date_range("2020-01-15", periods=7 * 24, freq="h")
+    water_temp_by_year.loc[artifact, 2025] = 65.0
+
+    counts = plot._historic_temperature_plot_cross_year_artifact_counts(
+        water_temp_by_year
+    )
+
+    assert counts == {"2025": 182}
+
+
+def test_historic_temperature_plot_frame_suppresses_volatile_smoothed_segments() -> (
+    None
+):
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame(
+        {
+            2022: [50.0] * len(index),
+            2023: [51.0] * len(index),
+            2024: [49.0] * len(index),
+            2025: [50.5] * len(index),
+        },
+        index=index,
+    )
+    volatile_segment = pd.date_range("2020-01-15", periods=48, freq="h")
+    water_temp_by_year.loc[volatile_segment[:24], 2025] = 42.0
+    water_temp_by_year.loc[volatile_segment[24:], 2025] = 58.0
+
+    plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
+
+    assert plot_frame.loc[volatile_segment, 2025].isna().all()
+
+
+def test_historic_temperature_plot_volatility_artifact_counts() -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame(
+        {
+            2022: [50.0] * len(index),
+            2023: [51.0] * len(index),
+            2024: [49.0] * len(index),
+            2025: [50.5] * len(index),
+        },
+        index=index,
+    )
+    volatile_segment = pd.date_range("2020-01-15", periods=48, freq="h")
+    water_temp_by_year.loc[volatile_segment[:24], 2025] = 42.0
+    water_temp_by_year.loc[volatile_segment[24:], 2025] = 58.0
+
+    counts = plot._historic_temperature_plot_volatility_artifact_counts(
+        water_temp_by_year
+    )
+
+    assert counts == {"2025": 83}
+
+
+def test_historic_temperature_plot_frame_removes_short_orphan_segments() -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame({2025: [60.0] * len(index)}, index=index)
+    orphan = pd.date_range("2020-01-15", periods=4, freq="h")
+    water_temp_by_year.loc[: orphan[0] - pd.Timedelta(hours=1), 2025] = np.nan
+    water_temp_by_year.loc[orphan[-1] + pd.Timedelta(hours=1) :, 2025] = np.nan
+
+    plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
+
+    assert plot_frame.loc[orphan, 2025].isna().all()
+
+
+def test_historic_temperature_short_segment_counts() -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    plot_frame = pd.DataFrame({2025: [np.nan] * len(index)}, index=index)
+    orphan = pd.date_range("2020-01-15", periods=4, freq="h")
+    plot_frame.loc[orphan, 2025] = 60.0
+
+    mask = plot._short_historic_temperature_plot_segment_mask(plot_frame)
+
+    assert int(mask[2025].sum()) == 4
+
+
+def test_historic_temperature_plot_frame_preserves_gradual_temperature_moves() -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    values = np.linspace(40.0, 70.0, len(index))
+    water_temp_by_year = pd.DataFrame({2025: values}, index=index)
+
+    plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
+
+    assert plot_frame[2025].max() > 65.0
+    assert plot_frame[2025].min() < 45.0
 
 
 def test_create_tide_current_plot_requires_enough_tides() -> None:

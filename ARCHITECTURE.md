@@ -327,6 +327,71 @@ Plot generation runs in a `ProcessPoolExecutor` (bounded to `os.cpu_count()` wor
 - **Hard timeout** (`PLOT_HARD_TIMEOUT`, 300s): If a worker hasn't finished, tracking is dropped (orphaned worker cannot be killed — Python limitation) and the location can retry
 - **Key constraint**: `ProcessPoolExecutor` futures cannot be cancelled. Never use `asyncio.wait_for` or `asyncio.gather` on them — cancelled futures appear "done" but the worker keeps running, causing task stacking
 
+#### Feed Processing vs Plot Processing
+
+Keep source-of-truth data cleanup in the feed layer and visualization-specific
+cleanup in the plot layer:
+
+- **Feed layer belongs to data integrity**: API client normalization,
+  dataframe schema validation, unit conversion, timestamp normalization,
+  configured known-bad source `outliers`, and source-specific failures. Data
+  returned by feeds is the canonical data used by API responses, condition
+  summaries, and future derived products.
+- **Plot layer belongs to visual representation**: interpolation for readable
+  lines, rolling means, gap rendering, chart-only visual artifact suppression,
+  axis formatting, labels, and styling. Plot transforms must not mutate cached
+  feed data or silently redefine what the API considers the measured value.
+- **Promote logic out of plotting only when it becomes product data**: if a
+  conditioned historical temperature series is needed outside SVG generation,
+  move it into a named core/query derivation with its own contract, tests, and
+  API semantics instead of reusing a private plotting helper.
+
+This boundary is especially important for heuristic visual artifact
+suppression. A configured feed outlier says "this source timestamp is known
+bad." A plot artifact mask says "this point or segment would make this chart
+misleading or unreadable." Those are different claims and should stay in
+different layers.
+
+#### Historical Temperature Plot Processing
+
+Historical temperature plots are backend-rendered SVGs generated from the
+`historic_temps` feed. The feed fetches each configured year from the same
+temperature source used for the location, combines years, sorts by timestamp,
+and resamples to hourly rows. Plot generation then pivots the data with
+`util.pivot_year()`, which moves the year into columns and normalizes every
+timestamp onto leap-year calendar year 2020 so all years can be compared on one
+month/day axis.
+
+`plot._historic_temperature_plot_frame()` owns the visible yearly and monthly
+trend-line preparation. Treat this output as **visual artifact suppression for
+backend-rendered charts**, not a general-purpose cleaned temperature record.
+The stages are intentionally layered because NOAA/NDBC and USGS historical
+feeds can contain both missing spans and implausible isolated or short-lived
+artifacts:
+
+1. **Raw isolated spike artifact mask**: per year, suppress points whose
+   residual from a centered 7-day rolling median exceeds
+   `MAX_HISTORIC_TEMP_PLOT_SPIKE_RESIDUAL_F`.
+2. **Short-gap interpolation**: interpolate missing spans up to
+   `MAX_HISTORIC_TEMP_PLOT_GAP`; longer missing spans remain `NaN` so
+   Matplotlib breaks the plotted line instead of drawing a false diagonal.
+3. **24-hour smoothing**: apply the rolling mean used for the visible trend
+   lines.
+4. **Cross-year seasonal artifact mask**: compare each smoothed year to the
+   same day/hour median across years and suppress points whose residual exceeds
+   `MAX_HISTORIC_TEMP_PLOT_CROSS_YEAR_RESIDUAL_F`.
+5. **Volatility artifact mask**: suppress smoothed windows whose 48-hour range
+   exceeds `MAX_HISTORIC_TEMP_PLOT_SMOOTHED_RANGE_F`; this catches short runs
+   that are not single-point spikes but still produce jagged visual artifacts.
+6. **Short-segment cleanup**: after the other masks are applied, remove
+   remaining visible segments shorter than `MIN_HISTORIC_TEMP_PLOT_SEGMENT`.
+
+These masks affect only the rendered historical temperature plots. They do not
+mutate cached feed data, live temperature readings, condition summaries, API
+responses, or future modeling datasets. `generate_historic_temp_plots()` logs
+per-location counts by visual artifact stage and year so threshold changes can
+be tuned from production or local logs.
+
 ### Logging Guidelines
 
 - **WARNING**: Expected operational issues (station outages)

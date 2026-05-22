@@ -45,6 +45,12 @@ sns.axes_style("darkgrid")
 STANDARD_FIGURE_SIZE = (16, 8)  # Standard plot size in inches
 CURRENT_CHART_SIZE = (16, 6)  # Size for current charts (2596 x 967 pixels)
 MAX_HISTORIC_TEMP_PLOT_GAP = pd.Timedelta(hours=48)
+HISTORIC_TEMP_PLOT_ARTIFACT_WINDOW = pd.Timedelta(days=7)
+MAX_HISTORIC_TEMP_PLOT_SPIKE_RESIDUAL_F = 12.0
+MAX_HISTORIC_TEMP_PLOT_CROSS_YEAR_RESIDUAL_F = 10.0
+HISTORIC_TEMP_PLOT_VOLATILITY_WINDOW = pd.Timedelta(hours=48)
+MAX_HISTORIC_TEMP_PLOT_SMOOTHED_RANGE_F = 6.0
+MIN_HISTORIC_TEMP_PLOT_SEGMENT = pd.Timedelta(hours=48)
 
 # Font size constants
 TITLE_FONT_SIZE = 24
@@ -189,11 +195,18 @@ def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) ->
         Axes object with the configured plot
     """
     ax = fig.subplots()
-    for column in df.columns:
+    historic_line_styles = ["-", "--", ":", "-."]
+    last_column = df.columns[-1] if len(df.columns) else None
+    for index, column in enumerate(df.columns):
+        is_current_year = column == last_column
         ax.plot(
             df.index,
             pd.to_numeric(df[column], errors="coerce"),
             label=str(column),
+            linestyle="-" if is_current_year else historic_line_styles[index % 4],
+            linewidth=3 if is_current_year else 1.2,
+            alpha=1.0 if is_current_year else 0.75,
+            color="r" if is_current_year else None,
         )
 
     fig.suptitle(title, fontsize=TITLE_FONT_SIZE)
@@ -204,14 +217,7 @@ def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) ->
     # Add second Y axis with Celsius
     add_celsius_axis(ax)
 
-    # Make current year stand out with bold red line.
-    data_line = [ln for ln in ax.lines if len(ln.get_xdata())][-1]
-    legend = ax.legend()
-    legend_line = legend.get_lines()[-1]
-    for line in [data_line, legend_line]:
-        line.set_linewidth(3)
-        line.set_linestyle("-")
-        line.set_color("r")
+    ax.legend()
     return ax
 
 
@@ -220,8 +226,24 @@ def _historic_temperature_plot_frame(water_temp_by_year: pd.DataFrame) -> pd.Dat
 
     Small station data hiccups are interpolated before smoothing so they do not
     fragment the trend line. Longer outages remain missing so the plotted line
-    breaks instead of drawing a false diagonal across the gap.
+    breaks instead of drawing a false diagonal across the gap. The smoothed
+    frame is also masked for visual artifacts: raw spikes, cross-year
+    anomalies, sharp smoothed jumps, and tiny isolated plot segments.
     """
+    smoothed_frame = _historic_temperature_smoothed_plot_frame(water_temp_by_year)
+    cross_year_mask = _historic_temperature_plot_cross_year_artifact_mask(
+        smoothed_frame
+    )
+    cross_year_suppressed = smoothed_frame.mask(cross_year_mask)
+    volatility_suppressed = cross_year_suppressed.mask(
+        _historic_temperature_plot_volatility_artifact_mask(cross_year_suppressed)
+    )
+    return _remove_short_historic_temperature_plot_segments(volatility_suppressed)
+
+
+def _historic_temperature_smoothed_plot_frame(
+    water_temp_by_year: pd.DataFrame,
+) -> pd.DataFrame:
     gap_limit_rows = _gap_limit_rows(
         water_temp_by_year.index, MAX_HISTORIC_TEMP_PLOT_GAP
     )
@@ -230,6 +252,7 @@ def _historic_temperature_plot_frame(water_temp_by_year: pd.DataFrame) -> pd.Dat
 
     for column in water_temp_by_year.columns:
         source = pd.to_numeric(water_temp_by_year[column], errors="coerce")
+        source = _suppress_historic_temperature_plot_spike_artifacts(source)
         long_gap_mask = _long_missing_gap_mask(source, gap_limit_rows)
         interpolated = source.interpolate(method="time", limit_area="inside")
         interpolated[long_gap_mask] = np.nan
@@ -242,6 +265,188 @@ def _historic_temperature_plot_frame(water_temp_by_year: pd.DataFrame) -> pd.Dat
     )
     long_gap_mask_frame = pd.DataFrame(long_gap_masks, index=water_temp_by_year.index)
     return interpolated_frame.rolling(24, center=True).mean().mask(long_gap_mask_frame)
+
+
+def _historic_temperature_plot_cross_year_artifact_mask(
+    smoothed_frame: pd.DataFrame,
+) -> pd.DataFrame:
+    seasonal_median = smoothed_frame.median(axis=1, skipna=True)
+    mask = (
+        smoothed_frame.sub(seasonal_median, axis=0).abs()
+        > MAX_HISTORIC_TEMP_PLOT_CROSS_YEAR_RESIDUAL_F
+    )
+    return mask.rolling(24, center=True, min_periods=1).max().fillna(False).astype(bool)
+
+
+def _historic_temperature_plot_volatility_artifact_mask(
+    smoothed_frame: pd.DataFrame,
+) -> pd.DataFrame:
+    """Return smoothed plot segments that still move too sharply."""
+    window_rows = _gap_limit_rows(
+        smoothed_frame.index, HISTORIC_TEMP_PLOT_VOLATILITY_WINDOW
+    )
+    min_periods = max(3, window_rows // 3)
+    rolling = smoothed_frame.rolling(
+        window_rows,
+        center=True,
+        min_periods=min_periods,
+    )
+    rolling_range = rolling.max() - rolling.min()
+    return rolling_range > MAX_HISTORIC_TEMP_PLOT_SMOOTHED_RANGE_F
+
+
+def _remove_short_historic_temperature_plot_segments(
+    plot_frame: pd.DataFrame,
+) -> pd.DataFrame:
+    return plot_frame.mask(_short_historic_temperature_plot_segment_mask(plot_frame))
+
+
+def _short_historic_temperature_plot_segment_mask(
+    plot_frame: pd.DataFrame,
+) -> pd.DataFrame:
+    min_segment_rows = _gap_limit_rows(plot_frame.index, MIN_HISTORIC_TEMP_PLOT_SEGMENT)
+    masks = {}
+    for column in plot_frame.columns:
+        valid = plot_frame[column].notna()
+        mask = pd.Series(False, index=plot_frame.index)
+        if valid.any():
+            segment_groups = valid.ne(valid.shift(fill_value=False)).cumsum()
+            for _, segment in valid.groupby(segment_groups):
+                if bool(segment.iloc[0]) and len(segment) < min_segment_rows:
+                    mask.loc[segment.index] = True
+        masks[column] = mask
+    return pd.DataFrame(masks, index=plot_frame.index)
+
+
+def _suppress_historic_temperature_plot_spike_artifacts(series: pd.Series) -> pd.Series:
+    """Remove isolated historic temperature spikes before smoothing plots."""
+    return series.mask(_historic_temperature_plot_spike_artifact_mask(series))
+
+
+def _historic_temperature_plot_spike_artifact_mask(series: pd.Series) -> pd.Series:
+    """Return isolated historic temperature spikes before smoothing plots."""
+    window_rows = _gap_limit_rows(series.index, HISTORIC_TEMP_PLOT_ARTIFACT_WINDOW)
+    if len(series.dropna()) < window_rows:
+        return pd.Series(False, index=series.index)
+
+    rolling_median = series.rolling(
+        window_rows,
+        center=True,
+        min_periods=max(3, window_rows // 3),
+    ).median()
+    artifact_mask = (
+        series.sub(rolling_median).abs() > MAX_HISTORIC_TEMP_PLOT_SPIKE_RESIDUAL_F
+    )
+    return artifact_mask
+
+
+def _historic_temperature_plot_spike_artifact_counts(
+    water_temp_by_year: pd.DataFrame,
+) -> dict[str, int]:
+    counts = {}
+    for column in water_temp_by_year.columns:
+        source = pd.to_numeric(water_temp_by_year[column], errors="coerce")
+        artifact_count = int(
+            _historic_temperature_plot_spike_artifact_mask(source).sum()
+        )
+        if artifact_count:
+            counts[str(column)] = artifact_count
+    return counts
+
+
+def _historic_temperature_plot_cross_year_artifact_counts(
+    water_temp_by_year: pd.DataFrame,
+) -> dict[str, int]:
+    smoothed_frame = _historic_temperature_smoothed_plot_frame(water_temp_by_year)
+    mask = _historic_temperature_plot_cross_year_artifact_mask(smoothed_frame)
+    return {
+        str(column): int(count)
+        for column, count in mask.sum().items()
+        if int(count) > 0
+    }
+
+
+def _historic_temperature_plot_volatility_artifact_counts(
+    water_temp_by_year: pd.DataFrame,
+) -> dict[str, int]:
+    smoothed_frame = _historic_temperature_smoothed_plot_frame(water_temp_by_year)
+    cross_year_mask = _historic_temperature_plot_cross_year_artifact_mask(
+        smoothed_frame
+    )
+    cross_year_suppressed = smoothed_frame.mask(cross_year_mask)
+    mask = _historic_temperature_plot_volatility_artifact_mask(cross_year_suppressed)
+    return {
+        str(column): int(count)
+        for column, count in mask.sum().items()
+        if int(count) > 0
+    }
+
+
+def _historic_temperature_short_segment_counts(
+    water_temp_by_year: pd.DataFrame,
+) -> dict[str, int]:
+    smoothed_frame = _historic_temperature_smoothed_plot_frame(water_temp_by_year)
+    cross_year_mask = _historic_temperature_plot_cross_year_artifact_mask(
+        smoothed_frame
+    )
+    cross_year_suppressed = smoothed_frame.mask(cross_year_mask)
+    volatility_mask = _historic_temperature_plot_volatility_artifact_mask(
+        cross_year_suppressed
+    )
+    volatility_suppressed = cross_year_suppressed.mask(volatility_mask)
+    mask = _short_historic_temperature_plot_segment_mask(volatility_suppressed)
+    return {
+        str(column): int(count)
+        for column, count in mask.sum().items()
+        if int(count) > 0
+    }
+
+
+def _log_historic_temperature_plot_artifact_counts(
+    location_code: str, water_temp_by_year: pd.DataFrame
+) -> None:
+    counts = _historic_temperature_plot_spike_artifact_counts(water_temp_by_year)
+    cross_year_counts = _historic_temperature_plot_cross_year_artifact_counts(
+        water_temp_by_year
+    )
+    volatility_counts = _historic_temperature_plot_volatility_artifact_counts(
+        water_temp_by_year
+    )
+    short_segment_counts = _historic_temperature_short_segment_counts(
+        water_temp_by_year
+    )
+    if (
+        not counts
+        and not cross_year_counts
+        and not volatility_counts
+        and not short_segment_counts
+    ):
+        logging.debug(
+            f"[{location_code}] Historical temperature plot visual artifact suppression "
+            f"flagged 0 points "
+            f"(window={HISTORIC_TEMP_PLOT_ARTIFACT_WINDOW}, "
+            f"threshold={MAX_HISTORIC_TEMP_PLOT_SPIKE_RESIDUAL_F}°F, "
+            f"cross_year_threshold={MAX_HISTORIC_TEMP_PLOT_CROSS_YEAR_RESIDUAL_F}°F, "
+            f"volatility_window={HISTORIC_TEMP_PLOT_VOLATILITY_WINDOW}, "
+            f"volatility_threshold={MAX_HISTORIC_TEMP_PLOT_SMOOTHED_RANGE_F}°F, "
+            f"min_segment={MIN_HISTORIC_TEMP_PLOT_SEGMENT})"
+        )
+        return
+
+    logging.info(
+        f"[{location_code}] Historical temperature plot visual artifact suppression "
+        f"flagged "
+        f"{sum(counts.values())} raw points by year: {counts}; "
+        f"{sum(cross_year_counts.values())} cross-year smoothed points by year: {cross_year_counts}; "
+        f"{sum(volatility_counts.values())} volatile smoothed points by year: {volatility_counts}; "
+        f"{sum(short_segment_counts.values())} short-segment smoothed points by year: {short_segment_counts} "
+        f"(window={HISTORIC_TEMP_PLOT_ARTIFACT_WINDOW}, "
+        f"threshold={MAX_HISTORIC_TEMP_PLOT_SPIKE_RESIDUAL_F}°F, "
+        f"cross_year_threshold={MAX_HISTORIC_TEMP_PLOT_CROSS_YEAR_RESIDUAL_F}°F, "
+        f"volatility_window={HISTORIC_TEMP_PLOT_VOLATILITY_WINDOW}, "
+        f"volatility_threshold={MAX_HISTORIC_TEMP_PLOT_SMOOTHED_RANGE_F}°F, "
+        f"min_segment={MIN_HISTORIC_TEMP_PLOT_SEGMENT})"
+    )
 
 
 def _gap_limit_rows(index: pd.Index, gap_limit: pd.Timedelta) -> int:
@@ -446,8 +651,8 @@ def create_historic_yearly_plot(
 
     # Get the water_temp column and apply 24-hour rolling mean.
     water_temp_by_year = cast(pd.DataFrame, year_df["water_temp"])
-    # Some years may have 0 data at this filtering level. All-NA columns
-    # will cause plotting errors, so we remove them here.
+    # Some years may have 0 visible data after plot artifact suppression.
+    # All-NA columns will cause plotting errors, so we remove them here.
     df = _historic_temperature_plot_frame(water_temp_by_year).dropna(axis=1, how="all")
 
     # Create the yearly plot
@@ -496,6 +701,12 @@ def generate_historic_temp_plots(
     )
 
     try:
+        year_df = util.pivot_year(hist_temps)
+        water_temp_by_year = cast(pd.DataFrame, year_df["water_temp"])
+        _log_historic_temperature_plot_artifact_counts(
+            location_code, water_temp_by_year
+        )
+
         # Create monthly plot
         logging.debug(f"[{location_code}] Creating 2-month historic plot")
         monthly_fig = create_historic_monthly_plot(hist_temps, station_name)

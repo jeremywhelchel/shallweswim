@@ -311,6 +311,32 @@ NYC transit status loads independently from swim conditions and plots. If the
 third-party transit feed is unavailable on first load, each train card shows an
 unavailable state instead of leaving placeholder text on screen.
 
+#### Inspecting Historical Temperature Plot Visual Artifacts
+
+Historical temperature plots apply visual artifact suppression during plot
+generation to avoid rendering bad station artifacts as misleading trend lines.
+This is plot-only cleanup, not a replacement for the source feed data. The full
+pipeline is documented in [ARCHITECTURE.md](ARCHITECTURE.md#historical-temperature-plot-processing).
+
+To inspect what the plot artifact masks suppress for a real location, run:
+
+```bash
+uv run python -m shallweswim.scripts.inspect_historic_temp_plot_artifacts bos \
+  --output-dir tmp/historic-temp-plot-artifacts/bos
+```
+
+The command fetches live historical data from the configured temperature source,
+prints counts by visual artifact stage and year, and writes:
+
+- `plot_suppressed_points.csv`: one row per plot-suppressed point with stage, year,
+  pivoted calendar timestamp, original timestamp, source temperature, value
+  suppressed from the plot, seasonal median, and residual
+- `final_plot_frame.csv`: the post-suppression frame that feeds the rendered
+  historical plot
+
+Use `--start-year` and `--end-year` to narrow a tuning run. Because this command
+hits NOAA/USGS directly, results can change as upstream station data changes.
+
 ### Testing Philosophy
 
 The test suite uses a tiered strategy:

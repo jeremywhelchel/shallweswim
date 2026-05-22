@@ -2,6 +2,7 @@
 
 import datetime
 
+import numpy as np
 import pandas as pd
 import pytest
 from matplotlib.figure import Figure
@@ -35,6 +36,44 @@ def test_generate_historic_temp_plots_requires_ten_rows() -> None:
 
     with pytest.raises(ValueError, match="Insufficient historical temperature data"):
         plot.generate_historic_temp_plots(hist_temps, "tst", None)
+
+
+def test_historic_yearly_plot_breaks_long_missing_temperature_gaps() -> None:
+    early_index = pd.date_range("2025-01-01", periods=48, freq="h")
+    late_index = pd.date_range("2025-04-01", periods=48, freq="h")
+    hist_temps = pd.DataFrame(
+        {"water_temp": [58.0] * len(early_index) + [62.0] * len(late_index)},
+        index=early_index.append(late_index),
+    )
+
+    fig = plot.create_historic_yearly_plot(hist_temps, "Test Station")
+    ax = fig.axes[0]
+    y_values = np.asarray(ax.lines[-1].get_ydata(), dtype=float)
+
+    assert np.isnan(y_values).any()
+    assert not np.isinf(y_values).any()
+
+
+def test_historic_temperature_plot_frame_bridges_short_gaps() -> None:
+    index = pd.date_range("2020-01-01", periods=10 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame({2025: [60.0] * len(index)}, index=index)
+    short_gap = pd.date_range("2020-01-04", periods=24, freq="h")
+    water_temp_by_year.loc[short_gap, 2025] = np.nan
+
+    plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
+
+    assert not plot_frame.loc[short_gap, 2025].isna().any()
+
+
+def test_historic_temperature_plot_frame_preserves_long_gaps() -> None:
+    index = pd.date_range("2020-01-01", periods=120 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame({2025: [60.0] * len(index)}, index=index)
+    long_gap = pd.date_range("2020-02-01", periods=60 * 24, freq="h")
+    water_temp_by_year.loc[long_gap, 2025] = np.nan
+
+    plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
+
+    assert plot_frame.loc[long_gap, 2025].isna().all()
 
 
 def test_create_tide_current_plot_requires_enough_tides() -> None:

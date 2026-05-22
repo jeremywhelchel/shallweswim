@@ -44,6 +44,7 @@ sns.axes_style("darkgrid")
 # Constants for plot sizes
 STANDARD_FIGURE_SIZE = (16, 8)  # Standard plot size in inches
 CURRENT_CHART_SIZE = (16, 6)  # Size for current charts (2596 x 967 pixels)
+MAX_HISTORIC_TEMP_PLOT_GAP = pd.Timedelta(hours=48)
 
 # Font size constants
 TITLE_FONT_SIZE = 24
@@ -175,6 +176,9 @@ def fig_to_bytes(fig: Figure, fmt: str = "svg") -> bytes:
 def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) -> Axes:
     """Create a multi-year line plot for temperature data.
 
+    Historical station feeds can have long gaps. Plot with matplotlib directly
+    so NaN gaps remain in the line data and render as visual breaks.
+
     Args:
         df: DataFrame containing temperature data with date index
         fig: Figure object to draw the plot on
@@ -184,7 +188,13 @@ def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) ->
     Returns:
         Axes object with the configured plot
     """
-    ax = sns.lineplot(data=df, ax=fig.subplots())  # type: Axes
+    ax = fig.subplots()
+    for column in df.columns:
+        ax.plot(
+            df.index,
+            pd.to_numeric(df[column], errors="coerce"),
+            label=str(column),
+        )
 
     fig.suptitle(title, fontsize=TITLE_FONT_SIZE)
     ax.set_title(subtitle, fontsize=SUBTITLE_FONT_SIZE)
@@ -196,12 +206,70 @@ def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) ->
 
     # Make current year stand out with bold red line.
     data_line = [ln for ln in ax.lines if len(ln.get_xdata())][-1]
-    legend_line = ax.legend().get_lines()[-1]
+    legend = ax.legend()
+    legend_line = legend.get_lines()[-1]
     for line in [data_line, legend_line]:
         line.set_linewidth(3)
         line.set_linestyle("-")
         line.set_color("r")
     return ax
+
+
+def _historic_temperature_plot_frame(water_temp_by_year: pd.DataFrame) -> pd.DataFrame:
+    """Prepare historical temperatures for trend plotting.
+
+    Small station data hiccups are interpolated before smoothing so they do not
+    fragment the trend line. Longer outages remain missing so the plotted line
+    breaks instead of drawing a false diagonal across the gap.
+    """
+    gap_limit_rows = _gap_limit_rows(
+        water_temp_by_year.index, MAX_HISTORIC_TEMP_PLOT_GAP
+    )
+    interpolated_columns = {}
+    long_gap_masks = {}
+
+    for column in water_temp_by_year.columns:
+        source = pd.to_numeric(water_temp_by_year[column], errors="coerce")
+        long_gap_mask = _long_missing_gap_mask(source, gap_limit_rows)
+        interpolated = source.interpolate(method="time", limit_area="inside")
+        interpolated[long_gap_mask] = np.nan
+
+        interpolated_columns[column] = interpolated
+        long_gap_masks[column] = long_gap_mask
+
+    interpolated_frame = pd.DataFrame(
+        interpolated_columns, index=water_temp_by_year.index
+    )
+    long_gap_mask_frame = pd.DataFrame(long_gap_masks, index=water_temp_by_year.index)
+    return interpolated_frame.rolling(24, center=True).mean().mask(long_gap_mask_frame)
+
+
+def _gap_limit_rows(index: pd.Index, gap_limit: pd.Timedelta) -> int:
+    fallback_rows = int(gap_limit / pd.Timedelta(hours=1))
+    if not isinstance(index, pd.DatetimeIndex) or len(index) < 2:
+        return fallback_rows
+
+    diffs = index.to_series().diff().dropna()
+    if diffs.empty:
+        return fallback_rows
+
+    step = diffs.median()
+    if step <= pd.Timedelta(0):
+        return fallback_rows
+    return max(1, math.floor(gap_limit / step))
+
+
+def _long_missing_gap_mask(series: pd.Series, gap_limit_rows: int) -> pd.Series:
+    missing = series.isna()
+    mask = pd.Series(False, index=series.index)
+    if not missing.any():
+        return mask
+
+    gap_groups = missing.ne(missing.shift(fill_value=False)).cumsum()
+    for _, gap in missing.groupby(gap_groups):
+        if bool(gap.iloc[0]) and len(gap) > gap_limit_rows:
+            mask.loc[gap.index] = True
+    return mask
 
 
 def live_temp_plot(
@@ -333,9 +401,13 @@ def create_historic_monthly_plot(
     start_date = pd.to_datetime(ref_date - datetime.timedelta(days=30))
     end_date = pd.to_datetime(ref_date + datetime.timedelta(days=30))
 
-    # Get the water_temp column and apply 24-hour rolling mean
+    # Get the water_temp column and apply 24-hour rolling mean.
     water_temp_by_year = cast(pd.DataFrame, year_df["water_temp"])
-    df = water_temp_by_year.loc[start_date:end_date].rolling(24, center=True).mean()
+    df = (
+        _historic_temperature_plot_frame(water_temp_by_year)
+        .loc[start_date:end_date]
+        .dropna(axis=1, how="all")
+    )
 
     # Create the 2-month plot
     fig = create_standard_figure()
@@ -372,18 +444,11 @@ def create_historic_yearly_plot(
     # Also ensure the index is by day-of-year (no year component)
     year_df = util.pivot_year(hist_temps)
 
-    # Get the water_temp column, apply 24-hour rolling mean
-    # and handle NaN values as in the original implementation
+    # Get the water_temp column and apply 24-hour rolling mean.
     water_temp_by_year = cast(pd.DataFrame, year_df["water_temp"])
-    rolling_mean = water_temp_by_year.rolling(24, center=True).mean()
-    df = (
-        rolling_mean
-        # Kludge to prevent seaborn from connecting over nan gaps.
-        .fillna(np.inf)
-        # Some years may have 0 data at this filtering level. All-NA columns
-        # will cause plotting errors, so we remove them here.
-        .dropna(axis=1, how="all")
-    )
+    # Some years may have 0 data at this filtering level. All-NA columns
+    # will cause plotting errors, so we remove them here.
+    df = _historic_temperature_plot_frame(water_temp_by_year).dropna(axis=1, how="all")
 
     # Create the yearly plot
     fig = create_standard_figure()

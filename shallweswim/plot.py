@@ -51,6 +51,8 @@ MAX_HISTORIC_TEMP_PLOT_CROSS_YEAR_RESIDUAL_F = 10.0
 HISTORIC_TEMP_PLOT_VOLATILITY_WINDOW = pd.Timedelta(hours=48)
 MAX_HISTORIC_TEMP_PLOT_SMOOTHED_RANGE_F = 6.0
 MIN_HISTORIC_TEMP_PLOT_SEGMENT = pd.Timedelta(hours=48)
+HISTORIC_TEMP_LINE_STYLES = ["--", ":", "-."]
+HISTORIC_TEMP_COLOR_PALETTE = sns.color_palette(n_colors=20)
 
 # Font size constants
 TITLE_FONT_SIZE = 24
@@ -195,18 +197,26 @@ def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) ->
         Axes object with the configured plot
     """
     ax = fig.subplots()
-    historic_line_styles = ["-", "--", ":", "-."]
-    last_column = df.columns[-1] if len(df.columns) else None
-    for index, column in enumerate(df.columns):
-        is_current_year = column == last_column
+    current_year = util.utc_now().year
+    for column in df.columns:
+        year = int(column)
+        is_current_year = year == current_year
+        historic_style_index = year % len(HISTORIC_TEMP_LINE_STYLES)
+        historic_color = HISTORIC_TEMP_COLOR_PALETTE[
+            year % len(HISTORIC_TEMP_COLOR_PALETTE)
+        ]
         ax.plot(
             df.index,
             pd.to_numeric(df[column], errors="coerce"),
             label=str(column),
-            linestyle="-" if is_current_year else historic_line_styles[index % 4],
+            linestyle=(
+                "-"
+                if is_current_year
+                else HISTORIC_TEMP_LINE_STYLES[historic_style_index]
+            ),
             linewidth=3 if is_current_year else 1.2,
             alpha=1.0 if is_current_year else 0.75,
-            color="r" if is_current_year else None,
+            color="r" if is_current_year else historic_color,
         )
 
     fig.suptitle(title, fontsize=TITLE_FONT_SIZE)
@@ -217,7 +227,7 @@ def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) ->
     # Add second Y axis with Celsius
     add_celsius_axis(ax)
 
-    ax.legend()
+    ax.legend(loc="upper right")
     return ax
 
 

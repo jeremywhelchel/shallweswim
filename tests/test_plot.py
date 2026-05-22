@@ -9,7 +9,7 @@ import pytest
 from matplotlib.figure import Figure
 
 from shallweswim import config as config_lib
-from shallweswim import plot
+from shallweswim import plot, util
 
 
 def test_save_fig_rejects_non_static_paths() -> None:
@@ -57,11 +57,12 @@ def test_historic_yearly_plot_breaks_long_missing_temperature_gaps() -> None:
 
 def test_multi_year_plot_styles_current_year_as_primary() -> None:
     index = pd.date_range("2020-01-01", periods=4, freq="h")
+    current_year = util.utc_now().year
     df = pd.DataFrame(
         {
-            2023: [50.0, 51.0, 52.0, 53.0],
-            2024: [51.0, 52.0, 53.0, 54.0],
-            2025: [52.0, 53.0, 54.0, 55.0],
+            current_year - 2: [50.0, 51.0, 52.0, 53.0],
+            current_year - 1: [51.0, 52.0, 53.0, 54.0],
+            current_year: [52.0, 53.0, 54.0, 55.0],
         },
         index=index,
     )
@@ -69,13 +70,42 @@ def test_multi_year_plot_styles_current_year_as_primary() -> None:
     ax = plot.multi_year_plot(df, plot.create_standard_figure(), "Title", "Subtitle")
 
     data_lines = ax.lines[:3]
-    assert data_lines[0].get_linestyle() == "-"
-    assert data_lines[1].get_linestyle() == "--"
+    assert data_lines[0].get_linestyle() != "-"
+    assert data_lines[1].get_linestyle() != "-"
     assert data_lines[0].get_linewidth() < data_lines[-1].get_linewidth()
     assert data_lines[1].get_alpha() < data_lines[-1].get_alpha()
     assert data_lines[-1].get_linestyle() == "-"
     assert data_lines[-1].get_linewidth() == 3
     assert data_lines[-1].get_color() == "r"
+    legend = ax.get_legend()
+    assert legend is not None
+    assert legend._loc == 1
+
+
+def test_multi_year_plot_styles_same_year_consistently_when_columns_differ() -> None:
+    index = pd.date_range("2020-01-01", periods=4, freq="h")
+    current_year = util.utc_now().year
+    full_df = pd.DataFrame(
+        {
+            current_year - 3: [50.0, 51.0, 52.0, 53.0],
+            current_year - 2: [51.0, 52.0, 53.0, 54.0],
+            current_year: [52.0, 53.0, 54.0, 55.0],
+        },
+        index=index,
+    )
+    subset_df = full_df[[current_year - 2, current_year]]
+
+    full_ax = plot.multi_year_plot(
+        full_df, plot.create_standard_figure(), "Title", "Subtitle"
+    )
+    subset_ax = plot.multi_year_plot(
+        subset_df, plot.create_standard_figure(), "Title", "Subtitle"
+    )
+
+    full_historic_line = full_ax.lines[1]
+    subset_historic_line = subset_ax.lines[0]
+    assert full_historic_line.get_color() == subset_historic_line.get_color()
+    assert full_historic_line.get_linestyle() == subset_historic_line.get_linestyle()
 
 
 def test_historic_temperature_plot_frame_bridges_short_gaps() -> None:

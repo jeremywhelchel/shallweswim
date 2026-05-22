@@ -306,14 +306,16 @@ function TemperatureSummary({
   if (compact) {
     return (
       <div className="border-swim-line border-b p-3 md:flex md:items-center md:justify-between md:gap-4 md:rounded md:border md:bg-white">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+        <div className="min-w-0 md:flex md:flex-wrap md:items-baseline md:gap-x-3 md:gap-y-1">
           <h2 className="font-semibold text-base md:text-lg">
             Water Temperature
           </h2>
-          <p className="text-sm text-slate-700">The water is currently</p>
-          <p className="font-mono font-semibold text-2xl text-swim-blue">
-            {temperatureValue}
-          </p>
+          <div className="mt-1 flex items-baseline gap-2 md:mt-0">
+            <p className="text-sm text-slate-700">The water is currently</p>
+            <p className="font-mono font-semibold text-2xl text-swim-blue">
+              {temperatureValue}
+            </p>
+          </div>
         </div>
         <p className="mt-1 min-w-0 text-xs text-slate-600 md:mt-0 md:text-right md:text-sm">
           {stationName ? (
@@ -431,7 +433,7 @@ function WaterMovementSummary({
 
       {detailOpen && waterMovementControls?.plotUrl ? (
         <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.35fr)] lg:items-start">
-          <div className="space-y-3">
+          <div className="order-2 space-y-3 lg:order-1">
             <TideInstrument
               nextTide={nextTide}
               previousTide={pastTide}
@@ -445,7 +447,7 @@ function WaterMovementSummary({
 
           <section
             aria-label="Current and tide detail chart"
-            className="rounded border border-swim-line bg-[#f8fbfc] p-3"
+            className="order-1 rounded border border-swim-line bg-[#f8fbfc] p-3 lg:order-2"
           >
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-medium text-sm text-swim-blue">

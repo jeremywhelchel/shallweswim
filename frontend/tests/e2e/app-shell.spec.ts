@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const bootstrapPayload = {
   app_name: "Shall We Swim",
@@ -563,3 +563,58 @@ test("planner mode shifts dashboard water movement from URL state", async ({
     0,
   );
 });
+
+test("detail mode keeps the mobile condition stack stable", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 780, width: 390 });
+  await page.goto("/app/nyc");
+
+  const beforeTemperatureLayout = await mobileTemperatureLayout(page);
+
+  await page.getByRole("button", { name: "Details" }).click();
+  await expect(
+    page.getByRole("region", { name: "Current and tide detail chart" }),
+  ).toBeVisible();
+
+  const afterTemperatureLayout = await mobileTemperatureLayout(page);
+  expect(
+    Math.abs(
+      afterTemperatureLayout.labelToValueY -
+        beforeTemperatureLayout.labelToValueY,
+    ),
+  ).toBeLessThan(1);
+  expect(
+    Math.abs(
+      afterTemperatureLayout.headingToLabelY -
+        beforeTemperatureLayout.headingToLabelY,
+    ),
+  ).toBeLessThan(1);
+
+  const chartBox = await boxFor(
+    page.getByRole("region", { name: "Current and tide detail chart" }),
+  );
+  const tideBox = await boxFor(page.getByText("TIDE", { exact: true }));
+  expect(chartBox.y).toBeLessThan(tideBox.y);
+});
+
+async function mobileTemperatureLayout(page: Page) {
+  const headingBox = await boxFor(
+    page.getByRole("heading", { name: "Water Temperature" }),
+  );
+  const labelBox = await boxFor(page.getByText("The water is currently"));
+  const valueBox = await boxFor(page.getByText("61.4°F"));
+
+  return {
+    headingToLabelY: labelBox.y - headingBox.y,
+    labelToValueY: valueBox.y - labelBox.y,
+  };
+}
+
+async function boxFor(locator: ReturnType<Page["locator"]>) {
+  const box = await locator.boundingBox();
+  if (!box) {
+    throw new Error("Expected locator to have a bounding box");
+  }
+  return box;
+}

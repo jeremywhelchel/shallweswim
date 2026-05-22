@@ -76,18 +76,20 @@ Initial URL shape:
 /app/manifest.webmanifest
 ```
 
-There is no `/app/{loc}/currents` route in the React app. The currents
-detail surface lives in a planner overlay on the dashboard, opened via
-`?planner=open`.
+There is no `/app/{loc}/currents` route in the React app. Currents planning
+lives directly inside the location dashboard's Water Movement card: the compact
+planner control opens in-card, and deeper local-current context opens as a
+detail panel in the same card.
 
-Query parameters carry app state. `planner=open` controls
-planner-overlay visibility; `at=...` carries the shifted planning time
-as a location-local ISO-8601 timestamp:
+Query parameters carry app state. `planner=open` controls the in-card time
+scrubber, `detail=open` controls the current/tide detail panel, and `at=...`
+carries the shifted planning time as a location-local ISO-8601 timestamp:
 
 ```text
 /app/nyc?planner=open
 /app/nyc?at=2026-05-18T15:30:00
 /app/nyc?planner=open&at=2026-05-18T15:30:00
+/app/nyc?detail=open&at=2026-05-18T15:30:00
 ```
 
 See Milestone 3 below for the full route, URL state, and capability
@@ -702,8 +704,9 @@ Route scope:
 - `/app` and `/app/nyc` should both render the real NYC location page. `/app`
   should preserve the URL rather than redirecting.
 - No `/app/{loc}/currents` route exists in the React app. The currents
-  detail surface lives in the planner overlay on the dashboard
-  (Milestone 3); deep links use `?planner=open&at=...`.
+  planning surface lives in the Water Movement card on the dashboard
+  (Milestone 3); deep links use `?planner=open&at=...` for the scrubber
+  and `?detail=open&at=...` for the supporting detail panel.
 - `/app/locations` remains a placeholder in this milestone.
 - Unsupported location codes can continue using placeholder or not-found
   behavior until Milestone 3 generalizes location pages.
@@ -733,8 +736,8 @@ Page content and ordering should match the current NYC page:
    - station note: `at {station_name} as of {formatted timestamp}.`
    - last tide, next tide, and following tide rows
    - current estimate: `{state_description or direction} at {magnitude} knots`
-   - show a "PLAN AHEAD →" trigger that opens the planner overlay
-     (Milestone 3) only when current prediction data is available
+   - show planner/detail controls (Milestone 3) only when current prediction
+     data is available
 3. Forecast section with the Windy iframe.
 4. Live Webcam section with the YouTube live embed and the existing EarthCam
    alternative link.
@@ -833,7 +836,7 @@ Non-goals:
   charting.
 - Do not implement full `/app/:locationCode` generalization beyond what is
   naturally needed for NYC.
-- Do not implement the planner overlay or sticky time-bar — those land in Milestone 3.
+- Do not implement URL-backed planner/detail controls — those land in Milestone 3.
 - Do not add service workers or offline data caching.
 - Do not add the existing-site adoption banner yet.
 
@@ -983,56 +986,59 @@ This milestone supersedes the earlier sketches of both a dedicated
 `/app/{loc}/currents` detail route and a standalone "Generalize
 Location Pages" milestone. The dashboard shape is the single
 per-location page, so generalizing to non-NYC locations is just step
-`3.D` (per-location React modules plus the router/404 plumbing). See
-`shallweswim/static/claude_app_structure.html` for the full design
-exploration — wireframes, interaction patterns, feature × location
-matrix, NYC depth split, fallback table — that this section condenses.
+`3.D` (per-location rendering plus the router/404 plumbing). Earlier
+wireframes in `shallweswim/static/claude_app_structure.html` explored a
+full-screen/side-drawer planner overlay, but the implemented dashboard direction
+keeps the planning controls and detail context embedded in the Water Movement
+card. That turned out to be simpler, more legible, and better aligned with the
+dashboard's compact decision workflow.
 
 #### Chosen direction
 
-The location page at `/app/{loc}` is a single dashboard with no nested
-route. Two orthogonal URL query params drive its variable behavior:
+The location page at `/app/{loc}` is a single dashboard with no nested route.
+Three orthogonal URL query params drive its variable behavior:
 
-- `planner=open` controls **planner-overlay visibility**. The overlay
-  carries the deep currents detail (annotated map, projection plot,
-  scrubber, commentary). With no `at`, it opens at "now".
-- `at=...` carries the **shifted planning time** as an ISO-8601
-  timestamp. When set, every prediction-respecting component on the
-  page — Water Movement, tide events, currents, projection plot — shows
-  the future state at that time. The sticky time-bar at the top of the
-  page transforms into the page-level time control. When not set, the
-  page is in its right-now state (water temp, Water Movement, forecast,
-  webcam, trends, transit, sources).
+- `planner=open` controls the **in-card planner controls**: a compact time
+  scrubber in the sticky Water Movement card header. With no `at`, it opens at
+  "now".
+- `detail=open` controls the **in-card current/tide detail panel**: the
+  projection plot plus NYC local-current context such as map, direction
+  guidance, timing notes, historic harbor chart, and estimate methodology.
+- `at=...` carries the **shifted planning time** as an ISO-8601 timestamp. When
+  set, every prediction-respecting Water Movement component — tide state,
+  current state, meters, and detail plot URL — shows the selected time. When not
+  set, the dashboard remains in its right-now state.
 
-The two params are independent: `?planner=open` without `at` opens the
-overlay at "now"; `?at=...` without `planner=open` shifts the page
-without the overlay visible. In conversational shorthand, the page is
-in "planner mode" whenever `at` is set — that's the state that visibly
-distinguishes future-view from right-now — but the URL contract is the
-authoritative model.
+The params are independent: `?planner=open` opens only the scrubber,
+`?detail=open` opens only the supporting evidence/detail panel, and `?at=...`
+shifts the dashboard without forcing either panel open. In conversational
+shorthand, the page is in "planner mode" whenever `at` is set; the URL contract
+is the authoritative model.
 
-Deep currents detail (annotated current map, tide × current projection
-plot, NYC direction commentary, physics notes, legacy harbor charts)
-lives in a **responsive planner overlay** — full-screen on mobile,
-side drawer alongside the dashboard on desktop. The overlay is opened
-from a "PLAN AHEAD →" link in the Water Movement card.
+Deep currents detail stays close to the Water Movement instrument rather than
+moving into a separate overlay. This keeps the map, projection plot, current
+direction guidance, and legacy chart connected to the selected time while
+avoiding a second page-like interaction model inside the dashboard.
 
-NYC's domain depth — direction commentary, physics notes, custom map
-overlays, legacy chart copy — lives in `frontend/src/locations/nyc/`
-React modules, not in `/api/app/bootstrap`. The bootstrap endpoint
-stays focused on operational config (capability flags, station IDs,
-webcam URLs, transit route IDs, citation links).
+NYC's domain depth — direction commentary, physics notes, custom map selection,
+legacy chart copy — is app code, not `/api/app/bootstrap` data. The bootstrap
+endpoint stays focused on operational config (capability flags, webcam URLs,
+transit route IDs, citation links). A later organization pass may move NYC-only
+content into `frontend/src/locations/nyc/`, but that is a code-structure cleanup,
+not a product requirement for this milestone.
 
 #### Route contract
 
 - Canonical URL: `/app/{loc}` with query params. There is no separate
   `/currents` route in the React app — the React app isn't bound to
   the Jinja URL shape, so we adopt the dashboard convention directly.
-- Primary URL: `/app/{loc}?planner=open&at=…` — dashboard with planner
-  open at the chosen time.
+- Primary planning URL: `/app/{loc}?planner=open&at=…` — dashboard with the
+  in-card planner scrubber open at the chosen time.
+- Primary detail URL: `/app/{loc}?detail=open&at=…` — dashboard with the
+  current/tide detail panel open at the chosen time.
 - Known location without prediction data: the dashboard loads
-  normally; planner trigger and overlay are quietly suppressed; a
-  deep-linked `?planner=open` URL is a no-op rather than an error.
+  normally; planner/detail controls are quietly suppressed; deep-linked
+  `?planner=open` or `?detail=open` URLs are no-ops rather than errors.
 - Unknown location code: hard HTTP 404. The 404 is reserved for codes
   the app doesn't know about, not for known locations that simply
   lack a planner.
@@ -1043,7 +1049,9 @@ webcam URLs, transit route IDs, citation links).
   offset, e.g. `?at=2026-05-18T15:30:00`. The location code supplies the
   timezone; backend endpoints reject `Z`, explicit offsets, DST-ambiguous
   local instants, and times outside the ±24h prediction window.
-- `?planner=open` controls overlay visibility independently of `?at=`.
+- `?planner=open` controls in-card scrubber visibility independently of `?at=`.
+- `?detail=open` controls in-card detail-panel visibility independently of
+  `?planner=open` and `?at=`.
 - Shift-aware backend endpoints accept `?at=` directly:
   `/api/{loc}/currents?at=…` and
   `/api/{loc}/plots/current_tide?at=…`. `?shift=` remains available for
@@ -1053,82 +1061,72 @@ History semantics:
 
 | Action                                             | URL change                                | History  |
 | -------------------------------------------------- | ----------------------------------------- | -------- |
-| Open planner from no-shift state                   | adds `?planner=open`                      | push     |
-| Scrub time inside overlay                          | updates `?at=…`                           | replace  |
-| Close overlay (× / ESC / click-outside / back)     | drops `?planner=open`, keeps `?at`        | replace  |
-| Reset to now from sticky bar                       | drops `?at`                               | replace  |
+| Open planner controls from no-shift state          | adds `?planner=open`                      | push     |
+| Open detail panel from no-shift state              | adds `?detail=open`                       | push     |
+| Scrub time in planner controls                     | updates `?at=…`                           | replace  |
+| Close planner controls                             | drops `?planner=open`, keeps `?at`        | replace  |
+| Close detail panel                                 | drops `?detail=open`, keeps `?at`         | replace  |
+| Reset to now                                       | drops `?at`                               | replace  |
 
 Direct-entry edge case: if a user lands on
 `/app/{loc}?planner=open&at=…` via a shared link, browser Back follows
-normal browser history (leaves the app entirely). The close × inside
-the overlay still replaces to `/app/{loc}?at=…` so in-app dismissal
-behaves the same as in a fresh session.
+normal browser history (leaves the app entirely). The in-app close control still
+replaces to `/app/{loc}?at=…` so dismissal behaves the same as in a fresh
+session. The same rule applies to `?detail=open&at=…`.
 
 #### Capability / fallback rules
 
-| Location type                              | Planner trigger    | Sticky time-bar  | Overlay content                                                          |
+| Location type                              | Planner controls   | Detail panel     | Detail content                                                           |
 | ------------------------------------------ | ------------------ | ---------------- | ------------------------------------------------------------------------ |
-| Tidal · current prediction · NYC           | enabled            | enabled          | full — scrubber + map + projection plot + commentary + legacy charts     |
-| Tidal · current prediction · other         | enabled            | enabled          | generic — scrubber + projection plot                                     |
-| Tidal · tide prediction only (SAN/SFO/BOS/SEA) | optional · module-driven | tied to trigger | tide projection only                                              |
+| Tidal · current prediction · NYC           | enabled            | enabled          | full — projection plot + map + commentary + legacy charts                |
+| Tidal · current prediction · other         | enabled            | enabled          | generic — projection plot                                                |
+| Tidal · tide prediction only (SAN/SFO/BOS/SEA) | optional · module-driven | optional · module-driven | tide projection only                                             |
 | River · current observation (SDF)          | disabled           | disabled         | n/a — "Recent flow (observed)" card on home instead                      |
 | Lake (CHI)                                 | disabled           | disabled         | n/a — no Water Movement card                                             |
 | Spring · temperature-only (AUS)            | disabled           | disabled         | n/a — minimal home layout                                                |
 
 Default for any new location: the planner trigger is **disabled** unless
 the location either has `currents_source.type === 'prediction'` in its
-bootstrap config (auto-enables the trigger with generic overlay content)
-or registers its own React module with custom planner content
-(NYC-style).
+bootstrap config (auto-enables the trigger with generic detail content)
+or registers custom planner/detail content (NYC-style).
 
-Sticky time-bar:
+Planner and detail interaction:
 
-- In right-now mode it appears only after the hero scrolls past, with
-  the three live chips (temp / tide / current) and a small "PLAN" chip.
-- In planner mode it pins to the top regardless of scroll, carrying
-  the time scrubber + preset chips + selected-time readout + "× reset
-  to now" affordance.
-
-Overlay interaction contract:
-
-- Open from "PLAN AHEAD →" on Water Movement or "PLAN" on the sticky
-  bar. Pushes one history entry.
-- Close via close ×, ESC (desktop), click-outside (desktop), or device
-  back button — all converge on the same outcome.
-- Mobile: full-screen overlay (replaces home view).
-- Desktop: side drawer; the dashboard column behind the drawer is
-  scroll-locked, but the drawer itself scrolls independently — that
-  matters for long NYC content (map, plot, commentary, legacy charts,
-  methodology notes can run past the viewport without dragging the
-  dashboard along).
-- Slider thumb, preset chips, and the × button are sized for 44×44 pt
-  minimum on touch.
-- Slider drags update predictions in real time (debounced ~150 ms on
-  the API-bound projection plot); preset chips snap.
+- The Water Movement control strip is sticky within the card so the selected
+  time, reset affordance, and planner/detail buttons remain close to the meters.
+- Opening planner or detail pushes one history entry. Closing either panel uses
+  replace semantics and preserves `at`.
+- The `Now` reset drops `at` and returns the card to live conditions without
+  changing unrelated query params.
+- The planner scrubber updates predictions in real time through
+  `/api/{loc}/conditions?at=...`; debouncing can be added if API cadence becomes
+  noisy.
+- Touch targets should be widened as the controls mature; the current compact
+  implementation is acceptable for the first shippable planner pass but needs a
+  mobile polish pass.
 
 #### Shipping sequence
 
-Each step is independently shippable and adds a layer to the
-dashboard. Step 3.A is the foundation; 3.B is the "becomes a planner"
-unlock; 3.C and 3.D add depth and breadth.
+Each step is independently shippable and adds a layer to the dashboard. Step 3.A
+is the foundation; 3.B polishes the control surface; 3.C and 3.D add smarter
+time jumps and broader location support.
 
-- **3.A · Planner overlay (foundation):** responsive overlay for NYC.
-  Inside: time scrubber + `−1h / now / +1h` preset chips, annotated
-  Coney Island map, tide × current projection plot, NYC direction
-  commentary, physics note ("currents lead the tide by 2 h here"),
-  legacy harbor charts. "PLAN AHEAD →" trigger in Water Movement.
-  URL-backed `?at=` calls the shift-aware backend endpoints directly.
-  All NYC-specific content hard-coded in `frontend/src/locations/nyc/`.
-  Result: feature parity with the existing Jinja currents page.
-- **3.B · Sticky shifted-time bar:** the bar that transforms between
-  now-anchor (right-now mode, after scroll) and page-level time
-  control (planner mode, always pinned). Users keep scrubbing without
-  re-opening the overlay. Affects every prediction-respecting
-  component on the page.
+- **3.A · In-card planner and detail foundation:** Water Movement gets
+  URL-backed `planner=open`, `detail=open`, and `at=...` state. The compact
+  scrubber shifts `/api/{loc}/conditions?at=...`; the detail panel uses
+  `/api/{loc}/plots/current_tide?at=...` plus NYC local-current map selection,
+  direction guidance, timing note, legacy harbor chart, and methodology copy.
+  Result: feature parity with the useful parts of the existing Jinja currents
+  page while keeping the interaction in the dashboard.
+- **3.B · Planner control polish:** refine the sticky Water Movement control
+  strip, selected-time readout, reset affordance, slider labels, mobile spacing,
+  and loading state when shifted data or shifted plot images update. Users should
+  be able to keep scrubbing without opening a separate surface. This replaces
+  the older full-page sticky time-bar idea.
 - **3.C · In-card Now/Soon toggle + smart presets:** Water Movement
   card's `Now` / `Soon` chips for the 2-hour outlook. Adds
-  `next slack` / `peak flood` / `peak ebb` preset chips to both
-  overlay and sticky bar. *Depends on the backend follow-up below.*
+  `next slack` / `peak flood` / `peak ebb` preset chips to the planner controls.
+  *Depends on the backend follow-up below.*
 - **3.D · Generalize to other locations:** ship `locations/sdf/`,
   `locations/chi/`, `locations/aus/`, and `locations/generic/`. Each
   module configures which generic components render and provides
@@ -1441,8 +1439,9 @@ Plots:
 
 Planner currents:
 
-- fetch immediately when `planner=open` or shifted `at=...` state needs current
-  detail
+- fetch immediately when shifted `at=...` state needs current detail
+- use `planner=open` to reveal the compact time scrubber and `detail=open` to
+  reveal the current/tide plot plus supporting local-current guidance
 - use `at` as the preferred query parameter for shift-aware backend endpoints;
   `shift` remains available for simple relative controls and legacy callers
 - preserve the current behavior of keeping prior loaded data visible on refresh

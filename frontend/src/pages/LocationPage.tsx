@@ -31,7 +31,6 @@ type TideState = components["schemas"]["TideState"];
 type TransitRouteConfig = components["schemas"]["TransitRouteConfig"];
 type YouTubeLiveConfig = components["schemas"]["YouTubeLiveConfig"];
 
-const METER_SEGMENT_COUNT = 32;
 const PLANNER_MIN_MINUTES = -180;
 const PLANNER_MAX_MINUTES = 1440;
 const PLANNER_STEP_MINUTES = 15;
@@ -241,9 +240,21 @@ export function ConditionsSummary({
     return <ShellMessage title="Loading latest conditions" />;
   }
 
+  const detailMode = Boolean(waterMovementControls?.detailOpen);
+
   return (
-    <section className="grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent">
-      <TemperatureSummary conditions={conditions} hasError={hasError} />
+    <section
+      className={
+        detailMode
+          ? "grid gap-0 rounded border border-swim-line bg-white md:gap-4 md:border-0 md:bg-transparent"
+          : "grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent"
+      }
+    >
+      <TemperatureSummary
+        compact={detailMode}
+        conditions={conditions}
+        hasError={hasError}
+      />
       <WaterMovementSummary
         current={hasError ? undefined : conditions?.current}
         tides={hasError ? undefined : conditions?.tides}
@@ -269,12 +280,62 @@ type WaterMovementControls = {
 };
 
 function TemperatureSummary({
+  compact = false,
   conditions,
   hasError,
 }: {
+  compact?: boolean;
   conditions?: LocationConditions;
   hasError: boolean;
 }) {
+  const temperatureValue =
+    conditions?.temperature && !hasError
+      ? `${conditions.temperature.water_temp}°${conditions.temperature.units || "F"}`
+      : "Unavailable";
+  const stationName =
+    conditions?.temperature && !hasError
+      ? conditions.temperature.station_name ||
+        conditions.location.name ||
+        "station"
+      : null;
+  const stationTimestamp =
+    conditions?.temperature && !hasError
+      ? formatStationTimestamp(conditions.temperature.timestamp)
+      : null;
+
+  if (compact) {
+    return (
+      <div className="border-swim-line border-b p-3 md:flex md:items-center md:justify-between md:gap-4 md:rounded md:border md:bg-white">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="font-semibold text-base md:text-lg">
+            Water Temperature
+          </h2>
+          <p className="text-sm text-slate-700">The water is currently</p>
+          <p className="font-mono font-semibold text-2xl text-swim-blue">
+            {temperatureValue}
+          </p>
+        </div>
+        <p className="mt-1 min-w-0 text-xs text-slate-600 md:mt-0 md:text-right md:text-sm">
+          {stationName ? (
+            <>
+              at <span>{stationName}</span>
+              {stationTimestamp ? (
+                <>
+                  {" as of "}
+                  <span className="font-mono">{stationTimestamp}</span>.
+                </>
+              ) : (
+                "."
+              )}
+            </>
+          ) : (
+            "Current water temperature is unavailable."
+          )}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
       <h2 className="font-semibold text-base md:text-lg">Water Temperature</h2>
@@ -283,27 +344,17 @@ function TemperatureSummary({
           The water is currently
         </p>
         <p className="font-mono font-semibold text-2xl text-swim-blue md:mt-1 md:text-3xl">
-          {conditions?.temperature && !hasError
-            ? `${conditions.temperature.water_temp}°${conditions.temperature.units || "F"}`
-            : "Unavailable"}
+          {temperatureValue}
         </p>
       </div>
       <p className="mt-1 text-xs text-slate-600 md:mt-2 md:text-sm">
-        {conditions?.temperature && !hasError ? (
+        {stationName ? (
           <>
-            at{" "}
-            <span>
-              {conditions.temperature.station_name ||
-                conditions.location.name ||
-                "station"}
-            </span>
-            {formatStationTimestamp(conditions.temperature.timestamp) ? (
+            at <span>{stationName}</span>
+            {stationTimestamp ? (
               <>
                 {" as of "}
-                <span className="font-mono">
-                  {formatStationTimestamp(conditions.temperature.timestamp)}
-                </span>
-                .
+                <span className="font-mono">{stationTimestamp}</span>.
               </>
             ) : (
               "."
@@ -332,6 +383,11 @@ function WaterMovementSummary({
   const plannedLabel = waterMovementControls?.at
     ? waterMovementControls.label
     : null;
+  const detailOpen = Boolean(
+    waterMovementControls?.detailOpen && waterMovementControls.plotUrl,
+  );
+  const isNycDetail =
+    waterMovementControls?.location.metadata.code === "nyc" && detailOpen;
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
@@ -372,44 +428,127 @@ function WaterMovementSummary({
       <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
         {description}
       </p>
-      <TideInstrument
-        nextTide={nextTide}
-        previousTide={pastTide}
-        state={tides?.state}
-      />
-      <CurrentInstrument current={current} />
-      {waterMovementControls?.detailOpen && waterMovementControls.plotUrl ? (
-        <section
-          aria-label="Current and tide detail chart"
-          className="mt-3 rounded border border-swim-line bg-[#f8fbfc] p-3"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="font-medium text-sm text-swim-blue">
-              Current and tide detail chart
-            </h3>
-            <button
-              aria-label="Close current and tide detail chart"
-              className="rounded border border-swim-line bg-white px-2 py-1 text-xs text-swim-ink"
-              onClick={waterMovementControls.onCloseDetail}
-              type="button"
-            >
-              Close
-            </button>
+
+      {detailOpen && waterMovementControls?.plotUrl ? (
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.35fr)] lg:items-start">
+          <div className="space-y-3">
+            <TideInstrument
+              nextTide={nextTide}
+              previousTide={pastTide}
+              state={tides?.state}
+            />
+            <CurrentInstrument current={current} />
+            {isNycDetail ? (
+              <NycWaterMovementGuidance current={current} />
+            ) : null}
           </div>
-          <PlannerPlotImage
-            alt={`Tide and current plot for ${waterMovementControls.label}`}
-            src={waterMovementControls.plotUrl}
+
+          <section
+            aria-label="Current and tide detail chart"
+            className="rounded border border-swim-line bg-[#f8fbfc] p-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-medium text-sm text-swim-blue">
+                Current and tide detail chart
+              </h3>
+              <button
+                aria-label="Close current and tide detail chart"
+                className="rounded border border-swim-line bg-white px-2 py-1 text-xs text-swim-ink"
+                onClick={waterMovementControls.onCloseDetail}
+                type="button"
+              >
+                Close
+              </button>
+            </div>
+            <PlannerPlotImage
+              alt={`Tide and current plot for ${waterMovementControls.label}`}
+              src={waterMovementControls.plotUrl}
+            />
+            {isNycDetail ? (
+              <NycWaterMovementVisuals current={current} tides={tides} />
+            ) : null}
+          </section>
+        </div>
+      ) : (
+        <>
+          <TideInstrument
+            nextTide={nextTide}
+            previousTide={pastTide}
+            state={tides?.state}
           />
-          {waterMovementControls.location.metadata.code === "nyc" ? (
-            <NycWaterMovementDetail current={current} tides={tides} />
-          ) : null}
-        </section>
-      ) : null}
+          <CurrentInstrument current={current} />
+        </>
+      )}
     </div>
   );
 }
 
-function NycWaterMovementDetail({
+function NycWaterMovementGuidance({
+  current,
+}: {
+  current?: CurrentInfo | null;
+}) {
+  const swimAdvice = nycSwimDirectionAdvice(current);
+
+  return (
+    <div className="space-y-3">
+      <section aria-label="Grimaldo's Chair current guidance">
+        <div className="rounded border border-swim-line bg-[#f8fbfc] p-3">
+          <h4 className="font-semibold text-sm text-swim-blue">
+            Grimaldo&apos;s Chair local read
+          </h4>
+          <p className="mt-1 text-sm text-swim-ink leading-relaxed">
+            {swimAdvice}
+          </p>
+          <dl className="mt-2 grid gap-1 text-xs text-slate-700 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <div>
+              <dt className="font-semibold text-swim-current">Flood</dt>
+              <dd>Coney Island toward Manhattan Beach, west to east.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-swim-current">Ebb</dt>
+              <dd>Manhattan Beach toward Coney Island, east to west.</dd>
+            </div>
+          </dl>
+          <p className="mt-2 text-xs text-slate-600">
+            Near the Aquarium, the beach current can reverse; the pier-side
+            current may run opposite the Grimaldo&apos;s read.
+          </p>
+        </div>
+      </section>
+
+      <section aria-label="NYC tide current notes">
+        <div className="rounded border border-swim-line bg-[#f8fbfc] p-3">
+          <h4 className="font-semibold text-sm text-swim-blue">
+            Tide and current timing
+          </h4>
+          <p className="mt-1 text-sm text-slate-700 leading-relaxed">
+            In this swim area, currents lead the tide by about two hours: max
+            flood is roughly two hours before high tide, and max ebb is roughly
+            two hours before low tide. Positive values in the projection
+            indicate flood; negative values indicate ebb.
+          </p>
+        </div>
+      </section>
+
+      <section aria-label="NYC current estimate methodology">
+        <div className="rounded border border-swim-line bg-[#f8fbfc] p-3">
+          <h4 className="font-semibold text-sm text-swim-blue">
+            Estimate source
+          </h4>
+          <p className="mt-1 text-sm text-slate-700 leading-relaxed">
+            The NYC estimate averages nearby NOAA current prediction stations at
+            opposite ends of the Coney/Brighton water. That gives a useful
+            flood/ebb curve for planning, but it cannot account for wind,
+            jetties, or every local eddy.
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function NycWaterMovementVisuals({
   current,
   tides,
 }: {
@@ -418,33 +557,9 @@ function NycWaterMovementDetail({
 }) {
   const currentMap = nycCurrentMap(current);
   const legacyChart = nycLegacyChart(tides, current?.timestamp);
-  const swimAdvice = nycSwimDirectionAdvice(current);
 
   return (
     <div className="mt-4 space-y-4 border-swim-line border-t pt-4">
-      <section aria-label="Grimaldo's Chair current guidance">
-        <h4 className="font-semibold text-sm text-swim-blue">
-          Grimaldo&apos;s Chair local read
-        </h4>
-        <p className="mt-1 text-sm text-swim-ink leading-relaxed">
-          {swimAdvice}
-        </p>
-        <dl className="mt-2 grid gap-1 text-xs text-slate-700 sm:grid-cols-2">
-          <div>
-            <dt className="font-semibold text-swim-current">Flood</dt>
-            <dd>Coney Island toward Manhattan Beach, west to east.</dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-swim-current">Ebb</dt>
-            <dd>Manhattan Beach toward Coney Island, east to west.</dd>
-          </div>
-        </dl>
-        <p className="mt-2 text-xs text-slate-600">
-          Near the Aquarium, the beach current can reverse; the pier-side
-          current may run opposite the Grimaldo&apos;s read.
-        </p>
-      </section>
-
       {currentMap ? (
         <section aria-label="Coney Island current map">
           <h4 className="font-semibold text-sm text-swim-blue">
@@ -463,19 +578,6 @@ function NycWaterMovementDetail({
           </p>
         </section>
       ) : null}
-
-      <section aria-label="NYC tide current notes">
-        <h4 className="font-semibold text-sm text-swim-blue">
-          Tide and current timing
-        </h4>
-        <p className="mt-1 text-sm text-slate-700 leading-relaxed">
-          In this swim area, currents lead the tide by about two hours: max
-          flood is roughly two hours before high tide, and max ebb is roughly
-          two hours before low tide. Positive values in the projection indicate
-          flood; negative values indicate ebb.
-        </p>
-      </section>
-
       {legacyChart ? (
         <section aria-label="Historic New York Harbor current chart">
           <h4 className="font-semibold text-sm text-swim-blue">
@@ -491,18 +593,6 @@ function NycWaterMovementDetail({
           </div>
         </section>
       ) : null}
-
-      <section aria-label="NYC current estimate methodology">
-        <h4 className="font-semibold text-sm text-swim-blue">
-          Estimate source
-        </h4>
-        <p className="mt-1 text-sm text-slate-700 leading-relaxed">
-          The NYC estimate averages nearby NOAA current prediction stations at
-          opposite ends of the Coney/Brighton water. That gives a useful
-          flood/ebb curve for planning, but it cannot account for wind, jetties,
-          or every local eddy.
-        </p>
-      </section>
     </div>
   );
 }
@@ -1121,9 +1211,6 @@ function CurrentInstrument({ current }: { current?: CurrentInfo | null }) {
   );
 }
 
-const DRIFT_FULL_BLOCK = "█";
-const DRIFT_MARKER = "│";
-
 const DRIFT_ACCENT = {
   tide: {
     color: "#5b7f2a",
@@ -1167,15 +1254,8 @@ function DriftBar({
   }
 
   const direction = trendDirection(trend);
-  const fillChars = Math.max(
-    0,
-    Math.min(
-      METER_SEGMENT_COUNT,
-      Math.round((percent / 100) * METER_SEGMENT_COUNT),
-    ),
-  );
-  const emptyChars = METER_SEGMENT_COUNT - fillChars;
   const accentTokens = DRIFT_ACCENT[accent];
+  const fillPercent = Math.max(0, Math.min(100, percent));
 
   const fillGradient =
     direction === "up"
@@ -1221,33 +1301,31 @@ function DriftBar({
 
       <div
         aria-hidden="true"
-        className="my-1.5 flex items-center whitespace-nowrap font-mono text-[clamp(12px,4vw,16px)] leading-none md:text-[clamp(16px,1.4vw,20px)]"
+        className="my-2 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-1.5"
       >
-        <span className="font-semibold text-slate-500">[</span>
-        <span
-          className="-tracking-[0.06em]"
-          style={{
-            backgroundImage: fillGradient,
-            WebkitBackgroundClip: "text",
-            backgroundClip: "text",
-            color: "transparent",
-          }}
-        >
-          {DRIFT_FULL_BLOCK.repeat(fillChars)}
+        <span className="font-mono font-semibold text-xl text-slate-500 leading-none">
+          [
         </span>
-        <span
-          className="-mx-px font-black text-swim-ink"
-          style={{ fontSize: "1.25em", lineHeight: 0.85 }}
-        >
-          {DRIFT_MARKER}
+        <span className="relative h-7 min-w-0 overflow-hidden">
+          <span className="absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 bg-[#cdd6db]" />
+          <span
+            className="absolute left-0 top-1/2 h-4 -translate-y-1/2"
+            style={{
+              backgroundImage: fillGradient,
+              width: `${fillPercent}%`,
+            }}
+          />
+          <span
+            className="absolute top-1/2 h-7 w-1 -translate-x-1/2 -translate-y-1/2 bg-swim-ink"
+            style={{ left: `${fillPercent}%` }}
+          />
         </span>
-        <span className="-tracking-[0.06em] text-[#cdd6db]">
-          {DRIFT_FULL_BLOCK.repeat(emptyChars)}
+        <span className="font-mono font-semibold text-xl text-slate-500 leading-none">
+          ]
         </span>
-        <span className="font-semibold text-slate-500">]</span>
         {direction !== "steady" ? (
           <span
-            className={`ml-3 font-sans text-[12px] font-extrabold uppercase tracking-wider md:text-[13px] ${accentTokens.arrowText} ${pulseClass}`}
+            className={`ml-2 whitespace-nowrap font-sans text-[12px] font-extrabold uppercase tracking-wider md:text-[13px] ${accentTokens.arrowText} ${pulseClass}`}
           >
             {direction === "down" ? (
               <>

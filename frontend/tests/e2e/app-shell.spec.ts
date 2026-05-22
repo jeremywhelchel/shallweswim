@@ -4,7 +4,7 @@ const bootstrapPayload = {
   app_name: "Shall We Swim",
   short_name: "Swim",
   default_location_code: "nyc",
-  location_order: ["nyc"],
+  location_order: ["nyc", "sfo"],
   manifest: {
     name: "Shall We Swim",
     short_name: "Swim",
@@ -83,6 +83,40 @@ const bootstrapPayload = {
         },
       },
     },
+    sfo: {
+      metadata: {
+        code: "sfo",
+        name: "San Francisco",
+        nav_label: "San Francisco",
+        swim_location: "Aquatic Park",
+        swim_location_link: "https://example.com/sfo",
+        description:
+          "San Francisco Aquatic Park open water swimming conditions",
+        latitude: 37.806,
+        longitude: -122.422,
+        timezone: "US/Pacific",
+        features: {
+          temperature: true,
+          tides: false,
+          currents: false,
+          webcam: false,
+          transit: false,
+          windy: false,
+        },
+        citations: {
+          temperature: '<a href="https://example.com/sfo-temp">SFO temp</a>',
+          tides: null,
+          currents: null,
+        },
+      },
+      integrations: {
+        youtube_live: null,
+        transit_routes: [],
+        webcam_alternative: null,
+        webcam_source: null,
+        transit_source: null,
+      },
+    },
   },
 };
 
@@ -153,6 +187,27 @@ const conditionsPayload = {
   },
 };
 
+const sfoConditionsPayload = {
+  ...conditionsPayload,
+  location: {
+    code: "sfo",
+    name: "San Francisco",
+    swim_location: "Aquatic Park",
+  },
+  temperature: {
+    timestamp: "2026-05-13T07:30:00-07:00",
+    water_temp: 55.2,
+    units: "F",
+    station_name: "San Francisco",
+  },
+  tides: {
+    past: [],
+    next: [],
+    state: null,
+  },
+  current: null,
+};
+
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
@@ -180,30 +235,34 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/app/bootstrap", async (route) => {
     await route.fulfill({ json: bootstrapPayload });
   });
-  await page.route("**/api/nyc/conditions**", async (route) => {
+  await page.route("**/api/*/conditions**", async (route) => {
+    const locationCode = new URL(route.request().url()).pathname.split("/")[2];
     const at = new URL(route.request().url()).searchParams.get("at");
     await route.fulfill({
-      json: at
-        ? {
-            ...conditionsPayload,
-            current: {
-              ...conditionsPayload.current,
-              timestamp: "2026-05-13T08:30:00",
-              magnitude: 1.4,
-              trend: "easing",
-            },
-            tides: {
-              ...conditionsPayload.tides,
-              state: {
-                timestamp: "2026-05-13T08:30:00-04:00",
-                estimated_height: 2.2,
-                units: "ft",
-                trend: "rising",
-                height_pct: 0.52,
-              },
-            },
-          }
-        : conditionsPayload,
+      json:
+        locationCode === "sfo"
+          ? sfoConditionsPayload
+          : at
+            ? {
+                ...conditionsPayload,
+                current: {
+                  ...conditionsPayload.current,
+                  timestamp: "2026-05-13T08:30:00",
+                  magnitude: 1.4,
+                  trend: "easing",
+                },
+                tides: {
+                  ...conditionsPayload.tides,
+                  state: {
+                    timestamp: "2026-05-13T08:30:00-04:00",
+                    estimated_height: 2.2,
+                    units: "ft",
+                    trend: "rising",
+                    height_pct: 0.52,
+                  },
+                },
+              }
+            : conditionsPayload,
     });
   });
   await page.route("https://goodservice.io/api/routes/**", async (route) => {
@@ -260,6 +319,73 @@ test("renders the default app route without redirecting to /app/nyc", async ({
     page.getByRole("heading", { name: "shall we swim today?" }),
   ).toBeVisible();
   await expect(page.getByText("61.4°F")).toBeVisible();
+});
+
+test("restores the last selected location from local preferences", async ({
+  page,
+}) => {
+  await page.goto("/app/sfo");
+
+  await expect(
+    page.getByRole("heading", { name: "shall we swim today?" }),
+  ).toBeVisible();
+  await expect(page.getByText("Aquatic Park")).toBeVisible();
+  await expect(page.getByText("55.2°F")).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        JSON.parse(
+          window.localStorage.getItem("shallweswim.appPreferences") ?? "{}",
+        ),
+      ),
+    )
+    .toMatchObject({
+      version: 1,
+      lastLocationCode: "sfo",
+      installPrompt: { organicVisitCount: 1 },
+    });
+
+  await page.goto("/app/");
+
+  await expect(page).toHaveURL(/\/app\/$/);
+  await expect(page.getByText("Aquatic Park")).toBeVisible();
+  await expect(page.getByText("55.2°F")).toBeVisible();
+
+  await page.evaluate(() => {
+    window.localStorage.setItem(
+      "shallweswim.appPreferences",
+      JSON.stringify({
+        version: 1,
+        lastLocationCode: "missing",
+        installPrompt: { organicVisitCount: 4 },
+      }),
+    );
+  });
+  await page.goto("/app/");
+
+  await expect(page.getByText("Grimaldo's Chair")).toBeVisible();
+  await expect(page.getByText("61.4°F")).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        JSON.parse(
+          window.localStorage.getItem("shallweswim.appPreferences") ?? "{}",
+        ),
+      ),
+    )
+    .toMatchObject({
+      installPrompt: { organicVisitCount: 5 },
+    });
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        () =>
+          JSON.parse(
+            window.localStorage.getItem("shallweswim.appPreferences") ?? "{}",
+          ).lastLocationCode,
+      ),
+    )
+    .toBeUndefined();
 });
 
 test("renders the NYC location vertical slice", async ({ page }) => {

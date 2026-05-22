@@ -1340,7 +1340,14 @@ messaging.
 The installable app should remember the user's last viewed location so reopening
 from a phone home screen returns to the relevant swim location.
 
-Initial behavior:
+Persisted app state is client-only preference state. Store it in
+`localStorage`, not cookies, because the backend does not need these values and
+they should not be sent with requests. Treat the store as best-effort: it can be
+missing, unavailable, invalid, or cleared by the user at any time. Do not store
+secrets, live condition payloads, precise user location, or third-party API
+responses.
+
+Current behavior:
 
 - Explicit routes remain authoritative. Visiting `/app/nyc` should render NYC
   regardless of previously persisted state.
@@ -1351,15 +1358,18 @@ Initial behavior:
   location.
 - Prefer preserving the `/app` URL rather than redirecting solely to restore
   state, unless routing or analytics needs make canonicalization useful later.
-- Do not persist sensitive data, live condition payloads, or external API
-  responses. This is UI preference state only.
 - If `localStorage` is unavailable, private, or cleared, silently fall back to
   the default location.
+- Record a local `organicVisitCount` for the future install-app prompt. This is
+  not analytics: it stays on the device, is not sent to the backend, and exists
+  only so the UI can avoid showing a prompt before the user has demonstrated
+  repeat interest.
 
 Potential future persisted preferences:
 
 - selected temperature plot mode
 - dismissed existing-site adoption banner
+- dismissed or snoozed install-app prompt
 - preferred units if the app ever supports more than Fahrenheit
 
 ## External Embeds And Third-Party Data

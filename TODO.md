@@ -87,6 +87,12 @@
   more cases here when new cross-stack behavior lands, such as smart presets,
   non-NYC fallback behavior, predicted water temperature, and user-facing API
   error states.
+- Add the install-app butter bar once the React app is ready to promote as an
+  installable experience. The local preference store already records
+  `installPrompt.organicVisitCount` for this purpose; use it only as on-device UI
+  state, not analytics. The prompt should appear only after enough organic use,
+  should not appear in standalone/PWA display mode, and should support permanent
+  dismissal via the same local preference store.
 
 ## Future Tide Curve Source Upgrade
 

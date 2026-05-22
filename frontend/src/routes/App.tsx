@@ -1,7 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { BrowserRouter, Route, Routes, useParams } from "react-router-dom";
 import { useAppBootstrap } from "../api/bootstrap";
 import { AppShell } from "../components/AppShell";
+import {
+  clearLastLocationCode,
+  getLastLocationCode,
+  recordAppVisit,
+  setLastLocationCode,
+} from "../lib/preferences";
 import { LocationPage } from "../pages/LocationPage";
 import { LocationPlaceholderPage } from "../pages/LocationPlaceholderPage";
 import { LocationsPlaceholderPage } from "../pages/LocationsPlaceholderPage";
@@ -19,6 +26,18 @@ const queryClient = new QueryClient({
 
 function DefaultLocationPage() {
   const bootstrap = useAppBootstrap();
+  const savedLocationCode = getLastLocationCode();
+  const savedLocationIsValid = Boolean(
+    bootstrap.data &&
+      savedLocationCode &&
+      bootstrap.data.locations[savedLocationCode],
+  );
+
+  useEffect(() => {
+    if (bootstrap.data && savedLocationCode && !savedLocationIsValid) {
+      clearLastLocationCode();
+    }
+  }, [bootstrap.data, savedLocationCode, savedLocationIsValid]);
 
   if (bootstrap.isLoading) {
     return <LocationPlaceholderPage preserveDefaultUrl />;
@@ -28,11 +47,13 @@ function DefaultLocationPage() {
     return <LocationPlaceholderPage preserveDefaultUrl />;
   }
 
+  const locationCode =
+    savedLocationIsValid && savedLocationCode
+      ? savedLocationCode
+      : bootstrap.data.default_location_code;
+
   return (
-    <LocationPage
-      bootstrap={bootstrap.data}
-      locationCode={bootstrap.data.default_location_code}
-    />
+    <LocationPage bootstrap={bootstrap.data} locationCode={locationCode} />
   );
 }
 
@@ -41,6 +62,12 @@ function LocationRoute() {
   const bootstrap = useAppBootstrap();
   const effectiveCode =
     locationCode ?? bootstrap.data?.default_location_code ?? "nyc";
+
+  useEffect(() => {
+    if (bootstrap.data?.locations[effectiveCode]) {
+      setLastLocationCode(effectiveCode);
+    }
+  }, [bootstrap.data, effectiveCode]);
 
   if (bootstrap.isLoading || bootstrap.isError || !bootstrap.data) {
     return <LocationPlaceholderPage locationCode={locationCode} />;
@@ -56,6 +83,10 @@ function LocationRoute() {
 }
 
 export function App() {
+  useEffect(() => {
+    recordAppVisit();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter basename="/app">

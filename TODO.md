@@ -4,42 +4,60 @@
 
 ### 1. Webcam Follow-Ups
 
-- Keep provider scripts out of the React runtime unless there is no contained
-  alternative. SDF uses the direct EarthCam player iframe URL because the legacy
+- SDF EarthCam parity is in place and verified on `shallweswim.today`. Keep
+  provider scripts out of the React runtime unless there is no contained
+  alternative; SDF uses the direct EarthCam player iframe URL because the legacy
   script depends on `document.write` and fails when dynamically mounted by
   React.
 - After the first feature-parity pass, revisit SDF EarthCam specifically. Keep
   the named EarthCam provider, but verify whether a more official iframe URL or
   provider-supported embed contract exists.
-- After deploying location parity to `shallweswim.today`, verify the SDF
-  EarthCam player on the production domain. Localhost is not a reliable test
-  because EarthCam whitelists allowed referrers.
+- Localhost is not a reliable SDF EarthCam playback test because EarthCam
+  whitelists allowed referrers. Use production-domain verification for future
+  EarthCam changes.
 
-### 2. All Locations And Root Launch
+### 2. All Locations Parity
 
-- Add an explicit location-code alias mechanism before or during root launch if
-  we want friendly alternate URLs. Model aliases in typed `LocationConfig`, keep
-  bootstrap/location order canonical, and redirect alias routes to the canonical
-  location URL rather than rendering duplicate canonical pages.
-- Promote React to the default site once location parity is good enough. Move
-  Jinja pages under a temporary `/legacy` namespace, change canonical routes from
-  `/app/{loc}` to `/{loc}`, make `/` load the default/saved location dashboard,
-  make `/locations` the React all-locations/status page, and update Vite base,
-  React Router basename, FastAPI route ordering, manifest `start_url`/`scope`,
-  canonical/meta tags, persisted-location behavior, and tests. Reuse the
-  existing manifest/config generation path where possible; the root launch
-  should change emitted manifest values rather than add a parallel manifest
-  system. Keep `/api/...`, `/static/...`, `/legacy/...`, and frontend asset
-  routes explicitly reserved so root-mounted React routing does not mask them.
-  Remove the `/app` route after the root-mounted React launch rather than
-  keeping it as a long-lived alias.
+- Do a systematic parity smoke pass across all React location pages before any
+  launch work:
+  - `nyc`: temperature, water movement, planner, YouTube webcam, transit,
+    Windy, plots, sources.
+  - `chi`: temperature, iframe webcam, Windy, plots, sources, and no water
+    movement/planner.
+  - `sdf`: temperature, observed water movement, EarthCam iframe webcam, Windy,
+    plots, sources, and no planner unless river projections are explicitly
+    added.
+  - `san`, `sfo`, `bos`, `sea`: temperature, tide-only water movement, planner,
+    Windy, plots, sources.
+  - `aus`: temperature, Windy, plots, sources, and no water movement/planner.
 
 ### 3. Coverage
 
 - Add backend and frontend coverage for the parity work: bootstrap integration
-  config by location, NYC YouTube webcam, CHI iframe webcam, SDF EarthCam or
-  explicit external-link behavior, and root-route ownership before removing
-  `/app`.
+  config by location, NYC YouTube webcam, CHI iframe webcam, SDF EarthCam iframe
+  behavior, feature-driven absence of unsupported sections, and all-location
+  status behavior.
+
+## Launch Parking Lot
+
+- Do not start launch work until explicitly requested. "Launch" means moving
+  the React app out of `/app` and making it the default root-location
+  experience.
+- Add an explicit location-code alias mechanism if we want friendly alternate
+  URLs. Model aliases in typed `LocationConfig`, keep bootstrap/location order
+  canonical, and redirect alias routes to the canonical location URL rather than
+  rendering duplicate canonical pages.
+- When launch is requested, move Jinja pages under a temporary `/legacy`
+  namespace, change canonical routes from `/app/{loc}` to `/{loc}`, make `/`
+  load the default/saved location dashboard, make `/locations` the React
+  all-locations/status page, and update Vite base, React Router basename,
+  FastAPI route ordering, manifest `start_url`/`scope`, canonical/meta tags,
+  persisted-location behavior, and tests. Reuse the existing manifest/config
+  generation path where possible; the launch should change emitted manifest
+  values rather than add a parallel manifest system. Keep `/api/...`,
+  `/static/...`, `/legacy/...`, and frontend asset routes explicitly reserved so
+  root-mounted React routing does not mask them. Remove the `/app` route after
+  root launch rather than keeping it as a long-lived alias.
 
 ## Tech Debt
 

@@ -647,23 +647,30 @@ test("renders a named EarthCam provider with contained script ownership", async 
     },
   };
 
-  renderLocation({ bootstrap, locationCode: "sdf" });
+  const { unmount } = renderLocation({ bootstrap, locationCode: "sdf" });
 
   expect(
     await screen.findByRole("heading", { name: "Live Webcam" }),
   ).toBeVisible();
+  const embedRoot = document.querySelector("[data-earthcam-embed-root]");
+  expect(embedRoot).not.toBeNull();
   await waitFor(() => {
-    expect(document.querySelector("script.earthcam-embed")).toHaveAttribute(
+    expect(embedRoot?.querySelector("script.earthcam-embed")).toHaveAttribute(
       "src",
       "https://share.earthcam.net/embed/test",
     );
   });
+  expect(document.querySelectorAll("script.earthcam-embed")).toHaveLength(1);
   expect(
     screen.getByText("View overlooking Toehead Island swim channel"),
   ).toBeVisible();
   expect(
     screen.getByRole("link", { name: "EarthCam Ohio River" }),
   ).toHaveAttribute("href", "https://www.earthcam.com/test");
+
+  unmount();
+
+  expect(document.querySelector("script.earthcam-embed")).toBeNull();
 });
 
 test("planner mode shifts all time-aware water movement elements", async () => {

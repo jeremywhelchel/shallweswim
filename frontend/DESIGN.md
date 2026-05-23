@@ -652,7 +652,11 @@ that intentionally in config, for example as `type: external_link`. Unknown
 provider types should fail loudly in development/tests instead of silently
 rendering a generic substitute. For parity, SDF may initially keep the legacy
 EarthCam script embed, but it should be represented as a named EarthCam provider
-rather than a generic "run arbitrary script" capability. After location parity,
+rather than a generic "run arbitrary script" capability. The React component
+owns and clears a dedicated EarthCam mount point so navigation does not leave
+third-party DOM behind. Localhost is not a valid end-to-end playback test for
+SDF because EarthCam whitelists allowed referrers; final playback must be
+verified after deployment on the production domain. After location parity,
 revisit that provider and prefer an iframe or similarly contained integration if
 one is available.
 

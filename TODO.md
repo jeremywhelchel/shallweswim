@@ -13,6 +13,9 @@
   if that is not feasible, keep a named EarthCam component with explicit cleanup,
   navigation behavior tests, and a clear decision that the third-party script is
   acceptable for this app.
+- After deploying location parity to `shallweswim.today`, verify the SDF
+  EarthCam player on the production domain. Localhost is not a reliable test
+  because EarthCam whitelists allowed referrers.
 
 ### 2. All Locations And Root Launch
 

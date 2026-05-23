@@ -1702,6 +1702,7 @@ function EarthCamEmbed({ config }: { config: AppWebcamConfig }) {
     <div>
       <div
         className="aspect-video overflow-hidden rounded bg-[#ddd]"
+        data-earthcam-embed-root=""
         ref={containerRef}
       />
       {config.note ? (

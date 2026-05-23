@@ -16,10 +16,6 @@
 
 ### 2. All Locations And Root Launch
 
-- Replace the `/app/locations` placeholder with an all-locations/status page
-  matching the useful parts of the legacy `/all` page. Also remove stale nav
-  copy such as "Additional locations are in the works" once all configured
-  locations are first-class React routes.
 - Promote React to the default site once location parity is good enough. Move
   Jinja pages under a temporary `/legacy` namespace, change canonical routes from
   `/app/{loc}` to `/{loc}`, make `/` load the default/saved location dashboard,

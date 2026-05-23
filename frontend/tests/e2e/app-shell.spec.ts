@@ -392,6 +392,22 @@ test("restores the last selected location from local preferences", async ({
     .toBeUndefined();
 });
 
+test("renders the all locations page", async ({ page }) => {
+  await page.goto("/app/locations");
+
+  await expect(
+    page.getByRole("heading", { name: "All Swim Locations" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: /New York/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /San Francisco/ })).toBeVisible();
+  await expect(page.getByText("61.4°F")).toBeVisible();
+  await expect(page.getByText("55.2°F")).toBeVisible();
+  await expect(page.getByText(/Data from Coney Island/)).toBeVisible();
+  await expect(page.getByText(/Data from San Francisco/)).toBeVisible();
+  await expect(page.getByText("Temp").first()).toBeVisible();
+  await expect(page.getByText("Webcam").first()).toBeVisible();
+});
+
 test("renders the NYC location vertical slice", async ({ page }) => {
   await page.goto("/app/nyc");
 

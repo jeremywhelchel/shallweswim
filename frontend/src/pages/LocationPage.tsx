@@ -2133,9 +2133,6 @@ function LocationNav({
   return (
     <div className="mt-4">
       <h3 className="font-semibold text-lg">Locations</h3>
-      <p className="mt-1 text-sm text-slate-600">
-        Additional locations are in the works.
-      </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {bootstrap.location_order.map((code) => (
           <Link

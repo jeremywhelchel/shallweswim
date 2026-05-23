@@ -10,6 +10,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { components } from "../api/generated";
 import type { TransitStatus } from "../api/transit";
 import { ConditionsSummary, LocationPage } from "../pages/LocationPage";
+import { LocationsPage } from "../pages/LocationsPage";
 
 const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
   app_name: "Shall We Swim",
@@ -351,6 +352,93 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(
     screen.queryByRole("img", { name: /^Tide and current plot/ }),
   ).not.toBeInTheDocument();
+});
+
+test("renders all configured locations from bootstrap metadata", () => {
+  const sdfConditions: components["schemas"]["LocationConditions"] = {
+    ...conditionsPayload,
+    location: {
+      code: "sdf",
+      name: "Louisville",
+      swim_location: "Community Boathouse",
+    },
+    temperature: {
+      timestamp: "2026-05-13T07:30:00-04:00",
+      water_temp: 66.7,
+      units: "F",
+      station_name: "Ohio River at Water Tower",
+    },
+    current: {
+      ...(conditionsPayload.current as components["schemas"]["CurrentInfo"]),
+      source_type: "observation",
+    },
+    tides: null,
+  };
+  const bootstrap: components["schemas"]["AppBootstrapResponse"] = {
+    ...bootstrapPayload,
+    location_order: ["nyc", "sdf"],
+    locations: {
+      ...bootstrapPayload.locations,
+      sdf: {
+        ...bootstrapPayload.locations.nyc,
+        metadata: {
+          ...bootstrapPayload.locations.nyc.metadata,
+          code: "sdf",
+          name: "Louisville",
+          nav_label: "Louisville",
+          swim_location: "Community Boathouse",
+          description: "Louisville Kentucky open water swimming conditions",
+          features: {
+            ...bootstrapPayload.locations.nyc.metadata.features,
+            tides: false,
+            currents: true,
+            transit: false,
+          },
+        },
+        integrations: {
+          webcam: null,
+          transit_routes: [],
+          transit_source: null,
+        },
+      },
+    },
+  };
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+    },
+  });
+  queryClient.setQueryData(
+    ["location-conditions", "nyc", null],
+    conditionsPayload,
+  );
+  queryClient.setQueryData(["location-conditions", "sdf", null], sdfConditions);
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <LocationsPage bootstrap={bootstrap} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  expect(
+    screen.getByRole("heading", { name: "All Swim Locations" }),
+  ).toBeVisible();
+  expect(screen.getByRole("link", { name: /New York/ })).toHaveAttribute(
+    "href",
+    "/nyc",
+  );
+  expect(screen.getByRole("link", { name: /Louisville/ })).toHaveAttribute(
+    "href",
+    "/sdf",
+  );
+  expect(screen.getByText("61.4°F")).toBeVisible();
+  expect(screen.getByText("66.7°F")).toBeVisible();
+  expect(screen.getByText(/Data from Coney Island/)).toBeVisible();
+  expect(screen.getByText(/Data from Ohio River at Water Tower/)).toBeVisible();
+  expect(screen.getByText("Observed flow")).toBeVisible();
+  expect(screen.getAllByText("Transit").length).toBeGreaterThan(0);
 });
 
 test("renders not-scheduled transit without an unavailable destination", async () => {

@@ -11,7 +11,7 @@ import {
 } from "../lib/preferences";
 import { LocationPage } from "../pages/LocationPage";
 import { LocationPlaceholderPage } from "../pages/LocationPlaceholderPage";
-import { LocationsPlaceholderPage } from "../pages/LocationsPlaceholderPage";
+import { LocationsRoutePage } from "../pages/LocationsPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 
 const queryClient = new QueryClient({
@@ -93,7 +93,7 @@ export function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<DefaultLocationPage />} />
-            <Route path="locations" element={<LocationsPlaceholderPage />} />
+            <Route path="locations" element={<LocationsRoutePage />} />
             <Route path=":locationCode" element={<LocationRoute />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

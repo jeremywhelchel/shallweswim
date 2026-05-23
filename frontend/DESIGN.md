@@ -769,7 +769,11 @@ Route scope:
   planning surface lives in the Water Movement card on the dashboard
   (Milestone 3); deep links use `?planner=open&at=...` for the scrubber
   and `?detail=open&at=...` for the supporting detail panel.
-- `/app/locations` remains a placeholder in this milestone.
+- `/app/locations` renders a React all-locations status page: bootstrap provides
+  the configured locations and capability chips, and each card fetches
+  `/api/{loc}/conditions` for the latest water temperature, station, and
+  timestamp. Per-location failures render unavailable states without blocking
+  the rest of the page.
 - Unsupported location codes can continue using placeholder or not-found
   behavior until Milestone 3 generalizes location pages.
 
@@ -1207,9 +1211,10 @@ time jumps and broader location support.
   per-location frontend modules rare; use one only when a location needs custom
   local interpretation rather than generic provider/capability rendering.
 
-`/app/locations` (all-locations grid, matching the Jinja `/all` page)
-and the embed widget (`/{loc}/widget`) decisions stay in this milestone
-but are independent of the dashboard rework.
+`/app/locations` is now a temperature-forward all-locations status grid backed
+by bootstrap metadata plus per-location conditions requests. Richer
+cross-location condition summaries and the embed widget (`/{loc}/widget`)
+decisions stay in this milestone but are independent of the dashboard rework.
 
 #### Backend follow-up track
 

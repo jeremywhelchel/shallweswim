@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAppBootstrap } from "../api/bootstrap";
+import { PageMessage } from "../components/PageMessage";
 
 type LocationPlaceholderPageProps = {
   locationCode?: string;
@@ -16,12 +17,12 @@ export function LocationPlaceholderPage({
   const location = bootstrap.data?.locations[effectiveCode]?.metadata;
 
   if (bootstrap.isLoading) {
-    return <ShellMessage title="Loading app shell" />;
+    return <PageMessage title="Loading app shell" />;
   }
 
   if (bootstrap.isError) {
     return (
-      <ShellMessage
+      <PageMessage
         tone="warning"
         title="App metadata is unavailable"
         body="The React shell loaded, but bootstrap metadata could not be fetched."
@@ -31,7 +32,7 @@ export function LocationPlaceholderPage({
 
   if (!location) {
     return (
-      <ShellMessage
+      <PageMessage
         tone="warning"
         title="Location not found"
         body={`No app metadata exists for ${effectiveCode}.`}
@@ -89,27 +90,5 @@ function StatusTile({ label, enabled }: { label: string; enabled: boolean }) {
         {enabled ? "Configured" : "Not configured"}
       </p>
     </div>
-  );
-}
-
-function ShellMessage({
-  title,
-  body,
-  tone = "neutral",
-}: {
-  title: string;
-  body?: string;
-  tone?: "neutral" | "warning";
-}) {
-  return (
-    <section
-      className={[
-        "rounded border bg-white p-4",
-        tone === "warning" ? "border-swim-alert" : "border-swim-line",
-      ].join(" ")}
-    >
-      <h1 className="font-semibold text-xl">{title}</h1>
-      {body ? <p className="mt-2 text-slate-700">{body}</p> : null}
-    </section>
   );
 }

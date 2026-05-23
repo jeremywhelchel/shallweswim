@@ -23,9 +23,10 @@
 
 - Add an observed-flow treatment for SDF. The React app now separates Water
   Movement visibility, planner support, and detail support; tide-backed
-  locations can use the planner, CHI/AUS omit Water Movement, and NYC keeps the
-  current+tide detail product. SDF still needs a river-current presentation that
-  is clearly observed flow rather than tidal prediction.
+  locations can use the planner with tide-position copy, CHI/AUS/SDF omit the
+  tidal Water Movement card, and NYC keeps the current+tide detail product. SDF
+  still needs a river-current presentation that is clearly observed flow rather
+  than tidal prediction.
 
 ### 3. All Locations And Root Launch
 

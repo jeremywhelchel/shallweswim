@@ -68,9 +68,7 @@ declare global {
 export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
   const location = bootstrap.locations[locationCode];
   const [searchParams, setSearchParams] = useSearchParams();
-  const showsWaterMovement = Boolean(
-    location?.metadata.features.tides || location?.metadata.features.currents,
-  );
+  const showsWaterMovement = Boolean(location?.metadata.features.tides);
   const supportsWaterMovementPlanning = Boolean(
     location?.metadata.features.tides,
   );
@@ -1020,10 +1018,30 @@ function describeWaterMovement(
   }
 
   if (tideState?.trend) {
-    return `The tide is ${tideState.trend}.`;
+    return describeTideOnlyMovement(tideState);
   }
 
   return "Water movement is unavailable right now.";
+}
+
+function describeTideOnlyMovement(tideState: TideState) {
+  const tidePosition = describeTidePosition(tideState);
+  const trendClause =
+    tideState.trend === "steady" ? "holding steady" : tideState.trend;
+  if (tidePosition) {
+    return `It's ${tidePosition}, and the tide is ${trendClause}.`;
+  }
+
+  switch (tideState.trend) {
+    case "rising":
+      return "The tide is rising toward high tide.";
+    case "falling":
+      return "The tide is falling toward low tide.";
+    case "steady":
+      return "The tide is holding steady.";
+    default:
+      return `The tide is ${tideState.trend}.`;
+  }
 }
 
 function currentTidePrefix(tideState?: TideState | null) {

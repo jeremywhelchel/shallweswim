@@ -729,7 +729,9 @@ test("supports planner mode for tide-only locations without detail controls", ()
   });
 
   expect(screen.getByRole("heading", { name: "Water Movement" })).toBeVisible();
-  expect(screen.getByText("The tide is rising.")).toBeVisible();
+  expect(
+    screen.getByText("The tide is rising toward high tide."),
+  ).toBeVisible();
   expect(screen.getByRole("button", { name: "Plan" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
   expect(screen.getByRole("region", { name: "Planner mode" })).toBeVisible();
@@ -738,6 +740,43 @@ test("supports planner mode for tide-only locations without detail controls", ()
   expect(
     screen.queryByRole("img", { name: /^Tide and current plot/ }),
   ).not.toBeInTheDocument();
+});
+
+test("omits tidal water movement for observed-current locations without tides", () => {
+  const bootstrap: components["schemas"]["AppBootstrapResponse"] = {
+    ...bootstrapPayload,
+    location_order: ["nyc", "sdf"],
+    locations: {
+      ...bootstrapPayload.locations,
+      sdf: {
+        ...bootstrapPayload.locations.nyc,
+        metadata: {
+          ...bootstrapPayload.locations.nyc.metadata,
+          code: "sdf",
+          name: "Louisville",
+          nav_label: "Louisville",
+          swim_location: "Community Boathouse",
+          features: {
+            ...bootstrapPayload.locations.nyc.metadata.features,
+            currents: true,
+            tides: false,
+          },
+        },
+      },
+    },
+  };
+
+  renderLocation({
+    bootstrap,
+    initialEntry: "/sdf?planner=open",
+    locationCode: "sdf",
+  });
+
+  expect(
+    screen.queryByRole("heading", { name: "Water Movement" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Plan" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
 });
 
 test("renders unavailable condition states on first-load failure", () => {
@@ -950,10 +989,27 @@ test("describes tide-only water movement when currents are unavailable", () => {
     tides: {
       past: conditionsPayload.tides?.past ?? [],
       next: conditionsPayload.tides?.next ?? [],
-      state: tideState("falling", 0.5),
+      state: tideState("falling", 0.96),
     },
     current: null,
   });
 
-  expect(screen.getByText("The tide is falling.")).toBeVisible();
+  expect(
+    screen.getByText("It's at high tide, and the tide is falling."),
+  ).toBeVisible();
+});
+
+test("describes mid-cycle tide-only water movement with target tide", () => {
+  renderConditions({
+    tides: {
+      past: conditionsPayload.tides?.past ?? [],
+      next: conditionsPayload.tides?.next ?? [],
+      state: tideState("rising", 0.5),
+    },
+    current: null,
+  });
+
+  expect(
+    screen.getByText("The tide is rising toward high tide."),
+  ).toBeVisible();
 });

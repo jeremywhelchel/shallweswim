@@ -390,7 +390,7 @@ class WebcamConfig(BaseModel, frozen=True):
     ] = None
     script_url: Annotated[
         str | None,
-        Field(description="Provider script URL for named script-based embeds"),
+        Field(description="Provider script URL for legacy script-based embeds"),
     ] = None
     watch_url: Annotated[
         str | None,
@@ -424,8 +424,11 @@ class WebcamConfig(BaseModel, frozen=True):
             )
         if self.provider == types.WebcamProvider.IFRAME and not self.embed_url:
             raise ValueError("iframe webcams require embed_url")
-        if self.provider == types.WebcamProvider.EARTHCAM_EMBED and not self.script_url:
-            raise ValueError("earthcam_embed webcams require script_url")
+        if self.provider == types.WebcamProvider.EARTHCAM_EMBED:
+            if not self.embed_url:
+                raise ValueError("earthcam_embed webcams require embed_url")
+            if self.script_url:
+                raise ValueError("earthcam_embed webcams must not use script_url")
         if self.provider == types.WebcamProvider.EXTERNAL_LINK and not self.watch_url:
             raise ValueError("external_link webcams require watch_url")
         return self
@@ -821,11 +824,11 @@ _CONFIG_LIST = [
                 provider=types.WebcamProvider.EARTHCAM_EMBED,
                 label="Live webcam",
                 # EarthCam whitelists allowed referrers, so this embed is not
-                # expected to render fully on localhost even when the script
-                # request succeeds. Production shallweswim.today is allowed.
-                script_url=(
-                    "https://share.earthcam.net/embed/"
-                    "tJ90CoLmq7TzrY396Yd88MLlsVJ_gbpo-FtC9zSX1TI/"
+                # expected to render fully on localhost. Production
+                # shallweswim.today is allowed.
+                embed_url=(
+                    "https://share.earthcam.net/"
+                    "tJ90CoLmq7TzrY396Yd88MLlsVJ_gbpo-FtC9zSX1TI."
                     "tJ90CoLmq7TzrY396Yd88Cwp1ulcCteQSnD-A42I2VI"
                 ),
                 watch_url="https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver",

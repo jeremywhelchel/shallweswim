@@ -432,7 +432,7 @@
                 "type": "null"
               }
             ],
-            "description": "Provider script URL for named script-based embeds",
+            "description": "Provider script URL for legacy script-based embeds",
             "title": "Script Url"
           },
           "source": {

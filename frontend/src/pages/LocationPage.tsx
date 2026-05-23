@@ -1672,39 +1672,26 @@ function IframeWebcamEmbed({ config }: { config: AppWebcamConfig }) {
 }
 
 function EarthCamEmbed({ config }: { config: AppWebcamConfig }) {
-  const scriptUrl = requireWebcamField(
-    config.script_url,
+  const embedUrl = requireWebcamField(
+    config.embed_url,
     config.provider,
-    "script_url",
+    "embed_url",
   );
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-
-    container.replaceChildren();
-    const script = document.createElement("script");
-    script.className = "earthcam-embed";
-    script.setAttribute("aria-label", "earthcam-embed");
-    script.src = scriptUrl;
-    script.type = "text/javascript";
-    container.append(script);
-
-    return () => {
-      container.replaceChildren();
-    };
-  }, [scriptUrl]);
 
   return (
     <div>
       <div
         className="aspect-video overflow-hidden rounded bg-[#ddd]"
         data-earthcam-embed-root=""
-        ref={containerRef}
-      />
+      >
+        <iframe
+          allowFullScreen
+          className="block h-full w-full border-0"
+          scrolling="no"
+          src={embedUrl}
+          title={config.label}
+        />
+      </div>
       {config.note ? (
         <p className="mt-2 text-sm text-slate-600">{config.note}</p>
       ) : null}

@@ -4,15 +4,13 @@
 
 ### 1. Webcam Follow-Ups
 
-- Treat provider scripts as explicit provider integrations, not arbitrary
-  fallback behavior. If SDF keeps the EarthCam script embed, model that as a
-  named provider with contained DOM ownership and tests so it is obvious what
-  third-party code is allowed to mutate.
-- After the first feature-parity pass, revisit SDF EarthCam specifically. Try to
-  replace the script-style embed with an iframe or other contained integration;
-  if that is not feasible, keep a named EarthCam component with explicit cleanup,
-  navigation behavior tests, and a clear decision that the third-party script is
-  acceptable for this app.
+- Keep provider scripts out of the React runtime unless there is no contained
+  alternative. SDF uses the direct EarthCam player iframe URL because the legacy
+  script depends on `document.write` and fails when dynamically mounted by
+  React.
+- After the first feature-parity pass, revisit SDF EarthCam specifically. Keep
+  the named EarthCam provider, but verify whether a more official iframe URL or
+  provider-supported embed contract exists.
 - After deploying location parity to `shallweswim.today`, verify the SDF
   EarthCam player on the production domain. Localhost is not a reliable test
   because EarthCam whitelists allowed referrers.

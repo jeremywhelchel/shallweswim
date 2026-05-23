@@ -438,7 +438,7 @@ class AppWebcamConfig(BaseModel):
         None, description="Embeddable iframe or provider URL when available"
     )
     script_url: str | None = Field(
-        None, description="Provider script URL for named script-based embeds"
+        None, description="Provider script URL for legacy script-based embeds"
     )
     watch_url: str | None = Field(
         None, description="External watch page URL when available"

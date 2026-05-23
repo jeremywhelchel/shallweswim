@@ -874,7 +874,7 @@ export interface components {
             provider: components["schemas"]["WebcamProvider"];
             /**
              * Script Url
-             * @description Provider script URL for named script-based embeds
+             * @description Provider script URL for legacy script-based embeds
              */
             script_url?: string | null;
             /** @description Primary webcam source or citation link */

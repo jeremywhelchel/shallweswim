@@ -293,9 +293,10 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     sdf = data["locations"]["sdf"]
     assert sdf["metadata"]["features"]["webcam"] is True
     assert sdf["integrations"]["webcam"]["provider"] == "earthcam_embed"
-    assert sdf["integrations"]["webcam"]["script_url"].startswith(
-        "https://share.earthcam.net/embed/"
+    assert sdf["integrations"]["webcam"]["embed_url"].startswith(
+        "https://share.earthcam.net/"
     )
+    assert sdf["integrations"]["webcam"]["script_url"] is None
 
 
 def test_get_location_conditions(

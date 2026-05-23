@@ -650,15 +650,14 @@ rather than stable integration metadata.
 Avoid implicit fallbacks. If an embed cannot or should not be rendered, represent
 that intentionally in config, for example as `type: external_link`. Unknown
 provider types should fail loudly in development/tests instead of silently
-rendering a generic substitute. For parity, SDF may initially keep the legacy
-EarthCam script embed, but it should be represented as a named EarthCam provider
-rather than a generic "run arbitrary script" capability. The React component
-owns and clears a dedicated EarthCam mount point so navigation does not leave
-third-party DOM behind. Localhost is not a valid end-to-end playback test for
-SDF because EarthCam whitelists allowed referrers; final playback must be
-verified after deployment on the production domain. After location parity,
-revisit that provider and prefer an iframe or similarly contained integration if
-one is available.
+rendering a generic substitute. SDF uses a named EarthCam provider rendered as a
+direct player iframe rather than the legacy EarthCam script. The script depends
+on `document.write`, which fails when dynamically mounted by React and is not a
+good runtime contract for this app. Localhost is not a valid end-to-end playback
+test for SDF because EarthCam whitelists allowed referrers; final playback must
+be verified after deployment on the production domain. After location parity,
+revisit that provider and prefer a more official iframe contract if one is
+available.
 
 Do not expose station IDs or backend feed internals through this endpoint unless
 there is a clear frontend need and explicit approval. The endpoint is for

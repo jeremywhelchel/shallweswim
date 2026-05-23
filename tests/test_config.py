@@ -74,7 +74,7 @@ def test_presentation_integrations_are_typed() -> None:
     assert sdf is not None
     assert sdf.presentation.webcam is not None
     assert sdf.presentation.webcam.provider == sw_types.WebcamProvider.EARTHCAM_EMBED
-    assert sdf.presentation.webcam.script_url is not None
+    assert sdf.presentation.webcam.embed_url is not None
 
 
 def configured_composite_feeds() -> list[CompositeFeed]:
@@ -167,6 +167,19 @@ def test_webcam_provider_requires_rendering_url() -> None:
 
     with pytest.raises(pydantic.ValidationError):
         config.WebcamConfig(provider="earthcam_embed")
+
+    with pytest.raises(pydantic.ValidationError):
+        config.WebcamConfig(
+            provider="earthcam_embed",
+            embed_url="https://share.earthcam.net/test.player",
+            script_url="https://share.earthcam.net/embed/test",
+        )
+
+    earthcam = config.WebcamConfig(
+        provider="earthcam_embed",
+        embed_url="https://share.earthcam.net/test.player",
+    )
+    assert earthcam.embed_url == "https://share.earthcam.net/test.player"
 
 
 def test_timezone_objects() -> None:

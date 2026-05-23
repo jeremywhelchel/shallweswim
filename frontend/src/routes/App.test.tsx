@@ -155,12 +155,16 @@ const shiftedConditionsPayload: components["schemas"]["LocationConditions"] = {
 
 function renderLocation({
   bootstrap = bootstrapPayload,
+  conditions = conditionsPayload,
   initialEntry = "/",
   locationCode = "nyc",
+  shiftedConditions = shiftedConditionsPayload,
 }: {
   bootstrap?: components["schemas"]["AppBootstrapResponse"];
+  conditions?: components["schemas"]["LocationConditions"];
   initialEntry?: string;
   locationCode?: string;
+  shiftedConditions?: components["schemas"]["LocationConditions"];
 } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -168,18 +172,18 @@ function renderLocation({
     },
   });
   queryClient.setQueryData(["location-conditions", locationCode, null], {
-    ...conditionsPayload,
+    ...conditions,
     location: {
-      ...conditionsPayload.location,
+      ...conditions.location,
       code: locationCode,
     },
   });
   queryClient.setQueryData(
     ["location-conditions", locationCode, "2026-05-13T08:30:00"],
     {
-      ...shiftedConditionsPayload,
+      ...shiftedConditions,
       location: {
-        ...shiftedConditionsPayload.location,
+        ...shiftedConditions.location,
         code: locationCode,
       },
     },
@@ -646,8 +650,8 @@ test("at shifts water movement without opening planner or detail panels", async 
   expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();
 });
 
-test("ignores planner query state for unsupported locations", () => {
-  const bootstrap = {
+test("omits water movement for locations without tide or current data", () => {
+  const bootstrap: components["schemas"]["AppBootstrapResponse"] = {
     ...bootstrapPayload,
     location_order: ["nyc", "chi"],
     locations: {
@@ -662,6 +666,7 @@ test("ignores planner query state for unsupported locations", () => {
           features: {
             ...bootstrapPayload.locations.nyc.metadata.features,
             currents: false,
+            tides: false,
           },
         },
       },
@@ -675,7 +680,63 @@ test("ignores planner query state for unsupported locations", () => {
   });
 
   expect(
+    screen.queryByRole("heading", { name: "Water Movement" }),
+  ).not.toBeInTheDocument();
+  expect(
     screen.queryByRole("region", { name: "Planner mode" }),
+  ).not.toBeInTheDocument();
+});
+
+test("supports planner mode for tide-only locations without detail controls", () => {
+  const tideOnlyConditions: components["schemas"]["LocationConditions"] = {
+    ...conditionsPayload,
+    current: null,
+  };
+  const shiftedTideOnlyConditions: components["schemas"]["LocationConditions"] =
+    {
+      ...shiftedConditionsPayload,
+      current: null,
+    };
+  const bootstrap: components["schemas"]["AppBootstrapResponse"] = {
+    ...bootstrapPayload,
+    location_order: ["nyc", "sfo"],
+    locations: {
+      ...bootstrapPayload.locations,
+      sfo: {
+        ...bootstrapPayload.locations.nyc,
+        metadata: {
+          ...bootstrapPayload.locations.nyc.metadata,
+          code: "sfo",
+          name: "San Francisco",
+          nav_label: "San Francisco",
+          swim_location: "Aquatic Park",
+          features: {
+            ...bootstrapPayload.locations.nyc.metadata.features,
+            currents: false,
+            tides: true,
+          },
+        },
+      },
+    },
+  };
+
+  renderLocation({
+    bootstrap,
+    conditions: tideOnlyConditions,
+    initialEntry: "/sfo?planner=open&detail=open&at=2026-05-13T08:30:00",
+    locationCode: "sfo",
+    shiftedConditions: shiftedTideOnlyConditions,
+  });
+
+  expect(screen.getByRole("heading", { name: "Water Movement" })).toBeVisible();
+  expect(screen.getByText("The tide is rising.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Plan" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+  expect(screen.getByRole("region", { name: "Planner mode" })).toBeVisible();
+  expect(screen.getByText("2.2 ft")).toBeVisible();
+  expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("img", { name: /^Tide and current plot/ }),
   ).not.toBeInTheDocument();
 });
 

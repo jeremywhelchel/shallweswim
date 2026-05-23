@@ -21,17 +21,11 @@
 
 ### 2. Water Movement Capabilities
 
-- Split Water Movement capabilities. Planner support should be enabled for
-  prediction-backed water movement, including tide-only locations
-  SAN/SFO/BOS/SEA via `/api/{loc}/conditions?at=...`. Detail support should be
-  enabled only when a matching detail product exists; today that is the
-  current+tide detail plot for current-prediction locations.
-- Remove the hard NYC planner gate in the React app. NYC should retain custom
-  detail interpretation for local current guidance, maps, and chart copy, but
-  the planner control itself should be capability-driven.
-- Make non-tidal/non-current locations intentional. CHI and AUS should not show
-  a Water Movement card. SDF should eventually get a distinct observed-flow
-  treatment rather than the prediction planner.
+- Add an observed-flow treatment for SDF. The React app now separates Water
+  Movement visibility, planner support, and detail support; tide-backed
+  locations can use the planner, CHI/AUS omit Water Movement, and NYC keeps the
+  current+tide detail product. SDF still needs a river-current presentation that
+  is clearly observed flow rather than tidal prediction.
 
 ### 3. All Locations And Root Launch
 
@@ -56,9 +50,8 @@
 
 - Add backend and frontend coverage for the parity work: bootstrap integration
   config by location, NYC YouTube webcam, CHI iframe webcam, SDF EarthCam or
-  explicit external-link behavior, tide-only planner for a non-NYC location,
-  disabled detail for tide-only locations, omitted Water Movement for CHI/AUS,
-  and root-route ownership before removing `/app`.
+  explicit external-link behavior, and root-route ownership before removing
+  `/app`.
 
 ## Tech Debt
 

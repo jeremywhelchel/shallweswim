@@ -68,12 +68,23 @@ declare global {
 export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
   const location = bootstrap.locations[locationCode];
   const [searchParams, setSearchParams] = useSearchParams();
-  const supportsWaterMovementPlanning =
-    locationCode === "nyc" && Boolean(location?.metadata.features.currents);
+  const showsWaterMovement = Boolean(
+    location?.metadata.features.tides || location?.metadata.features.currents,
+  );
+  const supportsWaterMovementPlanning = Boolean(
+    location?.metadata.features.tides,
+  );
+  const supportsWaterMovementDetail = Boolean(
+    locationCode === "nyc" &&
+      location?.metadata.features.tides &&
+      location?.metadata.features.currents,
+  );
+  const hasWaterMovementControls =
+    supportsWaterMovementPlanning || supportsWaterMovementDetail;
   const plannerOpen =
     supportsWaterMovementPlanning && searchParams.get("planner") === "open";
   const detailOpen =
-    supportsWaterMovementPlanning && searchParams.get("detail") === "open";
+    supportsWaterMovementDetail && searchParams.get("detail") === "open";
   const plannerAt = supportsWaterMovementPlanning
     ? searchParams.get("at")
     : null;
@@ -134,7 +145,7 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
     setSearchParams(next, { replace: true });
   };
   const detailPlotUrl =
-    detailOpen && supportsWaterMovementPlanning
+    detailOpen && supportsWaterMovementDetail
       ? `/api/${locationCode}/plots/current_tide${
           plannerAt ? `?at=${encodeURIComponent(plannerAt)}` : ""
         }`
@@ -164,8 +175,9 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
         conditions={conditions.data}
         hasError={conditions.isError && !conditions.data}
         isLoading={conditions.isPending}
+        showWaterMovement={showsWaterMovement}
         waterMovementControls={
-          supportsWaterMovementPlanning
+          hasWaterMovementControls
             ? {
                 at: plannerAt,
                 detailOpen,
@@ -181,6 +193,8 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
                 onSetAt: setPlannerAt,
                 plannerOpen,
                 plotUrl: detailPlotUrl,
+                supportsDetail: supportsWaterMovementDetail,
+                supportsPlanning: supportsWaterMovementPlanning,
               }
             : undefined
         }
@@ -228,11 +242,13 @@ export function ConditionsSummary({
   conditions,
   hasError,
   isLoading,
+  showWaterMovement = true,
   waterMovementControls,
 }: {
   conditions?: LocationConditions;
   hasError: boolean;
   isLoading: boolean;
+  showWaterMovement?: boolean;
   waterMovementControls?: WaterMovementControls;
 }) {
   if (isLoading) {
@@ -246,7 +262,9 @@ export function ConditionsSummary({
       className={
         detailMode
           ? "grid gap-0 rounded border border-swim-line bg-white md:gap-4 md:border-0 md:bg-transparent"
-          : "grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent"
+          : showWaterMovement
+            ? "grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent"
+            : "grid gap-0 rounded border border-swim-line bg-white md:border-0 md:bg-transparent"
       }
     >
       <TemperatureSummary
@@ -254,11 +272,13 @@ export function ConditionsSummary({
         conditions={conditions}
         hasError={hasError}
       />
-      <WaterMovementSummary
-        current={hasError ? undefined : conditions?.current}
-        tides={hasError ? undefined : conditions?.tides}
-        waterMovementControls={waterMovementControls}
-      />
+      {showWaterMovement ? (
+        <WaterMovementSummary
+          current={hasError ? undefined : conditions?.current}
+          tides={hasError ? undefined : conditions?.tides}
+          waterMovementControls={waterMovementControls}
+        />
+      ) : null}
     </section>
   );
 }
@@ -276,6 +296,8 @@ type WaterMovementControls = {
   onSetAt: (at: string | null) => void;
   plannerOpen: boolean;
   plotUrl: string | null;
+  supportsDetail: boolean;
+  supportsPlanning: boolean;
 };
 
 function TemperatureSummary({
@@ -692,40 +714,48 @@ function WaterMovementActions({
 }: {
   controls: WaterMovementControls;
 }) {
+  if (!controls.supportsDetail && !controls.supportsPlanning) {
+    return null;
+  }
+
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <button
-        aria-pressed={controls.detailOpen}
-        className={[
-          "rounded border px-2 py-1 text-xs",
-          controls.detailOpen
-            ? "border-swim-blue bg-swim-blue text-white"
-            : "border-swim-line bg-white text-swim-blue",
-        ].join(" ")}
-        onClick={
-          controls.detailOpen ? controls.onCloseDetail : controls.onOpenDetail
-        }
-        type="button"
-      >
-        Details
-      </button>
-      <button
-        aria-pressed={controls.plannerOpen}
-        className={[
-          "rounded border px-2 py-1 text-xs",
-          controls.plannerOpen
-            ? "border-swim-blue bg-swim-blue text-white"
-            : "border-swim-line bg-white text-swim-blue",
-        ].join(" ")}
-        onClick={
-          controls.plannerOpen
-            ? controls.onClosePlanner
-            : controls.onOpenPlanner
-        }
-        type="button"
-      >
-        Plan
-      </button>
+      {controls.supportsDetail ? (
+        <button
+          aria-pressed={controls.detailOpen}
+          className={[
+            "rounded border px-2 py-1 text-xs",
+            controls.detailOpen
+              ? "border-swim-blue bg-swim-blue text-white"
+              : "border-swim-line bg-white text-swim-blue",
+          ].join(" ")}
+          onClick={
+            controls.detailOpen ? controls.onCloseDetail : controls.onOpenDetail
+          }
+          type="button"
+        >
+          Details
+        </button>
+      ) : null}
+      {controls.supportsPlanning ? (
+        <button
+          aria-pressed={controls.plannerOpen}
+          className={[
+            "rounded border px-2 py-1 text-xs",
+            controls.plannerOpen
+              ? "border-swim-blue bg-swim-blue text-white"
+              : "border-swim-line bg-white text-swim-blue",
+          ].join(" ")}
+          onClick={
+            controls.plannerOpen
+              ? controls.onClosePlanner
+              : controls.onOpenPlanner
+          }
+          type="button"
+        >
+          Plan
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -788,11 +788,14 @@ class MultiStationCurrentsFeed(CompositeFeed):
         # only the velocity column, which is different from the concat+groupby approach
         if len(dataframes) == 1:
             # If there's only one dataframe, just select the velocity column
-            return dataframes[0][["velocity"]]  # type: ignore[return-value]
+            result_df = dataframes[0][["velocity"]].copy()
+            result_df.index.name = "time"
+            return result_df  # type: ignore[return-value]
 
         # Combine all dataframes, select only the velocity column, and average by timestamp
         # This exactly matches the legacy implementation: pd.concat(currents)[["velocity"]].groupby(level=0).mean()
         result_df = pd.concat(dataframes)[["velocity"]].groupby(level=0).mean()
+        result_df.index.name = "time"
 
         # Note for future improvement: A more comprehensive implementation could:
         # 1. Preserve all numeric columns by averaging them
@@ -1135,4 +1138,6 @@ class HistoricalTempsFeed(CompositeFeed):
 
         # Sort by timestamp index and resample to hourly intervals
         # This matches the legacy implementation: historic_temps.resample("h").first()
-        return result_df.sort_index().resample("h").first()
+        result_df = result_df.sort_index().resample("h").first()
+        result_df.index.name = "time"
+        return result_df

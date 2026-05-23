@@ -1,11 +1,19 @@
 """Unit tests for configuration module."""
 
+import datetime
+
+import pandas as pd
 import pydantic
 import pytest
 import pytz
 
 from shallweswim import config
 from shallweswim import types as sw_types
+from shallweswim.core.feeds import (
+    CompositeFeed,
+    HistoricalTempsFeed,
+    MultiStationCurrentsFeed,
+)
 
 
 def test_config_list_not_empty() -> None:
@@ -61,6 +69,89 @@ def test_presentation_integrations_are_typed() -> None:
     assert sdf.presentation.webcam is not None
     assert sdf.presentation.webcam.provider == sw_types.WebcamProvider.EARTHCAM_EMBED
     assert sdf.presentation.webcam.script_url is not None
+
+
+def configured_composite_feeds() -> list[CompositeFeed]:
+    """Build configured composite feeds whose combine output owns schema shape."""
+    feeds: list[CompositeFeed] = []
+
+    for cfg in config.get_all_configs():
+        current_config = cfg.currents_source
+        if (
+            isinstance(current_config, config.CoopsCurrentsFeedConfig)
+            and len(current_config.stations) > 1
+        ):
+            feeds.append(
+                MultiStationCurrentsFeed(
+                    location_config=cfg,
+                    feed_config=current_config,
+                    expiration_interval=datetime.timedelta(hours=1),
+                )
+            )
+
+        if cfg.temp_source is not None:
+            feeds.append(
+                HistoricalTempsFeed(
+                    location_config=cfg,
+                    feed_config=cfg.temp_source,
+                    expiration_interval=datetime.timedelta(hours=1),
+                    start_year=2024,
+                    end_year=2025,
+                )
+            )
+
+    return feeds
+
+
+def sample_source_frames(feed: CompositeFeed) -> list[pd.DataFrame]:
+    """Return minimal source frames that should combine into the feed schema."""
+    if isinstance(feed, MultiStationCurrentsFeed):
+        index1 = pd.date_range(
+            start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+            periods=3,
+            freq="1h",
+        )
+        index2 = pd.date_range(
+            start=datetime.datetime(2025, 4, 22, 1, 0, 0),
+            periods=3,
+            freq="1h",
+        )
+        return [
+            pd.DataFrame({"velocity": [1.0, 2.0, 3.0]}, index=index1),
+            pd.DataFrame({"velocity": [4.0, 5.0, 6.0]}, index=index2),
+        ]
+
+    if isinstance(feed, HistoricalTempsFeed):
+        index1 = pd.date_range(
+            start=datetime.datetime(2024, 7, 15, 12, 0, 0),
+            periods=3,
+            freq="1h",
+        )
+        index2 = pd.date_range(
+            start=datetime.datetime(2025, 7, 15, 12, 0, 0),
+            periods=3,
+            freq="1h",
+        )
+        return [
+            pd.DataFrame({"water_temp": [60.0, 61.0, 62.0]}, index=index1),
+            pd.DataFrame({"water_temp": [63.0, 64.0, 65.0]}, index=index2),
+        ]
+
+    raise AssertionError(f"No sample frames defined for {type(feed).__name__}")
+
+
+def test_configured_composite_feeds_preserve_declared_schema() -> None:
+    """Test configured composite feeds combine source frames into valid feed data."""
+    checked_feeds = []
+
+    for feed in configured_composite_feeds():
+        result = feed._combine_feeds(sample_source_frames(feed))
+
+        feed.data_model.validate(result, lazy=True)
+        checked_feeds.append((feed.location_config.code, type(feed).__name__))
+
+    assert ("nyc", "MultiStationCurrentsFeed") in checked_feeds
+    assert any(feed_type == "HistoricalTempsFeed" for _, feed_type in checked_feeds)
 
 
 def test_webcam_provider_requires_rendering_url() -> None:

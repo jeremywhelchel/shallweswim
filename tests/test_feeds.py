@@ -1221,8 +1221,11 @@ class TestMultiStationCurrentsFeed:
         # Call _combine_feeds with a single dataframe
         result = multi_station_currents_feed._combine_feeds([valid_currents_dataframe])
 
-        # Check that the result is the same as the input
-        pd.testing.assert_frame_equal(result, valid_currents_dataframe)
+        expected = valid_currents_dataframe.copy()
+        expected.index.name = "time"
+
+        # Check that the result preserves the values and required schema index name
+        pd.testing.assert_frame_equal(result, expected)
 
     def test_combine_feeds_with_multiple_dataframes(
         self, multi_station_currents_feed: MultiStationCurrentsFeed
@@ -1264,6 +1267,7 @@ class TestMultiStationCurrentsFeed:
 
         # Verify that only the velocity column is present (matching legacy behavior)
         assert list(result.columns) == ["velocity"]
+        assert result.index.name == "time"
 
         # Check that overlapping timestamps have averaged velocity values
         # Timestamps 3, 4, 5 are overlapping
@@ -1278,6 +1282,27 @@ class TestMultiStationCurrentsFeed:
         assert result.loc[index2[3], "velocity"] == 8.0
         assert result.loc[index2[4], "velocity"] == 9.0
         assert result.loc[index2[5], "velocity"] == 10.0
+
+    def test_combine_feeds_result_validates_as_current_data(
+        self, multi_station_currents_feed: MultiStationCurrentsFeed
+    ) -> None:
+        """Combined current station output preserves the named time index schema."""
+        index1 = pd.date_range(
+            start=datetime.datetime(2025, 4, 22, 0, 0, 0),
+            periods=3,
+            freq="1h",
+        )
+        index2 = pd.date_range(
+            start=datetime.datetime(2025, 4, 22, 1, 0, 0),
+            periods=3,
+            freq="1h",
+        )
+        df1 = pd.DataFrame({"velocity": [1.0, 2.0, 3.0]}, index=index1)
+        df2 = pd.DataFrame({"velocity": [4.0, 5.0, 6.0]}, index=index2)
+
+        result = multi_station_currents_feed._combine_feeds([df1, df2])
+
+        CurrentDataModel.validate(result)
 
     def test_combine_feeds_with_empty_list(
         self, multi_station_currents_feed: MultiStationCurrentsFeed

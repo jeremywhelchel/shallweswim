@@ -5,6 +5,7 @@ import pytest
 import pytz
 
 from shallweswim import config
+from shallweswim import types as sw_types
 
 
 def test_config_list_not_empty() -> None:
@@ -33,6 +34,42 @@ def test_display_name_property() -> None:
     for cfg in config.get_all_configs():
         expected = f"{cfg.name} ({cfg.swim_location})"
         assert cfg.display_name == expected
+
+
+def test_presentation_integrations_are_typed() -> None:
+    """Test configured presentation integrations are explicit typed providers."""
+    nyc = config.get("nyc")
+    assert nyc is not None
+    assert nyc.presentation.webcam is not None
+    assert nyc.presentation.webcam.provider == sw_types.WebcamProvider.YOUTUBE_LIVE
+    assert nyc.presentation.transit is not None
+    assert [
+        route.goodservice_route_id for route in nyc.presentation.transit.routes
+    ] == [
+        "B",
+        "Q",
+    ]
+
+    chi = config.get("chi")
+    assert chi is not None
+    assert chi.presentation.webcam is not None
+    assert chi.presentation.webcam.provider == sw_types.WebcamProvider.IFRAME
+    assert chi.presentation.webcam.embed_url is not None
+
+    sdf = config.get("sdf")
+    assert sdf is not None
+    assert sdf.presentation.webcam is not None
+    assert sdf.presentation.webcam.provider == sw_types.WebcamProvider.EARTHCAM_EMBED
+    assert sdf.presentation.webcam.script_url is not None
+
+
+def test_webcam_provider_requires_rendering_url() -> None:
+    """Test webcam provider configs fail when required provider fields are absent."""
+    with pytest.raises(pydantic.ValidationError):
+        config.WebcamConfig(provider="iframe")
+
+    with pytest.raises(pydantic.ValidationError):
+        config.WebcamConfig(provider="earthcam_embed")
 
 
 def test_timezone_objects() -> None:

@@ -19,6 +19,7 @@ from shallweswim.types import (
     DataSourceType,
     TideCategory,
     TideTrend,
+    WebcamProvider,
 )
 
 #############################################################
@@ -432,11 +433,42 @@ class TransitRouteConfig(BaseModel):
     icon_url: str | None = Field(None, description="Optional route icon URL")
 
 
+class AppWebcamConfig(BaseModel):
+    """Provider-aware webcam configuration for frontend rendering."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: WebcamProvider = Field(..., description="Webcam provider/rendering type")
+    label: str = Field(..., description="User-facing webcam label")
+    embed_url: str | None = Field(
+        None, description="Embeddable iframe or provider URL when available"
+    )
+    script_url: str | None = Field(
+        None, description="Provider script URL for named script-based embeds"
+    )
+    watch_url: str | None = Field(
+        None, description="External watch page URL when available"
+    )
+    channel_id: str | None = Field(
+        None, description="YouTube channel ID for YouTube live webcams"
+    )
+    note: str | None = Field(None, description="Short location-specific webcam note")
+    source: AppPresentationLink | None = Field(
+        None, description="Primary webcam source or citation link"
+    )
+    alternative: AppPresentationLink | None = Field(
+        None, description="Alternative webcam link"
+    )
+
+
 class AppExternalIntegrations(BaseModel):
     """External presentation integrations used by the React app."""
 
     model_config = ConfigDict(extra="forbid")
 
+    webcam: AppWebcamConfig | None = Field(
+        None, description="Provider-aware webcam configuration"
+    )
     youtube_live: YouTubeLiveConfig | None = Field(
         None, description="YouTube live embed configuration"
     )

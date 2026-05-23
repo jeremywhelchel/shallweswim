@@ -264,7 +264,13 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert nyc["metadata"]["code"] == "nyc"
     assert nyc["metadata"]["features"]["temperature"] is True
     assert nyc["metadata"]["features"]["webcam"] is True
+    assert nyc["metadata"]["features"]["transit"] is True
     assert data["source_code_link"]["url"].endswith("/shallweswim")
+    assert nyc["integrations"]["webcam"]["provider"] == "youtube_live"
+    assert nyc["integrations"]["webcam"]["channel_id"]
+    assert nyc["integrations"]["webcam"]["alternative"]["label"] == (
+        "Earth Cam Coney Island"
+    )
     assert nyc["integrations"]["youtube_live"]["channel_id"]
     assert nyc["integrations"]["webcam_alternative"]["label"] == (
         "Earth Cam Coney Island"
@@ -274,6 +280,22 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     )
     assert nyc["integrations"]["transit_source"]["url"] == "https://goodservice.io"
     assert nyc["integrations"]["transit_routes"][0]["goodservice_route_id"] == "B"
+
+    chi = data["locations"]["chi"]
+    assert chi["metadata"]["features"]["webcam"] is True
+    assert chi["metadata"]["features"]["transit"] is False
+    assert chi["integrations"]["webcam"]["provider"] == "iframe"
+    assert chi["integrations"]["webcam"]["embed_url"].startswith(
+        "https://api.wetmet.net"
+    )
+    assert chi["integrations"]["youtube_live"] is None
+
+    sdf = data["locations"]["sdf"]
+    assert sdf["metadata"]["features"]["webcam"] is True
+    assert sdf["integrations"]["webcam"]["provider"] == "earthcam_embed"
+    assert sdf["integrations"]["webcam"]["script_url"].startswith(
+        "https://share.earthcam.net/embed/"
+    )
 
 
 def test_get_location_conditions(

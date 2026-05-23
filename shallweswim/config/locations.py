@@ -27,7 +27,7 @@ from typing import Annotated
 
 # Third-party imports
 import pytz
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Local imports
 from shallweswim import types, util
@@ -361,6 +361,119 @@ class NwisTempFeedConfig(TempFeedConfig, frozen=True):
         return f'Water temperature data provided by <a href="{site_url}" target="_blank">USGS NWIS Site {self.site_no}</a> ({self.name or "Unknown"})'
 
 
+class PresentationLinkConfig(BaseModel, frozen=True):
+    """Stable presentation link configured for the frontend app."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: Annotated[str, Field(description="User-facing link label")]
+    url: Annotated[str, Field(description="Link URL")]
+    description: Annotated[
+        str | None,
+        Field(description="Optional presentation text associated with the link"),
+    ] = None
+
+
+class WebcamConfig(BaseModel, frozen=True):
+    """Webcam provider configuration for a swimming location."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Annotated[
+        types.WebcamProvider,
+        Field(description="Webcam provider/rendering type"),
+    ]
+    label: Annotated[str, Field(description="User-facing webcam label")] = "Webcam"
+    embed_url: Annotated[
+        str | None,
+        Field(description="Embeddable iframe or provider URL when available"),
+    ] = None
+    script_url: Annotated[
+        str | None,
+        Field(description="Provider script URL for named script-based embeds"),
+    ] = None
+    watch_url: Annotated[
+        str | None,
+        Field(description="External watch page URL when available"),
+    ] = None
+    channel_id: Annotated[
+        str | None,
+        Field(description="YouTube channel ID for YouTube live webcams"),
+    ] = None
+    note: Annotated[
+        str | None,
+        Field(description="Short location-specific webcam note"),
+    ] = None
+    source: Annotated[
+        PresentationLinkConfig | None,
+        Field(description="Primary webcam source or citation link"),
+    ] = None
+    alternative: Annotated[
+        PresentationLinkConfig | None,
+        Field(description="Alternative webcam link"),
+    ] = None
+
+    @model_validator(mode="after")
+    def validate_provider_fields(self) -> "WebcamConfig":
+        """Ensure each webcam provider has the fields needed to render it."""
+        if self.provider == types.WebcamProvider.YOUTUBE_LIVE and not (
+            self.channel_id and self.embed_url and self.watch_url
+        ):
+            raise ValueError(
+                "youtube_live webcams require channel_id, embed_url, and watch_url"
+            )
+        if self.provider == types.WebcamProvider.IFRAME and not self.embed_url:
+            raise ValueError("iframe webcams require embed_url")
+        if self.provider == types.WebcamProvider.EARTHCAM_EMBED and not self.script_url:
+            raise ValueError("earthcam_embed webcams require script_url")
+        if self.provider == types.WebcamProvider.EXTERNAL_LINK and not self.watch_url:
+            raise ValueError("external_link webcams require watch_url")
+        return self
+
+
+class TransitRoutePresentationConfig(BaseModel, frozen=True):
+    """Transit route configured for frontend status cards."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: Annotated[str, Field(description="User-facing route label")]
+    goodservice_route_id: Annotated[str, Field(description="GoodService route ID")]
+    icon_url: Annotated[
+        str | None,
+        Field(description="Optional route icon URL"),
+    ] = None
+
+
+class TransitPresentationConfig(BaseModel, frozen=True):
+    """Transit provider configuration for a swimming location."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    routes: Annotated[
+        list[TransitRoutePresentationConfig],
+        Field(description="Transit routes to show for a location"),
+    ]
+    source: Annotated[
+        PresentationLinkConfig | None,
+        Field(description="Transit source or citation link"),
+    ] = None
+
+
+class LocationPresentationConfig(BaseModel, frozen=True):
+    """Presentation integrations for a swimming location."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    webcam: Annotated[
+        WebcamConfig | None,
+        Field(description="Optional webcam integration"),
+    ] = None
+    transit: Annotated[
+        TransitPresentationConfig | None,
+        Field(description="Optional transit integration"),
+    ] = None
+
+
 class LocationConfig(BaseModel, frozen=True):
     """Configuration for a swimming location.
 
@@ -448,6 +561,14 @@ class LocationConfig(BaseModel, frozen=True):
         Field(description="Configuration for currents data source"),
     ] = None
 
+    presentation: Annotated[
+        LocationPresentationConfig,
+        Field(
+            default_factory=LocationPresentationConfig,
+            description="Optional frontend presentation integrations",
+        ),
+    ]
+
     enabled: Annotated[
         bool,
         Field(
@@ -532,6 +653,48 @@ _CONFIG_LIST = [
             ],
             has_static_charts=True,  # NYC has static chart assets
         ),
+        presentation=LocationPresentationConfig(
+            webcam=WebcamConfig(
+                provider=types.WebcamProvider.YOUTUBE_LIVE,
+                channel_id="UChh9yX1PSFFreQFmnnIPGuQ",
+                embed_url=(
+                    "https://www.youtube.com/embed/live_stream"
+                    "?channel=UChh9yX1PSFFreQFmnnIPGuQ"
+                    "&enablejsapi=1&controls=0&playsinline=1"
+                    "&iv_load_policy=3&rel=0"
+                ),
+                watch_url=(
+                    "https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
+                ),
+                source=PresentationLinkConfig(
+                    label="Webcam",
+                    url=(
+                        "https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
+                    ),
+                    description="thanks to David K and Karol L",
+                ),
+                alternative=PresentationLinkConfig(
+                    label="Earth Cam Coney Island",
+                    url="https://www.earthcam.com/usa/newyork/coneyisland/?cam=coneyisland",
+                    description="Great view, including the amusement park.",
+                ),
+            ),
+            transit=TransitPresentationConfig(
+                routes=[
+                    TransitRoutePresentationConfig(
+                        label=route_id,
+                        goodservice_route_id=route_id,
+                        icon_url=f"/static/{route_id}-train.svg",
+                    )
+                    for route_id in ("B", "Q")
+                ],
+                source=PresentationLinkConfig(
+                    label="goodservice.io",
+                    url="https://goodservice.io",
+                    description="MTA train status provided by:",
+                ),
+            ),
+        ),
         description="Coney Island Brighton Beach open water swimming conditions",
     ),
     LocationConfig(
@@ -576,6 +739,24 @@ _CONFIG_LIST = [
         #     name="South Michigan",
         # ),
         # XXX Tides?
+        presentation=LocationPresentationConfig(
+            webcam=WebcamConfig(
+                provider=types.WebcamProvider.IFRAME,
+                label="Live webcam",
+                embed_url=(
+                    "https://api.wetmet.net/widgets/stream/frame.php?"
+                    "uid=99b98373cd0500d39b0c1671b2774f9e"
+                ),
+                source=PresentationLinkConfig(
+                    label="Chicago webcam",
+                    url=(
+                        "https://api.wetmet.net/widgets/stream/frame.php?"
+                        "uid=99b98373cd0500d39b0c1671b2774f9e"
+                    ),
+                    description="Live webcam for Ohio Street Beach conditions.",
+                ),
+            ),
+        ),
         description="Chicago Ohio Street Beach open water swimming conditions",
     ),
     LocationConfig(
@@ -630,11 +811,26 @@ _CONFIG_LIST = [
             name="Ohio River at Water Tower",
             system_type=types.CurrentSystemType.RIVER,
         ),
+        presentation=LocationPresentationConfig(
+            webcam=WebcamConfig(
+                provider=types.WebcamProvider.EARTHCAM_EMBED,
+                label="Live webcam",
+                script_url=(
+                    "https://share.earthcam.net/embed/"
+                    "tJ90CoLmq7TzrY396Yd88MLlsVJ_gbpo-FtC9zSX1TI/"
+                    "tJ90CoLmq7TzrY396Yd88Cwp1ulcCteQSnD-A42I2VI"
+                ),
+                watch_url="https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver",
+                note="View overlooking Toehead Island swim channel",
+                source=PresentationLinkConfig(
+                    label="EarthCam Ohio River",
+                    url="https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver",
+                    description="View overlooking Toehead Island swim channel.",
+                ),
+            ),
+        ),
         description="Louisville Kentucky open water swimming conditions",
         # TODO:
-        # - Add webcam:
-        #   https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver
-        #   https://ohiorivercam.com/
         # - Fix Windy embed mode. "waves" isnt relevant here.
     ),
     LocationConfig(

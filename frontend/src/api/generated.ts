@@ -666,6 +666,8 @@ export interface components {
             transit_routes?: components["schemas"]["TransitRouteConfig"][];
             /** @description Transit source or citation link */
             transit_source?: components["schemas"]["AppPresentationLink"] | null;
+            /** @description Provider-aware webcam configuration */
+            webcam?: components["schemas"]["AppWebcamConfig"] | null;
             /** @description Alternative webcam link */
             webcam_alternative?: components["schemas"]["AppPresentationLink"] | null;
             /** @description Webcam source or citation link */
@@ -846,6 +848,48 @@ export interface components {
              * @description Trusted HTML citation for tide data
              */
             tides?: string | null;
+        };
+        /**
+         * AppWebcamConfig
+         * @description Provider-aware webcam configuration for frontend rendering.
+         */
+        AppWebcamConfig: {
+            /** @description Alternative webcam link */
+            alternative?: components["schemas"]["AppPresentationLink"] | null;
+            /**
+             * Channel Id
+             * @description YouTube channel ID for YouTube live webcams
+             */
+            channel_id?: string | null;
+            /**
+             * Embed Url
+             * @description Embeddable iframe or provider URL when available
+             */
+            embed_url?: string | null;
+            /**
+             * Label
+             * @description User-facing webcam label
+             */
+            label: string;
+            /**
+             * Note
+             * @description Short location-specific webcam note
+             */
+            note?: string | null;
+            /** @description Webcam provider/rendering type */
+            provider: components["schemas"]["WebcamProvider"];
+            /**
+             * Script Url
+             * @description Provider script URL for named script-based embeds
+             */
+            script_url?: string | null;
+            /** @description Primary webcam source or citation link */
+            source?: components["schemas"]["AppPresentationLink"] | null;
+            /**
+             * Watch Url
+             * @description External watch page URL when available
+             */
+            watch_url?: string | null;
         };
         /**
          * CurrentDirection
@@ -1360,6 +1404,12 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * WebcamProvider
+         * @description Supported frontend webcam provider/rendering types.
+         * @enum {string}
+         */
+        WebcamProvider: "youtube_live" | "iframe" | "earthcam_embed" | "external_link";
         /**
          * YouTubeLiveConfig
          * @description YouTube live embed configuration for a frontend integration.

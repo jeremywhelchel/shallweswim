@@ -98,6 +98,17 @@
             ],
             "description": "Transit source or citation link"
           },
+          "webcam": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppWebcamConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider-aware webcam configuration"
+          },
           "webcam_alternative": {
             "anyOf": [
               {
@@ -383,6 +394,109 @@
           }
         },
         "title": "AppSourceCitations",
+        "type": "object"
+      },
+      "AppWebcamConfig": {
+        "additionalProperties": false,
+        "description": "Provider-aware webcam configuration for frontend rendering.",
+        "properties": {
+          "alternative": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppPresentationLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Alternative webcam link"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "YouTube channel ID for YouTube live webcams",
+            "title": "Channel Id"
+          },
+          "embed_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Embeddable iframe or provider URL when available",
+            "title": "Embed Url"
+          },
+          "label": {
+            "description": "User-facing webcam label",
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short location-specific webcam note",
+            "title": "Note"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/WebcamProvider",
+            "description": "Webcam provider/rendering type"
+          },
+          "script_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider script URL for named script-based embeds",
+            "title": "Script Url"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppPresentationLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary webcam source or citation link"
+          },
+          "watch_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "External watch page URL when available",
+            "title": "Watch Url"
+          }
+        },
+        "required": [
+          "provider",
+          "label"
+        ],
+        "title": "AppWebcamConfig",
         "type": "object"
       },
       "CurrentDirection": {
@@ -1315,6 +1429,17 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WebcamProvider": {
+        "description": "Supported frontend webcam provider/rendering types.",
+        "enum": [
+          "youtube_live",
+          "iframe",
+          "earthcam_embed",
+          "external_link"
+        ],
+        "title": "WebcamProvider",
+        "type": "string"
       },
       "YouTubeLiveConfig": {
         "additionalProperties": false,

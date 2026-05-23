@@ -30,6 +30,7 @@ from shallweswim.api_types import (
     AppManifestMetadata,
     AppPresentationLink,
     AppSourceCitations,
+    AppWebcamConfig,
     CurrentInfo,
     CurrentRange,
     CurrentRangePoint,
@@ -94,10 +95,6 @@ DEFAULT_LOCATION_CODE = "nyc"
 APP_THEME_COLOR = "#000099"
 APP_BACKGROUND_COLOR = "#fcffff"
 
-NYC_YOUTUBE_CHANNEL_ID = "UChh9yX1PSFFreQFmnnIPGuQ"
-NYC_TRANSIT_ROUTE_IDS = ("B", "Q")
-NYC_EARTHCAM_URL = "https://www.earthcam.com/usa/newyork/coneyisland/?cam=coneyisland"
-GOODSERVICE_URL = "https://goodservice.io"
 GITHUB_SOURCE_URL = "https://github.com/jeremywhelchel/shallweswim"
 
 # Filter the specific Pydantic serialization warning globally for production
@@ -401,6 +398,36 @@ def register_routes(app: fastapi.FastAPI) -> None:
             return zone
         return str(cfg.timezone)
 
+    def presentation_link(
+        link: config_lib.PresentationLinkConfig | None,
+    ) -> AppPresentationLink | None:
+        """Convert internal presentation link config to the public API model."""
+        if link is None:
+            return None
+        return AppPresentationLink(
+            label=link.label,
+            url=link.url,
+            description=link.description,
+        )
+
+    def webcam_config(
+        webcam: config_lib.WebcamConfig | None,
+    ) -> AppWebcamConfig | None:
+        """Convert internal webcam config to the public API model."""
+        if webcam is None:
+            return None
+        return AppWebcamConfig(
+            provider=webcam.provider,
+            label=webcam.label,
+            embed_url=webcam.embed_url,
+            script_url=webcam.script_url,
+            watch_url=webcam.watch_url,
+            channel_id=webcam.channel_id,
+            note=webcam.note,
+            source=presentation_link(webcam.source),
+            alternative=presentation_link(webcam.alternative),
+        )
+
     def app_location_bootstrap(
         cfg: config_lib.LocationConfig,
     ) -> AppBootstrapLocation:
@@ -408,50 +435,36 @@ def register_routes(app: fastapi.FastAPI) -> None:
         temp_enabled = cfg.temp_source is not None and cfg.temp_source.live_enabled
         tides_enabled = cfg.tide_source is not None
         currents_enabled = cfg.currents_source is not None
-        webcam_enabled = cfg.code == "nyc"
-        transit_enabled = cfg.code == "nyc"
+        webcam_enabled = cfg.presentation.webcam is not None
+        transit_enabled = cfg.presentation.transit is not None
 
+        webcam = webcam_config(cfg.presentation.webcam)
         youtube_live = None
         transit_routes: list[TransitRouteConfig] = []
-        webcam_alternative = None
-        webcam_source = None
-        transit_source = None
-        if cfg.code == "nyc":
+        if (
+            cfg.presentation.webcam
+            and cfg.presentation.webcam.provider == types.WebcamProvider.YOUTUBE_LIVE
+        ):
+            if not (
+                cfg.presentation.webcam.channel_id
+                and cfg.presentation.webcam.embed_url
+                and cfg.presentation.webcam.watch_url
+            ):
+                raise ValueError(f"{cfg.code} YouTube webcam config is incomplete")
             youtube_live = YouTubeLiveConfig(
-                channel_id=NYC_YOUTUBE_CHANNEL_ID,
-                embed_url=(
-                    "https://www.youtube.com/embed/live_stream"
-                    f"?channel={NYC_YOUTUBE_CHANNEL_ID}"
-                    "&enablejsapi=1&controls=0&playsinline=1"
-                    "&iv_load_policy=3&rel=0"
-                ),
-                watch_url=(
-                    f"https://www.youtube.com/channel/{NYC_YOUTUBE_CHANNEL_ID}/live"
-                ),
+                channel_id=cfg.presentation.webcam.channel_id,
+                embed_url=cfg.presentation.webcam.embed_url,
+                watch_url=cfg.presentation.webcam.watch_url,
             )
+        if cfg.presentation.transit is not None:
             transit_routes = [
                 TransitRouteConfig(
-                    label=route_id,
-                    goodservice_route_id=route_id,
-                    icon_url=f"/static/{route_id}-train.svg",
+                    label=route.label,
+                    goodservice_route_id=route.goodservice_route_id,
+                    icon_url=route.icon_url,
                 )
-                for route_id in NYC_TRANSIT_ROUTE_IDS
+                for route in cfg.presentation.transit.routes
             ]
-            webcam_alternative = AppPresentationLink(
-                label="Earth Cam Coney Island",
-                url=NYC_EARTHCAM_URL,
-                description="Great view, including the amusement park.",
-            )
-            webcam_source = AppPresentationLink(
-                label="Webcam",
-                url=f"https://www.youtube.com/channel/{NYC_YOUTUBE_CHANNEL_ID}/live",
-                description="thanks to David K and Karol L",
-            )
-            transit_source = AppPresentationLink(
-                label="goodservice.io",
-                url=GOODSERVICE_URL,
-                description="MTA train status provided by:",
-            )
 
         return AppBootstrapLocation(
             metadata=AppLocationMetadata(
@@ -481,11 +494,24 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 ),
             ),
             integrations=AppExternalIntegrations(
+                webcam=webcam,
                 youtube_live=youtube_live,
                 transit_routes=transit_routes,
-                webcam_alternative=webcam_alternative,
-                webcam_source=webcam_source,
-                transit_source=transit_source,
+                webcam_alternative=(
+                    presentation_link(cfg.presentation.webcam.alternative)
+                    if cfg.presentation.webcam
+                    else None
+                ),
+                webcam_source=(
+                    presentation_link(cfg.presentation.webcam.source)
+                    if cfg.presentation.webcam
+                    else None
+                ),
+                transit_source=(
+                    presentation_link(cfg.presentation.transit.source)
+                    if cfg.presentation.transit
+                    else None
+                ),
             ),
         )
 

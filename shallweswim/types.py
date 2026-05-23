@@ -72,6 +72,15 @@ class DataSourceType(enum.Enum):
     OBSERVATION = "observation"
 
 
+class WebcamProvider(enum.Enum):
+    """Supported frontend webcam provider/rendering types."""
+
+    YOUTUBE_LIVE = "youtube_live"
+    IFRAME = "iframe"
+    EARTHCAM_EMBED = "earthcam_embed"
+    EXTERNAL_LINK = "external_link"
+
+
 # Derive list for Pandera compatibility
 TIDE_TYPE_CATEGORIES = [member.value for member in TideCategory]
 

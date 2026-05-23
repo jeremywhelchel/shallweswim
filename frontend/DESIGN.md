@@ -628,7 +628,7 @@ presentation fields such as:
 ```text
 presentation:
   webcam:
-    type: youtube_live | iframe | external_link
+    type: youtube_live | iframe | earthcam_embed | external_link
     embed_url
     watch_url
     source link

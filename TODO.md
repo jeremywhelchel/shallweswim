@@ -2,16 +2,8 @@
 
 ## Frontend Location Parity
 
-### 1. Generic Webcam Rendering
+### 1. Webcam Follow-Ups
 
-- Replace the current YouTube-only webcam rendering with provider-aware generic
-  React components, for example `youtube_live`, `iframe`, `earthcam_embed`, and
-  `external_link`. YouTube live behavior should be reusable provider logic, not
-  NYC-specific UI.
-- Move React callers from transitional bootstrap fields such as `youtube_live`,
-  `webcam_source`, and `webcam_alternative` to the provider-aware
-  `integrations.webcam` shape, then remove the transitional fields from the
-  public bootstrap contract.
 - Treat provider scripts as explicit provider integrations, not arbitrary
   fallback behavior. If SDF keeps the EarthCam script embed, model that as a
   named provider with contained DOM ownership and tests so it is obvious what

@@ -57,10 +57,8 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
         },
       },
       integrations: {
-        youtube_live: null,
+        webcam: null,
         transit_routes: [],
-        webcam_alternative: null,
-        webcam_source: null,
         transit_source: null,
       },
     },
@@ -328,6 +326,184 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(
     screen.queryByRole("img", { name: /^Tide and current plot/ }),
   ).not.toBeInTheDocument();
+});
+
+test("renders a YouTube live webcam from provider-aware integration config", async () => {
+  renderLocation({
+    bootstrap: {
+      ...bootstrapPayload,
+      locations: {
+        nyc: {
+          ...bootstrapPayload.locations.nyc,
+          metadata: {
+            ...bootstrapPayload.locations.nyc.metadata,
+            features: {
+              ...bootstrapPayload.locations.nyc.metadata.features,
+              webcam: true,
+            },
+          },
+          integrations: {
+            ...bootstrapPayload.locations.nyc.integrations,
+            webcam: {
+              provider: "youtube_live",
+              label: "Live webcam",
+              embed_url:
+                "https://www.youtube.com/embed/live_stream?channel=abc&enablejsapi=1",
+              script_url: null,
+              watch_url: "https://www.youtube.com/channel/abc/live",
+              channel_id: "abc",
+              note: null,
+              source: {
+                label: "Webcam",
+                url: "https://www.youtube.com/channel/abc/live",
+                description: "thanks to the webcam hosts",
+              },
+              alternative: {
+                label: "Alternate camera",
+                url: "https://example.com/alt",
+                description: "Another useful view.",
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  expect(
+    await screen.findByRole("heading", { name: "Live Webcam" }),
+  ).toBeVisible();
+  expect(screen.getByTitle("Live webcam")).toHaveAttribute(
+    "src",
+    "https://www.youtube.com/embed/live_stream?channel=abc&enablejsapi=1",
+  );
+  expect(screen.getByRole("link", { name: "Webcam" })).toHaveAttribute(
+    "href",
+    "https://www.youtube.com/channel/abc/live",
+  );
+  expect(
+    screen.getByRole("link", { name: "Alternate camera" }),
+  ).toHaveAttribute("href", "https://example.com/alt");
+});
+
+test("renders an iframe webcam provider for non-NYC locations", async () => {
+  const bootstrap: components["schemas"]["AppBootstrapResponse"] = {
+    ...bootstrapPayload,
+    location_order: ["nyc", "chi"],
+    locations: {
+      ...bootstrapPayload.locations,
+      chi: {
+        ...bootstrapPayload.locations.nyc,
+        metadata: {
+          ...bootstrapPayload.locations.nyc.metadata,
+          code: "chi",
+          name: "Chicago",
+          nav_label: "Chicago",
+          swim_location: "Ohio Street Beach",
+          features: {
+            ...bootstrapPayload.locations.nyc.metadata.features,
+            currents: false,
+            webcam: true,
+          },
+        },
+        integrations: {
+          webcam: {
+            provider: "iframe",
+            label: "Live webcam",
+            embed_url: "https://example.com/chicago-webcam",
+            script_url: null,
+            watch_url: null,
+            channel_id: null,
+            note: null,
+            source: {
+              label: "Chicago webcam",
+              url: "https://example.com/chicago-webcam",
+              description: "Live webcam for Ohio Street Beach conditions.",
+            },
+            alternative: null,
+          },
+          transit_routes: [],
+          transit_source: null,
+        },
+      },
+    },
+  };
+
+  renderLocation({ bootstrap, locationCode: "chi" });
+
+  expect(
+    await screen.findByRole("heading", { name: "Live Webcam" }),
+  ).toBeVisible();
+  expect(screen.getByTitle("Live webcam")).toHaveAttribute(
+    "src",
+    "https://example.com/chicago-webcam",
+  );
+  expect(screen.getByRole("link", { name: "Chicago webcam" })).toHaveAttribute(
+    "href",
+    "https://example.com/chicago-webcam",
+  );
+});
+
+test("renders a named EarthCam provider with contained script ownership", async () => {
+  const bootstrap: components["schemas"]["AppBootstrapResponse"] = {
+    ...bootstrapPayload,
+    location_order: ["nyc", "sdf"],
+    locations: {
+      ...bootstrapPayload.locations,
+      sdf: {
+        ...bootstrapPayload.locations.nyc,
+        metadata: {
+          ...bootstrapPayload.locations.nyc.metadata,
+          code: "sdf",
+          name: "Louisville",
+          nav_label: "Louisville",
+          swim_location: "Community Boathouse",
+          features: {
+            ...bootstrapPayload.locations.nyc.metadata.features,
+            currents: false,
+            webcam: true,
+          },
+        },
+        integrations: {
+          webcam: {
+            provider: "earthcam_embed",
+            label: "Live webcam",
+            embed_url: null,
+            script_url: "https://share.earthcam.net/embed/test",
+            watch_url: "https://www.earthcam.com/test",
+            channel_id: null,
+            note: "View overlooking Toehead Island swim channel",
+            source: {
+              label: "EarthCam Ohio River",
+              url: "https://www.earthcam.com/test",
+              description: "View overlooking Toehead Island swim channel.",
+            },
+            alternative: null,
+          },
+          transit_routes: [],
+          transit_source: null,
+        },
+      },
+    },
+  };
+
+  renderLocation({ bootstrap, locationCode: "sdf" });
+
+  expect(
+    await screen.findByRole("heading", { name: "Live Webcam" }),
+  ).toBeVisible();
+  await waitFor(() => {
+    expect(document.querySelector("script.earthcam-embed")).toHaveAttribute(
+      "src",
+      "https://share.earthcam.net/embed/test",
+    );
+  });
+  expect(
+    screen.getByText("View overlooking Toehead Island swim channel"),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: "EarthCam Ohio River" }),
+  ).toHaveAttribute("href", "https://www.earthcam.com/test");
 });
 
 test("planner mode shifts all time-aware water movement elements", async () => {

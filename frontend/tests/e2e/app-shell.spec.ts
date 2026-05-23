@@ -47,12 +47,26 @@ const bootstrapPayload = {
         },
       },
       integrations: {
-        youtube_live: {
+        webcam: {
+          provider: "youtube_live",
+          label: "Live webcam",
           channel_id: "UChh9yX1PSFFreQFmnnIPGuQ",
           embed_url:
             "https://www.youtube.com/embed/live_stream?channel=UChh9yX1PSFFreQFmnnIPGuQ&enablejsapi=1&controls=0&playsinline=1&iv_load_policy=3&rel=0",
+          script_url: null,
           watch_url:
             "https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live",
+          note: null,
+          source: {
+            label: "Webcam",
+            url: "https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live",
+            description: "thanks to David K and Karol L",
+          },
+          alternative: {
+            label: "Earth Cam Coney Island",
+            url: "https://www.earthcam.com/usa/newyork/coneyisland/?cam=coneyisland",
+            description: "Great view, including the amusement park.",
+          },
         },
         transit_routes: [
           {
@@ -66,16 +80,6 @@ const bootstrapPayload = {
             icon_url: "/static/Q-train.svg",
           },
         ],
-        webcam_alternative: {
-          label: "Earth Cam Coney Island",
-          url: "https://www.earthcam.com/usa/newyork/coneyisland/?cam=coneyisland",
-          description: "Great view, including the amusement park.",
-        },
-        webcam_source: {
-          label: "Webcam",
-          url: "https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live",
-          description: "thanks to David K and Karol L",
-        },
         transit_source: {
           label: "goodservice.io",
           url: "https://goodservice.io",
@@ -110,10 +114,8 @@ const bootstrapPayload = {
         },
       },
       integrations: {
-        youtube_live: null,
+        webcam: null,
         transit_routes: [],
-        webcam_alternative: null,
-        webcam_source: null,
         transit_source: null,
       },
     },

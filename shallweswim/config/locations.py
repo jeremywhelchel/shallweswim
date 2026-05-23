@@ -815,6 +815,9 @@ _CONFIG_LIST = [
             webcam=WebcamConfig(
                 provider=types.WebcamProvider.EARTHCAM_EMBED,
                 label="Live webcam",
+                # EarthCam whitelists allowed referrers, so this embed is not
+                # expected to render fully on localhost even when the script
+                # request succeeds. Production shallweswim.today is allowed.
                 script_url=(
                     "https://share.earthcam.net/embed/"
                     "tJ90CoLmq7TzrY396Yd88MLlsVJ_gbpo-FtC9zSX1TI/"

@@ -271,13 +271,12 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert nyc["integrations"]["webcam"]["alternative"]["label"] == (
         "Earth Cam Coney Island"
     )
-    assert nyc["integrations"]["youtube_live"]["channel_id"]
-    assert nyc["integrations"]["webcam_alternative"]["label"] == (
-        "Earth Cam Coney Island"
-    )
-    assert nyc["integrations"]["webcam_source"]["description"] == (
+    assert nyc["integrations"]["webcam"]["source"]["description"] == (
         "thanks to David K and Karol L"
     )
+    assert "youtube_live" not in nyc["integrations"]
+    assert "webcam_alternative" not in nyc["integrations"]
+    assert "webcam_source" not in nyc["integrations"]
     assert nyc["integrations"]["transit_source"]["url"] == "https://goodservice.io"
     assert nyc["integrations"]["transit_routes"][0]["goodservice_route_id"] == "B"
 
@@ -288,7 +287,7 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert chi["integrations"]["webcam"]["embed_url"].startswith(
         "https://api.wetmet.net"
     )
-    assert chi["integrations"]["youtube_live"] is None
+    assert "youtube_live" not in chi["integrations"]
 
     sdf = data["locations"]["sdf"]
     assert sdf["metadata"]["features"]["webcam"] is True

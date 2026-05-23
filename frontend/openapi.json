@@ -108,39 +108,6 @@
               }
             ],
             "description": "Provider-aware webcam configuration"
-          },
-          "webcam_alternative": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AppPresentationLink"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Alternative webcam link"
-          },
-          "webcam_source": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AppPresentationLink"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Webcam source or citation link"
-          },
-          "youtube_live": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/YouTubeLiveConfig"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "YouTube live embed configuration"
           }
         },
         "title": "AppExternalIntegrations",
@@ -1440,34 +1407,6 @@
         ],
         "title": "WebcamProvider",
         "type": "string"
-      },
-      "YouTubeLiveConfig": {
-        "additionalProperties": false,
-        "description": "YouTube live embed configuration for a frontend integration.",
-        "properties": {
-          "channel_id": {
-            "description": "YouTube channel ID",
-            "title": "Channel Id",
-            "type": "string"
-          },
-          "embed_url": {
-            "description": "YouTube live embed URL",
-            "title": "Embed Url",
-            "type": "string"
-          },
-          "watch_url": {
-            "description": "YouTube live watch URL",
-            "title": "Watch Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "channel_id",
-          "embed_url",
-          "watch_url"
-        ],
-        "title": "YouTubeLiveConfig",
-        "type": "object"
       }
     }
   },

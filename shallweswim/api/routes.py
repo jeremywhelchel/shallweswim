@@ -46,7 +46,6 @@ from shallweswim.api_types import (
     TideInfo,
     TideState,
     TransitRouteConfig,
-    YouTubeLiveConfig,
 )
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
@@ -439,23 +438,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         transit_enabled = cfg.presentation.transit is not None
 
         webcam = webcam_config(cfg.presentation.webcam)
-        youtube_live = None
         transit_routes: list[TransitRouteConfig] = []
-        if (
-            cfg.presentation.webcam
-            and cfg.presentation.webcam.provider == types.WebcamProvider.YOUTUBE_LIVE
-        ):
-            if not (
-                cfg.presentation.webcam.channel_id
-                and cfg.presentation.webcam.embed_url
-                and cfg.presentation.webcam.watch_url
-            ):
-                raise ValueError(f"{cfg.code} YouTube webcam config is incomplete")
-            youtube_live = YouTubeLiveConfig(
-                channel_id=cfg.presentation.webcam.channel_id,
-                embed_url=cfg.presentation.webcam.embed_url,
-                watch_url=cfg.presentation.webcam.watch_url,
-            )
         if cfg.presentation.transit is not None:
             transit_routes = [
                 TransitRouteConfig(
@@ -495,18 +478,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             ),
             integrations=AppExternalIntegrations(
                 webcam=webcam,
-                youtube_live=youtube_live,
                 transit_routes=transit_routes,
-                webcam_alternative=(
-                    presentation_link(cfg.presentation.webcam.alternative)
-                    if cfg.presentation.webcam
-                    else None
-                ),
-                webcam_source=(
-                    presentation_link(cfg.presentation.webcam.source)
-                    if cfg.presentation.webcam
-                    else None
-                ),
                 transit_source=(
                     presentation_link(cfg.presentation.transit.source)
                     if cfg.presentation.transit

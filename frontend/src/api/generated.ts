@@ -668,12 +668,6 @@ export interface components {
             transit_source?: components["schemas"]["AppPresentationLink"] | null;
             /** @description Provider-aware webcam configuration */
             webcam?: components["schemas"]["AppWebcamConfig"] | null;
-            /** @description Alternative webcam link */
-            webcam_alternative?: components["schemas"]["AppPresentationLink"] | null;
-            /** @description Webcam source or citation link */
-            webcam_source?: components["schemas"]["AppPresentationLink"] | null;
-            /** @description YouTube live embed configuration */
-            youtube_live?: components["schemas"]["YouTubeLiveConfig"] | null;
         };
         /**
          * AppFeatureFlags
@@ -1410,27 +1404,6 @@ export interface components {
          * @enum {string}
          */
         WebcamProvider: "youtube_live" | "iframe" | "earthcam_embed" | "external_link";
-        /**
-         * YouTubeLiveConfig
-         * @description YouTube live embed configuration for a frontend integration.
-         */
-        YouTubeLiveConfig: {
-            /**
-             * Channel Id
-             * @description YouTube channel ID
-             */
-            channel_id: string;
-            /**
-             * Embed Url
-             * @description YouTube live embed URL
-             */
-            embed_url: string;
-            /**
-             * Watch Url
-             * @description YouTube live watch URL
-             */
-            watch_url: string;
-        };
     };
     responses: never;
     parameters: never;

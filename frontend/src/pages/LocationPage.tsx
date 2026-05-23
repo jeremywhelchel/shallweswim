@@ -23,13 +23,13 @@ import {
 type AppBootstrapResponse = components["schemas"]["AppBootstrapResponse"];
 type AppBootstrapLocation = components["schemas"]["AppBootstrapLocation"];
 type AppLocationMetadata = components["schemas"]["AppLocationMetadata"];
-type AppExternalIntegrations = components["schemas"]["AppExternalIntegrations"];
 type LocationConditions = components["schemas"]["LocationConditions"];
 type CurrentInfo = components["schemas"]["CurrentInfo"];
 type TideEntry = components["schemas"]["TideEntry"];
 type TideState = components["schemas"]["TideState"];
 type TransitRouteConfig = components["schemas"]["TransitRouteConfig"];
-type YouTubeLiveConfig = components["schemas"]["YouTubeLiveConfig"];
+type AppPresentationLink = components["schemas"]["AppPresentationLink"];
+type AppWebcamConfig = components["schemas"]["AppWebcamConfig"];
 
 const PLANNER_MIN_MINUTES = -180;
 const PLANNER_MAX_MINUTES = 1440;
@@ -197,10 +197,9 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
         </Section>
       ) : null}
 
-      {location.metadata.features.webcam &&
-      location.integrations.youtube_live ? (
+      {location.metadata.features.webcam && location.integrations.webcam ? (
         <Section title="Live Webcam">
-          <YouTubeLiveEmbed config={location.integrations.youtube_live} />
+          <WebcamEmbed config={location.integrations.webcam} />
         </Section>
       ) : null}
 
@@ -1428,7 +1427,39 @@ function WindyEmbed({ metadata }: { metadata: AppLocationMetadata }) {
   );
 }
 
-function YouTubeLiveEmbed({ config }: { config: YouTubeLiveConfig }) {
+function WebcamEmbed({ config }: { config: AppWebcamConfig }) {
+  switch (config.provider) {
+    case "youtube_live":
+      return <YouTubeLiveEmbed config={config} />;
+    case "iframe":
+      return <IframeWebcamEmbed config={config} />;
+    case "earthcam_embed":
+      return <EarthCamEmbed config={config} />;
+    case "external_link":
+      return <ExternalWebcamLink config={config} />;
+    default:
+      throw new Error(`Unsupported webcam provider: ${config.provider}`);
+  }
+}
+
+function requireWebcamField(
+  value: string | null | undefined,
+  provider: AppWebcamConfig["provider"],
+  field: keyof AppWebcamConfig,
+) {
+  if (!value) {
+    throw new Error(`${provider} webcam config is missing ${field}`);
+  }
+  return value;
+}
+
+function YouTubeLiveEmbed({ config }: { config: AppWebcamConfig }) {
+  const embedUrl = requireWebcamField(
+    config.embed_url,
+    config.provider,
+    "embed_url",
+  );
+
   useEffect(() => {
     function createPlayer() {
       if (!window.YT?.Player || !document.getElementById("bbcam_player")) {
@@ -1480,9 +1511,88 @@ function YouTubeLiveEmbed({ config }: { config: YouTubeLiveConfig }) {
         className="h-full w-full"
         id="bbcam_player"
         scrolling="no"
-        src={config.embed_url}
+        src={embedUrl}
         title="Live webcam"
       />
+    </div>
+  );
+}
+
+function IframeWebcamEmbed({ config }: { config: AppWebcamConfig }) {
+  const embedUrl = requireWebcamField(
+    config.embed_url,
+    config.provider,
+    "embed_url",
+  );
+
+  return (
+    <div className="aspect-video overflow-hidden rounded">
+      <iframe
+        allowFullScreen
+        className="block h-full w-full border-0"
+        scrolling="no"
+        src={embedUrl}
+        title={config.label}
+      />
+    </div>
+  );
+}
+
+function EarthCamEmbed({ config }: { config: AppWebcamConfig }) {
+  const scriptUrl = requireWebcamField(
+    config.script_url,
+    config.provider,
+    "script_url",
+  );
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.replaceChildren();
+    const script = document.createElement("script");
+    script.className = "earthcam-embed";
+    script.setAttribute("aria-label", "earthcam-embed");
+    script.src = scriptUrl;
+    script.type = "text/javascript";
+    container.append(script);
+
+    return () => {
+      container.replaceChildren();
+    };
+  }, [scriptUrl]);
+
+  return (
+    <div>
+      <div
+        className="aspect-video overflow-hidden rounded bg-[#ddd]"
+        ref={containerRef}
+      />
+      {config.note ? (
+        <p className="mt-2 text-sm text-slate-600">{config.note}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function ExternalWebcamLink({ config }: { config: AppWebcamConfig }) {
+  const watchUrl = requireWebcamField(
+    config.watch_url,
+    config.provider,
+    "watch_url",
+  );
+
+  return (
+    <div className="rounded border border-swim-line bg-white p-4 text-sm">
+      <a className="text-swim-blue underline" href={watchUrl}>
+        {config.label}
+      </a>
+      {config.note ? (
+        <p className="mt-2 text-slate-600">{config.note}</p>
+      ) : null}
     </div>
   );
 }
@@ -1744,9 +1854,9 @@ function SourcesList({
           icon={<Video aria-hidden="true" />}
           includeLabel={false}
           label="Webcam"
-          link={location.integrations.webcam_source}
+          link={location.integrations.webcam?.source}
           linkFirst
-          secondaryLink={location.integrations.webcam_alternative}
+          secondaryLink={location.integrations.webcam?.alternative}
           secondaryPrefix="Alternate:"
         />
         <SourceLink
@@ -1809,8 +1919,8 @@ function SourceLink({
 }: {
   icon: ReactNode;
   label: string;
-  link?: AppExternalIntegrations["webcam_source"];
-  secondaryLink?: AppExternalIntegrations["webcam_source"];
+  link?: AppPresentationLink | null;
+  secondaryLink?: AppPresentationLink | null;
   secondaryPrefix?: string;
   includeLabel?: boolean;
   linkFirst?: boolean;

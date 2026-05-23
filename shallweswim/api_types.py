@@ -401,16 +401,6 @@ class AppManifestMetadata(BaseModel):
     background_color: str = Field(..., description="Background color")
 
 
-class YouTubeLiveConfig(BaseModel):
-    """YouTube live embed configuration for a frontend integration."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    channel_id: str = Field(..., description="YouTube channel ID")
-    embed_url: str = Field(..., description="YouTube live embed URL")
-    watch_url: str = Field(..., description="YouTube live watch URL")
-
-
 class AppPresentationLink(BaseModel):
     """Presentation link metadata for the frontend."""
 
@@ -469,17 +459,8 @@ class AppExternalIntegrations(BaseModel):
     webcam: AppWebcamConfig | None = Field(
         None, description="Provider-aware webcam configuration"
     )
-    youtube_live: YouTubeLiveConfig | None = Field(
-        None, description="YouTube live embed configuration"
-    )
     transit_routes: list[TransitRouteConfig] = Field(
         default_factory=list, description="Transit routes to show for a location"
-    )
-    webcam_alternative: AppPresentationLink | None = Field(
-        None, description="Alternative webcam link"
-    )
-    webcam_source: AppPresentationLink | None = Field(
-        None, description="Webcam source or citation link"
     )
     transit_source: AppPresentationLink | None = Field(
         None, description="Transit source or citation link"

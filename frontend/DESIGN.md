@@ -49,7 +49,8 @@ repo/
     dist/                   Build output, likely gitignored
 ```
 
-Use `/app` as the public route for the new frontend application.
+Use `/app` as the transition route for the new frontend application while it is
+being built out.
 
 ```text
 filesystem: frontend/
@@ -58,11 +59,32 @@ API routes:  /api/...
 ```
 
 This avoids overloading `app` as both a source directory name and a public URL
-concept.
+concept during the migration. The launch target is different: once React reaches
+location parity, it should become the default web experience at root location
+URLs, with the Jinja version moved to a temporary legacy namespace.
+
+Target post-launch URL shape:
+
+```text
+/                       default location dashboard
+/{location}             location dashboard, for example /nyc or /chi
+/locations              all locations/status page
+/assets/...             Vite-built static assets, or another explicit asset prefix
+/manifest.webmanifest
+/legacy/{location}      temporary Jinja location page while confidence builds
+/legacy/all             temporary Jinja all-locations page if still useful
+```
+
+There is no known architectural blocker to this. The work is route ownership and
+deployment plumbing: Vite base, React Router basename, FastAPI route ordering,
+manifest `start_url`/`scope`, canonical URLs, and temporary legacy route names.
+`/api/...`, `/static/...`, and other non-page routes must remain explicitly
+reserved so root React routing does not swallow them.
 
 ## `/app` Routing Model
 
-The new frontend should be a standard client-routed SPA mounted under `/app`.
+The transition frontend should be a standard client-routed SPA mounted under
+`/app`.
 Everything after `/app` belongs to the React router unless it is a built static
 asset.
 
@@ -201,9 +223,10 @@ Possible implementation paths:
   pre-rendered React output, but avoid adding a second production backend runtime
   unless the benefit is clear.
 
-Open question: when the React app reaches parity, should `/nyc` and other
-location URLs serve the progressively enhanced React app directly, with `/app`
-retained only as a transition path or removed entirely?
+Launch decision: when the React app reaches parity, `/nyc` and other location
+URLs should serve the progressively enhanced React app directly. `/app` is a
+transition path, not the permanent canonical route. Remove the `/app` route when
+React becomes the default site rather than keeping a long-lived alias.
 
 ## Build And Deploy Integration
 
@@ -582,17 +605,56 @@ per-location display metadata:
   timezone
   feature flags for temperature, tides, currents, webcam, transit, Windy
   source citation HTML or structured citation data
-NYC-specific external integration config:
-  YouTube live channel/embed settings
-  transit train list and GoodService route IDs
+per-location external integration config:
+  webcam provider type and embed/watch/source links
+  transit route list and provider/source links
 ```
 
 Location metadata should come from `/api/app/bootstrap`, not from hardcoded
-frontend tables. The frontend may contain generic presentation code and default
-fallback copy, but adding a location, changing a swim-location link,
+frontend tables. The frontend may contain generic presentation code and generic
+unavailable-state copy, but adding a location, changing a swim-location link,
 enabling/disabling a camera, changing transit route IDs, or updating citations
 should be a backend configuration/API contract change, not a frontend source-code
 change.
+
+### Location Config Ownership
+
+The backend `LocationConfig` schema remains the source of truth for both data
+sources and stable presentation integrations. Add location-specific integrations
+to the existing typed Pydantic config models rather than creating frontend
+tables keyed by location code. A location definition may include optional typed
+presentation fields such as:
+
+```text
+presentation:
+  webcam:
+    type: youtube_live | iframe | external_link
+    embed_url
+    watch_url
+    source link
+    note
+  transit:
+    provider route ids
+    icon paths
+    source link
+```
+
+The bootstrap route translates these internal config models into the public React
+app contract. The React app renders by provider type and capability, not by
+location-code checks. YouTube live handling is therefore generic provider
+handling, not NYC-specific code. NYC may still have custom frontend logic for
+local swimmer interpretation, such as beach-current direction guidance,
+map/chart selection, and methodology copy, because that is domain interpretation
+rather than stable integration metadata.
+
+Avoid implicit fallbacks. If an embed cannot or should not be rendered, represent
+that intentionally in config, for example as `type: external_link`. Unknown
+provider types should fail loudly in development/tests instead of silently
+rendering a generic substitute. For parity, SDF may initially keep the legacy
+EarthCam script embed, but it should be represented as a named EarthCam provider
+rather than a generic "run arbitrary script" capability. After location parity,
+revisit that provider and prefer an iframe or similarly contained integration if
+one is available.
 
 Do not expose station IDs or backend feed internals through this endpoint unless
 there is a clear frontend need and explicit approval. The endpoint is for
@@ -1074,21 +1136,29 @@ normal browser history (leaves the app entirely). The in-app close control still
 replaces to `/app/{loc}?at=…` so dismissal behaves the same as in a fresh
 session. The same rule applies to `?detail=open&at=…`.
 
-#### Capability / fallback rules
+#### Capability Rules
 
 | Location type                              | Planner controls   | Detail panel     | Detail content                                                           |
 | ------------------------------------------ | ------------------ | ---------------- | ------------------------------------------------------------------------ |
 | Tidal · current prediction · NYC           | enabled            | enabled          | full — projection plot + map + commentary + legacy charts                |
 | Tidal · current prediction · other         | enabled            | enabled          | generic — projection plot                                                |
-| Tidal · tide prediction only (SAN/SFO/BOS/SEA) | optional · module-driven | optional · module-driven | tide projection only                                             |
+| Tidal · tide prediction only (SAN/SFO/BOS/SEA) | enabled            | disabled until a tide-only detail plot exists | tide state and tide planner only                              |
 | River · current observation (SDF)          | disabled           | disabled         | n/a — "Recent flow (observed)" card on home instead                      |
 | Lake (CHI)                                 | disabled           | disabled         | n/a — no Water Movement card                                             |
 | Spring · temperature-only (AUS)            | disabled           | disabled         | n/a — minimal home layout                                                |
 
-Default for any new location: the planner trigger is **disabled** unless
-the location either has `currents_source.type === 'prediction'` in its
-bootstrap config (auto-enables the trigger with generic detail content)
-or registers custom planner/detail content (NYC-style).
+Planner availability and detail availability are separate capabilities. Tide
+prediction alone is enough to enable the in-card planner scrubber because
+`/api/{loc}/conditions?at=...` can shift tide state. The current/tide detail
+panel requires a supported detail product; today that means a current prediction
+location with `/api/{loc}/plots/current_tide?at=...`. Tide-only locations should
+not open a detail panel until a tide-only detail plot or structured chart product
+exists.
+
+Default for any new location: the planner trigger is **disabled** unless the
+location has a prediction-backed water-movement capability, such as tide
+prediction or current prediction. Detail is disabled unless the backend exposes a
+matching detail product.
 
 Planner and detail interaction:
 
@@ -1127,17 +1197,13 @@ time jumps and broader location support.
   card's `Now` / `Soon` chips for the 2-hour outlook. Adds
   `next slack` / `peak flood` / `peak ebb` preset chips to the planner controls.
   *Depends on the backend follow-up below.*
-- **3.D · Generalize to other locations:** ship `locations/sdf/`,
-  `locations/chi/`, `locations/aus/`, and `locations/generic/`. Each
-  module configures which generic components render and provides
-  per-location copy. This step also handles the router-level work
-  formerly tracked as a standalone "Generalize Location Pages"
-  milestone: `/app/:locationCode` routing for any registered location,
-  per-location feature-flag rendering, graceful absence of features
-  (no temp / tide / current / webcam / transit on a given location
-  collapses without leaving holes), and preservation of 404 /
-  unavailable states. The dashboard shape is the single per-location
-  page; per-location modules just configure it.
+- **3.D · Generalize to other locations:** finish `/app/:locationCode`
+  routing for every registered location with capability-driven sections:
+  tide-only planner for SAN/SFO/BOS/SEA, observed-flow treatment for SDF, no
+  Water Movement card for CHI/AUS, provider-aware webcams, and graceful absence
+  of features such as tide, current, webcam, or transit. Keep per-location
+  frontend modules rare; use one only when a location needs custom local
+  interpretation rather than generic provider/capability rendering.
 
 `/app/locations` (all-locations grid, matching the Jinja `/all` page)
 and the embed widget (`/{loc}/widget`) decisions stay in this milestone
@@ -1159,11 +1225,32 @@ Optional, additive, none of these block 3.A or 3.B:
   is already wired to accept it — adding a new prediction-respecting
   component is the per-component renderer plus the feed.
 
-### Milestone 4: Adoption Banner
+### Milestone 4: React Default Experience
+
+- make React the default user-facing site
+- move legacy Jinja pages under a temporary `/legacy` namespace
+- change canonical location URLs from `/app/{loc}` to `/{loc}`
+- make `/` render the default location dashboard, using saved-location
+  preference when appropriate
+- make `/locations` render the React all-locations/status page
+- update Vite base, React Router basename, FastAPI route ordering, app manifest
+  `start_url`/`scope`, canonical/meta tags, and tests for the root-mounted app
+- reuse the existing manifest/config generation path where possible; the root
+  launch should mostly change emitted manifest values from `/app` and `/app/` to
+  `/` and `/`, not introduce a parallel manifest system
+- keep `/api/...`, `/static/...`, `/legacy/...`, and built frontend assets
+  explicitly reserved so catch-all React routing does not mask API/static/legacy
+  routes
+- remove the `/app` route after the root-mounted React launch
+
+### Milestone 5: Adoption Banner
 
 - add the existing-site "try the new app" banner
 - include dismiss-forever behavior
 - link users from Jinja pages to `/app`
+- this may be unnecessary if React reaches root-route parity before a staged
+  adoption campaign; in that case, skip the banner and launch React as the
+  default experience directly
 
 ## First Implementation Milestone
 
@@ -1562,4 +1649,3 @@ Phase 2: processed chart-data APIs plus client-rendered charts where useful
   cookie?
 - Should Bun replace pnpm/Vite for any part of the toolchain after a focused
   compatibility spike?
-- Should the new app eventually live at `/`, `/app`, or a dedicated app hostname?

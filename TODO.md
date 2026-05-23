@@ -1,5 +1,80 @@
 # TODO
 
+## Frontend Location Parity
+
+### 1. Config And Bootstrap
+
+- Add typed presentation/integration fields to the existing Pydantic
+  `LocationConfig` schema. Keep `config/locations.py` as the source of truth for
+  stable per-location facts and integrations; do not add frontend location-code
+  tables for webcams, transit, or presentation links.
+- Move NYC webcam and transit configuration out of `shallweswim/api/routes.py`
+  and into the typed location config. `/api/app/bootstrap` should derive
+  `features.webcam`, `features.transit`, YouTube live config, webcam source
+  links, and GoodService route config from `cfg.presentation`, not from
+  `cfg.code == "nyc"`.
+- Add non-NYC webcam config from the legacy Jinja page. CHI should use a generic
+  iframe webcam provider. SDF can initially copy the legacy EarthCam
+  script-style embed for parity if needed, but it should be represented
+  explicitly as an EarthCam provider, not as a generic arbitrary-script provider.
+
+### 2. Generic Webcam Rendering
+
+- Replace the current YouTube-only webcam rendering with provider-aware generic
+  React components, for example `youtube_live`, `iframe`, `earthcam_embed`, and
+  `external_link`. YouTube live behavior should be reusable provider logic, not
+  NYC-specific UI.
+- Treat provider scripts as explicit provider integrations, not arbitrary
+  fallback behavior. If SDF keeps the EarthCam script embed, model that as a
+  named provider with contained DOM ownership and tests so it is obvious what
+  third-party code is allowed to mutate.
+- After the first feature-parity pass, revisit SDF EarthCam specifically. Try to
+  replace the script-style embed with an iframe or other contained integration;
+  if that is not feasible, keep a named EarthCam component with explicit cleanup,
+  navigation behavior tests, and a clear decision that the third-party script is
+  acceptable for this app.
+
+### 3. Water Movement Capabilities
+
+- Split Water Movement capabilities. Planner support should be enabled for
+  prediction-backed water movement, including tide-only locations
+  SAN/SFO/BOS/SEA via `/api/{loc}/conditions?at=...`. Detail support should be
+  enabled only when a matching detail product exists; today that is the
+  current+tide detail plot for current-prediction locations.
+- Remove the hard NYC planner gate in the React app. NYC should retain custom
+  detail interpretation for local current guidance, maps, and chart copy, but
+  the planner control itself should be capability-driven.
+- Make non-tidal/non-current locations intentional. CHI and AUS should not show
+  a Water Movement card. SDF should eventually get a distinct observed-flow
+  treatment rather than the prediction planner.
+
+### 4. All Locations And Root Launch
+
+- Replace the `/app/locations` placeholder with an all-locations/status page
+  matching the useful parts of the legacy `/all` page. Also remove stale nav
+  copy such as "Additional locations are in the works" once all configured
+  locations are first-class React routes.
+- Promote React to the default site once location parity is good enough. Move
+  Jinja pages under a temporary `/legacy` namespace, change canonical routes from
+  `/app/{loc}` to `/{loc}`, make `/` load the default/saved location dashboard,
+  make `/locations` the React all-locations/status page, and update Vite base,
+  React Router basename, FastAPI route ordering, manifest `start_url`/`scope`,
+  canonical/meta tags, persisted-location behavior, and tests. Reuse the
+  existing manifest/config generation path where possible; the root launch
+  should change emitted manifest values rather than add a parallel manifest
+  system. Keep `/api/...`, `/static/...`, `/legacy/...`, and frontend asset
+  routes explicitly reserved so root-mounted React routing does not mask them.
+  Remove the `/app` route after the root-mounted React launch rather than
+  keeping it as a long-lived alias.
+
+### 5. Coverage
+
+- Add backend and frontend coverage for the parity work: bootstrap integration
+  config by location, NYC YouTube webcam, CHI iframe webcam, SDF EarthCam or
+  explicit external-link behavior, tide-only planner for a non-NYC location,
+  disabled detail for tide-only locations, omitted Water Movement for CHI/AUS,
+  and root-route ownership before removing `/app`.
+
 ## Tech Debt
 
 - Split tide/current query and manager tests out of `tests/test_data.py` once the
@@ -117,7 +192,7 @@
   real FastAPI routes with mocked data managers and verifies that URL `at` state,
   rendered tide/current bars, detail plot URL, and backend calls all agree. Add
   more cases here when new cross-stack behavior lands, such as smart presets,
-  non-NYC fallback behavior, predicted water temperature, and user-facing API
+  non-NYC capability behavior, predicted water temperature, and user-facing API
   error states.
 - Add the install-app butter bar once the React app is ready to promote as an
   installable experience. The local preference store already records

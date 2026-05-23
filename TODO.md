@@ -16,6 +16,10 @@
 
 ### 2. All Locations And Root Launch
 
+- Add an explicit location-code alias mechanism before or during root launch if
+  we want friendly alternate URLs. Model aliases in typed `LocationConfig`, keep
+  bootstrap/location order canonical, and redirect alias routes to the canonical
+  location URL rather than rendering duplicate canonical pages.
 - Promote React to the default site once location parity is good enough. Move
   Jinja pages under a temporary `/legacy` namespace, change canonical routes from
   `/app/{loc}` to `/{loc}`, make `/` load the default/saved location dashboard,

@@ -929,7 +929,7 @@ def get(code: str) -> LocationConfig | None:
     Returns:
         LocationConfig if found, None otherwise
     """
-    return CONFIGS.get(code)
+    return CONFIGS.get(code.lower())
 
 
 def get_all_configs() -> list[LocationConfig]:

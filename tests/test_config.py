@@ -225,6 +225,8 @@ def test_get_function() -> None:
     test_nyc = test_configs.get("nyc")
     assert test_nyc is not None
     assert test_nyc.code == "nyc"
+    assert config.get("NYC") == test_nyc
+    assert config.get("Nyc") == test_nyc
 
 
 def test_config_unique_codes() -> None:

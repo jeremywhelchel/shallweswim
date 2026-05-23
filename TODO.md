@@ -21,6 +21,11 @@
   if that is not feasible, keep a named EarthCam component with explicit cleanup,
   navigation behavior tests, and a clear decision that the third-party script is
   acceptable for this app.
+- Make GoodService transit direction explicit in route presentation config.
+  The current frontend intentionally reads only the `south` direction because
+  that is the beach-bound B/Q direction, but the direction key should come from
+  `TransitRoutePresentationConfig`/bootstrap rather than staying hard-coded in
+  `frontend/src/api/transit.ts`.
 
 ### 2. Water Movement Capabilities
 

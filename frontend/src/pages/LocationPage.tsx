@@ -1746,10 +1746,19 @@ function TransitStatusSection({ routes }: { routes: TransitRouteConfig[] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {routes.map((route) => (
-        <TransitRouteCard key={route.goodservice_route_id} route={route} />
+        <TransitRouteCard
+          key={`${route.goodservice_route_id}-${route.goodservice_direction}`}
+          route={route}
+        />
       ))}
     </div>
   );
+}
+
+function goodServiceDirectionPathSuffix(
+  direction: TransitRouteConfig["goodservice_direction"],
+): "N" | "S" {
+  return direction === "north" ? "N" : "S";
 }
 
 function TransitRouteCard({ route }: { route: TransitRouteConfig }) {
@@ -1763,7 +1772,7 @@ function TransitRouteCard({ route }: { route: TransitRouteConfig }) {
     <article className="border-swim-line rounded border bg-white p-4">
       <a
         className="flex items-center gap-3 text-swim-ink"
-        href={`https://goodservice.io/trains/${route.goodservice_route_id}/S`}
+        href={`https://goodservice.io/trains/${route.goodservice_route_id}/${goodServiceDirectionPathSuffix(route.goodservice_direction)}`}
       >
         {route.icon_url ? (
           <img
@@ -1781,8 +1790,16 @@ function TransitRouteCard({ route }: { route: TransitRouteConfig }) {
             <span className="font-mono">{route.label}</span> train
           </h3>
           <p className="text-sm text-slate-600">
-            to{" "}
-            <span className="font-mono">{transit?.destination ?? "..."}</span>
+            {transit?.status === "Not Scheduled" ? (
+              <span>No scheduled service now</span>
+            ) : (
+              <>
+                to{" "}
+                <span className="font-mono">
+                  {transit?.destination ?? "..."}
+                </span>
+              </>
+            )}
           </p>
         </div>
       </a>

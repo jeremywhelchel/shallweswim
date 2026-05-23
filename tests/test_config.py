@@ -57,6 +57,12 @@ def test_presentation_integrations_are_typed() -> None:
         "B",
         "Q",
     ]
+    assert [
+        route.goodservice_direction for route in nyc.presentation.transit.routes
+    ] == [
+        sw_types.GoodServiceDirection.SOUTH,
+        sw_types.GoodServiceDirection.SOUTH,
+    ]
 
     chi = config.get("chi")
     assert chi is not None

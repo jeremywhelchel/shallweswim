@@ -438,6 +438,10 @@ class TransitRoutePresentationConfig(BaseModel, frozen=True):
 
     label: Annotated[str, Field(description="User-facing route label")]
     goodservice_route_id: Annotated[str, Field(description="GoodService route ID")]
+    goodservice_direction: Annotated[
+        types.GoodServiceDirection,
+        Field(description="GoodService direction key to show for this route"),
+    ]
     icon_url: Annotated[
         str | None,
         Field(description="Optional route icon URL"),
@@ -684,6 +688,7 @@ _CONFIG_LIST = [
                     TransitRoutePresentationConfig(
                         label=route_id,
                         goodservice_route_id=route_id,
+                        goodservice_direction=types.GoodServiceDirection.SOUTH,
                         icon_url=f"/static/{route_id}-train.svg",
                     )
                     for route_id in ("B", "Q")

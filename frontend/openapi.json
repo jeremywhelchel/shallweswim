@@ -911,6 +911,15 @@
         "title": "FeedStatus",
         "type": "object"
       },
+      "GoodServiceDirection": {
+        "description": "GoodService transit direction keys used by route status payloads.",
+        "enum": [
+          "north",
+          "south"
+        ],
+        "title": "GoodServiceDirection",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1327,6 +1336,10 @@
         "additionalProperties": false,
         "description": "Transit route metadata for frontend status cards.",
         "properties": {
+          "goodservice_direction": {
+            "$ref": "#/components/schemas/GoodServiceDirection",
+            "description": "GoodService direction key to show for this route"
+          },
           "goodservice_route_id": {
             "description": "GoodService route ID",
             "title": "Goodservice Route Id",
@@ -1352,7 +1365,8 @@
         },
         "required": [
           "label",
-          "goodservice_route_id"
+          "goodservice_route_id",
+          "goodservice_direction"
         ],
         "title": "TransitRouteConfig",
         "type": "object"

@@ -72,11 +72,13 @@ const bootstrapPayload = {
           {
             label: "B",
             goodservice_route_id: "B",
+            goodservice_direction: "south",
             icon_url: "/static/B-train.svg",
           },
           {
             label: "Q",
             goodservice_route_id: "Q",
+            goodservice_direction: "south",
             icon_url: "/static/Q-train.svg",
           },
         ],

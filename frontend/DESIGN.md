@@ -849,10 +849,11 @@ External integration parity:
   parameters: `enablejsapi=1`, `controls=0`, `playsinline=1`,
   `iv_load_policy=3`, and `rel=0`. Load the official iframe API only if needed
   to mute and attempt autoplay.
-- Transit status should preserve the current GoodService southbound behavior:
-  prefer `direction_statuses.south`, treat route-level `Not Scheduled`
-  specially, show `destinations.south[0]`, and render south/both delay, service
-  change, and service irregularity summaries when present.
+- Transit status should use each route's configured GoodService direction from
+  bootstrap. NYC currently configures B/Q as `south` for the beach-bound
+  direction, treats route-level `Not Scheduled` specially, shows the first
+  destination for that direction, and renders direction-specific plus `both`
+  delay, service-change, and service-irregularity summaries when present.
 - Preserve the current status color mapping semantically, though the React/Tailwind
   class names do not need to match the old CSS names.
 
@@ -876,7 +877,8 @@ Suggested hooks/clients:
 - `useAppBootstrap`
 - `useLocationConditions(locationCode)`
 - `useDeferredImage(src, enabled)`
-- `useTransitRoute(routeConfig)`
+- `useTransitRoute(routeConfig)`, including the configured GoodService direction
+  in parsing and cache identity
 
 Acceptance checks:
 

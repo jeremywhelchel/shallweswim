@@ -81,6 +81,13 @@ class WebcamProvider(enum.Enum):
     EXTERNAL_LINK = "external_link"
 
 
+class GoodServiceDirection(enum.Enum):
+    """GoodService transit direction keys used by route status payloads."""
+
+    NORTH = "north"
+    SOUTH = "south"
+
+
 # Derive list for Pandera compatibility
 TIDE_TYPE_CATEGORIES = [member.value for member in TideCategory]
 

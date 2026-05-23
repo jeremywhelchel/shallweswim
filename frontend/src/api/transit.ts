@@ -2,25 +2,19 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { components } from "./generated";
 
 export type TransitRouteConfig = components["schemas"]["TransitRouteConfig"];
+type GoodServiceDirection = TransitRouteConfig["goodservice_direction"];
 
 type GoodServiceResponse = {
   status?: string;
-  direction_statuses?: {
-    south?: string;
-  };
-  destinations?: {
-    south?: string[];
-  };
-  delay_summaries?: {
-    south?: string | string[];
-  };
+  direction_statuses?: Partial<Record<GoodServiceDirection, string>>;
+  destinations?: Partial<Record<GoodServiceDirection, string[]>>;
+  delay_summaries?: Partial<Record<GoodServiceDirection, string | string[]>>;
   service_change_summaries?: {
     both?: string;
-    south?: string;
-  };
-  service_irregularity_summaries?: {
-    south?: string | string[];
-  };
+  } & Partial<Record<GoodServiceDirection, string>>;
+  service_irregularity_summaries?: Partial<
+    Record<GoodServiceDirection, string | string[]>
+  >;
 };
 
 export type TransitStatus = {
@@ -42,32 +36,41 @@ function textValue(value: string | string[] | undefined): string | undefined {
   return value || undefined;
 }
 
-function parseTransitStatus(data: GoodServiceResponse): TransitStatus {
+export function parseTransitStatus(
+  data: GoodServiceResponse,
+  direction: GoodServiceDirection,
+): TransitStatus {
   if (data.status === "Not Scheduled") {
     return {
       status: "Not Scheduled",
-      destination: "unavailable",
+      destination: "no scheduled service",
     };
   }
 
   return {
-    status: data.direction_statuses?.south || "No Data",
-    destination: data.destinations?.south?.[0] || "unknown",
-    delay: textValue(data.delay_summaries?.south),
+    status: data.direction_statuses?.[direction] || "No Data",
+    destination: data.destinations?.[direction]?.[0] || "unknown",
+    delay: textValue(data.delay_summaries?.[direction]),
     serviceChange:
       [
         data.service_change_summaries?.both,
-        data.service_change_summaries?.south,
+        data.service_change_summaries?.[direction],
       ]
         .filter(Boolean)
         .join("") || undefined,
-    serviceIrregularity: textValue(data.service_irregularity_summaries?.south),
+    serviceIrregularity: textValue(
+      data.service_irregularity_summaries?.[direction],
+    ),
   };
 }
 
 export function useTransitRoute(routeConfig: TransitRouteConfig) {
   return useQuery({
-    queryKey: ["transit-route", routeConfig.goodservice_route_id],
+    queryKey: [
+      "transit-route",
+      routeConfig.goodservice_route_id,
+      routeConfig.goodservice_direction,
+    ],
     queryFn: async () => {
       const response = await fetch(
         `https://goodservice.io/api/routes/${routeConfig.goodservice_route_id}`,
@@ -79,7 +82,10 @@ export function useTransitRoute(routeConfig: TransitRouteConfig) {
         );
       }
 
-      return parseTransitStatus((await response.json()) as GoodServiceResponse);
+      return parseTransitStatus(
+        (await response.json()) as GoodServiceResponse,
+        routeConfig.goodservice_direction,
+      );
     },
     placeholderData: keepPreviousData,
     refetchInterval: REFRESH_INTERVAL_MS,

@@ -17,6 +17,7 @@ from shallweswim.types import (
     CurrentStrength,
     CurrentTrend,
     DataSourceType,
+    GoodServiceDirection,
     TideCategory,
     TideTrend,
     WebcamProvider,
@@ -420,6 +421,9 @@ class TransitRouteConfig(BaseModel):
 
     label: str = Field(..., description="User-facing route label")
     goodservice_route_id: str = Field(..., description="GoodService route ID")
+    goodservice_direction: GoodServiceDirection = Field(
+        ..., description="GoodService direction key to show for this route"
+    )
     icon_url: str | None = Field(None, description="Optional route icon URL")
 
 

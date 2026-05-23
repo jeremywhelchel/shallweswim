@@ -279,6 +279,7 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert "webcam_source" not in nyc["integrations"]
     assert nyc["integrations"]["transit_source"]["url"] == "https://goodservice.io"
     assert nyc["integrations"]["transit_routes"][0]["goodservice_route_id"] == "B"
+    assert nyc["integrations"]["transit_routes"][0]["goodservice_direction"] == "south"
 
     chi = data["locations"]["chi"]
     assert chi["metadata"]["features"]["webcam"] is True

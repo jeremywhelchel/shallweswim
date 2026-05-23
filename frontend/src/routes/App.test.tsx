@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { components } from "../api/generated";
+import type { TransitStatus } from "../api/transit";
 import { ConditionsSummary, LocationPage } from "../pages/LocationPage";
 
 const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
@@ -159,12 +160,14 @@ function renderLocation({
   initialEntry = "/",
   locationCode = "nyc",
   shiftedConditions = shiftedConditionsPayload,
+  transitStatuses = {},
 }: {
   bootstrap?: components["schemas"]["AppBootstrapResponse"];
   conditions?: components["schemas"]["LocationConditions"];
   initialEntry?: string;
   locationCode?: string;
   shiftedConditions?: components["schemas"]["LocationConditions"];
+  transitStatuses?: Record<string, TransitStatus>;
 } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -188,6 +191,23 @@ function renderLocation({
       },
     },
   );
+  for (const route of bootstrap.locations[locationCode].integrations
+    .transit_routes ?? []) {
+    const seededStatus =
+      transitStatuses[
+        `${route.goodservice_route_id}:${route.goodservice_direction}`
+      ];
+    if (seededStatus) {
+      queryClient.setQueryData(
+        [
+          "transit-route",
+          route.goodservice_route_id,
+          route.goodservice_direction,
+        ],
+        seededStatus,
+      );
+    }
+  }
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
@@ -330,6 +350,53 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(
     screen.queryByRole("img", { name: /^Tide and current plot/ }),
   ).not.toBeInTheDocument();
+});
+
+test("renders not-scheduled transit without an unavailable destination", async () => {
+  const bootstrap: components["schemas"]["AppBootstrapResponse"] = {
+    ...bootstrapPayload,
+    locations: {
+      nyc: {
+        ...bootstrapPayload.locations.nyc,
+        metadata: {
+          ...bootstrapPayload.locations.nyc.metadata,
+          features: {
+            ...bootstrapPayload.locations.nyc.metadata.features,
+            transit: true,
+          },
+        },
+        integrations: {
+          ...bootstrapPayload.locations.nyc.integrations,
+          transit_routes: [
+            {
+              label: "B",
+              goodservice_route_id: "B",
+              goodservice_direction: "south",
+              icon_url: "/static/B-train.svg",
+            },
+          ],
+          transit_source: null,
+        },
+      },
+    },
+  };
+
+  renderLocation({
+    bootstrap,
+    transitStatuses: {
+      "B:south": {
+        status: "Not Scheduled",
+        destination: "no scheduled service",
+      },
+    },
+  });
+
+  expect(
+    await screen.findByRole("heading", { name: "Transit Status" }),
+  ).toBeVisible();
+  expect(screen.getByText("No scheduled service now")).toBeVisible();
+  expect(screen.getByText("Not Scheduled")).toBeVisible();
+  expect(screen.queryByText("unavailable")).not.toBeInTheDocument();
 });
 
 test("renders a YouTube live webcam from provider-aware integration config", async () => {

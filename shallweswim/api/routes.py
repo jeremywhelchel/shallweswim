@@ -444,6 +444,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 TransitRouteConfig(
                     label=route.label,
                     goodservice_route_id=route.goodservice_route_id,
+                    goodservice_direction=route.goodservice_direction,
                     icon_url=route.icon_url,
                 )
                 for route in cfg.presentation.transit.routes

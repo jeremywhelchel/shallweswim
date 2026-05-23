@@ -1105,6 +1105,12 @@ export interface components {
              */
             name: string;
         };
+        /**
+         * GoodServiceDirection
+         * @description GoodService transit direction keys used by route status payloads.
+         * @enum {string}
+         */
+        GoodServiceDirection: "north" | "south";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1369,6 +1375,8 @@ export interface components {
          * @description Transit route metadata for frontend status cards.
          */
         TransitRouteConfig: {
+            /** @description GoodService direction key to show for this route */
+            goodservice_direction: components["schemas"]["GoodServiceDirection"];
             /**
              * Goodservice Route Id
              * @description GoodService route ID

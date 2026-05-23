@@ -289,6 +289,7 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByText("Grimaldo's Chair")).toBeVisible();
   expect(screen.getByText("61.4°F")).toBeVisible();
   expect(screen.getByRole("heading", { name: "Water Movement" })).toBeVisible();
+  expect(screen.getByText("Predicted")).toBeVisible();
   expect(
     screen.getByText(
       "The tide is rising, and the water is going out fast and getting stronger.",
@@ -809,7 +810,23 @@ test("supports planner mode for tide-only locations without detail controls", ()
   ).not.toBeInTheDocument();
 });
 
-test("omits tidal water movement for observed-current locations without tides", () => {
+test("renders observed flow without tidal water movement for river-current locations", () => {
+  const sdfConditions: components["schemas"]["LocationConditions"] = {
+    ...conditionsPayload,
+    current: {
+      timestamp: "2026-05-13T07:30:00-04:00",
+      direction: null,
+      phase: null,
+      strength: null,
+      trend: null,
+      magnitude: 0.82,
+      magnitude_pct: null,
+      state_description: null,
+      range: null,
+      source_type: "observation",
+    },
+    tides: null,
+  };
   const bootstrap: components["schemas"]["AppBootstrapResponse"] = {
     ...bootstrapPayload,
     location_order: ["nyc", "sdf"],
@@ -835,15 +852,17 @@ test("omits tidal water movement for observed-current locations without tides", 
 
   renderLocation({
     bootstrap,
+    conditions: sdfConditions,
     initialEntry: "/sdf?planner=open",
     locationCode: "sdf",
   });
 
-  expect(
-    screen.queryByRole("heading", { name: "Water Movement" }),
-  ).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Water Movement" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Plan" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+  expect(screen.getByText("Observed")).toBeVisible();
+  expect(screen.getByText("0.8 kt")).toBeVisible();
+  expect(screen.getByText(/not a tide prediction/)).toBeVisible();
 });
 
 test("renders unavailable condition states on first-load failure", () => {

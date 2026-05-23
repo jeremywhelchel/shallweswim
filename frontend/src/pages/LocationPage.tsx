@@ -69,6 +69,9 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
   const location = bootstrap.locations[locationCode];
   const [searchParams, setSearchParams] = useSearchParams();
   const showsWaterMovement = Boolean(location?.metadata.features.tides);
+  const showsObservedFlow = Boolean(
+    location?.metadata.features.currents && !location?.metadata.features.tides,
+  );
   const supportsWaterMovementPlanning = Boolean(
     location?.metadata.features.tides,
   );
@@ -173,6 +176,7 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
         conditions={conditions.data}
         hasError={conditions.isError && !conditions.data}
         isLoading={conditions.isPending}
+        showObservedFlow={showsObservedFlow}
         showWaterMovement={showsWaterMovement}
         waterMovementControls={
           hasWaterMovementControls
@@ -240,12 +244,14 @@ export function ConditionsSummary({
   conditions,
   hasError,
   isLoading,
+  showObservedFlow = false,
   showWaterMovement = true,
   waterMovementControls,
 }: {
   conditions?: LocationConditions;
   hasError: boolean;
   isLoading: boolean;
+  showObservedFlow?: boolean;
   showWaterMovement?: boolean;
   waterMovementControls?: WaterMovementControls;
 }) {
@@ -254,13 +260,14 @@ export function ConditionsSummary({
   }
 
   const detailMode = Boolean(waterMovementControls?.detailOpen);
+  const showMovementPanel = showWaterMovement || showObservedFlow;
 
   return (
     <section
       className={
         detailMode
           ? "grid gap-0 rounded border border-swim-line bg-white md:gap-4 md:border-0 md:bg-transparent"
-          : showWaterMovement
+          : showMovementPanel
             ? "grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent"
             : "grid gap-0 rounded border border-swim-line bg-white md:border-0 md:bg-transparent"
       }
@@ -276,8 +283,84 @@ export function ConditionsSummary({
           tides={hasError ? undefined : conditions?.tides}
           waterMovementControls={waterMovementControls}
         />
+      ) : showObservedFlow ? (
+        <ObservedFlowSummary
+          current={hasError ? undefined : conditions?.current}
+          hasError={hasError}
+        />
       ) : null}
     </section>
+  );
+}
+
+function ObservedFlowSummary({
+  current,
+  hasError,
+}: {
+  current?: CurrentInfo | null;
+  hasError: boolean;
+}) {
+  const hasCurrent = Boolean(current && !hasError);
+  const currentValue =
+    hasCurrent && current
+      ? `${formatMagnitude(Math.abs(current.magnitude))} kt`
+      : "Unavailable";
+  const timestamp =
+    hasCurrent && current ? formatStationTimestamp(current.timestamp) : null;
+
+  return (
+    <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
+      <WaterMovementHeader badge="Observed" />
+      <p className="mt-1 text-sm text-slate-700 md:mt-2 md:text-base">
+        The river current is currently
+      </p>
+      <p className="font-mono font-semibold text-2xl text-swim-current md:mt-1 md:text-3xl">
+        {currentValue}
+      </p>
+      <p className="mt-2 text-sm text-slate-600">
+        {hasCurrent ? (
+          <>
+            Latest observed flow
+            {timestamp ? (
+              <>
+                {" as of "}
+                <span className="font-mono">{timestamp}</span>
+              </>
+            ) : null}
+            . This is not a tide prediction, so planner controls are not
+            available.
+          </>
+        ) : (
+          "Recent observed flow is unavailable right now."
+        )}
+      </p>
+    </div>
+  );
+}
+
+function SourceBadge({ label }: { label: "Observed" | "Predicted" }) {
+  return (
+    <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-700 uppercase">
+      {label}
+    </span>
+  );
+}
+
+function WaterMovementHeader({
+  actions,
+  badge,
+}: {
+  actions?: ReactNode;
+  badge: "Observed" | "Predicted";
+}) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold text-base md:text-lg">Water Movement</h2>
+        <SourceBadge label={badge} />
+      </div>
+      {actions}
+    </div>
   );
 }
 
@@ -414,14 +497,16 @@ function WaterMovementSummary({
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
       <section
         aria-label="Water movement controls"
-        className="sticky top-0 z-20 -mx-3 -mt-3 bg-white/95 px-3 py-2 backdrop-blur md:-mx-4 md:-mt-4 md:px-4"
+        className="sticky top-0 z-20 bg-white/95 pb-2 backdrop-blur"
       >
-        <div className="flex items-start justify-between gap-2">
-          <h2 className="font-semibold text-base md:text-lg">Water Movement</h2>
-          {waterMovementControls ? (
-            <WaterMovementActions controls={waterMovementControls} />
-          ) : null}
-        </div>
+        <WaterMovementHeader
+          actions={
+            waterMovementControls ? (
+              <WaterMovementActions controls={waterMovementControls} />
+            ) : null
+          }
+          badge="Predicted"
+        />
         {plannedLabel ? (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 md:text-sm">
             <button

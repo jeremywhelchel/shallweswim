@@ -14,16 +14,7 @@
   navigation behavior tests, and a clear decision that the third-party script is
   acceptable for this app.
 
-### 2. Water Movement Capabilities
-
-- Add an observed-flow treatment for SDF. The React app now separates Water
-  Movement visibility, planner support, and detail support; tide-backed
-  locations can use the planner with tide-position copy, CHI/AUS/SDF omit the
-  tidal Water Movement card, and NYC keeps the current+tide detail product. SDF
-  still needs a river-current presentation that is clearly observed flow rather
-  than tidal prediction.
-
-### 3. All Locations And Root Launch
+### 2. All Locations And Root Launch
 
 - Replace the `/app/locations` placeholder with an all-locations/status page
   matching the useful parts of the legacy `/all` page. Also remove stale nav
@@ -42,7 +33,7 @@
   Remove the `/app` route after the root-mounted React launch rather than
   keeping it as a long-lived alias.
 
-### 4. Coverage
+### 3. Coverage
 
 - Add backend and frontend coverage for the parity work: bootstrap integration
   config by location, NYC YouTube webcam, CHI iframe webcam, SDF EarthCam or

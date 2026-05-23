@@ -1145,7 +1145,7 @@ session. The same rule applies to `?detail=open&at=…`.
 | Tidal · current prediction · NYC           | enabled            | enabled          | full — projection plot + map + commentary + legacy charts                |
 | Tidal · current prediction · other         | enabled            | enabled          | generic — projection plot                                                |
 | Tidal · tide prediction only (SAN/SFO/BOS/SEA) | enabled            | disabled until a tide-only detail plot exists | tide state and tide planner only                              |
-| River · current observation (SDF)          | disabled           | disabled         | n/a — "Recent flow (observed)" card on home instead                      |
+| River · current observation (SDF)          | disabled           | disabled         | observed-current Water Movement card, no planner/detail controls         |
 | Lake (CHI)                                 | disabled           | disabled         | n/a — no Water Movement card                                             |
 | Spring · temperature-only (AUS)            | disabled           | disabled         | n/a — minimal home layout                                                |
 
@@ -1201,11 +1201,11 @@ time jumps and broader location support.
   *Depends on the backend follow-up below.*
 - **3.D · Generalize to other locations:** finish `/app/:locationCode`
   routing for every registered location with capability-driven sections:
-  tide-only planner for SAN/SFO/BOS/SEA, observed-flow treatment for SDF, no
-  Water Movement card for CHI/AUS, provider-aware webcams, and graceful absence
-  of features such as tide, current, webcam, or transit. Keep per-location
-  frontend modules rare; use one only when a location needs custom local
-  interpretation rather than generic provider/capability rendering.
+  tide-only planner for SAN/SFO/BOS/SEA, the observed-current Water Movement
+  card for SDF, no Water Movement card for CHI/AUS, provider-aware webcams, and
+  graceful absence of features such as tide, current, webcam, or transit. Keep
+  per-location frontend modules rare; use one only when a location needs custom
+  local interpretation rather than generic provider/capability rendering.
 
 `/app/locations` (all-locations grid, matching the Jinja `/all` page)
 and the embed widget (`/{loc}/widget`) decisions stay in this milestone

@@ -190,6 +190,11 @@
   state, not analytics. The prompt should appear only after enough organic use,
   should not appear in standalone/PWA display mode, and should support permanent
   dismissal via the same local preference store.
+- Evaluate whether the tide/current detail chart should remain a backend
+  Matplotlib SVG or move to a frontend-rendered chart. A frontend charting pass
+  could improve responsive layout, hover/inspection, and label collision
+  handling, but it is a product/architecture decision because it would move
+  presentation logic and possibly chart data contracts into the React app.
 
 ## Future Tide Curve Source Upgrade
 

@@ -61,9 +61,9 @@ LABEL_FONT_SIZE = 18
 ANNOTATION_FONT_SIZE = 16
 
 # Color constants
-CURRENT_FLOOD_COLOR = "#2e7d32"  # Green for flooding currents
-CURRENT_EBB_COLOR = "#c62828"  # Red for ebbing currents
-TIDE_COLOR = "#000099"  # Blue for tide data
+CURRENT_FLOOD_COLOR = "#3f8f46"  # Green for flooding currents
+CURRENT_EBB_COLOR = "#d14a3a"  # Red for ebbing currents
+TIDE_COLOR = "#2323b8"  # Blue for tide data
 HIGHLIGHT_COLOR = "#ff4000"  # Orange for highlighting points of interest
 NOW_MARKER_COLOR = "#111827"  # Dark marker for current time
 PLANNED_MARKER_COLOR = "#db2777"  # Accent marker for planner time
@@ -778,8 +778,13 @@ def _plot_annotation_box() -> dict[str, object]:
         "facecolor": "white",
         "edgecolor": PLOT_GRID_COLOR,
         "linewidth": 0.5,
-        "alpha": 0.86,
+        "alpha": 0.78,
     }
+
+
+def _is_high_tide_type(tide_type: object) -> bool:
+    """Return whether a tide type value represents high tide."""
+    return tide_type in {types.TideCategory.HIGH, types.TideCategory.HIGH.value}
 
 
 def create_tide_current_plot(
@@ -887,7 +892,7 @@ def create_tide_current_plot(
         flood_df.velocity,
         color=CURRENT_FLOOD_COLOR,
         label="Flood speed",
-        linewidth=2.4,
+        linewidth=2.15,
     )
 
     # Plot ebb currents in red
@@ -896,7 +901,7 @@ def create_tide_current_plot(
         ebb_df.velocity,
         color=CURRENT_EBB_COLOR,
         label="Ebb speed",
-        linewidth=2.4,
+        linewidth=2.15,
     )
 
     # Find and mark local maxima and minima for currents
@@ -929,8 +934,8 @@ def create_tide_current_plot(
                 textcoords="offset points",
                 ha="left",
                 va="bottom",
-                fontsize=ANNOTATION_FONT_SIZE - 2,
-                fontweight="bold",
+                fontsize=ANNOTATION_FONT_SIZE - 3,
+                fontweight="semibold",
                 color=CURRENT_FLOOD_COLOR,
                 bbox=_plot_annotation_box(),
             )
@@ -965,8 +970,8 @@ def create_tide_current_plot(
                 textcoords="offset points",
                 ha="left",
                 va="top",
-                fontsize=ANNOTATION_FONT_SIZE - 2,
-                fontweight="bold",
+                fontsize=ANNOTATION_FONT_SIZE - 3,
+                fontweight="semibold",
                 color=CURRENT_EBB_COLOR,
                 bbox=_plot_annotation_box(),
             )
@@ -994,7 +999,7 @@ def create_tide_current_plot(
         tides_interpolated_filtered.prediction,  # Use interpolated prediction values
         color=TIDE_COLOR,
         label="Tide height",
-        linewidth=2.4,
+        linewidth=2.15,
     )
 
     # Draw a line at tide 0
@@ -1013,18 +1018,19 @@ def create_tide_current_plot(
     )
 
     for _, row in extreme_tides.iterrows():
+        is_high_tide = _is_high_tide_type(row.type)
         ax2.annotate(
             f"{row.prediction:.1f} ft {row.type}",
             xy=(row.name, row.prediction),  # type: ignore[arg-type] # pyright expects Sequence[float] but row.name is a pandas timestamp
             xytext=(
                 0,
-                8 if row.type == types.TideCategory.HIGH else -15,
+                14 if is_high_tide else -14,
             ),  # Reduced offset
             textcoords="offset points",
             ha="center",
-            va="center" if row.type == types.TideCategory.HIGH else "top",
-            fontsize=ANNOTATION_FONT_SIZE - 2,  # Smaller font size
-            fontweight="bold",
+            va="bottom" if is_high_tide else "top",
+            fontsize=ANNOTATION_FONT_SIZE - 3,  # Smaller font size
+            fontweight="semibold",
             color=TIDE_COLOR,
             bbox=_plot_annotation_box(),
         )

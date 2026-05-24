@@ -379,6 +379,49 @@ def test_create_tide_current_plot_handles_window_without_tide_extrema() -> None:
     assert "<svg" in fig_to_svg.getvalue()
 
 
+@freeze_time("2026-05-24T12:00:00Z")
+def test_create_tide_current_plot_places_high_tide_labels_above_peaks() -> None:
+    location_config = _test_location_config()
+    tides = pd.DataFrame(
+        {
+            "prediction": [0.2, 5.0, 0.9],
+            "type": [
+                types.TideCategory.LOW.value,
+                types.TideCategory.HIGH.value,
+                types.TideCategory.LOW.value,
+            ],
+        },
+        index=pd.DatetimeIndex(
+            [
+                datetime.datetime(2026, 5, 24, 6, 0, 0),
+                datetime.datetime(2026, 5, 24, 15, 0, 0),
+                datetime.datetime(2026, 5, 24, 21, 0, 0),
+            ]
+        ),
+    )
+    current_index = pd.date_range("2026-05-24T06:00:00", periods=20, freq="h")
+    currents = pd.DataFrame(
+        {"velocity": np.sin(np.linspace(-np.pi, np.pi, len(current_index)))},
+        index=current_index,
+    )
+
+    fig = plot.create_tide_current_plot(
+        tides,
+        currents,
+        datetime.datetime(2026, 5, 24, 12, 0, 0),
+        location_config,
+    )
+
+    tide_annotations = {
+        text.get_text(): text for text in fig.axes[1].texts if " ft " in text.get_text()
+    }
+
+    assert tide_annotations["5.0 ft high"].xyann == (0, 14)
+    assert tide_annotations["5.0 ft high"].get_va() == "bottom"
+    assert tide_annotations["0.9 ft low"].xyann == (0, -14)
+    assert tide_annotations["0.9 ft low"].get_va() == "top"
+
+
 def test_tide_current_plot_window_preserves_default_forward_horizon() -> None:
     now = datetime.datetime(2026, 5, 24, 9, 0, 0)
     marker_time = now + datetime.timedelta(hours=12)

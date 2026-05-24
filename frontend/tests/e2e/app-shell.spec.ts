@@ -40,6 +40,10 @@ const bootstrapPayload = {
           transit: true,
           windy: true,
         },
+        temperature_plots: {
+          live: true,
+          historic: true,
+        },
         citations: {
           temperature: '<a href="https://example.com/temp">Temp source</a>',
           tides: '<a href="https://example.com/tides">Tide source</a>',
@@ -108,6 +112,10 @@ const bootstrapPayload = {
           webcam: false,
           transit: false,
           windy: false,
+        },
+        temperature_plots: {
+          live: true,
+          historic: true,
         },
         citations: {
           temperature: '<a href="https://example.com/sfo-temp">SFO temp</a>',
@@ -457,7 +465,7 @@ test("renders the NYC location vertical slice", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(
-      "The tide is rising, and the water is going out fast and getting stronger.",
+      "At Grimaldo's, expect a fast push west toward Coney Island Pier. The current is getting stronger.",
     ),
   ).toBeVisible();
   await expect(page.getByText("TIDE", { exact: true })).toBeVisible();
@@ -520,8 +528,10 @@ test("planner mode shifts dashboard water movement from URL state", async ({
   await expect(
     page.getByText("May 13, 2026, 8:30 AM", { exact: true }).first(),
   ).toBeVisible();
-  await expect(page.getByText(/water is going out fast/)).toBeVisible();
-  await expect(page.getByText("rising", { exact: true })).toHaveCount(2);
+  await expect(
+    page.getByText(/expect a fast push west toward Coney Island Pier/),
+  ).toBeVisible();
+  await expect(page.getByText(/rising/)).toHaveCount(1);
   await expect(panel.getByLabel("Planner time")).toHaveAttribute("max", "1440");
   await expect(page.locator('img[alt^="Tide and current plot"]')).toHaveCount(
     0,
@@ -531,7 +541,9 @@ test("planner mode shifts dashboard water movement from URL state", async ({
   await expect(page.getByRole("region", { name: "Planner mode" })).toHaveCount(
     0,
   );
-  await expect(page.getByText(/water is going out fast/)).toBeVisible();
+  await expect(
+    page.getByText(/expect a fast push west toward Coney Island Pier/),
+  ).toBeVisible();
   await expect(page.getByText("2.2 ft", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("img", {
@@ -542,10 +554,12 @@ test("planner mode shifts dashboard water movement from URL state", async ({
     "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
   );
   await expect(
-    page.getByRole("heading", { name: "Grimaldo's Chair local read" }),
+    page.getByRole("heading", {
+      name: "Grimaldo's Chair current guidance",
+    }),
   ).toBeVisible();
   await expect(
-    page.getByText(/Start eastbound toward Manhattan Beach/),
+    page.getByText(/Start east toward Manhattan Beach/),
   ).toBeVisible();
   await expect(
     page.getByRole("img", {
@@ -559,7 +573,9 @@ test("planner mode shifts dashboard water movement from URL state", async ({
   ).toHaveAttribute("src", "/static/tidecharts/low+3.png");
 
   await page.goto("/app/nyc?at=2026-05-13T08:30:00");
-  await expect(page.getByText(/water is going out fast/)).toBeVisible();
+  await expect(
+    page.getByText(/expect a fast push west toward Coney Island Pier/),
+  ).toBeVisible();
   await expect(page.getByText("2.2 ft", { exact: true })).toBeVisible();
   await expect(
     page.getByText("May 13, 2026, 8:30 AM", { exact: true }),

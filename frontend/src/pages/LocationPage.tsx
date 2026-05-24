@@ -1829,7 +1829,9 @@ function TemperaturePlots({
   ];
   const activePlot = plots.some((plot) => plot.key === selectedPlot)
     ? selectedPlot
-    : (plots[0]?.key ?? null);
+    : selectedPlot === "all" && plots.length > 1
+      ? "all"
+      : (plots[0]?.key ?? null);
   const plotOptions =
     plots.length > 1 ? [...plots, { key: "all", label: "All" }] : plots;
 

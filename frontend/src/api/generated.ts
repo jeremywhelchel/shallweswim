@@ -754,6 +754,8 @@ export interface components {
              * @description URL for the swimming spot
              */
             swim_location_link: string;
+            /** @description Enabled temperature plot capabilities */
+            temperature_plots: components["schemas"]["AppTemperaturePlotConfig"];
             /**
              * Timezone
              * @description IANA timezone name
@@ -842,6 +844,22 @@ export interface components {
              * @description Trusted HTML citation for tide data
              */
             tides?: string | null;
+        };
+        /**
+         * AppTemperaturePlotConfig
+         * @description Temperature plot capabilities for frontend rendering.
+         */
+        AppTemperaturePlotConfig: {
+            /**
+             * Historic
+             * @description Whether historical temperature plots are enabled
+             */
+            historic: boolean;
+            /**
+             * Live
+             * @description Whether the live temperature plot is enabled
+             */
+            live: boolean;
         };
         /**
          * AppWebcamConfig

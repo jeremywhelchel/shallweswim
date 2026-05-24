@@ -811,6 +811,7 @@ _CONFIG_LIST = [
             parameter_cd="00011",  # Water temperature
             name="Ohio River at Water Tower",
             # It appears that this source may only provide ~120 days worth of data.
+            historic_enabled=False,
             start_year=2025,
         ),
         currents_source=NwisCurrentFeedConfig(

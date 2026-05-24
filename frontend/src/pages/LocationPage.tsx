@@ -224,6 +224,7 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
           <TemperaturePlots
             enabled={firstConditionsSettled}
             locationCode={locationCode}
+            plotConfig={location.metadata.temperature_plots}
           />
         </Section>
       ) : null}
@@ -1721,59 +1722,79 @@ function ExternalWebcamLink({ config }: { config: AppWebcamConfig }) {
 function TemperaturePlots({
   enabled,
   locationCode,
+  plotConfig,
 }: {
   enabled: boolean;
   locationCode: string;
+  plotConfig: AppLocationMetadata["temperature_plots"];
 }) {
   const [selectedPlot, setSelectedPlot] = useState("12mo");
   const plots = [
-    {
-      key: "live",
-      label: "Live",
-      alt: "Live temperature plot",
-      src: `/api/${locationCode}/plots/live_temps`,
-    },
-    {
-      key: "2mo",
-      label: "2 mo",
-      alt: "2 month temperature plot, all years",
-      src: `/api/${locationCode}/plots/historic_temps?period=2mo`,
-    },
-    {
-      key: "12mo",
-      label: "12 mo",
-      alt: "12 month temperature plot, all years",
-      src: `/api/${locationCode}/plots/historic_temps?period=12mo`,
-    },
+    ...(plotConfig.live
+      ? [
+          {
+            key: "live",
+            label: "Live",
+            alt: "Live temperature plot",
+            src: `/api/${locationCode}/plots/live_temps`,
+          },
+        ]
+      : []),
+    ...(plotConfig.historic
+      ? [
+          {
+            key: "2mo",
+            label: "2 mo",
+            alt: "2 month temperature plot, all years",
+            src: `/api/${locationCode}/plots/historic_temps?period=2mo`,
+          },
+          {
+            key: "12mo",
+            label: "12 mo",
+            alt: "12 month temperature plot, all years",
+            src: `/api/${locationCode}/plots/historic_temps?period=12mo`,
+          },
+        ]
+      : []),
   ];
-  const plotOptions = [...plots, { key: "all", label: "All" }];
+  const activePlot = plots.some((plot) => plot.key === selectedPlot)
+    ? selectedPlot
+    : (plots[0]?.key ?? null);
+  const plotOptions =
+    plots.length > 1 ? [...plots, { key: "all", label: "All" }] : plots;
+
+  if (!activePlot) {
+    return null;
+  }
 
   return (
     <div className="grid gap-3">
-      <fieldset className="inline-flex w-fit overflow-hidden rounded border border-swim-line bg-white">
-        <legend className="sr-only">Temperature plot range</legend>
-        {plotOptions.map((plot) => (
-          <button
-            className={[
-              "min-h-9 px-3 py-1.5 font-mono font-medium text-sm",
-              plot.key === selectedPlot
-                ? "bg-swim-blue text-white"
-                : "bg-white text-swim-blue",
-            ].join(" ")}
-            key={plot.key}
-            onClick={() => setSelectedPlot(plot.key)}
-            type="button"
-          >
-            {plot.label}
-          </button>
-        ))}
-      </fieldset>
+      {plotOptions.length > 1 ? (
+        <fieldset className="inline-flex w-fit overflow-hidden rounded border border-swim-line bg-white">
+          <legend className="sr-only">Temperature plot range</legend>
+          {plotOptions.map((plot) => (
+            <button
+              className={[
+                "min-h-9 px-3 py-1.5 font-mono font-medium text-sm",
+                plot.key === activePlot
+                  ? "bg-swim-blue text-white"
+                  : "bg-white text-swim-blue",
+              ].join(" ")}
+              key={plot.key}
+              onClick={() => setSelectedPlot(plot.key)}
+              type="button"
+            >
+              {plot.label}
+            </button>
+          ))}
+        </fieldset>
+      ) : null}
       <div className="grid gap-3">
         {plots.map((plot) => (
           <DeferredPlotImage
             alt={plot.alt}
             enabled={enabled}
-            isActive={selectedPlot === "all" || plot.key === selectedPlot}
+            isActive={activePlot === "all" || plot.key === activePlot}
             key={plot.key}
             src={plot.src}
           />

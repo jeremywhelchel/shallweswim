@@ -211,6 +211,10 @@
             "title": "Swim Location Link",
             "type": "string"
           },
+          "temperature_plots": {
+            "$ref": "#/components/schemas/AppTemperaturePlotConfig",
+            "description": "Enabled temperature plot capabilities"
+          },
           "timezone": {
             "description": "IANA timezone name",
             "title": "Timezone",
@@ -228,6 +232,7 @@
           "longitude",
           "timezone",
           "features",
+          "temperature_plots",
           "citations"
         ],
         "title": "AppLocationMetadata",
@@ -361,6 +366,28 @@
           }
         },
         "title": "AppSourceCitations",
+        "type": "object"
+      },
+      "AppTemperaturePlotConfig": {
+        "additionalProperties": false,
+        "description": "Temperature plot capabilities for frontend rendering.",
+        "properties": {
+          "historic": {
+            "description": "Whether historical temperature plots are enabled",
+            "title": "Historic",
+            "type": "boolean"
+          },
+          "live": {
+            "description": "Whether the live temperature plot is enabled",
+            "title": "Live",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "live",
+          "historic"
+        ],
+        "title": "AppTemperaturePlotConfig",
         "type": "object"
       },
       "AppWebcamConfig": {

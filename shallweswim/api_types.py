@@ -368,6 +368,17 @@ class AppSourceCitations(BaseModel):
     )
 
 
+class AppTemperaturePlotConfig(BaseModel):
+    """Temperature plot capabilities for frontend rendering."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    live: bool = Field(..., description="Whether the live temperature plot is enabled")
+    historic: bool = Field(
+        ..., description="Whether historical temperature plots are enabled"
+    )
+
+
 class AppLocationMetadata(BaseModel):
     """Presentation metadata for a swimming location."""
 
@@ -383,6 +394,9 @@ class AppLocationMetadata(BaseModel):
     longitude: float = Field(..., description="Longitude in decimal degrees")
     timezone: str = Field(..., description="IANA timezone name")
     features: AppFeatureFlags = Field(..., description="Enabled presentation features")
+    temperature_plots: AppTemperaturePlotConfig = Field(
+        ..., description="Enabled temperature plot capabilities"
+    )
     citations: AppSourceCitations = Field(
         ..., description="Trusted HTML citations for configured data sources"
     )

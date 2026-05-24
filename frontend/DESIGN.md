@@ -604,6 +604,7 @@ per-location display metadata:
   longitude
   timezone
   feature flags for temperature, tides, currents, webcam, transit, Windy
+  temperature plot capabilities for live and historical plot ranges
   source citation HTML or structured citation data
 per-location external integration config:
   webcam provider type and embed/watch/source links
@@ -615,7 +616,9 @@ frontend tables. The frontend may contain generic presentation code and generic
 unavailable-state copy, but adding a location, changing a swim-location link,
 enabling/disabling a camera, changing transit route IDs, or updating citations
 should be a backend configuration/API contract change, not a frontend source-code
-change.
+change. Temperature plot availability should also come from bootstrap metadata:
+locations with current temperature data but no useful historical series should
+not render permanent unavailable historical plot frames.
 
 ### Location Config Ownership
 

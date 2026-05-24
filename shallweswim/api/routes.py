@@ -30,6 +30,7 @@ from shallweswim.api_types import (
     AppManifestMetadata,
     AppPresentationLink,
     AppSourceCitations,
+    AppTemperaturePlotConfig,
     AppWebcamConfig,
     CurrentInfo,
     CurrentRange,
@@ -468,6 +469,12 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     webcam=webcam_enabled,
                     transit=transit_enabled,
                     windy=True,
+                ),
+                temperature_plots=AppTemperaturePlotConfig(
+                    live=temp_enabled,
+                    historic=(
+                        cfg.temp_source is not None and cfg.temp_source.historic_enabled
+                    ),
                 ),
                 citations=AppSourceCitations(
                     temperature=cfg.temp_source.citation if cfg.temp_source else None,

@@ -263,6 +263,7 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     nyc = data["locations"]["nyc"]
     assert nyc["metadata"]["code"] == "nyc"
     assert nyc["metadata"]["features"]["temperature"] is True
+    assert nyc["metadata"]["temperature_plots"] == {"live": True, "historic": True}
     assert nyc["metadata"]["features"]["webcam"] is True
     assert nyc["metadata"]["features"]["transit"] is True
     assert data["source_code_link"]["url"].endswith("/shallweswim")
@@ -291,6 +292,7 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert "youtube_live" not in chi["integrations"]
 
     sdf = data["locations"]["sdf"]
+    assert sdf["metadata"]["temperature_plots"] == {"live": True, "historic": False}
     assert sdf["metadata"]["features"]["webcam"] is True
     assert sdf["integrations"]["webcam"]["provider"] == "earthcam_embed"
     assert sdf["integrations"]["webcam"]["embed_url"].startswith(

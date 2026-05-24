@@ -52,6 +52,10 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
           transit: false,
           windy: false,
         },
+        temperature_plots: {
+          live: true,
+          historic: true,
+        },
         citations: {
           temperature: '<a href="https://example.com/temp">Temp source</a>',
           tides: '<a href="https://example.com/tides">Tide source</a>',
@@ -285,10 +289,12 @@ function syntheticLocation({
   code,
   features = {},
   integrations = {},
+  temperaturePlots = {},
 }: {
   code: string;
   features?: Partial<components["schemas"]["AppFeatureFlags"]>;
   integrations?: Partial<components["schemas"]["AppExternalIntegrations"]>;
+  temperaturePlots?: Partial<components["schemas"]["AppTemperaturePlotConfig"]>;
 }): components["schemas"]["AppBootstrapLocation"] {
   return {
     metadata: {
@@ -310,6 +316,11 @@ function syntheticLocation({
         transit: false,
         windy: false,
         ...features,
+      },
+      temperature_plots: {
+        live: false,
+        historic: false,
+        ...temperaturePlots,
       },
       citations: {
         temperature: '<a href="https://example.com/temp">Temp source</a>',
@@ -534,6 +545,10 @@ test("renders optional page sections from synthetic feature capabilities", async
       transit: true,
       windy: true,
     },
+    temperaturePlots: {
+      live: true,
+      historic: true,
+    },
     integrations: {
       webcam: {
         provider: "iframe",
@@ -641,6 +656,34 @@ test("omits optional page sections when synthetic capabilities are disabled", ()
     screen.queryByRole("heading", { name: "Transit Status" }),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
+});
+
+test("renders only live temperature plot controls when historic plots are disabled", async () => {
+  const location = syntheticLocation({
+    code: "live",
+    features: {
+      temperature: true,
+    },
+    temperaturePlots: {
+      live: true,
+      historic: false,
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    conditions: syntheticConditions({ code: "live" }),
+    locationCode: "live",
+  });
+
+  expect(
+    await screen.findByRole("heading", { name: "Temperature Trends" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Live" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "2 mo" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "12 mo" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "All" })).toBeNull();
+  expect(screen.getByText("Loading plot")).toBeVisible();
 });
 
 test.each([

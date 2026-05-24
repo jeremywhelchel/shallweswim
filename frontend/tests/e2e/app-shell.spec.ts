@@ -5,15 +5,6 @@ const bootstrapPayload = {
   short_name: "shallweswim",
   default_location_code: "nyc",
   location_order: ["nyc", "sfo"],
-  manifest: {
-    name: "shall we swim?",
-    short_name: "shallweswim",
-    start_url: "/?source=pwa-react",
-    scope: "/",
-    display: "standalone",
-    theme_color: "#000099",
-    background_color: "#000099",
-  },
   source_code_link: {
     label: "jeremywhelchel/shallweswim",
     url: "https://github.com/jeremywhelchel/shallweswim",

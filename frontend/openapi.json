@@ -49,10 +49,6 @@
             "title": "Locations",
             "type": "object"
           },
-          "manifest": {
-            "$ref": "#/components/schemas/AppManifestMetadata",
-            "description": "Installable app manifest metadata"
-          },
           "short_name": {
             "description": "Short application name",
             "title": "Short Name",
@@ -68,7 +64,6 @@
           "short_name",
           "default_location_code",
           "location_order",
-          "manifest",
           "source_code_link",
           "locations"
         ],
@@ -236,58 +231,6 @@
           "citations"
         ],
         "title": "AppLocationMetadata",
-        "type": "object"
-      },
-      "AppManifestMetadata": {
-        "additionalProperties": false,
-        "description": "Installable web app manifest metadata exposed to the frontend.",
-        "properties": {
-          "background_color": {
-            "description": "Background color",
-            "title": "Background Color",
-            "type": "string"
-          },
-          "display": {
-            "description": "Manifest display mode",
-            "title": "Display",
-            "type": "string"
-          },
-          "name": {
-            "description": "Full web app name",
-            "title": "Name",
-            "type": "string"
-          },
-          "scope": {
-            "description": "Manifest scope",
-            "title": "Scope",
-            "type": "string"
-          },
-          "short_name": {
-            "description": "Short web app name",
-            "title": "Short Name",
-            "type": "string"
-          },
-          "start_url": {
-            "description": "Manifest start URL",
-            "title": "Start Url",
-            "type": "string"
-          },
-          "theme_color": {
-            "description": "Theme color",
-            "title": "Theme Color",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "short_name",
-          "start_url",
-          "scope",
-          "display",
-          "theme_color",
-          "background_color"
-        ],
-        "title": "AppManifestMetadata",
         "type": "object"
       },
       "AppPresentationLink": {

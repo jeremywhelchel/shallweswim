@@ -27,7 +27,6 @@ from shallweswim.api_types import (
     AppExternalIntegrations,
     AppFeatureFlags,
     AppLocationMetadata,
-    AppManifestMetadata,
     AppPresentationLink,
     AppSourceCitations,
     AppTemperaturePlotConfig,
@@ -504,15 +503,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
             short_name=APP_SHORT_NAME,
             default_location_code=DEFAULT_LOCATION_CODE,
             location_order=location_order,
-            manifest=AppManifestMetadata(
-                name=APP_NAME,
-                short_name=APP_SHORT_NAME,
-                start_url="/?source=pwa-react",
-                scope="/",
-                display="standalone",
-                theme_color=APP_THEME_COLOR,
-                background_color=APP_BACKGROUND_COLOR,
-            ),
             source_code_link=AppPresentationLink(
                 label="jeremywhelchel/shallweswim",
                 url=GITHUB_SOURCE_URL,

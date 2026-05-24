@@ -258,11 +258,7 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert data["short_name"] == "shallweswim"
     assert data["default_location_code"] == "nyc"
     assert "nyc" in data["location_order"]
-    assert data["manifest"]["name"] == "shall we swim?"
-    assert data["manifest"]["short_name"] == "shallweswim"
-    assert data["manifest"]["start_url"] == "/?source=pwa-react"
-    assert data["manifest"]["scope"] == "/"
-    assert data["manifest"]["background_color"] == "#000099"
+    assert "manifest" not in data
 
     nyc = data["locations"]["nyc"]
     assert nyc["metadata"]["code"] == "nyc"

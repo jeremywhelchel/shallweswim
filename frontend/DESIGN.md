@@ -695,10 +695,11 @@ per-location feature flags
 source citations
 external embed settings
 transit route settings
-installable-app presentation metadata
 ```
 
-That endpoint answers: "How should the React app render itself?"
+That endpoint answers: "How should the React app render itself?" It should not
+mirror `/manifest.json`; the browser manifest route owns installable-app
+metadata.
 
 Some fields will intentionally overlap between the two endpoints, such as code,
 name, swim location, and coordinates. That is acceptable because the endpoint
@@ -1267,7 +1268,7 @@ Milestone scope:
 - add OpenAPI export, minimal `/api/app/bootstrap`, and TypeScript API generation
 - serve the built frontend under `/app`
 - add placeholder routes for `/app` and `/app/nyc`
-- include installable-app manifest metadata for `/app`
+- serve installable-app manifest metadata through `/manifest.json`
 - keep the existing Jinja pages unchanged except for wiring needed to serve `/app`
 
 Milestone acceptance checks:

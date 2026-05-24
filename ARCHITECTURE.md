@@ -106,10 +106,22 @@ uv run python -m shallweswim.scripts.export_openapi > frontend/openapi.json
 corepack pnpm@10.18.3 --dir frontend generate-api
 ```
 
-`/api/app/bootstrap` exposes non-secret presentation metadata for the React app.
-It may include display labels, feature flags, trusted citation HTML, and external
-embed configuration, but should not expose station IDs or feed internals unless
-there is an explicit frontend need and approval.
+API/config ownership:
+
+- `/manifest.json` is the canonical browser install/PWA manifest. Do not mirror
+  manifest fields through app bootstrap payloads.
+- `/api/locations` is the public discovery endpoint for configured swim
+  locations. It should remain general-purpose location metadata plus availability
+  summary, not React render configuration.
+- `/api/app/bootstrap` is an app-internal React startup payload. It is still
+  exported in OpenAPI so the bundled frontend can use generated types, but it is
+  not a stable external-consumer API. It may intentionally duplicate selected
+  static location metadata also exposed by `/api/locations` and compose it with
+  app presentation configuration to avoid extra startup requests. It may include
+  display labels, feature flags, trusted citation HTML, and external embed
+  configuration, but should not include dynamic condition data, manifest
+  metadata, station IDs, or feed internals unless there is an explicit frontend
+  need and approval.
 
 ### Configuration
 

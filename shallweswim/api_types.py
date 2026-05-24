@@ -402,20 +402,6 @@ class AppLocationMetadata(BaseModel):
     )
 
 
-class AppManifestMetadata(BaseModel):
-    """Installable web app manifest metadata exposed to the frontend."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(..., description="Full web app name")
-    short_name: str = Field(..., description="Short web app name")
-    start_url: str = Field(..., description="Manifest start URL")
-    scope: str = Field(..., description="Manifest scope")
-    display: str = Field(..., description="Manifest display mode")
-    theme_color: str = Field(..., description="Theme color")
-    background_color: str = Field(..., description="Background color")
-
-
 class AppPresentationLink(BaseModel):
     """Presentation link metadata for the frontend."""
 
@@ -503,9 +489,6 @@ class AppBootstrapResponse(BaseModel):
     short_name: str = Field(..., description="Short application name")
     default_location_code: str = Field(..., description="Default location code")
     location_order: list[str] = Field(..., description="Ordered location codes")
-    manifest: AppManifestMetadata = Field(
-        ..., description="Installable app manifest metadata"
-    )
     source_code_link: AppPresentationLink = Field(
         ..., description="Project source code link"
     )

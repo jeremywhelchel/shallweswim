@@ -42,7 +42,9 @@
   instrument header. The remaining architecture work is to stop hardcoding NYC
   landmarks and caveats in the frontend: add typed backend config for the
   reference point, flood/ebb landmark directions, route-planning advice, and
-  local caveats, expose it through bootstrap, and render it generically.
+  local caveats, NYC current source override, map credits, and harbor-chart
+  source links; expose those through bootstrap or another static app-config
+  contract and render them generically.
 - Preserve NYC as a derived current location if current prediction sources
   change. NYC currently estimates local swim-area current by averaging nearby
   NOAA current prediction station velocity curves. A future source upgrade
@@ -151,16 +153,14 @@ Notes:
 
 ### Bootstrap And Static Metadata
 
-- Clean up duplicated install manifest metadata in `/api/app/bootstrap`. The
-  browser install contract is `/manifest.json`; bootstrap currently mirrors it
-  only to avoid drift. Remove `manifest` from the bootstrap API once no planned
-  frontend code depends on it.
-- Split static/bootstrap API concerns from dynamic condition/current data where
-  useful. `/api/app/bootstrap` and static location metadata should stay distinct
-  from frequently refreshed condition endpoints.
 - Review user-facing station and location names. Some source station names, such
   as "The Battery", may be accurate data-source labels but confusing as primary
   swim-condition copy.
+- Make Windy forecast configuration location-aware instead of hardcoding one
+  frontend embed contract. Coastal locations can keep wave/swell-oriented
+  defaults, while inland, river, or future international locations should be able
+  to choose more relevant overlay/product/unit settings through typed static
+  config.
 
 ## Data Sources And Quality
 

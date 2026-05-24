@@ -685,8 +685,6 @@ export interface components {
             locations: {
                 [key: string]: components["schemas"]["AppBootstrapLocation"];
             };
-            /** @description Installable app manifest metadata */
-            manifest: components["schemas"]["AppManifestMetadata"];
             /**
              * Short Name
              * @description Short application name
@@ -802,47 +800,6 @@ export interface components {
              * @description IANA timezone name
              */
             timezone: string;
-        };
-        /**
-         * AppManifestMetadata
-         * @description Installable web app manifest metadata exposed to the frontend.
-         */
-        AppManifestMetadata: {
-            /**
-             * Background Color
-             * @description Background color
-             */
-            background_color: string;
-            /**
-             * Display
-             * @description Manifest display mode
-             */
-            display: string;
-            /**
-             * Name
-             * @description Full web app name
-             */
-            name: string;
-            /**
-             * Scope
-             * @description Manifest scope
-             */
-            scope: string;
-            /**
-             * Short Name
-             * @description Short web app name
-             */
-            short_name: string;
-            /**
-             * Start Url
-             * @description Manifest start URL
-             */
-            start_url: string;
-            /**
-             * Theme Color
-             * @description Theme color
-             */
-            theme_color: string;
         };
         /**
          * AppPresentationLink

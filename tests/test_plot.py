@@ -380,6 +380,44 @@ def test_create_tide_current_plot_handles_window_without_tide_extrema() -> None:
 
 
 @freeze_time("2026-05-24T12:00:00Z")
+def test_create_tide_current_plot_handles_non_minute_aligned_tides() -> None:
+    location_config = _test_location_config()
+    tides = pd.DataFrame(
+        {
+            "prediction": [0.2, 5.0, 0.9],
+            "type": [
+                types.TideCategory.LOW.value,
+                types.TideCategory.HIGH.value,
+                types.TideCategory.LOW.value,
+            ],
+        },
+        index=pd.DatetimeIndex(
+            [
+                datetime.datetime(2026, 5, 24, 6, 0, 14, 123456),
+                datetime.datetime(2026, 5, 24, 15, 0, 14, 123456),
+                datetime.datetime(2026, 5, 24, 21, 0, 14, 123456),
+            ]
+        ),
+    )
+    current_index = pd.date_range("2026-05-24T06:00:00", periods=20, freq="h")
+    currents = pd.DataFrame(
+        {"velocity": np.sin(np.linspace(-np.pi, np.pi, len(current_index)))},
+        index=current_index,
+    )
+
+    fig = plot.create_tide_current_plot(
+        tides,
+        currents,
+        datetime.datetime(2026, 5, 24, 12, 0, 0),
+        location_config,
+    )
+
+    fig_to_svg = io.StringIO()
+    fig.savefig(fig_to_svg, format="svg")
+    assert "<svg" in fig_to_svg.getvalue()
+
+
+@freeze_time("2026-05-24T12:00:00Z")
 def test_create_tide_current_plot_places_high_tide_labels_above_peaks() -> None:
     location_config = _test_location_config()
     tides = pd.DataFrame(

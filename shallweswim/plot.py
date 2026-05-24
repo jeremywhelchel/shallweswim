@@ -821,7 +821,7 @@ def create_tide_current_plot(
     # Interpolate only the numeric 'prediction' column for a smoother plot line.
     # Do this *before* filtering to the window to allow interpolation to use
     # data outside the window edges for better accuracy.
-    tide_predictions = tides[["prediction"]].resample("60s")
+    tide_predictions = tides[["prediction"]].resample("60s").mean()
     if len(tides) >= 3:
         tides_interpolated = tide_predictions.interpolate("polynomial", order=2)
     else:

@@ -150,17 +150,14 @@ api.register_routes(app)
 # ======================================================================
 
 
-@app.get("/")
-async def root_index() -> responses.RedirectResponse:
-    """Redirect root path to default location (NYC).
-
-    TODO: Use cookies to redirect to last used or saved location.
-    """
-    return responses.RedirectResponse("/nyc", status_code=301)
+@app.get("/legacy")
+async def legacy_root_redirect() -> responses.RedirectResponse:
+    """Redirect the legacy root path to the default legacy location page."""
+    return responses.RedirectResponse("/legacy/nyc", status_code=301)
 
 
-@app.get("/all")
-async def view_all_locations(request: fastapi.Request) -> responses.HTMLResponse:
+@app.get("/legacy/all")
+async def legacy_all_locations(request: fastapi.Request) -> responses.HTMLResponse:
     """Serve a landing page showing all swimming locations with their current water temperatures.
 
     Args:
@@ -174,18 +171,24 @@ async def view_all_locations(request: fastapi.Request) -> responses.HTMLResponse
         name="all_locations.html",
         context={
             "all_locations": config.CONFIGS,
-            "canonical_url": canonical.canonical_url("/all"),
+            "canonical_url": canonical.canonical_url("/locations"),
         },
     )
 
 
-@app.get("/embed")
-async def root_embed_redirect() -> responses.RedirectResponse:
-    """Redirect /embed to the default location embed page (NYC).
+@app.get("/legacy/embed")
+async def legacy_embed_redirect() -> responses.RedirectResponse:
+    """Redirect /legacy/embed to the default legacy location embed page.
 
     Returns:
         Redirect response to the NYC embed page
     """
+    return responses.RedirectResponse("/legacy/nyc/embed", status_code=301)
+
+
+@app.get("/embed")
+async def root_embed_redirect() -> responses.RedirectResponse:
+    """Redirect the existing embed route to the default location embed page."""
     return responses.RedirectResponse("/nyc/embed", status_code=301)
 
 
@@ -194,15 +197,14 @@ async def root_embed_redirect() -> responses.RedirectResponse:
 # ======================================================================
 
 # Define static file redirects for cleaner implementation
-STATIC_FILES = [
+STATIC_FILE_REDIRECTS = [
     ("/favicon.ico", "/static/favicon.ico"),
     ("/apple-touch-icon.png", "/static/apple-touch-icon.png"),
     ("/apple-touch-icon-precomposed.png", "/static/apple-touch-icon.png"),
-    ("/manifest.json", "/static/manifest.json"),
 ]
 
 # Register each static file route individually
-for path, target in STATIC_FILES:
+for path, target in STATIC_FILE_REDIRECTS:
     # Use a closure to capture the current value of target
     def create_static_route(
         target_path: str,
@@ -216,6 +218,16 @@ for path, target in STATIC_FILES:
     app.get(path)(create_static_route(target))
 
 
+@app.get("/manifest.json")
+async def manifest_json() -> responses.FileResponse:
+    """Serve the canonical web app manifest for the root-mounted React app."""
+    return responses.FileResponse(
+        "shallweswim/static/manifest.json",
+        media_type="application/manifest+json",
+        headers=APP_SHELL_CACHE_HEADERS,
+    )
+
+
 @app.get("/robots.txt")
 async def robots_txt() -> responses.PlainTextResponse:
     """Serve crawler directives for the canonical site."""
@@ -225,7 +237,7 @@ async def robots_txt() -> responses.PlainTextResponse:
 @app.get("/sitemap.xml")
 async def sitemap_xml() -> responses.Response:
     """Serve a sitemap of canonical, indexable pages."""
-    urls = [canonical.canonical_url("/all")]
+    urls = [canonical.canonical_url("/locations")]
     urls.extend(
         canonical.canonical_url(f"/{loc_code}") for loc_code in sorted(config.CONFIGS)
     )
@@ -259,13 +271,13 @@ def app_shell_missing_response() -> responses.PlainTextResponse:
     return responses.PlainTextResponse(
         "Frontend app shell has not been built. Run "
         "`corepack pnpm@10.18.3 --dir frontend build` from the repository root, "
-        "then retry /app.",
+        "then retry the requested app route.",
         status_code=404,
         headers=APP_SHELL_CACHE_HEADERS,
     )
 
 
-@app.get("/app/assets/{asset_path:path}", include_in_schema=False)
+@app.get("/assets/{asset_path:path}", include_in_schema=False)
 async def frontend_asset(asset_path: str) -> responses.FileResponse:
     """Serve Vite-built immutable assets for the React app."""
     assets_dir = frontend_assets_dir()
@@ -282,25 +294,8 @@ async def frontend_asset(asset_path: str) -> responses.FileResponse:
     return responses.FileResponse(asset, headers=APP_ASSET_CACHE_HEADERS)
 
 
-@app.get("/app/manifest.webmanifest", include_in_schema=False)
-async def frontend_manifest() -> responses.Response:
-    """Serve the React app web manifest with app-shell cache semantics."""
-    manifest = frontend_dist_dir() / "manifest.webmanifest"
-    if not manifest.is_file():
-        return app_shell_missing_response()
-
-    return responses.FileResponse(
-        manifest,
-        media_type="application/manifest+json",
-        headers=APP_SHELL_CACHE_HEADERS,
-    )
-
-
-@app.get("/app", include_in_schema=False)
-@app.get("/app/", include_in_schema=False)
-@app.get("/app/{app_path:path}", include_in_schema=False)
-async def frontend_app_shell(app_path: str = "") -> responses.Response:
-    """Serve the React app shell for client-owned routes under /app."""
+def frontend_app_shell_response() -> responses.Response:
+    """Serve the React app shell for canonical app routes."""
     index = frontend_index_path()
     if not index.is_file():
         return app_shell_missing_response()
@@ -312,16 +307,28 @@ async def frontend_app_shell(app_path: str = "") -> responses.Response:
     )
 
 
+@app.get("/", include_in_schema=False)
+async def frontend_root() -> responses.Response:
+    """Serve the React app shell for the default location dashboard."""
+    return frontend_app_shell_response()
+
+
+@app.get("/locations", include_in_schema=False)
+async def frontend_locations() -> responses.Response:
+    """Serve the React app shell for the all-locations route."""
+    return frontend_app_shell_response()
+
+
 # ======================================================================
-# Location-specific routes - These must come after static and root routes
+# Legacy Jinja routes - These must come after static and root routes
 # ======================================================================
 
 
-@app.get("/{location}")
-async def location_index(
+@app.get("/legacy/{location}")
+async def legacy_location_index(
     request: fastapi.Request, location: str
 ) -> responses.HTMLResponse:
-    """Serve the main page for a specific location.
+    """Serve the legacy Jinja main page for a specific location.
 
     Args:
         request: FastAPI request object
@@ -350,11 +357,11 @@ async def location_index(
     )
 
 
-@app.get("/{location}/embed")
-async def location_embed(
+@app.get("/legacy/{location}/embed")
+async def legacy_location_embed(
     request: fastapi.Request, location: str
 ) -> responses.HTMLResponse:
-    """Serve the embed view for a specific location for embedding in other websites.
+    """Serve the legacy embed view for a specific location.
 
     Args:
         request: FastAPI request object
@@ -376,16 +383,36 @@ async def location_embed(
         name="embed.html",
         context={
             "config": cfg,
+            "canonical_url": canonical.canonical_url(f"/legacy/{cfg.code}/embed"),
+        },
+    )
+
+
+@app.get("/{location}/embed")
+async def location_embed(
+    request: fastapi.Request, location: str
+) -> responses.HTMLResponse:
+    """Serve the existing legacy embed view at its historical URL."""
+    cfg = config.get(location)
+    if not cfg:
+        logging.warning("Bad location for embed: %s", location)
+        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
+
+    return templates.TemplateResponse(
+        request=request,
+        name="embed.html",
+        context={
+            "config": cfg,
             "canonical_url": canonical.canonical_url(f"/{cfg.code}/embed"),
         },
     )
 
 
-@app.get("/{location}/widget")
-async def location_widget(
+@app.get("/legacy/{location}/widget")
+async def legacy_location_widget(
     request: fastapi.Request, location: str
 ) -> responses.HTMLResponse:
-    """Serve a widget view for a specific location.
+    """Serve a legacy widget view for a specific location.
 
     Args:
         request: FastAPI request object
@@ -411,11 +438,11 @@ async def location_widget(
     )
 
 
-@app.get("/{location}/currents")
-async def location_currents(
+@app.get("/legacy/{location}/currents")
+async def legacy_location_currents(
     request: fastapi.Request, location: str, shift: int = 0
 ) -> responses.HTMLResponse:
-    """Serve the water current visualization page for the specified location.
+    """Serve the legacy water current visualization page for the specified location.
 
     Args:
         request: FastAPI request object
@@ -445,9 +472,25 @@ async def location_currents(
             "config": cfg,
             "shift": shift,
             "shifted_time": formatted_time,
-            "canonical_url": canonical.canonical_url(f"/{cfg.code}/currents"),
+            "canonical_url": canonical.canonical_url(f"/{cfg.code}"),
         },
     )
+
+
+# ======================================================================
+# Root-mounted React location routes - These must come after reserved routes
+# ======================================================================
+
+
+@app.get("/{location}", include_in_schema=False)
+async def frontend_location(location: str) -> responses.Response:
+    """Serve the React app shell for canonical location dashboards."""
+    cfg = config.get(location)
+    if not cfg:
+        logging.warning("Bad location: %s", location)
+        raise HTTPException(status_code=404, detail=f"Bad location: {location}")
+
+    return frontend_app_shell_response()
 
 
 # ======================================================================

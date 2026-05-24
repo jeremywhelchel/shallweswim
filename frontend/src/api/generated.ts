@@ -4,54 +4,6 @@
  */
 
 export interface paths {
-    "/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Root Index
-         * @description Redirect root path to default location (NYC).
-         *
-         *     TODO: Use cookies to redirect to last used or saved location.
-         */
-        get: operations["root_index__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/all": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * View All Locations
-         * @description Serve a landing page showing all swimming locations with their current water temperatures.
-         *
-         *     Args:
-         *         request: FastAPI request object
-         *
-         *     Returns:
-         *         HTML response with all locations and their water temperatures
-         */
-        get: operations["view_all_locations_all_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/app/bootstrap": {
         parameters: {
             query?: never;
@@ -399,10 +351,7 @@ export interface paths {
         };
         /**
          * Root Embed Redirect
-         * @description Redirect /embed to the default location embed page (NYC).
-         *
-         *     Returns:
-         *         Redirect response to the NYC embed page
+         * @description Redirect the existing embed route to the default location embed page.
          */
         get: operations["root_embed_redirect_embed_get"];
         put?: never;
@@ -430,6 +379,193 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Legacy Root Redirect
+         * @description Redirect the legacy root path to the default legacy location page.
+         */
+        get: operations["legacy_root_redirect_legacy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/legacy/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Legacy All Locations
+         * @description Serve a landing page showing all swimming locations with their current water temperatures.
+         *
+         *     Args:
+         *         request: FastAPI request object
+         *
+         *     Returns:
+         *         HTML response with all locations and their water temperatures
+         */
+        get: operations["legacy_all_locations_legacy_all_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/legacy/embed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Legacy Embed Redirect
+         * @description Redirect /legacy/embed to the default legacy location embed page.
+         *
+         *     Returns:
+         *         Redirect response to the NYC embed page
+         */
+        get: operations["legacy_embed_redirect_legacy_embed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/legacy/{location}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Legacy Location Index
+         * @description Serve the legacy Jinja main page for a specific location.
+         *
+         *     Args:
+         *         request: FastAPI request object
+         *         location: Location code (e.g., 'nyc')
+         *
+         *     Returns:
+         *         HTML response with location-specific configuration
+         *
+         *     Raises:
+         *         HTTPException: If the location is not configured
+         */
+        get: operations["legacy_location_index_legacy__location__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/legacy/{location}/currents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Legacy Location Currents
+         * @description Serve the legacy water current visualization page for the specified location.
+         *
+         *     Args:
+         *         request: FastAPI request object
+         *         location: Location code (e.g., "nyc", "san")
+         *         shift: Time shift in minutes from current time
+         *
+         *     Returns:
+         *         HTML response with current water conditions
+         */
+        get: operations["legacy_location_currents_legacy__location__currents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/legacy/{location}/embed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Legacy Location Embed
+         * @description Serve the legacy embed view for a specific location.
+         *
+         *     Args:
+         *         request: FastAPI request object
+         *         location: Location code (e.g., 'nyc')
+         *
+         *     Returns:
+         *         HTML response with location-specific embed
+         *
+         *     Raises:
+         *         HTTPException: If the location is not configured
+         */
+        get: operations["legacy_location_embed_legacy__location__embed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/legacy/{location}/widget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Legacy Location Widget
+         * @description Serve a legacy widget view for a specific location.
+         *
+         *     Args:
+         *         request: FastAPI request object
+         *         location: Location code (e.g., 'nyc')
+         *
+         *     Returns:
+         *         HTML response with location-specific widget
+         *
+         *     Raises:
+         *         HTTPException: If the location is not configured
+         */
+        get: operations["legacy_location_widget_legacy__location__widget_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/manifest.json": {
         parameters: {
             query?: never;
@@ -437,8 +573,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Static Route */
-        get: operations["static_route_manifest_json_get"];
+        /**
+         * Manifest Json
+         * @description Serve the canonical web app manifest for the root-mounted React app.
+         */
+        get: operations["manifest_json_manifest_json_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -487,64 +626,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/{location}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Location Index
-         * @description Serve the main page for a specific location.
-         *
-         *     Args:
-         *         request: FastAPI request object
-         *         location: Location code (e.g., 'nyc')
-         *
-         *     Returns:
-         *         HTML response with location-specific configuration
-         *
-         *     Raises:
-         *         HTTPException: If the location is not configured
-         */
-        get: operations["location_index__location__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/{location}/currents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Location Currents
-         * @description Serve the water current visualization page for the specified location.
-         *
-         *     Args:
-         *         request: FastAPI request object
-         *         location: Location code (e.g., "nyc", "san")
-         *         shift: Time shift in minutes from current time
-         *
-         *     Returns:
-         *         HTML response with current water conditions
-         */
-        get: operations["location_currents__location__currents_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/{location}/embed": {
         parameters: {
             query?: never;
@@ -554,49 +635,9 @@ export interface paths {
         };
         /**
          * Location Embed
-         * @description Serve the embed view for a specific location for embedding in other websites.
-         *
-         *     Args:
-         *         request: FastAPI request object
-         *         location: Location code (e.g., 'nyc')
-         *
-         *     Returns:
-         *         HTML response with location-specific embed
-         *
-         *     Raises:
-         *         HTTPException: If the location is not configured
+         * @description Serve the existing legacy embed view at its historical URL.
          */
         get: operations["location_embed__location__embed_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/{location}/widget": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Location Widget
-         * @description Serve a widget view for a specific location.
-         *
-         *     Args:
-         *         request: FastAPI request object
-         *         location: Location code (e.g., 'nyc')
-         *
-         *     Returns:
-         *         HTML response with location-specific widget
-         *
-         *     Raises:
-         *         HTTPException: If the location is not configured
-         */
-        get: operations["location_widget__location__widget_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1439,46 +1480,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    root_index__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    view_all_locations_all_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
     app_bootstrap_api_app_bootstrap_get: {
         parameters: {
             query?: never;
@@ -1858,7 +1859,193 @@ export interface operations {
             };
         };
     };
-    static_route_manifest_json_get: {
+    legacy_root_redirect_legacy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    legacy_all_locations_legacy_all_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    legacy_embed_redirect_legacy_embed_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    legacy_location_index_legacy__location__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                location: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    legacy_location_currents_legacy__location__currents_get: {
+        parameters: {
+            query?: {
+                shift?: number;
+            };
+            header?: never;
+            path: {
+                location: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    legacy_location_embed_legacy__location__embed_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                location: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    legacy_location_widget_legacy__location__widget_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                location: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    manifest_json_manifest_json_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1918,102 +2105,7 @@ export interface operations {
             };
         };
     };
-    location_index__location__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                location: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    location_currents__location__currents_get: {
-        parameters: {
-            query?: {
-                shift?: number;
-            };
-            header?: never;
-            path: {
-                location: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     location_embed__location__embed_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                location: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    location_widget__location__widget_get: {
         parameters: {
             query?: never;
             header?: never;

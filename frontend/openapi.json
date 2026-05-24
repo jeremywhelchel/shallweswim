@@ -1457,40 +1457,6 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/": {
-      "get": {
-        "description": "Redirect root path to default location (NYC).\n\nTODO: Use cookies to redirect to last used or saved location.",
-        "operationId": "root_index__get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Root Index"
-      }
-    },
-    "/all": {
-      "get": {
-        "description": "Serve a landing page showing all swimming locations with their current water temperatures.\n\nArgs:\n    request: FastAPI request object\n\nReturns:\n    HTML response with all locations and their water temperatures",
-        "operationId": "view_all_locations_all_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "View All Locations"
-      }
-    },
     "/api/app/bootstrap": {
       "get": {
         "description": "Return non-secret presentation metadata for the React app.",
@@ -1952,7 +1918,7 @@
     },
     "/embed": {
       "get": {
-        "description": "Redirect /embed to the default location embed page (NYC).\n\nReturns:\n    Redirect response to the NYC embed page",
+        "description": "Redirect the existing embed route to the default location embed page.",
         "operationId": "root_embed_redirect_embed_get",
         "responses": {
           "200": {
@@ -1983,9 +1949,10 @@
         "summary": "Static Route"
       }
     },
-    "/manifest.json": {
+    "/legacy": {
       "get": {
-        "operationId": "static_route_manifest_json_get",
+        "description": "Redirect the legacy root path to the default legacy location page.",
+        "operationId": "legacy_root_redirect_legacy_get",
         "responses": {
           "200": {
             "content": {
@@ -1996,13 +1963,13 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Static Route"
+        "summary": "Legacy Root Redirect"
       }
     },
-    "/robots.txt": {
+    "/legacy/all": {
       "get": {
-        "description": "Serve crawler directives for the canonical site.",
-        "operationId": "robots_txt_robots_txt_get",
+        "description": "Serve a landing page showing all swimming locations with their current water temperatures.\n\nArgs:\n    request: FastAPI request object\n\nReturns:\n    HTML response with all locations and their water temperatures",
+        "operationId": "legacy_all_locations_legacy_all_get",
         "responses": {
           "200": {
             "content": {
@@ -2013,13 +1980,13 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Robots Txt"
+        "summary": "Legacy All Locations"
       }
     },
-    "/sitemap.xml": {
+    "/legacy/embed": {
       "get": {
-        "description": "Serve a sitemap of canonical, indexable pages.",
-        "operationId": "sitemap_xml_sitemap_xml_get",
+        "description": "Redirect /legacy/embed to the default legacy location embed page.\n\nReturns:\n    Redirect response to the NYC embed page",
+        "operationId": "legacy_embed_redirect_legacy_embed_get",
         "responses": {
           "200": {
             "content": {
@@ -2030,13 +1997,13 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Sitemap Xml"
+        "summary": "Legacy Embed Redirect"
       }
     },
-    "/{location}": {
+    "/legacy/{location}": {
       "get": {
-        "description": "Serve the main page for a specific location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    HTML response with location-specific configuration\n\nRaises:\n    HTTPException: If the location is not configured",
-        "operationId": "location_index__location__get",
+        "description": "Serve the legacy Jinja main page for a specific location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    HTML response with location-specific configuration\n\nRaises:\n    HTTPException: If the location is not configured",
+        "operationId": "legacy_location_index_legacy__location__get",
         "parameters": [
           {
             "in": "path",
@@ -2068,13 +2035,13 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Location Index"
+        "summary": "Legacy Location Index"
       }
     },
-    "/{location}/currents": {
+    "/legacy/{location}/currents": {
       "get": {
-        "description": "Serve the water current visualization page for the specified location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., \"nyc\", \"san\")\n    shift: Time shift in minutes from current time\n\nReturns:\n    HTML response with current water conditions",
-        "operationId": "location_currents__location__currents_get",
+        "description": "Serve the legacy water current visualization page for the specified location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., \"nyc\", \"san\")\n    shift: Time shift in minutes from current time\n\nReturns:\n    HTML response with current water conditions",
+        "operationId": "legacy_location_currents_legacy__location__currents_get",
         "parameters": [
           {
             "in": "path",
@@ -2116,12 +2083,139 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Location Currents"
+        "summary": "Legacy Location Currents"
+      }
+    },
+    "/legacy/{location}/embed": {
+      "get": {
+        "description": "Serve the legacy embed view for a specific location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    HTML response with location-specific embed\n\nRaises:\n    HTTPException: If the location is not configured",
+        "operationId": "legacy_location_embed_legacy__location__embed_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Legacy Location Embed"
+      }
+    },
+    "/legacy/{location}/widget": {
+      "get": {
+        "description": "Serve a legacy widget view for a specific location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    HTML response with location-specific widget\n\nRaises:\n    HTTPException: If the location is not configured",
+        "operationId": "legacy_location_widget_legacy__location__widget_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Legacy Location Widget"
+      }
+    },
+    "/manifest.json": {
+      "get": {
+        "description": "Serve the canonical web app manifest for the root-mounted React app.",
+        "operationId": "manifest_json_manifest_json_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Manifest Json"
+      }
+    },
+    "/robots.txt": {
+      "get": {
+        "description": "Serve crawler directives for the canonical site.",
+        "operationId": "robots_txt_robots_txt_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Robots Txt"
+      }
+    },
+    "/sitemap.xml": {
+      "get": {
+        "description": "Serve a sitemap of canonical, indexable pages.",
+        "operationId": "sitemap_xml_sitemap_xml_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sitemap Xml"
       }
     },
     "/{location}/embed": {
       "get": {
-        "description": "Serve the embed view for a specific location for embedding in other websites.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    HTML response with location-specific embed\n\nRaises:\n    HTTPException: If the location is not configured",
+        "description": "Serve the existing legacy embed view at its historical URL.",
         "operationId": "location_embed__location__embed_get",
         "parameters": [
           {
@@ -2155,44 +2249,6 @@
           }
         },
         "summary": "Location Embed"
-      }
-    },
-    "/{location}/widget": {
-      "get": {
-        "description": "Serve a widget view for a specific location.\n\nArgs:\n    request: FastAPI request object\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    HTML response with location-specific widget\n\nRaises:\n    HTTPException: If the location is not configured",
-        "operationId": "location_widget__location__widget_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "location",
-            "required": true,
-            "schema": {
-              "title": "Location",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Location Widget"
       }
     }
   }

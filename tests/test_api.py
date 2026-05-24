@@ -254,11 +254,15 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
 
     assert response.status_code == 200
     data = response.json()
-    assert data["app_name"] == "Shall We Swim"
-    assert data["short_name"] == "Swim"
+    assert data["app_name"] == "shall we swim?"
+    assert data["short_name"] == "shallweswim"
     assert data["default_location_code"] == "nyc"
     assert "nyc" in data["location_order"]
-    assert data["manifest"]["start_url"] == "/app"
+    assert data["manifest"]["name"] == "shall we swim?"
+    assert data["manifest"]["short_name"] == "shallweswim"
+    assert data["manifest"]["start_url"] == "/?source=pwa-react"
+    assert data["manifest"]["scope"] == "/"
+    assert data["manifest"]["background_color"] == "#000099"
 
     nyc = data["locations"]["nyc"]
     assert nyc["metadata"]["code"] == "nyc"

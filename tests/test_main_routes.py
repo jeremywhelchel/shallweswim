@@ -32,6 +32,24 @@ def test_robots_txt_points_to_sitemap() -> None:
     assert f"Sitemap: {canonical.CANONICAL_BASE_URL}/sitemap.xml" in response.text
 
 
+def test_root_manifest_uses_root_app_scope() -> None:
+    """The canonical web manifest launches the root-mounted React app."""
+    client = TestClient(app)
+
+    response = client.get("/manifest.json")
+
+    assert response.status_code == 200
+    assert not response.history
+    assert response.headers["content-type"].startswith("application/manifest+json")
+    assert response.headers["cache-control"] == "no-cache, must-revalidate"
+    data = response.json()
+    assert data["name"] == "shall we swim?"
+    assert data["short_name"] == "shallweswim"
+    assert data["start_url"] == "/?source=pwa-react"
+    assert data["scope"] == "/"
+    assert data["background_color"] == "#000099"
+
+
 def test_sitemap_lists_canonical_location_pages() -> None:
     """Sitemap contains only canonical apex-host URLs for indexable pages."""
     client = TestClient(app)
@@ -40,21 +58,23 @@ def test_sitemap_lists_canonical_location_pages() -> None:
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/xml")
-    assert f"<loc>{canonical.CANONICAL_BASE_URL}/all</loc>" in response.text
+    assert f"<loc>{canonical.CANONICAL_BASE_URL}/locations</loc>" in response.text
     assert "www.shallweswim.today" not in response.text
 
     for loc_code in config.CONFIGS:
         assert f"<loc>{canonical.CANONICAL_BASE_URL}/{loc_code}</loc>" in response.text
 
 
-def test_app_route_returns_clear_not_built_response_when_dist_missing(tmp_path) -> None:
-    """Local /app requests are explicit when the frontend build is missing."""
+def test_root_app_route_returns_clear_not_built_response_when_dist_missing(
+    tmp_path,
+) -> None:
+    """Local app requests are explicit when the frontend build is missing."""
     client = TestClient(app)
     original_frontend_dist = getattr(app.state, "frontend_dist", None)
     app.state.frontend_dist = str(tmp_path / "missing-dist")
 
     try:
-        response = client.get("/app")
+        response = client.get("/")
     finally:
         if original_frontend_dist is None:
             del app.state.frontend_dist
@@ -67,12 +87,11 @@ def test_app_route_returns_clear_not_built_response_when_dist_missing(tmp_path) 
 
 
 def test_app_routes_serve_built_shell_and_assets(tmp_path) -> None:
-    """Built frontend shell is served for client routes under /app."""
+    """Built frontend shell is served for canonical root app routes."""
     dist = tmp_path / "dist"
     assets = dist / "assets"
     assets.mkdir(parents=True)
     (dist / "index.html").write_text("<!doctype html><div id='root'></div>")
-    (dist / "manifest.webmanifest").write_text('{"name":"Shall We Swim"}')
     (assets / "app.js").write_text("console.log('app')")
 
     client = TestClient(app)
@@ -80,21 +99,24 @@ def test_app_routes_serve_built_shell_and_assets(tmp_path) -> None:
     app.state.frontend_dist = str(dist)
 
     try:
-        shell = client.get("/app/nyc/currents")
-        manifest = client.get("/app/manifest.webmanifest")
-        asset = client.get("/app/assets/app.js")
-        missing_asset = client.get("/app/assets/missing.js")
+        root = client.get("/")
+        location_shell = client.get("/nyc")
+        locations_shell = client.get("/locations")
+        removed_app_route = client.get("/app")
+        asset = client.get("/assets/app.js")
+        missing_asset = client.get("/assets/missing.js")
     finally:
         if original_frontend_dist is None:
             del app.state.frontend_dist
         else:
             app.state.frontend_dist = original_frontend_dist
 
-    assert shell.status_code == 200
-    assert "<div id='root'></div>" in shell.text
-    assert shell.headers["cache-control"] == "no-cache, must-revalidate"
-    assert manifest.status_code == 200
-    assert manifest.headers["cache-control"] == "no-cache, must-revalidate"
+    for shell in [root, location_shell, locations_shell]:
+        assert shell.status_code == 200
+        assert "<div id='root'></div>" in shell.text
+        assert shell.headers["cache-control"] == "no-cache, must-revalidate"
+
+    assert removed_app_route.status_code == 404
     assert asset.status_code == 200
     assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert missing_asset.status_code == 404
@@ -116,9 +138,9 @@ def test_app_assets_reject_encoded_path_traversal(tmp_path) -> None:
     app.state.frontend_dist = str(dist)
 
     traversal_paths = [
-        "/app/assets/%2e%2e/index.html",
-        "/app/assets/%2e%2e/%2e%2e/secret.txt",
-        "/app/assets/..%2F..%2Fsecret.txt",
+        "/assets/%2e%2e/index.html",
+        "/assets/%2e%2e/%2e%2e/secret.txt",
+        "/assets/..%2F..%2Fsecret.txt",
     ]
 
     try:
@@ -156,11 +178,11 @@ def test_start_app_requires_frontend_dist_when_configured(tmp_path) -> None:
             app.state.frontend_dist = original_frontend_dist
 
 
-def test_location_page_has_canonical_url() -> None:
-    """Location pages identify their canonical apex-host URL."""
+def test_legacy_location_page_has_root_canonical_url() -> None:
+    """Legacy location pages point canonical metadata at the root app route."""
     client = TestClient(app)
 
-    response = client.get("/nyc")
+    response = client.get("/legacy/nyc")
 
     assert response.status_code == 200
     assert (
@@ -169,11 +191,11 @@ def test_location_page_has_canonical_url() -> None:
     )
 
 
-def test_location_page_renders_frontend_bootstrap() -> None:
-    """Location pages include the app script and data placeholders."""
+def test_legacy_location_page_renders_frontend_bootstrap() -> None:
+    """Legacy location pages include the app script and data placeholders."""
     client = TestClient(app)
 
-    response = client.get("/nyc")
+    response = client.get("/legacy/nyc")
 
     assert response.status_code == 200
     assert 'locationCode: "nyc"' in response.text
@@ -186,11 +208,11 @@ def test_location_page_renders_frontend_bootstrap() -> None:
     assert 'id="current-state-summary">...</span>' in response.text
 
 
-def test_location_page_defers_temperature_plot_loading() -> None:
+def test_legacy_location_page_defers_temperature_plot_loading() -> None:
     """Temperature plot images do not race conditions during initial HTML parse."""
     client = TestClient(app)
 
-    response = client.get("/nyc")
+    response = client.get("/legacy/nyc")
 
     assert response.status_code == 200
     assert 'class="plot deferred-plot"' in response.text
@@ -202,11 +224,11 @@ def test_location_page_defers_temperature_plot_loading() -> None:
     assert ' src="/api/nyc/plots/historic_temps?period=12mo"' not in response.text
 
 
-def test_location_page_renders_windy_embed_with_layout_dimensions() -> None:
+def test_legacy_location_page_renders_windy_embed_with_layout_dimensions() -> None:
     """Windy embed dimensions match the responsive iframe's desktop layout."""
     client = TestClient(app)
 
-    response = client.get("/nyc")
+    response = client.get("/legacy/nyc")
 
     assert response.status_code == 200
     assert 'class="windyframe"' in response.text
@@ -217,11 +239,38 @@ def test_location_page_renders_windy_embed_with_layout_dimensions() -> None:
     assert "product=ecmwfWaves" in response.text
 
 
+def test_existing_embed_route_still_serves_legacy_embed_content() -> None:
+    """Existing external embed URLs keep serving the legacy embed page."""
+    client = TestClient(app)
+
+    response = client.get("/nyc/embed")
+
+    assert response.status_code == 200
+    assert 'class="embed-page"' in response.text
+    assert (
+        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/nyc/embed"'
+        in response.text
+    )
+    assert "https://embed.windy.com/embed2.html" in response.text
+    assert "width=950" in response.text
+    assert "height=350" in response.text
+
+
+def test_root_embed_route_keeps_existing_redirect() -> None:
+    """The historical /embed shortcut still redirects to the default embed."""
+    client = TestClient(app, follow_redirects=False)
+
+    response = client.get("/embed")
+
+    assert response.status_code == 301
+    assert response.headers["location"] == "/nyc/embed"
+
+
 def test_currents_page_renders_without_empty_image_sources() -> None:
     """Currents page defers chart image sources until API data is loaded."""
     client = TestClient(app)
 
-    response = client.get("/nyc/currents")
+    response = client.get("/legacy/nyc/currents")
 
     assert response.status_code == 200
     assert 'locationCode: "nyc"' in response.text
@@ -237,22 +286,26 @@ def test_currents_page_renders_without_empty_image_sources() -> None:
 
 
 def test_all_locations_page_renders_widgets() -> None:
-    """All-locations page renders one frontend widget per enabled location."""
+    """Legacy all-locations page renders one frontend widget per enabled location."""
     client = TestClient(app)
 
-    response = client.get("/all")
+    response = client.get("/legacy/all")
 
     assert response.status_code == 200
+    assert (
+        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/locations"'
+        in response.text
+    )
     assert "/api/${locationCode}/conditions" in response.text
     for loc_code in config.CONFIGS:
         assert f'data-location="{loc_code}"' in response.text
 
 
 def test_widget_page_renders_standalone_widget() -> None:
-    """Standalone widget page includes its location and API loader."""
+    """Legacy standalone widget page includes its location and API loader."""
     client = TestClient(app)
 
-    response = client.get("/nyc/widget")
+    response = client.get("/legacy/nyc/widget")
 
     assert response.status_code == 200
     assert 'data-location="nyc"' in response.text

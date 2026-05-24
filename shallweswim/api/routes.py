@@ -89,11 +89,11 @@ def _create_tide_current_plot(*args, **kwargs):  # type: ignore[no-untyped-def]
 # Timeout for on-demand plot generation (seconds)
 # Shorter than background (60s) since user is waiting
 PLOT_TIMEOUT = 30.0
-APP_NAME = "Shall We Swim"
-APP_SHORT_NAME = "Swim"
+APP_NAME = "shall we swim?"
+APP_SHORT_NAME = "shallweswim"
 DEFAULT_LOCATION_CODE = "nyc"
 APP_THEME_COLOR = "#000099"
-APP_BACKGROUND_COLOR = "#fcffff"
+APP_BACKGROUND_COLOR = "#000099"
 
 GITHUB_SOURCE_URL = "https://github.com/jeremywhelchel/shallweswim"
 
@@ -507,8 +507,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
             manifest=AppManifestMetadata(
                 name=APP_NAME,
                 short_name=APP_SHORT_NAME,
-                start_url="/app",
-                scope="/app/",
+                start_url="/?source=pwa-react",
+                scope="/",
                 display="standalone",
                 theme_color=APP_THEME_COLOR,
                 background_color=APP_BACKGROUND_COLOR,

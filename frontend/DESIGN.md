@@ -49,28 +49,24 @@ repo/
     dist/                   Build output, likely gitignored
 ```
 
-Use `/app` as the transition route for the new frontend application while it is
-being built out.
+The React frontend is now the launch target for the default web experience.
+During development it lived under `/app`; launch moves it to root location URLs
+and moves the template-rendered version under `/legacy`.
 
 ```text
 filesystem: frontend/
-public route: /app
+public route: /
 API routes:  /api/...
 ```
 
-This avoids overloading `app` as both a source directory name and a public URL
-concept during the migration. The launch target is different: once React reaches
-location parity, it should become the default web experience at root location
-URLs, with the Jinja version moved to a temporary legacy namespace.
-
-Target post-launch URL shape:
+Launch URL shape:
 
 ```text
 /                       default location dashboard
 /{location}             location dashboard, for example /nyc or /chi
 /locations              all locations/status page
 /assets/...             Vite-built static assets, or another explicit asset prefix
-/manifest.webmanifest
+/manifest.json          canonical web app manifest
 /legacy/{location}      temporary Jinja location page while confidence builds
 /legacy/all             temporary Jinja all-locations page if still useful
 ```
@@ -81,24 +77,24 @@ manifest `start_url`/`scope`, canonical URLs, and temporary legacy route names.
 `/api/...`, `/static/...`, and other non-page routes must remain explicitly
 reserved so root React routing does not swallow them.
 
-## `/app` Routing Model
+## Root Routing Model
 
-The transition frontend should be a standard client-routed SPA mounted under
-`/app`.
-Everything after `/app` belongs to the React router unless it is a built static
-asset.
+The frontend is a standard client-routed SPA mounted at `/`. Explicit backend
+routes remain authoritative for API, static assets, legacy pages, health checks,
+and crawler metadata. The backend serves the React shell only for the default
+route, the all-locations route, and configured location codes.
 
-Initial URL shape:
+URL shape:
 
 ```text
-/app                    app landing/default location, initially NYC
-/app/nyc                location dashboard (canonical per-location URL)
-/app/locations          all locations/status page
-/app/assets/...         Vite-built static assets
-/app/manifest.webmanifest
+/                       app landing/default location, initially NYC or saved
+/nyc                    location dashboard (canonical per-location URL)
+/locations              all locations/status page
+/assets/...             Vite-built static assets
+/manifest.json          canonical web app manifest
 ```
 
-There is no `/app/{loc}/currents` route in the React app. Currents planning
+There is no `/{loc}/currents` route in the React app. Currents planning
 lives directly inside the location dashboard's Water Movement card: the compact
 planner control opens in-card, and deeper local-current context opens as a
 detail panel in the same card.
@@ -108,33 +104,31 @@ scrubber, `detail=open` controls the current/tide detail panel, and `at=...`
 carries the shifted planning time as a location-local ISO-8601 timestamp:
 
 ```text
-/app/nyc?planner=open
-/app/nyc?at=2026-05-18T15:30:00
-/app/nyc?planner=open&at=2026-05-18T15:30:00
-/app/nyc?detail=open&at=2026-05-18T15:30:00
+/nyc?planner=open
+/nyc?at=2026-05-18T15:30:00
+/nyc?planner=open&at=2026-05-18T15:30:00
+/nyc?detail=open&at=2026-05-18T15:30:00
 ```
 
 See Milestone 3 below for the full route, URL state, and capability
 contract.
 
-`/app` should render the default location view, initially NYC, while preserving
-the `/app` URL. Do not redirect `/app` to `/app/nyc` in the first
-implementation. Canonicalization can be revisited after the app has real usage.
+`/` should render the default location view while preserving the `/` URL. It
+uses a valid persisted location code when available, otherwise the backend
+default location. It should not redirect to `/{location}` solely to restore
+saved state.
 
 Implementation requirements:
 
-- configure Vite with `base: "/app/"`
-- configure React Router with `basename="/app"`
-- register FastAPI `/app` routes before the dynamic `/{location}` route
-- serve `/app/assets/...` as static files from the built frontend output
-- serve the frontend `index.html` for `/app`, `/app/`, and app-owned nested
-  paths such as `/app/nyc`
-- return real 404s for missing files under `/app/assets/...`
-- keep `/api/...`, existing Jinja routes, and existing `/static/...` behavior
-  unchanged
-
-The app subdomain can redirect to `/app` later. Do not make a second deployment
-or second backend service for the initial implementation.
+- use root Vite asset paths
+- use React Router without a basename
+- register explicit FastAPI routes for `/`, `/locations`, and configured
+  `/{location}` pages
+- serve `/assets/...` as immutable static files from the built frontend output
+- return real 404s for missing files under `/assets/...`
+- keep `/api/...`, `/static/...`, `/legacy/...`, and crawler/static routes
+  explicitly reserved
+- remove the old `/app` route rather than keeping it as a long-lived alias
 
 ## App Shell Caching And Versioning
 
@@ -142,11 +136,11 @@ The frontend must not accidentally trap home-screen users on stale application
 code. Because offline behavior is out of scope, favor correctness and fast update
 visibility over aggressive app-shell caching.
 
-Initial caching policy:
+Caching policy:
 
-- serve `/app`, `/app/`, nested app routes, and `/app/manifest.webmanifest` with
+- serve `/`, `/locations`, and `/{location}` with
   `Cache-Control: no-cache, must-revalidate`
-- serve Vite-built hashed assets under `/app/assets/...` with long-lived immutable
+- serve Vite-built hashed assets under `/assets/...` with long-lived immutable
   caching, for example `Cache-Control: public, max-age=31536000, immutable`
 - do not add a service worker in the initial implementation
 - do not cache API responses in HTTP caches; use TanStack Query for in-memory
@@ -177,13 +171,16 @@ The current preference is one release artifact and one FastAPI service:
 ```text
 FastAPI serves:
   /api/...       JSON API
-  /app/...       New frontend app
-  /static/...    Existing static assets and/or built frontend assets
+  /              React default location dashboard
+  /{location}    React location dashboards
+  /locations     React all-locations status page
+  /assets/...    Vite-built frontend assets
+  /static/...    Existing static assets
+  /legacy/...    Temporary Jinja-rendered pages
 ```
 
-The existing template-rendered pages can remain available while `/app` is built
-out. A future `app.shallweswim.today` or `app.shallweswim.com` host can redirect
-to `/app` without changing the frontend source layout.
+The existing template-rendered pages can remain available under `/legacy` while
+confidence builds in the root-mounted React app.
 
 Serving the frontend under the same origin keeps API requests simple:
 
@@ -197,10 +194,9 @@ This avoids CORS configuration during the initial migration.
 ## Durable Web And App-Only Future
 
 The long-term direction may be to make the React app the only user-facing
-interface and eventually remove the `/app` prefix from canonical location URLs.
-That should not mean shipping a blank JavaScript shell as the public web
-surface. If React replaces the Jinja pages, the replacement should preserve the
-old-web virtues that matter for this project:
+interface. That should not mean permanently accepting a blank JavaScript shell
+as the public web surface. The replacement should preserve the old-web virtues
+that matter for this project:
 
 - location URLs should remain useful to a human, bot, archive, or agent that
   fetches HTML without executing JavaScript
@@ -210,8 +206,8 @@ old-web virtues that matter for this project:
 - search engines and agents should be able to understand the page through
   ordinary HTML plus machine-readable structured data such as JSON-LD or an
   embedded bootstrap JSON payload
-- curl/no-JavaScript checks should be part of the migration acceptance criteria
-  before replacing the existing template-rendered location URLs
+- curl/no-JavaScript checks should be part of the later durable-HTML migration
+  acceptance criteria
 
 Possible implementation paths:
 
@@ -223,10 +219,9 @@ Possible implementation paths:
   pre-rendered React output, but avoid adding a second production backend runtime
   unless the benefit is clear.
 
-Launch decision: when the React app reaches parity, `/nyc` and other location
-URLs should serve the progressively enhanced React app directly. `/app` is a
-transition path, not the permanent canonical route. Remove the `/app` route when
-React becomes the default site rather than keeping a long-lived alias.
+Launch decision: `/nyc` and other location URLs should serve the React app
+directly. `/app` was a transition path, not the permanent canonical route, and
+should not remain as a long-lived alias.
 
 ## Build And Deploy Integration
 
@@ -267,15 +262,15 @@ deliberately when changing Node major versions.
 
 ## Initial Decisions
 
-These decisions are sufficient to start the first implementation. Some are
-provisional and should be reassessed after the first useful `/app` route is
-running in production.
+These decisions describe the frontend stack and launch routing. Some were made
+for the first `/app` implementation and have since been updated for the
+root-mounted launch.
 
 | Area | Initial decision | Reassess later? |
 | --- | --- | --- |
 | Backend | Keep FastAPI as the only application backend | No |
 | Source directory | `frontend/` | No |
-| Public route | `/app` | Yes, before replacing the root experience |
+| Public route | `/`, `/{location}`, `/locations` | Yes, after root launch data |
 | Framework | React | Unlikely |
 | Language | TypeScript | No |
 | Build tool | Vite | Yes, if Bun/Rspack materially reduce risk or complexity |
@@ -440,22 +435,22 @@ frontend/dist/
   assets/*
 ```
 
-FastAPI should serve the production output under `/app` as static assets. No
-Node server should be required in production.
+FastAPI should serve the production output at root app routes. No Node server
+should be required in production.
 
 Local missing-dist behavior:
 
-- if `frontend/dist` is missing in local development, `/app` should return 404
-  or a clear development-only not-built response
+- if `frontend/dist` is missing in local development, app routes should return
+  404 or a clear development-only not-built response
 - local developers should run `pnpm build` before testing production-style
-  FastAPI serving of `/app`
+  FastAPI serving of root app routes
 
 Production missing-dist behavior:
 
 - the Docker image build should fail if `frontend/dist` is not produced
-- a production container configured to serve `/app` should fail loudly at startup
-  or during route setup if the built frontend shell is missing
-- do not silently serve a partial or empty `/app` in production
+- a production container configured to serve the app should fail loudly at
+  startup or during route setup if the built frontend shell is missing
+- do not silently serve a partial or empty app shell in production
 
 ## Dependency And Supply-Chain Rules
 
@@ -478,8 +473,8 @@ Initial rules:
 ## GitHub Actions
 
 Milestones 0 and 1 should include a dedicated frontend GitHub Actions workflow.
-Do not punt frontend CI until feature parity; the scaffold and `/app` shell need
-continuous validation as soon as they are introduced.
+Do not punt frontend CI until feature parity; the frontend shell needs
+continuous validation as soon as it is introduced.
 
 Initial frontend workflow:
 
@@ -897,10 +892,10 @@ Acceptance checks:
   `pnpm check:api`, and `pnpm test:e2e` pass.
 - Add unit/component tests for formatting helpers and at least the conditions
   summary unavailable/success states.
-- Add Playwright browser tests for `/app` and `/app/nyc` on mobile and desktop
+- Add Playwright browser tests for `/` and `/nyc` on mobile and desktop
   that verify the real NYC page renders the header, conditions summary, Windy
   section, webcam section, temperature trends, transit section, and sources.
-- Add Playwright coverage that `/app` does not redirect away from `/app`.
+- Add Playwright coverage that `/` does not redirect away from `/`.
 - Mock external GoodService and bootstrap/conditions responses in browser tests
   so CI does not depend on third-party services.
 
@@ -908,7 +903,7 @@ Non-goals:
 
 - Do not redesign the product or replace backend-generated plots with client
   charting.
-- Do not implement full `/app/:locationCode` generalization beyond what is
+- Do not implement full `/:locationCode` generalization beyond what is
   naturally needed for NYC.
 - Do not implement URL-backed planner/detail controls — those land in Milestone 3.
 - Do not add service workers or offline data caching.
@@ -1046,7 +1041,7 @@ Implementation guidance:
 
 Acceptance checks:
 
-- `/app` and `/app/nyc` still render the NYC page without redirecting `/app`
+- `/` and `/nyc` still render the NYC page without redirecting `/`
 - conditions, Windy, YouTube, deferred plots, transit, sources, and location nav
   still render with mocked Playwright data
 - first-load and refresh failure behavior remains unchanged
@@ -1057,7 +1052,7 @@ Acceptance checks:
 ### Milestone 3: Location Dashboard with Planner Mode
 
 This milestone supersedes the earlier sketches of both a dedicated
-`/app/{loc}/currents` detail route and a standalone "Generalize
+`/{loc}/currents` detail route and a standalone "Generalize
 Location Pages" milestone. The dashboard shape is the single
 per-location page, so generalizing to non-NYC locations is just step
 `3.D` (per-location rendering plus the router/404 plumbing). Earlier
@@ -1069,7 +1064,7 @@ dashboard's compact decision workflow.
 
 #### Chosen direction
 
-The location page at `/app/{loc}` is a single dashboard with no nested route.
+The location page at `/{loc}` is a single dashboard with no nested route.
 Three orthogonal URL query params drive its variable behavior:
 
 - `planner=open` controls the **in-card planner controls**: a compact time
@@ -1103,12 +1098,12 @@ not a product requirement for this milestone.
 
 #### Route contract
 
-- Canonical URL: `/app/{loc}` with query params. There is no separate
+- Canonical URL: `/{loc}` with query params. There is no separate
   `/currents` route in the React app — the React app isn't bound to
   the Jinja URL shape, so we adopt the dashboard convention directly.
-- Primary planning URL: `/app/{loc}?planner=open&at=…` — dashboard with the
+- Primary planning URL: `/{loc}?planner=open&at=…` — dashboard with the
   in-card planner scrubber open at the chosen time.
-- Primary detail URL: `/app/{loc}?detail=open&at=…` — dashboard with the
+- Primary detail URL: `/{loc}?detail=open&at=…` — dashboard with the
   current/tide detail panel open at the chosen time.
 - Known location without prediction data: the dashboard loads
   normally; planner/detail controls are quietly suppressed; deep-linked
@@ -1143,9 +1138,9 @@ History semantics:
 | Reset to now                                       | drops `?at`                               | replace  |
 
 Direct-entry edge case: if a user lands on
-`/app/{loc}?planner=open&at=…` via a shared link, browser Back follows
+`/{loc}?planner=open&at=…` via a shared link, browser Back follows
 normal browser history (leaves the app entirely). The in-app close control still
-replaces to `/app/{loc}?at=…` so dismissal behaves the same as in a fresh
+replaces to `/{loc}?at=…` so dismissal behaves the same as in a fresh
 session. The same rule applies to `?detail=open&at=…`.
 
 #### Capability Rules
@@ -1209,7 +1204,7 @@ time jumps and broader location support.
   card's `Now` / `Soon` chips for the 2-hour outlook. Adds
   `next slack` / `peak flood` / `peak ebb` preset chips to the planner controls.
   *Depends on the backend follow-up below.*
-- **3.D · Generalize to other locations:** finish `/app/:locationCode`
+- **3.D · Generalize to other locations:** finish `/:locationCode`
   routing for every registered location with capability-driven sections:
   tide-only planner for SAN/SFO/BOS/SEA, the observed-current Water Movement
   card for SDF, no Water Movement card for CHI/AUS, provider-aware webcams, and
@@ -1217,7 +1212,7 @@ time jumps and broader location support.
   per-location frontend modules rare; use one only when a location needs custom
   local interpretation rather than generic provider/capability rendering.
 
-`/app/locations` is now a temperature-forward all-locations status grid backed
+`/locations` is now a temperature-forward all-locations status grid backed
 by bootstrap metadata plus per-location conditions requests. Richer
 cross-location condition summaries and the embed widget (`/{loc}/widget`)
 decisions stay in this milestone but are independent of the dashboard rework.
@@ -1240,30 +1235,24 @@ Optional, additive, none of these block 3.A or 3.B:
 
 ### Milestone 4: React Default Experience
 
-- make React the default user-facing site
+- make React the default user-facing site at `/`, `/{location}`, and
+  `/locations`
 - move legacy Jinja pages under a temporary `/legacy` namespace
-- change canonical location URLs from `/app/{loc}` to `/{loc}`
 - make `/` render the default location dashboard, using saved-location
   preference when appropriate
-- make `/locations` render the React all-locations/status page
 - update Vite base, React Router basename, FastAPI route ordering, app manifest
-  `start_url`/`scope`, canonical/meta tags, and tests for the root-mounted app
-- reuse the existing manifest/config generation path where possible; the root
-  launch should mostly change emitted manifest values from `/app` and `/app/` to
-  `/` and `/`, not introduce a parallel manifest system
+  `start_url`/`scope`, canonical URLs, and tests for the root-mounted app
+- consolidate on the existing root `/manifest.json` route rather than creating a
+  parallel app-specific manifest path
 - keep `/api/...`, `/static/...`, `/legacy/...`, and built frontend assets
-  explicitly reserved so catch-all React routing does not mask API/static/legacy
-  routes
+  explicitly reserved so React routing does not mask API/static/legacy routes
 - remove the `/app` route after the root-mounted React launch
 
 ### Milestone 5: Adoption Banner
 
-- add the existing-site "try the new app" banner
-- include dismiss-forever behavior
-- link users from Jinja pages to `/app`
-- this may be unnecessary if React reaches root-route parity before a staged
-  adoption campaign; in that case, skip the banner and launch React as the
-  default experience directly
+- skipped for root launch; React is becoming the default experience directly
+- keep the local preference store visit-count and dismissible-prompt groundwork
+  for a later install-app butter bar, not for a "try the new app" campaign
 
 ## First Implementation Milestone
 
@@ -1384,8 +1373,8 @@ Additional widths can be added when a layout risk is identified.
 The existing template-rendered site should eventually promote the new frontend
 without forcing an immediate migration.
 
-Add a lightweight top-of-page banner on the existing site once the new app is
-useful:
+Historical staged-adoption idea: add a lightweight top-of-page banner on the
+existing site once the new app is useful:
 
 ```text
 Try our new app
@@ -1394,7 +1383,7 @@ Try our new app
 Expected behavior:
 
 - appears on existing Jinja-rendered pages
-- links to `/app` or the app host if one is configured
+- links to the app route or app host if one is configured
 - includes a clear dismiss action
 - stores dismissal permanently in `localStorage` or a long-lived cookie
 - is accessible by keyboard and screen readers
@@ -1407,18 +1396,16 @@ The new frontend should work well when saved to a phone home screen. This means
 supporting the installable/app-like parts of Progressive Web App behavior without
 committing to offline behavior.
 
-Initial requirements:
+Initial/root-launch requirements:
 
 - web app manifest
-- app name: `shallweswim`
+- app name: `shall we swim?`
 - short name: `shallweswim`
-- iOS home screen label should display as `shallweswim`: one word, all
-  lowercase
-- `start_url`: `/app`
-- `scope`: `/app/`
+- `start_url`: `/?source=pwa-react`
+- `scope`: `/`
 - `display`: `standalone`
 - `theme_color`: `#000099`, matching the current site theme color
-- `background_color`: `#fcffff`, matching the current site background
+- `background_color`: `#000099`, preserving the existing root manifest branding
 - required icon sizes
 - Apple touch icon support
 - mobile viewport and safe-area polish
@@ -1449,14 +1436,14 @@ responses.
 
 Current behavior:
 
-- Explicit routes remain authoritative. Visiting `/app/nyc` should render NYC
+- Explicit routes remain authoritative. Visiting `/nyc` should render NYC
   regardless of previously persisted state.
 - When a user views a concrete location route, persist that location code in
   `localStorage`.
-- Opening `/app` should use the persisted location code if it is valid in
+- Opening `/` should use the persisted location code if it is valid in
   `/api/app/bootstrap`; otherwise fall back to the backend-provided default
   location.
-- Prefer preserving the `/app` URL rather than redirecting solely to restore
+- Prefer preserving the `/` URL rather than redirecting solely to restore
   state, unless routing or analytics needs make canonicalization useful later.
 - If `localStorage` is unavailable, private, or cleared, silently fall back to
   the default location.
@@ -1604,8 +1591,8 @@ Possible implementation paths:
 Initial recommendation:
 
 - Do not block Milestone 2.5 on full observability.
-- Before the adoption banner sends real users to `/app`, add at least an error
-  boundary plus sanitized first-party client-error logging or an explicit
+- Before a broad post-launch acquisition or install prompt, add at least an
+  error boundary plus sanitized first-party client-error logging or an explicit
   decision to defer it.
 - Frontend error logging must be best-effort and must never break the app if the
   logging endpoint fails.

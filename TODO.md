@@ -15,11 +15,15 @@
 - Localhost is not a reliable SDF EarthCam playback test because EarthCam
   whitelists allowed referrers. Use production-domain verification for future
   EarthCam changes.
+- The historical legacy embed URLs (`/embed` and `/{location}/embed`) remain in
+  place because an older external page still embeds that content. After root
+  launch, audit the external embed site and either migrate it to a new supported
+  React/embed surface or retire the legacy embed route intentionally.
 
 ### 2. All Locations Parity
 
-- Do a systematic parity smoke pass across all React location pages before any
-  launch work:
+- Keep doing systematic parity smoke passes across all React location pages
+  before launch deploys:
   - `nyc`: temperature, water movement, planner, YouTube webcam, transit,
     Windy, plots, sources.
   - `chi`: temperature, iframe webcam, Windy, plots, sources, and no water
@@ -40,24 +44,23 @@
 
 ## Launch Parking Lot
 
-- Do not start launch work until explicitly requested. "Launch" means moving
-  the React app out of `/app` and making it the default root-location
-  experience.
+- Root launch implementation is in progress. "Launch" means moving the React app
+  out of `/app` and making it the default root-location experience.
 - Add an explicit location-code alias mechanism if we want friendly alternate
   URLs. Model aliases in typed `LocationConfig`, keep bootstrap/location order
   canonical, and redirect alias routes to the canonical location URL rather than
   rendering duplicate canonical pages.
-- When launch is requested, move Jinja pages under a temporary `/legacy`
-  namespace, change canonical routes from `/app/{loc}` to `/{loc}`, make `/`
-  load the default/saved location dashboard, make `/locations` the React
-  all-locations/status page, and update Vite base, React Router basename,
-  FastAPI route ordering, manifest `start_url`/`scope`, canonical/meta tags,
-  persisted-location behavior, and tests. Reuse the existing manifest/config
-  generation path where possible; the launch should change emitted manifest
-  values rather than add a parallel manifest system. Keep `/api/...`,
-  `/static/...`, `/legacy/...`, and frontend asset routes explicitly reserved so
-  root-mounted React routing does not mask them. Remove the `/app` route after
-  root launch rather than keeping it as a long-lived alias.
+- Before launch deployment, verify that Jinja pages are under `/legacy`, root
+  app routes are `/`, `/{loc}`, and `/locations`, Vite/React Router no longer
+  use an `/app` base path, `/manifest.json` is the single install manifest with
+  root scope and `/?source=pwa-react` start URL, persisted-location behavior still works at `/`, and
+  tests cover reserved `/api/...`, `/static/...`, `/legacy/...`, manifest, and
+  frontend asset routes. Keep `/app` removed rather than preserving it as a
+  long-lived alias.
+- Clean up duplicated install manifest metadata in `/api/app/bootstrap`. The
+  browser install contract is `/manifest.json`; bootstrap currently mirrors it
+  only to avoid drift during launch. Remove `manifest` from the bootstrap API
+  once no planned frontend code depends on it.
 
 ## Tech Debt
 
@@ -154,13 +157,12 @@
   current state; if the legacy page is removed or migrated, mark the currents
   endpoint and `NavigationInfo` response model as removal candidates.
 - Treat durable app HTML as its own future migration project, not an incidental
-  test-only task. Before replacing the Jinja location pages or removing the
-  `/app` prefix, define and implement a progressively enhanced React page that is
-  useful when fetched without JavaScript: location-aware HTML, canonical/meta
-  tags, links to structured JSON APIs, and machine-readable data such as JSON-LD
-  or embedded bootstrap JSON. Add curl/no-JS acceptance tests only when that
-  feature work is being implemented so the normal suite never carries expected
-  failures.
+  test-only task. The root-mounted React launch still serves one generic app
+  shell; a later pass should make location routes useful when fetched without
+  JavaScript: location-aware HTML, canonical/meta tags, links to structured JSON
+  APIs, and machine-readable data such as JSON-LD or embedded bootstrap JSON.
+  Add curl/no-JS acceptance tests only when that feature work is being
+  implemented so the normal suite never carries expected failures.
 - Refine the planner time scrubber. The current React planner uses a compact
   in-card slider with URL-backed `at` state; the final interaction should add
   clearer time ticks, stronger mobile styling, debounced updates if needed, and

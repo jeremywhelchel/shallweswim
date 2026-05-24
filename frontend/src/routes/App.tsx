@@ -89,7 +89,7 @@ export function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename="/app">
+      <BrowserRouter>
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<DefaultLocationPage />} />

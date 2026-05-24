@@ -226,7 +226,7 @@ def react_stack_server(monkeypatch: pytest.MonkeyPatch) -> Generator[ReactStackS
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         try:
-            response = requests.get(f"{base_url}/app/nyc", timeout=0.2)
+            response = requests.get(f"{base_url}/nyc", timeout=0.2)
             if response.status_code == 200:
                 break
         except requests.RequestException:
@@ -297,8 +297,7 @@ def test_react_planner_uses_conditions_and_plot_with_same_at(
         page.on("request", capture_stack_request)
 
         page.goto(
-            f"{react_stack_server.base_url}/app/nyc"
-            f"?planner=open&detail=open&at={target_at}"
+            f"{react_stack_server.base_url}/nyc?planner=open&detail=open&at={target_at}"
         )
 
         expect(page.get_by_role("heading", name="Water Movement")).to_be_visible()
@@ -306,7 +305,11 @@ def test_react_planner_uses_conditions_and_plot_with_same_at(
         expect(page.get_by_text("2.2 ft")).to_be_visible()
         expect(page.get_by_text("1.4 kt")).to_be_visible()
         expect(page.get_by_text("1.6 ft")).to_have_count(0)
-        expect(page.get_by_text(re.compile(r"water is going out fast"))).to_be_visible()
+        expect(
+            page.get_by_text(
+                re.compile(r"expect a fast push west toward Coney Island Pier")
+            )
+        ).to_be_visible()
 
         detail_chart = page.get_by_role(
             "img", name=re.compile(r"^Tide and current plot")

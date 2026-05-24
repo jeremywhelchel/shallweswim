@@ -1,18 +1,18 @@
 import { expect, type Page, test } from "@playwright/test";
 
 const bootstrapPayload = {
-  app_name: "Shall We Swim",
-  short_name: "Swim",
+  app_name: "shall we swim?",
+  short_name: "shallweswim",
   default_location_code: "nyc",
   location_order: ["nyc", "sfo"],
   manifest: {
-    name: "Shall We Swim",
-    short_name: "Swim",
-    start_url: "/app",
-    scope: "/app/",
+    name: "shall we swim?",
+    short_name: "shallweswim",
+    start_url: "/?source=pwa-react",
+    scope: "/",
     display: "standalone",
     theme_color: "#000099",
-    background_color: "#fcffff",
+    background_color: "#000099",
   },
   source_code_link: {
     label: "jeremywhelchel/shallweswim",
@@ -321,12 +321,12 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("renders the default app route without redirecting to /app/nyc", async ({
+test("renders the default app route without redirecting to /nyc", async ({
   page,
 }) => {
-  await page.goto("/app/");
+  await page.goto("/");
 
-  await expect(page).toHaveURL(/\/app\/$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(
     page.getByRole("heading", { name: "shall we swim today?" }),
   ).toBeVisible();
@@ -336,7 +336,7 @@ test("renders the default app route without redirecting to /app/nyc", async ({
 test("restores the last selected location from local preferences", async ({
   page,
 }) => {
-  await page.goto("/app/sfo");
+  await page.goto("/sfo");
 
   await expect(
     page.getByRole("heading", { name: "shall we swim today?" }),
@@ -357,9 +357,9 @@ test("restores the last selected location from local preferences", async ({
       installPrompt: { organicVisitCount: 1 },
     });
 
-  await page.goto("/app/");
+  await page.goto("/");
 
-  await expect(page).toHaveURL(/\/app\/$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByText("Aquatic Park")).toBeVisible();
   await expect(page.getByText("55.2°F")).toBeVisible();
 
@@ -373,7 +373,7 @@ test("restores the last selected location from local preferences", async ({
       }),
     );
   });
-  await page.goto("/app/");
+  await page.goto("/");
 
   await expect(page.getByText("Grimaldo's Chair")).toBeVisible();
   await expect(page.getByText("61.4°F")).toBeVisible();
@@ -401,7 +401,7 @@ test("restores the last selected location from local preferences", async ({
 });
 
 test("renders the all locations page", async ({ page }) => {
-  await page.goto("/app/locations");
+  await page.goto("/locations");
 
   await expect(
     page.getByRole("heading", { name: "All Swim Locations" }),
@@ -417,7 +417,7 @@ test("renders the all locations page", async ({ page }) => {
 });
 
 test("renders the NYC location vertical slice", async ({ page }) => {
-  await page.goto("/app/nyc");
+  await page.goto("/nyc");
 
   await expect(page.getByRole("heading", { name: "Forecast" })).toBeVisible();
   await expect(page.getByTitle("Windy forecast")).toBeVisible();
@@ -516,7 +516,7 @@ test("renders the NYC location vertical slice", async ({ page }) => {
 test("planner mode shifts dashboard water movement from URL state", async ({
   page,
 }) => {
-  await page.goto("/app/nyc?planner=open&at=2026-05-13T08:30:00");
+  await page.goto("/nyc?planner=open&at=2026-05-13T08:30:00");
 
   const panel = page.getByRole("region", { name: "Planner mode" });
   const controls = page.getByRole("region", {
@@ -537,7 +537,7 @@ test("planner mode shifts dashboard water movement from URL state", async ({
     0,
   );
 
-  await page.goto("/app/nyc?detail=open&at=2026-05-13T08:30:00");
+  await page.goto("/nyc?detail=open&at=2026-05-13T08:30:00");
   await expect(page.getByRole("region", { name: "Planner mode" })).toHaveCount(
     0,
   );
@@ -572,7 +572,7 @@ test("planner mode shifts dashboard water movement from URL state", async ({
     }),
   ).toHaveAttribute("src", "/static/tidecharts/low+3.png");
 
-  await page.goto("/app/nyc?at=2026-05-13T08:30:00");
+  await page.goto("/nyc?at=2026-05-13T08:30:00");
   await expect(
     page.getByText(/expect a fast push west toward Coney Island Pier/),
   ).toBeVisible();
@@ -604,7 +604,7 @@ test("detail mode keeps the mobile condition stack stable", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 780, width: 390 });
-  await page.goto("/app/nyc");
+  await page.goto("/nyc");
 
   const beforeTemperatureLayout = await mobileTemperatureLayout(page);
 

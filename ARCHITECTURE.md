@@ -42,7 +42,8 @@ static/                  # CSS, JS, images
 ### Modular Design
 
 - **API (`api/routes.py`)**: Contains _only_ route handlers and request validation. Delegates business logic to `core/`.
-- **Frontend app (`frontend/`)**: React/Vite/TypeScript app mounted under `/app`.
+- **Frontend app (`frontend/`)**: React/Vite/TypeScript app mounted at root
+  location routes.
   It consumes the FastAPI JSON API and generated OpenAPI types. It must not own
   NOAA/USGS fetching, feed orchestration, caching, plotting logic, or station
   configuration.
@@ -82,16 +83,20 @@ behavior for less common planning times.
 
 ### Frontend App Serving
 
-The React app is built to static files in `frontend/dist` with Vite
-`base: "/app/"`. FastAPI serves:
+The React app is built to static files in `frontend/dist` with root-relative
+Vite asset paths. FastAPI serves:
 
-- `/app`, `/app/`, and app-owned nested routes from `frontend/dist/index.html`
-  with `Cache-Control: no-cache, must-revalidate`
-- `/app/assets/...` from Vite hashed assets with immutable one-year caching
-- `/app/manifest.webmanifest` with app-shell cache semantics
+- `/`, `/locations`, and configured `/{location}` routes from
+  `frontend/dist/index.html` with `Cache-Control: no-cache, must-revalidate`
+- `/assets/...` from Vite hashed assets with immutable one-year caching
+- `/manifest.json` from the existing static manifest route, with `start_url`
+  set to `/?source=pwa-react` for installed-app log visibility and `scope` set
+  to `/`
+- `/legacy/...` for the temporary Jinja-rendered experience while it remains
+  available
 
-Local development may leave `frontend/dist` absent; `/app` then returns a clear
-not-built response. Production/container startup passes
+Local development may leave `frontend/dist` absent; app routes then return a
+clear not-built response. Production/container startup passes
 `--require-frontend-dist` and fails loudly if the built shell is missing.
 
 The frontend contract is generated from FastAPI OpenAPI:

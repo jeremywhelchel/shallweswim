@@ -13,18 +13,18 @@ import { ConditionsSummary, LocationPage } from "../pages/LocationPage";
 import { LocationsPage } from "../pages/LocationsPage";
 
 const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
-  app_name: "Shall We Swim",
-  short_name: "Swim",
+  app_name: "shall we swim?",
+  short_name: "shallweswim",
   default_location_code: "nyc",
   location_order: ["nyc"],
   manifest: {
-    name: "Shall We Swim",
-    short_name: "Swim",
-    start_url: "/app",
-    scope: "/app/",
+    name: "shall we swim?",
+    short_name: "shallweswim",
+    start_url: "/?source=pwa-react",
+    scope: "/",
     display: "standalone",
     theme_color: "#000099",
-    background_color: "#fcffff",
+    background_color: "#000099",
   },
   source_code_link: {
     label: "jeremywhelchel/shallweswim",

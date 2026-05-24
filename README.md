@@ -29,9 +29,10 @@
 
 ## Architecture
 
-Shall We Swim is a FastAPI application with a modular architecture. The current
-Jinja-rendered site remains the primary experience, and a new React/Vite app is
-being developed incrementally under `/app`.
+Shall We Swim is a FastAPI application with a modular architecture. FastAPI
+serves the React/Vite frontend as the primary web experience at root location
+URLs, with the older Jinja-rendered pages temporarily available under
+`/legacy`.
 
 ### Runtime Model
 
@@ -126,7 +127,7 @@ corepack pnpm@10.18.3 --dir frontend generate-api
 # Run the Vite dev server
 corepack pnpm@10.18.3 --dir frontend dev
 
-# Build the static app shell served by FastAPI under /app
+# Build the static app shell served by FastAPI at root routes
 corepack pnpm@10.18.3 --dir frontend build
 ```
 
@@ -140,9 +141,10 @@ npx --yes pnpm@10.18.3 --dir frontend dev
 npx --yes pnpm@10.18.3 --dir frontend build
 ```
 
-The production Docker image builds `frontend/dist` and FastAPI serves it under
-`/app`. Local FastAPI requests to `/app` return a clear not-built response until
-the frontend has been built.
+The production Docker image builds `frontend/dist` and FastAPI serves it at `/`,
+`/locations`, and configured location routes such as `/nyc`. Local FastAPI app
+route requests return a clear not-built response until the frontend has been
+built.
 
 ### Run with Docker
 
@@ -168,10 +170,10 @@ The application is hosted on Google Cloud Run:
 ### Canonical URLs
 
 The canonical production host is `https://shallweswim.today`. The app redirects
-`www.shallweswim.today` to the apex host, exposes canonical tags on HTML pages,
-and serves `/robots.txt` plus `/sitemap.xml` for crawler discovery. The root path
-redirects to `/nyc`, so Search Console may report `/` and HTTP/www variants as
-"Page with redirect"; the location pages are the indexable canonical URLs.
+`www.shallweswim.today` to the apex host, exposes canonical tags on legacy HTML
+pages, and serves `/robots.txt` plus `/sitemap.xml` for crawler discovery. The
+React app owns `/`, `/locations`, and canonical location paths such as `/nyc`;
+legacy Jinja pages live under `/legacy` while they remain available.
 
 ## Development
 

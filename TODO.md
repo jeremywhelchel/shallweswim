@@ -294,7 +294,7 @@ Notes:
   capability modeling, and tests before production configuration changes.
 - Domestic candidates: Lake Tahoe, Jacksonville FL, St. Pete/Clearwater, and
   other established open-water swim groups with reliable public data sources.
-- Canadian candidates: Vancouver area and Oakville/Toronto.
+- Canadian candidates: Kingston, Vancouver area, and Oakville/Toronto.
 - International candidates: Dover, UK and Sandycove, Ireland.
 - Add support needed for non-US locations before committing to international
   production coverage: non-NOAA/non-USGS data clients, Celsius-first display

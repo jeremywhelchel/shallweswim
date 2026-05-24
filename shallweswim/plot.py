@@ -67,6 +67,9 @@ TIDE_COLOR = "#000099"  # Blue for tide data
 HIGHLIGHT_COLOR = "#ff4000"  # Orange for highlighting points of interest
 NOW_MARKER_COLOR = "#111827"  # Dark marker for current time
 PLANNED_MARKER_COLOR = "#db2777"  # Accent marker for planner time
+PLOT_BACKGROUND_COLOR = "#f8fafc"
+PLOT_GRID_COLOR = "#cbd5e1"
+PLOT_SPINE_COLOR = "#94a3b8"
 
 #############################################################
 # UTILITY FUNCTIONS                                        #
@@ -768,6 +771,17 @@ def _finite_plot_values(series: pd.Series, context: str) -> pd.Series:
     return finite_values
 
 
+def _plot_annotation_box() -> dict[str, object]:
+    """Return a readable annotation background for dense SVG plots."""
+    return {
+        "boxstyle": "round,pad=0.18",
+        "facecolor": "white",
+        "edgecolor": PLOT_GRID_COLOR,
+        "linewidth": 0.5,
+        "alpha": 0.86,
+    }
+
+
 def create_tide_current_plot(
     tides: pd.DataFrame,
     currents: pd.DataFrame,
@@ -820,15 +834,39 @@ def create_tide_current_plot(
         "tide",
     )
 
-    fig = create_standard_figure()
+    fig = Figure(figsize=(15, 6.5))
+    fig.subplots_adjust(left=0.08, right=0.92, top=0.93, bottom=0.16)
+    fig.set_facecolor("white")
 
     ax = fig.subplots()
+    ax.set_facecolor(PLOT_BACKGROUND_COLOR)
+    major_ticks = pd.date_range(
+        pd.Timestamp(start_time).ceil("3h"),
+        pd.Timestamp(end_time).floor("3h"),
+        freq="3h",
+    ).to_pydatetime()
+    ax.set_xticks(major_ticks)
     ax.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
     ax.set_ylabel(
         "Current Speed (kts)", fontsize=LABEL_FONT_SIZE, color=CURRENT_FLOOD_COLOR
     )
-    ax.grid(True, alpha=0.28, linestyle="--", linewidth=0.8)
-    ax.tick_params(labelsize=LABEL_FONT_SIZE - 4)
+    ax.grid(
+        True,
+        which="major",
+        alpha=0.4,
+        color=PLOT_GRID_COLOR,
+        linestyle="-",
+        linewidth=0.7,
+    )
+    ax.tick_params(axis="x", labelsize=LABEL_FONT_SIZE - 5, pad=8)
+    ax.tick_params(axis="y", labelsize=LABEL_FONT_SIZE - 4, colors=CURRENT_FLOOD_COLOR)
+    for spine in ax.spines.values():
+        spine.set_color(PLOT_SPINE_COLOR)
+        spine.set_linewidth(0.8)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
 
     # Plot the current on the first Y axis (left)
     # Find transitions between flood and ebb by checking consecutive values
@@ -848,7 +886,7 @@ def create_tide_current_plot(
         flood_df.index,
         flood_df.velocity,
         color=CURRENT_FLOOD_COLOR,
-        label="Flood",
+        label="Flood speed",
         linewidth=2.4,
     )
 
@@ -857,7 +895,7 @@ def create_tide_current_plot(
         ebb_df.index,
         ebb_df.velocity,
         color=CURRENT_EBB_COLOR,
-        label="Ebb",
+        label="Ebb speed",
         linewidth=2.4,
     )
 
@@ -885,7 +923,7 @@ def create_tide_current_plot(
                 zorder=10,
             )
             ax.annotate(
-                f"{peak_val:.1f}kt",
+                f"{peak_val:.1f} kt",
                 xy=(peak_time, peak_val),
                 xytext=(5, 5),
                 textcoords="offset points",
@@ -894,12 +932,7 @@ def create_tide_current_plot(
                 fontsize=ANNOTATION_FONT_SIZE - 2,
                 fontweight="bold",
                 color=CURRENT_FLOOD_COLOR,
-                bbox={
-                    "boxstyle": "round,pad=0.15",
-                    "facecolor": "white",
-                    "edgecolor": "none",
-                    "alpha": 0.7,
-                },
+                bbox=_plot_annotation_box(),
             )
 
     # Process ebb currents (find local minima by finding peaks in the negative)
@@ -926,7 +959,7 @@ def create_tide_current_plot(
                 zorder=10,
             )
             ax.annotate(
-                f"{peak_val:.1f}kt",
+                f"{peak_val:.1f} kt",
                 xy=(peak_time, peak_val),
                 xytext=(5, -5),
                 textcoords="offset points",
@@ -935,12 +968,7 @@ def create_tide_current_plot(
                 fontsize=ANNOTATION_FONT_SIZE - 2,
                 fontweight="bold",
                 color=CURRENT_EBB_COLOR,
-                bbox={
-                    "boxstyle": "round,pad=0.15",
-                    "facecolor": "white",
-                    "edgecolor": "none",
-                    "alpha": 0.7,
-                },
+                bbox=_plot_annotation_box(),
             )
 
     # Draw a line at current 0
@@ -951,9 +979,14 @@ def create_tide_current_plot(
 
     # Add a second Y axis for the tide (right)
     ax2 = ax.twinx()
+    ax2.set_xticks(major_ticks)
     ax2.set_ylabel("Tide Height (ft)", fontsize=LABEL_FONT_SIZE, color=TIDE_COLOR)
     ax2.grid(False)
-    ax2.tick_params(labelsize=LABEL_FONT_SIZE - 4)
+    ax2.tick_params(axis="y", labelsize=LABEL_FONT_SIZE - 4, colors=TIDE_COLOR)
+    ax2.spines["right"].set_visible(False)
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["left"].set_visible(False)
+    ax2.spines["bottom"].set_visible(False)
 
     # Plot the tide
     ax2.plot(
@@ -981,7 +1014,7 @@ def create_tide_current_plot(
 
     for _, row in extreme_tides.iterrows():
         ax2.annotate(
-            f"{row.prediction:.1f}ft {row.type}",
+            f"{row.prediction:.1f} ft {row.type}",
             xy=(row.name, row.prediction),  # type: ignore[arg-type] # pyright expects Sequence[float] but row.name is a pandas timestamp
             xytext=(
                 0,
@@ -993,12 +1026,7 @@ def create_tide_current_plot(
             fontsize=ANNOTATION_FONT_SIZE - 2,  # Smaller font size
             fontweight="bold",
             color=TIDE_COLOR,
-            bbox={
-                "boxstyle": "round,pad=0.15",
-                "facecolor": "white",
-                "edgecolor": "none",
-                "alpha": 0.7,
-            },
+            bbox=_plot_annotation_box(),
         )
 
     # Optimize Y-limits so the plots don't get squished by outliers
@@ -1018,27 +1046,30 @@ def create_tide_current_plot(
         alpha=0.7,
         linewidth=1.8,
     )
-    ax.text(
-        now,
-        0.98,
+    marker_gap_seconds = abs((t - now).total_seconds())
+    labels_would_overlap = 60 < marker_gap_seconds <= 2 * 60 * 60
+    ax.annotate(
         "now",
+        xy=(now_float, 1.0),
+        xycoords=ax.get_xaxis_transform(),
+        xytext=(0, 7),
+        textcoords="offset points",
         color=NOW_MARKER_COLOR,
         fontsize=ANNOTATION_FONT_SIZE - 2,
         fontweight="bold",
-        ha="right",
-        va="top",
-        rotation=90,
-        transform=ax.get_xaxis_transform(),
+        ha="center",
+        va="bottom",
         bbox={
-            "boxstyle": "round,pad=0.2",
+            "boxstyle": "round,pad=0.22",
             "facecolor": "white",
-            "edgecolor": "none",
-            "alpha": 0.78,
+            "edgecolor": PLOT_GRID_COLOR,
+            "linewidth": 0.5,
+            "alpha": 0.9,
         },
     )
 
     t_float = md.date2num(t)
-    if abs((t - now).total_seconds()) > 60:
+    if marker_gap_seconds > 60:
         ax.axvline(
             x=t_float,
             color=PLANNED_MARKER_COLOR,
@@ -1046,22 +1077,23 @@ def create_tide_current_plot(
             alpha=0.85,
             linewidth=2.2,
         )
-        ax.text(
-            t,
-            0.98,
+        ax.annotate(
             "planned",
+            xy=(t_float, 1.0),
+            xycoords=ax.get_xaxis_transform(),
+            xytext=(0, 22 if labels_would_overlap else 7),
+            textcoords="offset points",
             color=PLANNED_MARKER_COLOR,
             fontsize=ANNOTATION_FONT_SIZE - 2,
             fontweight="bold",
-            ha="left",
-            va="top",
-            rotation=90,
-            transform=ax.get_xaxis_transform(),
+            ha="center",
+            va="bottom",
             bbox={
-                "boxstyle": "round,pad=0.2",
+                "boxstyle": "round,pad=0.22",
                 "facecolor": "white",
-                "edgecolor": "none",
-                "alpha": 0.78,
+                "edgecolor": PLOT_GRID_COLOR,
+                "linewidth": 0.5,
+                "alpha": 0.9,
             },
         )
 
@@ -1069,12 +1101,17 @@ def create_tide_current_plot(
 
     # No titles for the tide/current plot as per original implementation
 
-    # Add a legend for the current
+    # Add a compact combined legend for the plotted lines.
+    handles_1, labels_1 = ax.get_legend_handles_labels()
+    handles_2, labels_2 = ax2.get_legend_handles_labels()
     ax.legend(
+        handles_1 + handles_2,
+        labels_1 + labels_2,
         fontsize=LABEL_FONT_SIZE - 2,
         loc="upper right",
-        framealpha=0.86,
+        framealpha=0.9,
         facecolor="white",
+        edgecolor=PLOT_GRID_COLOR,
     )
 
     ax.tick_params(which="major", length=8, width=2)

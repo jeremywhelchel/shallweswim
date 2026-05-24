@@ -18,43 +18,43 @@ a {
   text-decoration: none;
 }
 
-/* Drift bar arrow callout: subtle pulse that nudges in the direction of motion. */
-@keyframes drift-arrow-left {
+/* Drift bar marker callout: subtle pulse toward the side that will change next. */
+@keyframes drift-marker-left {
   0%,
   100% {
-    opacity: 0.55;
-    transform: translateX(0);
+    box-shadow: 0 0 0 rgba(15, 23, 42, 0);
+    transform: translate(-50%, -50%);
   }
   50% {
-    opacity: 1;
-    transform: translateX(-4px);
+    box-shadow: -6px 0 10px rgba(15, 23, 42, 0.32);
+    transform: translate(calc(-50% - 2px), -50%);
   }
 }
 
-@keyframes drift-arrow-right {
+@keyframes drift-marker-right {
   0%,
   100% {
-    opacity: 0.55;
-    transform: translateX(0);
+    box-shadow: 0 0 0 rgba(15, 23, 42, 0);
+    transform: translate(-50%, -50%);
   }
   50% {
-    opacity: 1;
-    transform: translateX(4px);
+    box-shadow: 6px 0 10px rgba(15, 23, 42, 0.32);
+    transform: translate(calc(-50% + 2px), -50%);
   }
 }
 
-.drift-arrow-pulse-left {
-  animation: drift-arrow-left 2.2s ease-in-out infinite;
+.drift-marker-pulse-left {
+  animation: drift-marker-left 2.2s ease-in-out infinite;
 }
 
-.drift-arrow-pulse-right {
-  animation: drift-arrow-right 2.2s ease-in-out infinite;
+.drift-marker-pulse-right {
+  animation: drift-marker-right 2.2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .drift-arrow-pulse-left,
-  .drift-arrow-pulse-right {
+  .drift-marker-pulse-left,
+  .drift-marker-pulse-right {
     animation: none;
-    opacity: 1;
+    box-shadow: none;
   }
 }

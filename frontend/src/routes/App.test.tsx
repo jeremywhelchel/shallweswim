@@ -387,13 +387,16 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByText("Predicted")).toBeVisible();
   expect(
     screen.getByText(
-      "The tide is rising, and the water is going out fast and getting stronger.",
+      "At Grimaldo's, expect a fast push west toward Coney Island Pier. The current is getting stronger.",
     ),
   ).toBeVisible();
+  expect(
+    screen.queryByText(/Tide height is rising; ebb current/),
+  ).not.toBeInTheDocument();
   expect(screen.getByText("TIDE")).toBeVisible();
   // Trend word is rendered in two CSS-toggled locations (mobile header /
   // desktop arrow callout); just confirm it's in the DOM at least once.
-  expect(screen.getAllByText("rising").length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/rising/).length).toBeGreaterThan(0);
   expect(screen.getByText(/low 0.2 ft/)).toBeVisible();
   expect(screen.getByText("1.6 ft")).toBeVisible();
   expect(screen.getByText(/high 4.8 ft/)).toBeVisible();
@@ -1008,8 +1011,10 @@ test("planner mode shifts all time-aware water movement elements", async () => {
   expect(within(controls).getByText("Water Movement")).toBeVisible();
   expect(within(controls).getByRole("button", { name: "Now" })).toBeVisible();
   expect(screen.getByText("May 13, 2026, 8:30 AM")).toBeVisible();
-  expect(screen.getByText(/water is going out fast/)).toBeVisible();
-  expect(screen.getAllByText("rising").length).toBeGreaterThan(0);
+  expect(
+    screen.getByText(/expect a fast push west toward Coney Island Pier/),
+  ).toBeVisible();
+  expect(screen.getAllByText(/rising/).length).toBeGreaterThan(0);
   expect(screen.getByText("1.4 kt")).toBeVisible();
   expect(within(panel).getByLabelText("Planner time")).toHaveAttribute(
     "max",
@@ -1033,7 +1038,9 @@ test("detail mode shows the current and tide plot independently", async () => {
   });
 
   expect(screen.queryByRole("region", { name: "Planner mode" })).toBeNull();
-  expect(screen.getByText(/water is going out fast/)).toBeVisible();
+  expect(
+    screen.getByText(/expect a fast push west toward Coney Island Pier/),
+  ).toBeVisible();
   expect(screen.getByText("1.4 kt")).toBeVisible();
   expect(screen.getByText("2.2 ft")).toBeVisible();
   expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
@@ -1045,11 +1052,30 @@ test("detail mode shows the current and tide plot independently", async () => {
     "/api/nyc/plots/current_tide?at=2026-05-13T08%3A30%3A00",
   );
   expect(
-    screen.getByRole("heading", { name: "Grimaldo's Chair local read" }),
+    screen.getByRole("heading", {
+      name: "Grimaldo's Chair current guidance",
+    }),
+  ).toBeVisible();
+  expect(screen.getByText(/Start east toward Manhattan Beach/)).toBeVisible();
+  expect(screen.getByText("Flood current")).toBeVisible();
+  expect(
+    screen.getByText("Water usually pushes east toward Manhattan Beach."),
+  ).toBeVisible();
+  expect(screen.getByText("Ebb current")).toBeVisible();
+  expect(
+    screen.getByText("Water usually pushes west toward Coney Island Pier."),
   ).toBeVisible();
   expect(
-    screen.getByText(/Start eastbound toward Manhattan Beach/),
+    screen.getByText(/describe current movement, not a required swim route/),
   ).toBeVisible();
+  expect(
+    screen.getByText(
+      /Farther west toward the Aquarium and Coney Island Pier, the current can behave differently and may switch direction/,
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: "CIBBOWS Essentials" }),
+  ).toHaveAttribute("href", "https://example.com");
   expect(
     screen.getByRole("img", {
       name: "Coney Island ebbing current map at 55% strength",
@@ -1112,7 +1138,9 @@ test("at shifts water movement without opening planner or detail panels", async 
   expect(
     screen.queryByRole("img", { name: /^Tide and current plot/ }),
   ).not.toBeInTheDocument();
-  expect(screen.getByText(/water is going out fast/)).toBeVisible();
+  expect(
+    screen.getByText(/expect a fast push west toward Coney Island Pier/),
+  ).toBeVisible();
   expect(screen.getByText("1.4 kt")).toBeVisible();
   expect(screen.getByText("2.2 ft")).toBeVisible();
   expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();

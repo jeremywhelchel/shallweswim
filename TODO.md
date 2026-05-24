@@ -166,16 +166,15 @@
   clearer time ticks, stronger mobile styling, debounced updates if needed, and
   smart presets such as next slack, peak ebb, and peak flood once the backend
   exposes those timestamps.
-- Deepen the NYC local water-movement detail soon, with an explicit swimmer
-  guidance review. The current React detail panel has the right raw ingredients
-  — Grimaldo's Chair direction guidance, local current maps, tide/current timing
-  notes, and historic harbor charts — but needs a focused product/copy pass to
-  decide whether the wording is actually practical for swimmers making a plan.
-  Show the current guidance to local swimmers, collect feedback on what is
-  useful/confusing, and spend time on the exact language. Candidate improvements:
-  show "flood carries east / ebb carries west" closer to the current instrument,
-  tighten map/chart captions, make slack/flip guidance more explicit, and better
-  connect the local map and harbor chart to the selected planner time.
+- Move NYC local water-movement guidance into typed location config. The React
+  copy pass now uses Grimaldo's-centered swimmer language, flood/ebb current
+  guidance, CIBBOWS context, and wider drift bars with trend text in the
+  instrument header. The remaining architecture work is to stop hardcoding NYC
+  landmarks and caveats in the frontend: add typed backend config for the
+  reference point, flood/ebb landmark directions, route-planning advice, and
+  local caveats, expose it through bootstrap, and render it generically. Keep
+  collecting swimmer feedback after launch to tune wording such as "east toward
+  Manhattan Beach" versus a more Brighton-specific eastbound landmark.
 - Expand joint frontend/backend stack coverage as React planner behavior grows.
   The first optional Python Playwright test now runs the built React app against
   real FastAPI routes with mocked data managers and verifies that URL `at` state,

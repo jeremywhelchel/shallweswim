@@ -493,6 +493,10 @@ function WaterMovementSummary({
   );
   const isNycDetail =
     waterMovementControls?.location.metadata.code === "nyc" && detailOpen;
+  const isNycWaterMovement =
+    waterMovementControls?.location.metadata.code === "nyc";
+  const nycSwimmerSummary =
+    isNycWaterMovement && current ? nycCurrentSwimmerSummary(current) : null;
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
@@ -532,9 +536,15 @@ function WaterMovementSummary({
           />
         ) : null}
       </section>
-      <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
-        {description}
-      </p>
+      {nycSwimmerSummary ? (
+        <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-xl">
+          {nycSwimmerSummary}
+        </p>
+      ) : (
+        <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
+          {description}
+        </p>
+      )}
 
       {detailOpen && waterMovementControls?.plotUrl ? (
         <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.35fr)] lg:items-start">
@@ -546,7 +556,12 @@ function WaterMovementSummary({
             />
             <CurrentInstrument current={current} />
             {isNycDetail ? (
-              <NycWaterMovementGuidance current={current} />
+              <NycWaterMovementGuidance
+                current={current}
+                essentialsUrl={
+                  waterMovementControls.location.metadata.swim_location_link
+                }
+              />
             ) : null}
           </div>
 
@@ -592,8 +607,10 @@ function WaterMovementSummary({
 
 function NycWaterMovementGuidance({
   current,
+  essentialsUrl,
 }: {
   current?: CurrentInfo | null;
+  essentialsUrl: string;
 }) {
   const swimAdvice = nycSwimDirectionAdvice(current);
 
@@ -602,24 +619,33 @@ function NycWaterMovementGuidance({
       <section aria-label="Grimaldo's Chair current guidance">
         <div className="rounded border border-swim-line bg-[#f8fbfc] p-3">
           <h4 className="font-semibold text-sm text-swim-blue">
-            Grimaldo&apos;s Chair local read
+            Grimaldo&apos;s Chair current guidance
           </h4>
           <p className="mt-1 text-sm text-swim-ink leading-relaxed">
             {swimAdvice}
           </p>
           <dl className="mt-2 grid gap-1 text-xs text-slate-700 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
             <div>
-              <dt className="font-semibold text-swim-current">Flood</dt>
-              <dd>Coney Island toward Manhattan Beach, west to east.</dd>
+              <dt className="font-semibold text-swim-current">Flood current</dt>
+              <dd>Water usually pushes east toward Manhattan Beach.</dd>
             </div>
             <div>
-              <dt className="font-semibold text-swim-current">Ebb</dt>
-              <dd>Manhattan Beach toward Coney Island, east to west.</dd>
+              <dt className="font-semibold text-swim-current">Ebb current</dt>
+              <dd>Water usually pushes west toward Coney Island Pier.</dd>
             </div>
           </dl>
           <p className="mt-2 text-xs text-slate-600">
-            Near the Aquarium, the beach current can reverse; the pier-side
-            current may run opposite the Grimaldo&apos;s read.
+            Direction references are relative to Grimaldo&apos;s Chair and
+            describe current movement, not a required swim route.
+            <a className="ml-1 text-swim-blue underline" href={essentialsUrl}>
+              CIBBOWS Essentials
+            </a>
+          </p>
+          <p className="mt-2 text-xs text-slate-600">
+            The current summary is centered on Grimaldo&apos;s Chair. Farther
+            west toward the Aquarium and Coney Island Pier, the current can
+            behave differently and may switch direction; check the map and what
+            you see in the water before using this for a longer swim.
           </p>
         </div>
       </section>
@@ -706,10 +732,10 @@ function NycWaterMovementVisuals({
 
 function nycSwimDirectionAdvice(current?: CurrentInfo | null) {
   if (current?.phase === "flood" || current?.direction === "flooding") {
-    return "At Grimaldo's, flood usually carries you east toward Manhattan Beach. Start westbound toward Coney Island if you want the current against you first, or ride it east if you are planning around a tide flip.";
+    return "At Grimaldo's, flood usually carries you east toward Manhattan Beach. Start west toward Coney Island Pier if you want the current against you first, or ride it east if you are planning around a tide flip.";
   }
   if (current?.phase === "ebb" || current?.direction === "ebbing") {
-    return "At Grimaldo's, ebb usually carries you west toward Coney Island. Start eastbound toward Manhattan Beach if you want the current against you first, then use the ebb on the way back.";
+    return "At Grimaldo's, ebb usually carries you west toward Coney Island Pier. Start east toward Manhattan Beach if you want the current against you first, then use the ebb on the way back.";
   }
   if (
     current?.phase === "slack" ||
@@ -719,6 +745,57 @@ function nycSwimDirectionAdvice(current?: CurrentInfo | null) {
     return "The current is near slack, so direction matters less right now. Watch the next build: flood favors eastward movement, while ebb favors westward movement.";
   }
   return "Use the current direction as a planning input, then confirm with what you see in the water before committing to a longer swim.";
+}
+
+function nycCurrentSwimmerSummary(current: CurrentInfo) {
+  const speed = nycCurrentSpeedAdjective(current);
+  const trend = nycCurrentTrendSentence(current);
+  const direction = nycCurrentLandmarkDirection(current);
+
+  if (!direction) {
+    if (isSlackCurrent(current)) {
+      return "At Grimaldo's, the current is near slack.";
+    }
+    return "At Grimaldo's, check the current before choosing a direction.";
+  }
+
+  return `At Grimaldo's, expect ${speed ? `a ${speed} ` : "a "}push ${direction}.${trend ? ` ${trend}` : ""}`;
+}
+
+function nycCurrentLandmarkDirection(current: CurrentInfo) {
+  if (current.phase === "flood" || current.direction === "flooding") {
+    return "east toward Manhattan Beach";
+  }
+  if (current.phase === "ebb" || current.direction === "ebbing") {
+    return "west toward Coney Island Pier";
+  }
+  return null;
+}
+
+function nycCurrentSpeedAdjective(current: CurrentInfo) {
+  switch (currentSpeedPhrase(current)) {
+    case "gently":
+      return "gentle";
+    case "steadily":
+      return "steady";
+    case "fast":
+      return "fast";
+    default:
+      return null;
+  }
+}
+
+function nycCurrentTrendSentence(current: CurrentInfo) {
+  switch (current.trend) {
+    case "building":
+      return "The current is getting stronger.";
+    case "easing":
+      return "The current is starting to ease.";
+    case "steady":
+      return "The current is holding steady.";
+    default:
+      return null;
+  }
 }
 
 function nycCurrentMap(current?: CurrentInfo | null) {
@@ -1399,12 +1476,13 @@ function DriftBar({
         ? `linear-gradient(90deg, ${accentTokens.color} 0%, ${accentTokens.color} 55%, ${accentTokens.soft} 100%)`
         : accentTokens.color;
 
-  const pulseClass =
+  const markerPulseClass =
     direction === "down"
-      ? "drift-arrow-pulse-left"
+      ? "drift-marker-pulse-left"
       : direction === "up"
-        ? "drift-arrow-pulse-right"
+        ? "drift-marker-pulse-right"
         : "";
+  const trendIndicator = trendIndicatorText(accent, trend, direction);
 
   return (
     <div
@@ -1425,8 +1503,8 @@ function DriftBar({
             </>
           ) : null}
           {direction !== "steady" ? (
-            <span className="md:hidden">
-              <span>{trend}</span>
+            <span>
+              <span className={accentTokens.arrowText}>{trendIndicator}</span>
               {" · "}
             </span>
           ) : null}
@@ -1436,7 +1514,7 @@ function DriftBar({
 
       <div
         aria-hidden="true"
-        className="my-2 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-1.5"
+        className="my-2 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1"
       >
         <span className="font-mono font-semibold text-xl text-slate-500 leading-none">
           [
@@ -1451,35 +1529,13 @@ function DriftBar({
             }}
           />
           <span
-            className="absolute top-1/2 h-7 w-1 -translate-x-1/2 -translate-y-1/2 bg-swim-ink"
+            className={`absolute top-1/2 h-7 w-1 -translate-x-1/2 -translate-y-1/2 bg-swim-ink ${markerPulseClass}`}
             style={{ left: `${fillPercent}%` }}
           />
         </span>
         <span className="font-mono font-semibold text-xl text-slate-500 leading-none">
           ]
         </span>
-        {direction !== "steady" ? (
-          <span
-            className={`ml-2 whitespace-nowrap font-sans text-[12px] font-extrabold uppercase tracking-wider md:text-[13px] ${accentTokens.arrowText} ${pulseClass}`}
-          >
-            {direction === "down" ? (
-              <>
-                ←
-                <span className="hidden md:inline">
-                  {" "}
-                  <span>{trend}</span>
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="hidden md:inline">
-                  <span>{trend}</span>{" "}
-                </span>
-                →
-              </>
-            )}
-          </span>
-        ) : null}
       </div>
 
       <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums text-slate-500 md:text-xs">
@@ -1498,6 +1554,20 @@ function trendDirection(trend: string): "up" | "down" | "steady" {
     return "down";
   }
   return "steady";
+}
+
+function trendIndicatorText(
+  accent: keyof typeof DRIFT_ACCENT,
+  trend: string,
+  direction: "up" | "down" | "steady",
+) {
+  if (direction === "steady") {
+    return null;
+  }
+  if (accent === "tide") {
+    return direction === "up" ? `↑ ${trend}` : `↓ ${trend}`;
+  }
+  return trend;
 }
 
 function WindyEmbed({ metadata }: { metadata: AppLocationMetadata }) {

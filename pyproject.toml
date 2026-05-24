@@ -42,7 +42,9 @@ dev = [
     "types-python-dateutil",
     "types-pytz",
     "types-requests",
-    "playwright>=1.59.0",
+    # Keep pinned to frontend/package.json @playwright/test so Python and
+    # frontend browser tests use the same shared Chromium revision.
+    "playwright==1.59.0",
 ]
 
 [tool.ruff]

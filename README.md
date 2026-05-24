@@ -205,9 +205,9 @@ uv run pytest -v -k "not integration"
 # Run integration tests (connects to external APIs)
 uv run pytest -v -m integration --run-integration
 
-# Run optional browser tests (requires Playwright browser dependencies)
+# Run optional Python browser tests (requires Playwright Chromium)
 uv run playwright install chromium
-uv run pytest tests/test_frontend_browser.py -v --run-browser
+uv run pytest tests/test_react_stack_browser.py -v --run-browser
 
 # Run frontend checks
 corepack pnpm@10.18.3 --dir frontend typecheck
@@ -248,11 +248,16 @@ Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, U
 #### Optional Browser Tests
 
 Browser tests exercise the frontend JavaScript in a real Chromium browser.
-They are not part of the default test run.
+They are not part of the default test run. Python Playwright and frontend
+Playwright are pinned to the same version and use the default shared Playwright
+browser cache, so either install command below prepares Chromium for both.
 
 ```bash
-# Install the Playwright Chromium browser binary
+# Install the Playwright Chromium browser binary via Python Playwright
 uv run playwright install chromium
+
+# Or install the same browser via frontend Playwright
+corepack pnpm@10.18.3 --dir frontend test:e2e:install
 
 # If your Linux container/VM is missing browser system libraries, install them too
 uv run playwright install-deps chromium

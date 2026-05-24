@@ -124,6 +124,10 @@ venv.bak/
 .mypy_cache/
 
 # Local performance test output
+test-results.xml
+integration-test-results.xml
+jinja-browser-results.xml
+react-stack-browser-results.xml
 performance-results.json
 performance-test-results.xml
 .dmypy.json

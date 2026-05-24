@@ -1608,7 +1608,7 @@ dev = [
     { name = "freezegun", specifier = ">=1.5.1,<2" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "matplotlib-stubs", specifier = ">=0.3.11,<1" },
-    { name = "playwright", specifier = ">=1.59.0" },
+    { name = "playwright", specifier = "==1.59.0" },
     { name = "pre-commit", specifier = ">=4,<5" },
     { name = "pyrefly", specifier = ">=0.53,<1" },
     { name = "pytest", specifier = ">=9.0.3,<10" },

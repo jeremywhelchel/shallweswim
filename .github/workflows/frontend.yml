@@ -53,7 +53,7 @@ jobs:
         run: pnpm --dir frontend check:api
 
       - name: Install Playwright Chromium
-        run: PLAYWRIGHT_BROWSERS_PATH=0 pnpm --dir frontend exec playwright install --with-deps chromium
+        run: pnpm --dir frontend exec playwright install --with-deps chromium
 
       - name: Run Playwright browser tests
         run: pnpm --dir frontend test:e2e

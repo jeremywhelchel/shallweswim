@@ -1309,10 +1309,10 @@ address these known rough edges:
   `npx --yes pnpm@10.18.3 ...` rather than installing package managers globally.
   If local Node Current releases cause toolchain issues, reproduce on Node 24
   before treating the issue as a project bug.
-- JavaScript Playwright tests use `PLAYWRIGHT_BROWSERS_PATH=0`, so browser
-  binaries live under `frontend/node_modules`. After deleting or recreating
-  `frontend/node_modules`, run `pnpm --dir frontend test:e2e:install` before
-  `pnpm --dir frontend test:e2e`.
+- JavaScript and Python Playwright are pinned to the same version and use the
+  default shared Playwright browser cache. Run `pnpm --dir frontend
+  test:e2e:install` or `uv run playwright install chromium` before browser
+  tests on a fresh environment.
 
 ## Feature Parity Plan
 

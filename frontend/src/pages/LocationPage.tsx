@@ -328,8 +328,6 @@ function ObservedFlowSummary({
                 <span className="font-mono">{timestamp}</span>
               </>
             ) : null}
-            . This is not a tide prediction, so planner controls are not
-            available.
           </>
         ) : (
           "Recent observed flow is unavailable right now."

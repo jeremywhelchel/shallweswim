@@ -1304,7 +1304,7 @@ test("renders observed flow without tidal water movement for river-current locat
   expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
   expect(screen.getByText("Observed")).toBeVisible();
   expect(screen.getByText("0.8 kt")).toBeVisible();
-  expect(screen.getByText(/not a tide prediction/)).toBeVisible();
+  expect(screen.queryByText(/not a tide prediction/)).toBeNull();
 });
 
 test("renders unavailable condition states on first-load failure", () => {

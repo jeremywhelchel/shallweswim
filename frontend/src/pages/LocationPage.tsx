@@ -1630,18 +1630,33 @@ function WindyEmbed({ metadata }: { metadata: AppLocationMetadata }) {
 }
 
 function WebcamEmbed({ config }: { config: AppWebcamConfig }) {
+  let embed: ReactNode;
+
   switch (config.provider) {
     case "youtube_live":
-      return <YouTubeLiveEmbed config={config} />;
+      embed = <YouTubeLiveEmbed config={config} />;
+      break;
     case "iframe":
-      return <IframeWebcamEmbed config={config} />;
+      embed = <IframeWebcamEmbed config={config} />;
+      break;
     case "earthcam_embed":
-      return <EarthCamEmbed config={config} />;
+      embed = <EarthCamEmbed config={config} />;
+      break;
     case "external_link":
-      return <ExternalWebcamLink config={config} />;
+      embed = <ExternalWebcamLink config={config} />;
+      break;
     default:
       throw new Error(`Unsupported webcam provider: ${config.provider}`);
   }
+
+  return (
+    <div>
+      {embed}
+      {config.note ? (
+        <p className="mt-2 text-sm text-slate-600">{config.note}</p>
+      ) : null}
+    </div>
+  );
 }
 
 function requireWebcamField(
@@ -1748,22 +1763,17 @@ function EarthCamEmbed({ config }: { config: AppWebcamConfig }) {
   );
 
   return (
-    <div>
-      <div
-        className="aspect-video overflow-hidden rounded bg-[#ddd]"
-        data-earthcam-embed-root=""
-      >
-        <iframe
-          allowFullScreen
-          className="block h-full w-full border-0"
-          scrolling="no"
-          src={embedUrl}
-          title={config.label}
-        />
-      </div>
-      {config.note ? (
-        <p className="mt-2 text-sm text-slate-600">{config.note}</p>
-      ) : null}
+    <div
+      className="aspect-video overflow-hidden rounded bg-[#ddd]"
+      data-earthcam-embed-root=""
+    >
+      <iframe
+        allowFullScreen
+        className="block h-full w-full border-0"
+        scrolling="no"
+        src={embedUrl}
+        title={config.label}
+      />
     </div>
   );
 }
@@ -1780,9 +1790,6 @@ function ExternalWebcamLink({ config }: { config: AppWebcamConfig }) {
       <a className="text-swim-blue underline" href={watchUrl}>
         {config.label}
       </a>
-      {config.note ? (
-        <p className="mt-2 text-slate-600">{config.note}</p>
-      ) : null}
     </div>
   );
 }

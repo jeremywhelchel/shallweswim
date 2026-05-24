@@ -673,6 +673,10 @@ _CONFIG_LIST = [
                 watch_url=(
                     "https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
                 ),
+                note=(
+                    "Looking southwest from Brighton 4th Street; "
+                    "Grimaldo's Chair is near the far left of the view."
+                ),
                 source=PresentationLinkConfig(
                     label="Webcam",
                     url=(
@@ -755,6 +759,7 @@ _CONFIG_LIST = [
                     "https://api.wetmet.net/widgets/stream/frame.php?"
                     "uid=99b98373cd0500d39b0c1671b2774f9e"
                 ),
+                note="Ohio Street Beach view from Willis Tower.",
                 source=PresentationLinkConfig(
                     label="Chicago webcam",
                     url=(

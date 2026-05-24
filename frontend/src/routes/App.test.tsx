@@ -841,7 +841,7 @@ test("renders a YouTube live webcam from provider-aware integration config", asy
               script_url: null,
               watch_url: "https://www.youtube.com/channel/abc/live",
               channel_id: "abc",
-              note: null,
+              note: "Looking southwest from Brighton 4th Street.",
               source: {
                 label: "Webcam",
                 url: "https://www.youtube.com/channel/abc/live",
@@ -873,6 +873,9 @@ test("renders a YouTube live webcam from provider-aware integration config", asy
   expect(
     screen.getByRole("link", { name: "Alternate camera" }),
   ).toHaveAttribute("href", "https://example.com/alt");
+  expect(
+    screen.getByText("Looking southwest from Brighton 4th Street."),
+  ).toBeVisible();
 });
 
 test("renders an iframe webcam provider for non-NYC locations", async () => {
@@ -903,7 +906,7 @@ test("renders an iframe webcam provider for non-NYC locations", async () => {
             script_url: null,
             watch_url: null,
             channel_id: null,
-            note: null,
+            note: "Ohio Street Beach view from Willis Tower.",
             source: {
               label: "Chicago webcam",
               url: "https://example.com/chicago-webcam",
@@ -931,6 +934,9 @@ test("renders an iframe webcam provider for non-NYC locations", async () => {
     "href",
     "https://example.com/chicago-webcam",
   );
+  expect(
+    screen.getByText("Ohio Street Beach view from Willis Tower."),
+  ).toBeVisible();
 });
 
 test("renders a named EarthCam provider as a contained iframe", async () => {

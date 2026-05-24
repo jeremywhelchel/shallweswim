@@ -61,11 +61,12 @@ LABEL_FONT_SIZE = 18
 ANNOTATION_FONT_SIZE = 16
 
 # Color constants
-CURRENT_FLOOD_COLOR = "g"  # Green for flooding currents
-CURRENT_EBB_COLOR = "r"  # Red for ebbing currents
-TIDE_COLOR = "b"  # Blue for tide data
+CURRENT_FLOOD_COLOR = "#2e7d32"  # Green for flooding currents
+CURRENT_EBB_COLOR = "#c62828"  # Red for ebbing currents
+TIDE_COLOR = "#000099"  # Blue for tide data
 HIGHLIGHT_COLOR = "#ff4000"  # Orange for highlighting points of interest
-TIME_MARKER_COLOR = "r"  # Red for marking current time
+NOW_MARKER_COLOR = "#111827"  # Dark marker for current time
+PLANNED_MARKER_COLOR = "#db2777"  # Accent marker for planner time
 
 #############################################################
 # UTILITY FUNCTIONS                                        #
@@ -746,6 +747,27 @@ def generate_historic_temp_plots(
 #############################################################
 
 
+def _tide_current_plot_window(
+    now: datetime.datetime,
+    marker_time: datetime.datetime,
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """Return a plot window that keeps now and planner time visible."""
+    marker_margin = datetime.timedelta(hours=3)
+    default_end_time = now + datetime.timedelta(hours=21)
+    return (
+        min(now, marker_time) - marker_margin,
+        max(default_end_time, marker_time + marker_margin),
+    )
+
+
+def _finite_plot_values(series: pd.Series, context: str) -> pd.Series:
+    """Return finite values for plotting, failing clearly when none exist."""
+    finite_values = series.replace([np.inf, -np.inf], np.nan).dropna()
+    if finite_values.empty:
+        raise ValueError(f"Insufficient finite {context} data for plotting")
+    return finite_values
+
+
 def create_tide_current_plot(
     tides: pd.DataFrame,
     currents: pd.DataFrame,
@@ -772,16 +794,19 @@ def create_tide_current_plot(
     if len(currents) < 2:
         raise ValueError("Insufficient current data for plotting")
 
-    # Select a window of data around the current time
-    start_time = location_config.local_now() - datetime.timedelta(hours=3)
-    end_time = location_config.local_now() + datetime.timedelta(hours=21)
+    # Select a window around now, extending when needed to keep the planner
+    # marker visible at the far end of the next-day planning range.
+    now = location_config.local_now()
+    start_time, end_time = _tide_current_plot_window(now, t)
 
     # Interpolate only the numeric 'prediction' column for a smoother plot line.
     # Do this *before* filtering to the window to allow interpolation to use
     # data outside the window edges for better accuracy.
-    tides_interpolated = (
-        tides[["prediction"]].resample("60s").interpolate("polynomial", order=2)
-    )
+    tide_predictions = tides[["prediction"]].resample("60s")
+    if len(tides) >= 3:
+        tides_interpolated = tide_predictions.interpolate("polynomial", order=2)
+    else:
+        tides_interpolated = tide_predictions.interpolate("time")
 
     # Filter all relevant DataFrames to the desired plot window
     tides = tides[(tides.index >= start_time) & (tides.index <= end_time)]  # type: ignore[operator] # pyright confused about index type
@@ -790,6 +815,10 @@ def create_tide_current_plot(
         (tides_interpolated.index >= start_time)
         & (tides_interpolated.index <= end_time)
     ]
+    tide_plot_values = _finite_plot_values(
+        tides_interpolated_filtered.prediction,
+        "tide",
+    )
 
     fig = create_standard_figure()
 
@@ -798,7 +827,7 @@ def create_tide_current_plot(
     ax.set_ylabel(
         "Current Speed (kts)", fontsize=LABEL_FONT_SIZE, color=CURRENT_FLOOD_COLOR
     )
-    ax.grid(True, alpha=0.5, linestyle="--")
+    ax.grid(True, alpha=0.28, linestyle="--", linewidth=0.8)
     ax.tick_params(labelsize=LABEL_FONT_SIZE - 4)
 
     # Plot the current on the first Y axis (left)
@@ -820,7 +849,7 @@ def create_tide_current_plot(
         flood_df.velocity,
         color=CURRENT_FLOOD_COLOR,
         label="Flood",
-        linewidth=2,
+        linewidth=2.4,
     )
 
     # Plot ebb currents in red
@@ -829,7 +858,7 @@ def create_tide_current_plot(
         ebb_df.velocity,
         color=CURRENT_EBB_COLOR,
         label="Ebb",
-        linewidth=2,
+        linewidth=2.4,
     )
 
     # Find and mark local maxima and minima for currents
@@ -865,6 +894,12 @@ def create_tide_current_plot(
                 fontsize=ANNOTATION_FONT_SIZE - 2,
                 fontweight="bold",
                 color=CURRENT_FLOOD_COLOR,
+                bbox={
+                    "boxstyle": "round,pad=0.15",
+                    "facecolor": "white",
+                    "edgecolor": "none",
+                    "alpha": 0.7,
+                },
             )
 
     # Process ebb currents (find local minima by finding peaks in the negative)
@@ -900,10 +935,16 @@ def create_tide_current_plot(
                 fontsize=ANNOTATION_FONT_SIZE - 2,
                 fontweight="bold",
                 color=CURRENT_EBB_COLOR,
+                bbox={
+                    "boxstyle": "round,pad=0.15",
+                    "facecolor": "white",
+                    "edgecolor": "none",
+                    "alpha": 0.7,
+                },
             )
 
     # Draw a line at current 0
-    ax.axhline(0, color=CURRENT_FLOOD_COLOR, linestyle=":", alpha=0.8)
+    ax.axhline(0, color=CURRENT_FLOOD_COLOR, linestyle=":", alpha=0.55)
 
     # Keep the current range sensible
     ax.set_ylim(-2.5, 2.5)
@@ -920,11 +961,11 @@ def create_tide_current_plot(
         tides_interpolated_filtered.prediction,  # Use interpolated prediction values
         color=TIDE_COLOR,
         label="Tide height",
-        linewidth=2,
+        linewidth=2.4,
     )
 
     # Draw a line at tide 0
-    ax2.axhline(0, color=TIDE_COLOR, linestyle=":", alpha=0.8)
+    ax2.axhline(0, color=TIDE_COLOR, linestyle=":", alpha=0.55)
 
     # Add markers for extreme tides (smaller size)
     extreme_tides = tides[
@@ -952,26 +993,89 @@ def create_tide_current_plot(
             fontsize=ANNOTATION_FONT_SIZE - 2,  # Smaller font size
             fontweight="bold",
             color=TIDE_COLOR,
+            bbox={
+                "boxstyle": "round,pad=0.15",
+                "facecolor": "white",
+                "edgecolor": "none",
+                "alpha": 0.7,
+            },
         )
 
     # Optimize Y-limits so the plots don't get squished by outliers
     # Keep the tide range sensible
     ax2.set_ylim(
-        max(tides.prediction.min() - 1, -8),
-        min(tides.prediction.max() + 1, 8),
+        max(tide_plot_values.min() - 1, -8),
+        min(tide_plot_values.max() + 1, 8),
     )
 
-    # Mark where we are in time
-    # Convert datetime to a float for axvline
-    t_float = md.date2num(t)
+    # Mark now and planner time. When they are effectively the same timestamp,
+    # use one marker so the chart does not imply a difference.
+    now_float = md.date2num(now)
     ax.axvline(
-        x=t_float, color=TIME_MARKER_COLOR, linestyle="--", alpha=0.5, linewidth=2
+        x=now_float,
+        color=NOW_MARKER_COLOR,
+        linestyle="-",
+        alpha=0.7,
+        linewidth=1.8,
     )
+    ax.text(
+        now,
+        0.98,
+        "now",
+        color=NOW_MARKER_COLOR,
+        fontsize=ANNOTATION_FONT_SIZE - 2,
+        fontweight="bold",
+        ha="right",
+        va="top",
+        rotation=90,
+        transform=ax.get_xaxis_transform(),
+        bbox={
+            "boxstyle": "round,pad=0.2",
+            "facecolor": "white",
+            "edgecolor": "none",
+            "alpha": 0.78,
+        },
+    )
+
+    t_float = md.date2num(t)
+    if abs((t - now).total_seconds()) > 60:
+        ax.axvline(
+            x=t_float,
+            color=PLANNED_MARKER_COLOR,
+            linestyle="--",
+            alpha=0.85,
+            linewidth=2.2,
+        )
+        ax.text(
+            t,
+            0.98,
+            "planned",
+            color=PLANNED_MARKER_COLOR,
+            fontsize=ANNOTATION_FONT_SIZE - 2,
+            fontweight="bold",
+            ha="left",
+            va="top",
+            rotation=90,
+            transform=ax.get_xaxis_transform(),
+            bbox={
+                "boxstyle": "round,pad=0.2",
+                "facecolor": "white",
+                "edgecolor": "none",
+                "alpha": 0.78,
+            },
+        )
+
+    ax.set_xlim(start_time, end_time)
 
     # No titles for the tide/current plot as per original implementation
 
     # Add a legend for the current
-    ax.legend(fontsize=LABEL_FONT_SIZE, loc="lower right")
+    ax.legend(
+        fontsize=LABEL_FONT_SIZE - 2,
+        loc="upper right",
+        framealpha=0.86,
+        facecolor="white",
+    )
 
     ax.tick_params(which="major", length=8, width=2)
     ax.tick_params(which="minor", length=4, width=1)

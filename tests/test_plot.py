@@ -1,15 +1,17 @@
 """Tests for plotting validation helpers."""
 
 import datetime
+import io
 import logging
 
 import numpy as np
 import pandas as pd
 import pytest
+from freezegun import freeze_time
 from matplotlib.figure import Figure
 
 from shallweswim import config as config_lib
-from shallweswim import plot, util
+from shallweswim import plot, types, util
 
 
 def test_save_fig_rejects_non_static_paths() -> None:
@@ -329,6 +331,112 @@ def test_create_tide_current_plot_requires_enough_tides() -> None:
             datetime.datetime(2025, 4, 22, 10, 0, 0),
             location_config,
         )
+
+
+def _test_location_config() -> config_lib.LocationConfig:
+    return config_lib.LocationConfig(
+        code="tst",
+        name="Test Location",
+        description="Test location for tests",
+        latitude=40.7128,
+        longitude=-74.0060,
+        timezone=datetime.UTC,
+        swim_location="Test Beach",
+        swim_location_link="https://example.com/test-beach",
+    )
+
+
+@freeze_time("2026-05-24T12:00:00Z")
+def test_create_tide_current_plot_handles_window_without_tide_extrema() -> None:
+    location_config = _test_location_config()
+    tides = pd.DataFrame(
+        {
+            "prediction": [0.2, 5.0],
+            "type": [types.TideCategory.LOW.value, types.TideCategory.HIGH.value],
+        },
+        index=pd.DatetimeIndex(
+            [
+                datetime.datetime(2026, 5, 24, 6, 0, 0),
+                datetime.datetime(2026, 5, 24, 18, 0, 0),
+            ]
+        ),
+    )
+    current_index = pd.date_range("2026-05-24T06:00:00", periods=13, freq="h")
+    currents = pd.DataFrame(
+        {"velocity": np.sin(np.linspace(-np.pi, np.pi, len(current_index)))},
+        index=current_index,
+    )
+
+    fig = plot.create_tide_current_plot(
+        tides,
+        currents,
+        datetime.datetime(2026, 5, 24, 12, 0, 0),
+        location_config,
+    )
+
+    fig_to_svg = io.StringIO()
+    fig.savefig(fig_to_svg, format="svg")
+    assert "<svg" in fig_to_svg.getvalue()
+
+
+def test_tide_current_plot_window_preserves_default_forward_horizon() -> None:
+    now = datetime.datetime(2026, 5, 24, 9, 0, 0)
+    marker_time = now + datetime.timedelta(hours=12)
+
+    start_time, end_time = plot._tide_current_plot_window(now, marker_time)
+
+    assert start_time == now - datetime.timedelta(hours=3)
+    assert end_time == now + datetime.timedelta(hours=21)
+
+
+def test_tide_current_plot_window_keeps_now_and_late_planner_time_visible() -> None:
+    now = datetime.datetime(2026, 5, 24, 9, 0, 0)
+    marker_time = now + datetime.timedelta(hours=24)
+
+    start_time, end_time = plot._tide_current_plot_window(now, marker_time)
+
+    assert start_time == now - datetime.timedelta(hours=3)
+    assert end_time == marker_time + datetime.timedelta(hours=3)
+
+
+@pytest.mark.parametrize(
+    ("offset_hours", "expected_start_hours", "expected_end_hours"),
+    [(-3, -6, 21), (21, -3, 24)],
+)
+def test_tide_current_plot_window_tracks_planner_edges_without_collapsing_horizon(
+    offset_hours: int,
+    expected_start_hours: int,
+    expected_end_hours: int,
+) -> None:
+    now = datetime.datetime(2026, 5, 24, 9, 0, 0)
+    marker_time = now + datetime.timedelta(hours=offset_hours)
+
+    start_time, end_time = plot._tide_current_plot_window(now, marker_time)
+
+    assert start_time == now + datetime.timedelta(hours=expected_start_hours)
+    assert end_time == now + datetime.timedelta(hours=expected_end_hours)
+
+
+@pytest.mark.parametrize(
+    "offset",
+    [
+        datetime.timedelta(hours=-3, seconds=-30),
+        datetime.timedelta(hours=21, seconds=30),
+    ],
+)
+def test_tide_current_plot_window_tracks_request_time_drift_smoothly(
+    offset: datetime.timedelta,
+) -> None:
+    now = datetime.datetime(2026, 5, 24, 9, 0, 0)
+    marker_time = now + offset
+
+    start_time, end_time = plot._tide_current_plot_window(now, marker_time)
+
+    assert start_time == min(now, marker_time) - datetime.timedelta(hours=3)
+    assert end_time == max(
+        now + datetime.timedelta(hours=21),
+        marker_time + datetime.timedelta(hours=3),
+    )
 
 
 def test_create_current_chart_rejects_out_of_range_magnitude() -> None:

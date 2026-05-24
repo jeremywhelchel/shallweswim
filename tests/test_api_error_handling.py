@@ -7,11 +7,13 @@ Verifies routes.py handles missing/partial data gracefully:
 These tests emulate the conditions from production bugs to prevent regressions.
 """
 
+import concurrent.futures
 import datetime
 import logging
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 import pytz
@@ -344,6 +346,53 @@ def test_plot_insufficient_rows_returns_503(app_with_mock_manager: Any) -> None:
 
     assert response.status_code == 503
     assert "tide/current data temporarily unavailable" in response.json()["detail"]
+
+
+@freeze_time("2026-05-24T16:00:00Z")
+def test_current_tide_plot_handles_window_without_tide_extrema(
+    app_with_mock_manager: Any,
+) -> None:
+    """Plot endpoint should render when the window has curve data but no extrema."""
+    app, mock_manager = app_with_mock_manager
+    mock_manager.has_data = True
+    mock_manager.has_feed_data.return_value = True
+
+    tides = pd.DataFrame(
+        {
+            "prediction": [0.2, 5.0],
+            "type": [sw_types.TideCategory.LOW.value, sw_types.TideCategory.HIGH.value],
+        },
+        index=pd.DatetimeIndex(
+            [
+                datetime.datetime(2026, 5, 24, 6, 0, 0),
+                datetime.datetime(2026, 5, 24, 18, 0, 0),
+            ]
+        ),
+    )
+    current_index = pd.date_range("2026-05-24T06:00:00", periods=13, freq="h")
+    currents = pd.DataFrame(
+        {"velocity": np.sin(np.linspace(-np.pi, np.pi, len(current_index)))},
+        index=current_index,
+    )
+
+    def get_feed_values(feed_name: str) -> pd.DataFrame:
+        if feed_name == FEED_TIDES:
+            return tides
+        if feed_name == FEED_CURRENTS:
+            return currents
+        raise AssertionError(f"Unexpected feed requested: {feed_name}")
+
+    mock_manager.get_feed_values.side_effect = get_feed_values
+    app.state.process_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        client = TestClient(app)
+        response = client.get("/api/nyc/plots/current_tide?at=2026-05-24T12:00:00")
+    finally:
+        app.state.process_pool.shutdown(wait=False)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert b"<svg" in response.content
 
 
 # =============================================================================

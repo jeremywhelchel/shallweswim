@@ -281,6 +281,89 @@ function currentState(
   };
 }
 
+function syntheticLocation({
+  code,
+  features = {},
+  integrations = {},
+}: {
+  code: string;
+  features?: Partial<components["schemas"]["AppFeatureFlags"]>;
+  integrations?: Partial<components["schemas"]["AppExternalIntegrations"]>;
+}): components["schemas"]["AppBootstrapLocation"] {
+  return {
+    metadata: {
+      ...bootstrapPayload.locations.nyc.metadata,
+      code,
+      name: `Test ${code.toUpperCase()}`,
+      nav_label: `Test ${code.toUpperCase()}`,
+      swim_location: "Test Beach",
+      swim_location_link: "https://example.com/test-beach",
+      description: "Synthetic swimming location for capability tests.",
+      latitude: 38,
+      longitude: -85,
+      timezone: "US/Eastern",
+      features: {
+        temperature: false,
+        tides: false,
+        currents: false,
+        webcam: false,
+        transit: false,
+        windy: false,
+        ...features,
+      },
+      citations: {
+        temperature: '<a href="https://example.com/temp">Temp source</a>',
+        tides: features.tides
+          ? '<a href="https://example.com/tides">Tide source</a>'
+          : null,
+        currents: features.currents
+          ? '<a href="https://example.com/currents">Current source</a>'
+          : null,
+      },
+    },
+    integrations: {
+      webcam: null,
+      transit_routes: [],
+      transit_source: null,
+      ...integrations,
+    },
+  };
+}
+
+function syntheticBootstrap(
+  location: components["schemas"]["AppBootstrapLocation"],
+): components["schemas"]["AppBootstrapResponse"] {
+  return {
+    ...bootstrapPayload,
+    default_location_code: location.metadata.code,
+    location_order: [location.metadata.code],
+    locations: {
+      [location.metadata.code]: location,
+    },
+  };
+}
+
+function syntheticConditions({
+  code,
+  current = null,
+  tides = null,
+}: {
+  code: string;
+  current?: components["schemas"]["CurrentInfo"] | null;
+  tides?: components["schemas"]["TideInfo"] | null;
+}): components["schemas"]["LocationConditions"] {
+  return {
+    ...conditionsPayload,
+    location: {
+      code,
+      name: `Test ${code.toUpperCase()}`,
+      swim_location: "Test Beach",
+    },
+    current,
+    tides,
+  };
+}
+
 test("renders the NYC location page from bootstrap and conditions metadata", async () => {
   renderLocation();
 
@@ -439,6 +522,206 @@ test("renders all configured locations from bootstrap metadata", () => {
   expect(screen.getByText(/Data from Ohio River at Water Tower/)).toBeVisible();
   expect(screen.getByText("Observed flow")).toBeVisible();
   expect(screen.getAllByText("Transit").length).toBeGreaterThan(0);
+});
+
+test("renders optional page sections from synthetic feature capabilities", async () => {
+  const location = syntheticLocation({
+    code: "cap",
+    features: {
+      temperature: true,
+      tides: true,
+      webcam: true,
+      transit: true,
+      windy: true,
+    },
+    integrations: {
+      webcam: {
+        provider: "iframe",
+        label: "Synthetic webcam",
+        embed_url: "https://example.com/synthetic-webcam",
+        script_url: null,
+        watch_url: null,
+        channel_id: null,
+        note: null,
+        source: {
+          label: "Synthetic webcam source",
+          url: "https://example.com/synthetic-webcam",
+          description: "Synthetic webcam source.",
+        },
+        alternative: null,
+      },
+      transit_routes: [
+        {
+          label: "T",
+          goodservice_route_id: "T",
+          goodservice_direction: "south",
+          icon_url: null,
+        },
+      ],
+      transit_source: {
+        label: "Synthetic transit",
+        url: "https://example.com/transit",
+        description: "Synthetic transit source.",
+      },
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    conditions: syntheticConditions({
+      code: "cap",
+      tides: conditionsPayload.tides,
+    }),
+    locationCode: "cap",
+    transitStatuses: {
+      "T:south": {
+        status: "Good Service",
+        destination: "Test Beach",
+      },
+    },
+  });
+
+  expect(
+    await screen.findByRole("heading", { name: "Water Movement" }),
+  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "Plan" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Forecast" })).toBeVisible();
+  expect(screen.getByTitle("Windy forecast")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Live Webcam" })).toBeVisible();
+  expect(screen.getByTitle("Synthetic webcam")).toHaveAttribute(
+    "src",
+    "https://example.com/synthetic-webcam",
+  );
+  expect(
+    screen.getByRole("heading", { name: "Temperature Trends" }),
+  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "12 mo" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Transit Status" })).toBeVisible();
+  expect(screen.getByText("Good Service")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: "Synthetic webcam source" }),
+  ).toHaveAttribute("href", "https://example.com/synthetic-webcam");
+  expect(
+    screen.getByRole("link", { name: "Synthetic transit" }),
+  ).toHaveAttribute("href", "https://example.com/transit");
+});
+
+test("omits optional page sections when synthetic capabilities are disabled", () => {
+  const location = syntheticLocation({
+    code: "min",
+    features: {
+      tides: false,
+      currents: false,
+      webcam: false,
+      transit: false,
+      windy: false,
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    conditions: syntheticConditions({ code: "min" }),
+    locationCode: "min",
+  });
+
+  expect(
+    screen.queryByRole("heading", { name: "Water Movement" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Forecast" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Live Webcam" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Temperature Trends" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Transit Status" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
+});
+
+test.each([
+  {
+    code: "none",
+    conditions: syntheticConditions({ code: "none" }),
+    features: { tides: false, currents: false },
+    planVisible: false,
+    sourceBadge: null,
+    waterMovementVisible: false,
+  },
+  {
+    code: "tide",
+    conditions: syntheticConditions({
+      code: "tide",
+      tides: conditionsPayload.tides,
+    }),
+    features: { tides: true, currents: false },
+    planVisible: true,
+    sourceBadge: "Predicted",
+    waterMovementVisible: true,
+  },
+  {
+    code: "flow",
+    conditions: syntheticConditions({
+      code: "flow",
+      current: currentState({
+        direction: null,
+        phase: null,
+        strength: null,
+        trend: null,
+        magnitude: 0.82,
+        magnitude_pct: null,
+        state_description: null,
+        range: null,
+        source_type: "observation",
+      }),
+    }),
+    features: { tides: false, currents: true },
+    planVisible: false,
+    sourceBadge: "Observed",
+    waterMovementVisible: true,
+  },
+])("renders water movement controls from synthetic $code capabilities", ({
+  code,
+  conditions,
+  features,
+  planVisible,
+  sourceBadge,
+  waterMovementVisible,
+}) => {
+  const location = syntheticLocation({ code, features });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    conditions,
+    initialEntry: `/${code}?planner=open`,
+    locationCode: code,
+  });
+
+  const heading = screen.queryByRole("heading", { name: "Water Movement" });
+  if (waterMovementVisible) {
+    expect(heading).toBeVisible();
+  } else {
+    expect(heading).not.toBeInTheDocument();
+  }
+
+  const planButton = screen.queryByRole("button", { name: "Plan" });
+  if (planVisible) {
+    expect(planButton).toBeVisible();
+    expect(screen.getByRole("region", { name: "Planner mode" })).toBeVisible();
+  } else {
+    expect(planButton).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Planner mode" }),
+    ).not.toBeInTheDocument();
+  }
+
+  if (sourceBadge) {
+    expect(screen.getByText(sourceBadge)).toBeVisible();
+  }
 });
 
 test("renders not-scheduled transit without an unavailable destination", async () => {

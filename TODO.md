@@ -1,90 +1,26 @@
 # TODO
 
-## Frontend Location Parity
+## Product And UX
 
-### 1. Webcam Follow-Ups
+### Location Page Experience
 
-- SDF EarthCam parity is in place and verified on `shallweswim.today`. Keep
-  provider scripts out of the React runtime unless there is no contained
-  alternative; SDF uses the direct EarthCam player iframe URL because the legacy
-  script depends on `document.write` and fails when dynamically mounted by
-  React.
-- After the first feature-parity pass, revisit SDF EarthCam specifically. Keep
-  the named EarthCam provider, but verify whether a more official iframe URL or
-  provider-supported embed contract exists.
-- Localhost is not a reliable SDF EarthCam playback test because EarthCam
-  whitelists allowed referrers. Use production-domain verification for future
-  EarthCam changes.
-- The historical legacy embed URLs (`/embed` and `/{location}/embed`) remain in
-  place because an older external page still embeds that content. After root
-  launch, audit the external embed site and either migrate it to a new supported
-  React/embed surface or retire the legacy embed route intentionally.
-
-### 2. All Locations Parity
-
-- Keep doing systematic parity smoke passes across all React location pages
-  before launch deploys:
-  - `nyc`: temperature, water movement, planner, YouTube webcam, transit,
-    Windy, plots, sources.
-  - `chi`: temperature, iframe webcam, Windy, plots, sources, and no water
-    movement/planner.
-  - `sdf`: temperature, observed water movement, EarthCam iframe webcam, Windy,
-    plots, sources, and no planner unless river projections are explicitly
-    added.
-  - `san`, `sfo`, `bos`, `sea`: temperature, tide-only water movement, planner,
-    Windy, plots, sources.
-  - `aus`: temperature, Windy, plots, sources, and no water movement/planner.
-
-### 3. Coverage
-
-- Add backend and frontend coverage for the parity work: bootstrap integration
-  config by location, NYC YouTube webcam, CHI iframe webcam, SDF EarthCam iframe
-  behavior, feature-driven absence of unsupported sections, and all-location
-  status behavior.
-
-## Launch Parking Lot
-
-- Root launch implementation is in progress. "Launch" means moving the React app
-  out of `/app` and making it the default root-location experience.
-- Add an explicit location-code alias mechanism if we want friendly alternate
-  URLs. Model aliases in typed `LocationConfig`, keep bootstrap/location order
+- Review whether the remaining legacy Jinja pages should stay, move behind a
+  narrower compatibility surface, or be removed. Keep `/legacy/...` and legacy
+  embed routes as long as they serve a real compatibility need, but make that an
+  explicit decision rather than permanent drift.
+- Add an explicit location-code alias mechanism if friendly alternate URLs are
+  useful. Model aliases in typed `LocationConfig`, keep bootstrap/location order
   canonical, and redirect alias routes to the canonical location URL rather than
   rendering duplicate canonical pages.
-- Before launch deployment, verify that Jinja pages are under `/legacy`, root
-  app routes are `/`, `/{loc}`, and `/locations`, Vite/React Router no longer
-  use an `/app` base path, `/manifest.json` is the single install manifest with
-  root scope and `/?source=pwa-react` start URL, persisted-location behavior still works at `/`, and
-  tests cover reserved `/api/...`, `/static/...`, `/legacy/...`, manifest, and
-  frontend asset routes. Keep `/app` removed rather than preserving it as a
-  long-lived alias.
-- Clean up duplicated install manifest metadata in `/api/app/bootstrap`. The
-  browser install contract is `/manifest.json`; bootstrap currently mirrors it
-  only to avoid drift during launch. Remove `manifest` from the bootstrap API
-  once no planned frontend code depends on it.
 
-## Tech Debt
+### External Embed Consumers
 
-- Revisit URL formatting in static config files. `ruff format` wraps some long
-  configured URLs in `config/locations.py`, which makes them harder to inspect
-  and copy/paste. Decide whether to use narrow `# fmt: off/on` blocks around
-  URL-heavy location presentation config or adjust formatter settings if this
-  becomes a broader repo-wide readability issue.
-- Split tide/current query and manager tests out of `tests/test_data.py` once the
-  tide-state API work lands. That file is becoming a broad data-layer catch-all;
-  future coverage would be easier to maintain in focused modules such as
-  `tests/test_tide_queries.py`, `tests/test_current_queries.py`, and/or
-  manager-specific tests.
-- Consider aligning point-in-time condition data under symmetric API structures,
-  for example `tides.state` and `currents.state`. The existing `current` response
-  is effectively current-state data already, but its top-level naming is less
-  consistent with the planned tide state. Because the app is deployed as one
-  consolidated frontend/backend, this can be a coordinated client migration
-  rather than a long-lived compatibility burden.
-- Clean up API timestamp field types. Several existing API Pydantic models use
-  `str` plus manual `.isoformat()` serialization for timestamps. Prefer
-  `datetime.datetime` fields so Pydantic/OpenAPI can expose proper `date-time`
-  schemas, then migrate route serialization and generated frontend types in one
-  coordinated pass.
+- Audit consumers that still use the historical legacy embed URLs (`/embed` and
+  `/{location}/embed`). Either migrate them to a new supported React/embed
+  surface or keep the legacy embed route intentionally.
+
+### Water Movement Experience
+
 - Rework the meter layout into a clearer tide/current instrument. Candidate
   improvements: combine the tide bar with last/next/following tide context,
   include relevant event times on or near the meter, make endpoint labels less
@@ -95,74 +31,6 @@
   exposes slack-to-peak range for non-slack rows with complete segment context;
   slack phases can later be associated with the upcoming flood/ebb segment so
   the current meter can show where it is about to build.
-- Explore richer swimmer-focused condition summaries. The current app should
-  stay deterministic, but a future version could generate a concise
-  natural-language summary from water temperature, tide/current state, weather,
-  and possibly webcam imagery. Treat this as a product/reliability project, not
-  a small copy tweak.
-- Add backend-derived temperature trend context for the app summary, such as
-  `up 1.2°F in 24h`, `down 3.0°F this week`, or `near seasonal range`. Do this
-  from structured historical/live temperature data rather than inferring it from
-  plot images or adding filler copy in the frontend.
-- Extract historical temperature conditioning from `plot.py` into a named core
-  layer if it becomes more than plot-local presentation logic. The likely
-  architecture is `feed fetch -> conditioning/derivation -> serving/plotting`:
-  feeds preserve normalized source measurements and configured known-bad
-  outliers; conditioning owns named derived products such as a visualization
-  plot series, forecast training series, or seasonal baseline; plotting and
-  serving only render or serialize those products. Do this before reusing the
-  current plot-only visual artifact suppression in API responses, summaries,
-  frontend-rendered charts, or other product behavior. When this graduates,
-  keep the current plot artifact masks separate from modeling/forecast
-  conditioning so unusual but real years still inform seasonal spread and tail
-  risk.
-- Improve historical temperature plot artifact auditability before tuning gets
-  serious. The inspection script currently reports suppressed points by
-  stage/year; add segment-level output with start/end, duration, min/max source
-  temperature, residual range, and neighboring valid context so a contiguous bad
-  tail is distinguishable from scattered isolated artifacts. Consider requiring
-  a minimum number of comparison years before applying cross-year artifact
-  suppression, and add per-location/source threshold overrides only once
-  repeated tuning pressure shows the global defaults are insufficient.
-- Add a lightweight water-temperature projection cone. Start with a deterministic
-  forecast rather than a heavy model: build a seasonal climatology from prior
-  years, calculate historical spread/quantiles by day-of-year, compare the
-  current year's recent actuals to the seasonal baseline, decay that anomaly
-  forward over the horizon, and widen the uncertainty cone with horizon and
-  observed volatility. This should use a modeling-specific conditioning product,
-  not the private plot artifact suppression frame, so legitimate extreme years
-  still inform the tails while known-bad source measurements remain excluded.
-  Likely supporting work: named historical temperature conditioning module,
-  per-location/source QC thresholds, explicit segment-level audit output,
-  structured API data for the frontend chart, and tests for sparse-year,
-  current-year, and unusually hot/cold-year behavior.
-- Preserve NYC as a derived current location if we upgrade current prediction
-  sources. NYC currently estimates local swim-area current by averaging nearby
-  NOAA current prediction station velocity curves. A future NOAA curve/covariate
-  upgrade should keep that explicit virtual-location model: build or fetch a
-  prediction curve per source station, normalize them onto a common timestamped
-  velocity series, blend the station curves into one location curve, and only
-  then derive phase, strength, trend, slack/peak range, and API/UI state. Avoid
-  blending harmonic constituents, offsets, or other model inputs up front unless
-  we have a defensible physical model for doing so.
-- Remove legacy currents navigation fields after the React planner owns time
-  controls. `NavigationInfo.next_hour`, `prev_hour`, and `current_api_url` are
-  deprecated compatibility/convenience fields; the planner should derive
-  previous/next times and currents API URLs from local app state. Keep
-  `shift`, `at`, and `plot_url` unless a later frontend pass removes the
-  backend-rendered tide/current plot dependency too.
-- Reassess whether `/api/{location}/currents` is still needed outside the legacy
-  HTML currents page. The React Water Movement card now uses
-  `/api/{location}/conditions?at=...` as the single source for shifted tide and
-  current state; if the legacy page is removed or migrated, mark the currents
-  endpoint and `NavigationInfo` response model as removal candidates.
-- Treat durable app HTML as its own future migration project, not an incidental
-  test-only task. The root-mounted React launch still serves one generic app
-  shell; a later pass should make location routes useful when fetched without
-  JavaScript: location-aware HTML, canonical/meta tags, links to structured JSON
-  APIs, and machine-readable data such as JSON-LD or embedded bootstrap JSON.
-  Add curl/no-JS acceptance tests only when that feature work is being
-  implemented so the normal suite never carries expected failures.
 - Refine the planner time scrubber. The current React planner uses a compact
   in-card slider with URL-backed `at` state; the final interaction should add
   clearer time ticks, stronger mobile styling, debounced updates if needed, and
@@ -174,29 +42,81 @@
   instrument header. The remaining architecture work is to stop hardcoding NYC
   landmarks and caveats in the frontend: add typed backend config for the
   reference point, flood/ebb landmark directions, route-planning advice, and
-  local caveats, expose it through bootstrap, and render it generically. Keep
-  collecting swimmer feedback after launch to tune wording such as "east toward
-  Manhattan Beach" versus a more Brighton-specific eastbound landmark.
-- Expand joint frontend/backend stack coverage as React planner behavior grows.
-  The first optional Python Playwright test now runs the built React app against
-  real FastAPI routes with mocked data managers and verifies that URL `at` state,
-  rendered tide/current bars, detail plot URL, and backend calls all agree. Add
-  more cases here when new cross-stack behavior lands, such as smart presets,
-  non-NYC capability behavior, predicted water temperature, and user-facing API
-  error states.
-- Add the install-app butter bar once the React app is ready to promote as an
-  installable experience. The local preference store already records
-  `installPrompt.organicVisitCount` for this purpose; use it only as on-device UI
-  state, not analytics. The prompt should appear only after enough organic use,
-  should not appear in standalone/PWA display mode, and should support permanent
-  dismissal via the same local preference store.
+  local caveats, expose it through bootstrap, and render it generically.
+- Preserve NYC as a derived current location if current prediction sources
+  change. NYC currently estimates local swim-area current by averaging nearby
+  NOAA current prediction station velocity curves. A future source upgrade
+  should keep that explicit virtual-location model: build or fetch a prediction
+  curve per source station, normalize them onto a common timestamped velocity
+  series, blend the station curves into one location curve, and only then derive
+  phase, strength, trend, slack/peak range, and API/UI state.
 - Evaluate whether the tide/current detail chart should remain a backend
   Matplotlib SVG or move to a frontend-rendered chart. A frontend charting pass
   could improve responsive layout, hover/inspection, and label collision
   handling, but it is a product/architecture decision because it would move
   presentation logic and possibly chart data contracts into the React app.
 
-## Future Tide Curve Source Upgrade
+### Conditions And Temperature Experience
+
+- Explore richer swimmer-focused condition summaries. The current app should
+  stay deterministic, but a future version could generate a concise
+  natural-language summary from water temperature, tide/current state, weather,
+  and possibly webcam imagery. Treat this as a product/reliability project, not
+  a small copy tweak.
+- Add backend-derived temperature trend context for the app summary, such as
+  `up 1.2°F in 24h`, `down 3.0°F this week`, or `near seasonal range`. Do this
+  from structured historical/live temperature data rather than inferring it from
+  plot images or adding filler copy in the frontend.
+- Add a lightweight water-temperature projection cone. Start with a deterministic
+  forecast rather than a heavy model: build a seasonal climatology from prior
+  years, calculate historical spread/quantiles by day-of-year, compare the
+  current year's recent actuals to the seasonal baseline, decay that anomaly
+  forward over the horizon, and widen the uncertainty cone with horizon and
+  observed volatility.
+
+### Installable App And Durable Web
+
+- Decide whether to add an install-app butter bar for the launched React app.
+  The local preference store already records `installPrompt.organicVisitCount`
+  for this purpose; use it only as on-device UI state. The prompt should appear
+  only after enough organic use, should not appear in standalone/PWA display
+  mode, and should support permanent dismissal via the same local preference
+  store.
+- Treat durable app HTML as its own future migration project. The root-mounted
+  React app still serves one generic app shell; a later pass should make location
+  routes useful when fetched without JavaScript: location-aware HTML,
+  canonical/meta tags, links to structured JSON APIs, and machine-readable data
+  such as JSON-LD or embedded bootstrap JSON.
+
+## API And Data Model
+
+### Condition And Current API Shape
+
+- Consider aligning point-in-time condition data under symmetric API structures,
+  for example `tides.state` and `currents.state`. The existing `current` response
+  is effectively current-state data already, but its top-level naming is less
+  consistent with the planned tide state.
+- Reassess whether `/api/{location}/currents` is still needed outside legacy
+  compatibility. The React Water Movement card now uses
+  `/api/{location}/conditions?at=...` as the single source for shifted tide and
+  current state; if legacy pages are removed or migrated, mark the currents
+  endpoint and `NavigationInfo` response model as removal candidates.
+- Remove legacy currents navigation fields after the React planner fully owns
+  time controls. `NavigationInfo.next_hour`, `prev_hour`, and `current_api_url`
+  are deprecated compatibility/convenience fields; the planner should derive
+  previous/next times and currents API URLs from local app state. Keep `shift`,
+  `at`, and `plot_url` unless a later frontend pass removes the backend-rendered
+  tide/current plot dependency too.
+- Clean up API timestamp field types. Several existing API Pydantic models use
+  `str` plus manual `.isoformat()` serialization for timestamps. Prefer
+  `datetime.datetime` fields so Pydantic/OpenAPI can expose proper `date-time`
+  schemas, then migrate route serialization and generated frontend types in one
+  coordinated pass.
+- Review whether the newer `units` fields are consistently useful in public API
+  responses. Keep them where they clarify mixed-unit locations; remove or
+  normalize them where they add noise.
+
+### Tide Curve Source Upgrade
 
 Consider adding a NOAA-derived tide-height prediction curve instead of deriving
 the current tide height from high/low tide events.
@@ -227,4 +147,156 @@ Notes:
   predictions; subordinate prediction stations may only support high/low
   predictions.
 - This is a data-source/modeling change and should be handled separately from
-  the current React migration milestones.
+  near-term frontend polish.
+
+### Bootstrap And Static Metadata
+
+- Clean up duplicated install manifest metadata in `/api/app/bootstrap`. The
+  browser install contract is `/manifest.json`; bootstrap currently mirrors it
+  only to avoid drift. Remove `manifest` from the bootstrap API once no planned
+  frontend code depends on it.
+- Split static/bootstrap API concerns from dynamic condition/current data where
+  useful. `/api/app/bootstrap` and static location metadata should stay distinct
+  from frequently refreshed condition endpoints.
+- Review user-facing station and location names. Some source station names, such
+  as "The Battery", may be accurate data-source labels but confusing as primary
+  swim-condition copy.
+
+## Data Sources And Quality
+
+### Validation And Conditioning
+
+- Add stronger frame validation for feed data: missing values, valid value
+  ranges, monotonic timestamps, timezone-naive internal indexes, and
+  source-specific invariants where appropriate.
+- Extract historical temperature conditioning from `plot.py` into a named core
+  layer if it becomes more than plot-local presentation logic. The likely
+  architecture is `feed fetch -> conditioning/derivation -> serving/plotting`:
+  feeds preserve normalized source measurements and configured known-bad
+  outliers; conditioning owns named derived products such as a visualization
+  plot series, forecast training series, or seasonal baseline; plotting and
+  serving only render or serialize those products.
+- Improve historical temperature plot artifact auditability before tuning gets
+  serious. The inspection script currently reports suppressed points by
+  stage/year; add segment-level output with start/end, duration, min/max source
+  temperature, residual range, and neighboring valid context so a contiguous bad
+  tail is distinguishable from scattered isolated artifacts.
+- Sort out realtime versus historical modes explicitly. Live condition serving,
+  historical plot inputs, seasonal baselines, and future projection products
+  should not quietly share assumptions just because they all start from
+  temperature frames.
+
+### Source Client Work
+
+- Evaluate replacing the `ndbc-api` dependency with a first-party async NDBC
+  client. The current client wrapper still carries thread-bound behavior and
+  dependency-update friction; a local client may be simpler to own.
+- Investigate San Diego station availability before changing any station
+  configuration. Do not change production stations without explicit approval.
+- Investigate whether SDF should add USGS discharge-rate context in addition to
+  the existing observed river-current feed. Parameter `72294` may support a more
+  useful river-current presentation, but should be evaluated before changing the
+  configured source.
+- Investigate an alternative Chicago temperature source for year-round coverage,
+  such as the daily NOAA/NWS marine observation text product, before changing
+  configured data sources.
+
+## Operations And Infrastructure
+
+### Monitoring And Alerting
+
+- Set up Cloud Monitoring coverage for `/api/status`. The status endpoint already
+  exposes per-feed `is_healthy`, `is_expired`, and `age_seconds`; production
+  monitoring should retain that feed-level visibility rather than relying only on
+  the coarse service health check.
+- Add alerting policies for stale or unhealthy critical feeds. Start with NYC
+  feeds as the highest-priority alerts, then use lower-priority policies for
+  other locations once the signal/noise balance is understood.
+- Build a feed-health visibility dashboard that tracks `age_seconds`,
+  `is_healthy`, and `is_expired` over time across all feeds. Use the observed
+  outage patterns to guide future health-policy decisions rather than guessing
+  which feeds should be mandatory for each location.
+- Revisit stricter location health rules after monitoring data exists. The
+  current app treats a location as having data if any feed works; future policy
+  may need per-location critical feeds, but that should be driven by production
+  data and user impact.
+- Evaluate dead-link monitoring for configured source, swim-location, webcam,
+  and citation URLs. Keep it separate from data-feed health so broken reference
+  links do not page like production data outages.
+
+### Runtime And Deployment
+
+- Evaluate Cloud Run second generation for performance, startup behavior, and
+  operational simplicity. Compare with the current generation under a realistic
+  startup and plotting workload before changing production.
+- Profile production-like CPU and memory usage, including process-pool sizing and
+  aiohttp connection behavior. Add debug visibility only if it is useful for
+  operational decisions; avoid building a broad `/api/debug` surface by default.
+- Evaluate infrastructure-as-code for Cloud Run and related GCP resources. Keep
+  credential material and project-specific secrets out of the repo, but consider
+  whether service configuration, monitoring resources, and deployment topology
+  should be reviewable as code.
+- Evaluate multi-region deployment for international location support. If the app
+  adds substantial non-US location coverage, consider whether an additional Cloud
+  Run region improves latency or resilience enough to justify operational
+  complexity.
+- Reduce verbose logs that do not help diagnose data outages, retries, startup,
+  or user-facing failures. Keep enough context for feed health and station
+  debugging without making normal logs noisy.
+
+## Codebase Maintenance
+
+### Architecture And Ownership
+
+- Align internal domain types and external API response models. Keep Pandas
+  frames at feed/derivation boundaries, but avoid leaking inconsistent ad hoc
+  shapes into route handlers and generated frontend types.
+- Clean up processing ownership between clients, feeds, queries, and plotting.
+  Clients should stay source-specific and side-effect-light, feeds should own
+  fetch/cache/validation, core queries should own derived condition semantics,
+  and plotting should not become the only place where data conditioning exists.
+- Clean up feed time-window constants. Several code paths still encode similar
+  multi-day fetch windows directly; replace those with named policy constants or
+  source-specific configuration where it clarifies behavior.
+- Revisit the overloaded "interval" concept in feeds and health checks. Separate
+  fetch cadence, freshness threshold, source request window, and retry behavior
+  if the current naming keeps causing confusion.
+- Remove defensive `hasattr` patterns and similar dynamic checks where typed
+  interfaces or explicit protocols would make the boundary clearer.
+
+### Test And Tooling Maintenance
+
+- Split tide/current query and manager tests out of `tests/test_data.py` once the
+  tide-state API work lands. That file is becoming a broad data-layer catch-all;
+  future coverage would be easier to maintain in focused modules such as
+  `tests/test_tide_queries.py`, `tests/test_current_queries.py`, and/or
+  manager-specific tests.
+- Expand joint frontend/backend stack coverage as React planner behavior grows.
+  The first optional Python Playwright test now runs the built React app against
+  real FastAPI routes with mocked data managers and verifies that URL `at` state,
+  rendered tide/current bars, detail plot URL, and backend calls all agree. Add
+  more cases here when new cross-stack behavior lands, such as smart presets,
+  non-NYC capability behavior, predicted water temperature, and user-facing API
+  error states.
+- Triage existing `TODO` and `XXX` comments in the codebase. Convert durable
+  work into this file, fix small stale notes inline, and remove comments that no
+  longer describe real work.
+- Revisit URL formatting in static config files. `ruff format` wraps some long
+  configured URLs in `config/locations.py`, which makes them harder to inspect
+  and copy/paste. Decide whether to use narrow `# fmt: off/on` blocks around
+  URL-heavy location presentation config or adjust formatter settings if this
+  becomes a broader repo-wide readability issue.
+
+## Location Backlog
+
+- Keep a low-priority candidate backlog for additional swim locations. New
+  locations still need reliable data sources, station approval, frontend
+  capability modeling, and tests before production configuration changes.
+- Domestic candidates: Lake Tahoe, Jacksonville FL, St. Pete/Clearwater, and
+  other established open-water swim groups with reliable public data sources.
+- Canadian candidates: Vancouver area and Oakville/Toronto.
+- International candidates: Dover, UK and Sandycove, Ireland.
+- Add support needed for non-US locations before committing to international
+  production coverage: non-NOAA/non-USGS data clients, Celsius-first display
+  defaults where appropriate, timezone handling, source citations, and location
+  capability flags that do not assume US data products.

@@ -281,6 +281,11 @@ Notes:
 - Triage existing `TODO` and `XXX` comments in the codebase. Convert durable
   work into this file, fix small stale notes inline, and remove comments that no
   longer describe real work.
+- Do a holistic documentation-vs-implementation audit across `README.md`,
+  `ARCHITECTURE.md`, `AGENTS.md`, `frontend/DESIGN.md`, and route/API tests.
+  As part of that work, add a repo-local Codex skill for repeatable docs drift
+  reviews so future audits check routes, commands, API ownership, frontend
+  serving behavior, tests, and deployment assumptions consistently.
 - Revisit URL formatting in static config files. `ruff format` wraps some long
   configured URLs in `config/locations.py`, which makes them harder to inspect
   and copy/paste. Decide whether to use narrow `# fmt: off/on` blocks around

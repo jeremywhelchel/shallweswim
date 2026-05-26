@@ -433,9 +433,9 @@ be tuned from production or local logs.
 
 - Canonical production host is `https://shallweswim.today`
 - `www.shallweswim.today` redirects to the apex host with a permanent redirect
-- `/` redirects to `/nyc`; location pages are the canonical indexable pages
+- `/`, `/locations`, and enabled `/{location}` routes serve the React app shell
 - `/robots.txt` advertises `/sitemap.xml`
-- `/sitemap.xml` lists `/all` and enabled location pages
+- `/sitemap.xml` lists `/locations` and enabled location pages
 
 ### Monitoring (`/api/status`)
 

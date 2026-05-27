@@ -923,6 +923,7 @@ _CONFIG_LIST = [
 # Only include enabled locations in the CONFIGS dictionary
 # Use MappingProxyType to create an immutable view of the dictionary
 CONFIGS = MappingProxyType({c.code.lower(): c for c in _CONFIG_LIST if c.enabled})
+DEFAULT_LOCATION_CODE = "nyc"
 
 
 def get(code: str) -> LocationConfig | None:

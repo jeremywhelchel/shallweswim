@@ -81,19 +81,33 @@ SVG per request in the process pool. It should eventually cache or precompute
 common hourly `at` / `shift` values, while preserving on-demand fallback
 behavior for less common planning times.
 
-### Frontend App Serving
+### Frontend App Serving And Durable HTML
 
 The React app is built to static files in `frontend/dist` with root-relative
 Vite asset paths. FastAPI serves:
 
-- `/`, `/locations`, and configured `/{location}` routes from
-  `frontend/dist/index.html` with `Cache-Control: no-cache, must-revalidate`
+- `/`, `/locations`, and configured `/{location}` routes as a thin,
+  FastAPI-rendered HTML shell with `Cache-Control: no-cache, must-revalidate`
 - `/assets/...` from Vite hashed assets with immutable one-year caching
 - `/manifest.json` from the existing static manifest route, with `start_url`
   set to `/?source=pwa-react` for installed-app log visibility and `scope` set
   to `/`
 - `/legacy/...` for the temporary Jinja-rendered experience while it remains
   available
+
+The app shell reuses `frontend/dist/index.html` so Vite-managed script and
+stylesheet tags remain the source of truth. FastAPI adds route-specific
+`title`, description, canonical, Open Graph, JSON alternate links, compact
+`noscript` fallback content, and conservative JSON-LD before returning the
+shell. This is the project's "good web citizen" layer: canonical app routes are
+useful to crawlers, sharing previews, no-JavaScript clients, agents, and
+archives before React loads. It is not full React SSR and does not introduce a
+Node production runtime.
+
+The durable HTML layer reads only static `LocationConfig` metadata and canonical
+URL helpers. It does not make loopback HTTP calls and does not include live
+condition summaries, ratings, safety guidance, or forecast claims. React remains
+the primary interactive UI once JavaScript loads.
 
 Local development may leave `frontend/dist` absent; app routes then return a
 clear not-built response. Production/container startup passes
@@ -112,7 +126,9 @@ API/config ownership:
   manifest fields through app bootstrap payloads.
 - `/api/locations` is the public discovery endpoint for configured swim
   locations. It should remain general-purpose location metadata plus availability
-  summary, not React render configuration.
+  summary, not React render configuration. Canonical HTML routes advertise this
+  endpoint with `rel="alternate"` links and no-JavaScript fallback links where
+  relevant.
 - `/api/app/bootstrap` is an app-internal React startup payload. It is still
   exported in OpenAPI so the bundled frontend can use generated types, but it is
   not a stable external-consumer API. It may intentionally duplicate selected

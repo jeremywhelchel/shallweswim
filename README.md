@@ -26,13 +26,15 @@
 - **Transit information** for NYC locations (subway status and alerts)
 - **Mobile-friendly interface** for on-the-go swimmers
 - **JSON API** for programmatic access to swim conditions
+- **Durable canonical HTML** with route-specific metadata, API discovery links,
+  compact no-JavaScript fallback content, and conservative JSON-LD
 
 ## Architecture
 
 Shall We Swim is a FastAPI application with a modular architecture. FastAPI
-serves the React/Vite frontend as the primary web experience at root location
-URLs, with the older Jinja-rendered pages temporarily available under
-`/legacy`.
+serves a thin route-aware React/Vite app shell as the primary web experience at
+root location URLs, with the older Jinja-rendered pages temporarily available
+under `/legacy`.
 
 ### Runtime Model
 
@@ -141,10 +143,12 @@ npx --yes pnpm@10.18.3 --dir frontend dev
 npx --yes pnpm@10.18.3 --dir frontend build
 ```
 
-The production Docker image builds `frontend/dist` and FastAPI serves it at `/`,
-`/locations`, and configured location routes such as `/nyc`. Local FastAPI app
-route requests return a clear not-built response until the frontend has been
-built.
+The production Docker image builds `frontend/dist`. FastAPI reuses the built
+Vite shell at `/`, `/locations`, and configured location routes such as `/nyc`,
+then injects route-specific title/meta/canonical data, JSON API discovery links,
+compact no-JavaScript fallback content, and conservative JSON-LD. Local FastAPI
+app route requests return a clear not-built response until the frontend has
+been built.
 
 ### Run with Docker
 
@@ -170,10 +174,11 @@ The application is hosted on Google Cloud Run:
 ### Canonical URLs
 
 The canonical production host is `https://shallweswim.today`. The app redirects
-`www.shallweswim.today` to the apex host, exposes canonical tags on legacy HTML
-pages, and serves `/robots.txt` plus `/sitemap.xml` for crawler discovery. The
-React app owns `/`, `/locations`, and canonical location paths such as `/nyc`;
-legacy Jinja pages live under `/legacy` while they remain available.
+`www.shallweswim.today` to the apex host, exposes canonical tags on app and
+legacy HTML pages, and serves `/robots.txt` plus `/sitemap.xml` for crawler
+discovery. The React app owns `/`, `/locations`, and canonical location paths
+such as `/nyc`; legacy Jinja pages live under `/legacy` while they remain
+available.
 
 ## Development
 

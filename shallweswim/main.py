@@ -10,8 +10,11 @@ data to help determine if swimming conditions are favorable.
 import argparse
 import contextlib
 import datetime
+import html
+import json
 import logging
 import os
+import re
 import signal
 from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine
 from concurrent.futures import ProcessPoolExecutor
@@ -97,6 +100,8 @@ APP_ASSET_CACHE_HEADERS = {
     "Cache-Control": "public, max-age=31536000, immutable",
 }
 DEFAULT_FRONTEND_DIST = Path("frontend/dist")
+ROOT_DIV_RE = re.compile(r"(<div\s+id=[\"']root[\"']\s*></div>)", re.IGNORECASE)
+TITLE_RE = re.compile(r"\s*<title>.*?</title>", re.IGNORECASE | re.DOTALL)
 
 
 @app.middleware("http")
@@ -294,14 +299,250 @@ async def frontend_asset(asset_path: str) -> responses.FileResponse:
     return responses.FileResponse(asset, headers=APP_ASSET_CACHE_HEADERS)
 
 
-def frontend_app_shell_response() -> responses.Response:
-    """Serve the React app shell for canonical app routes."""
+def _html_attr(value: str) -> str:
+    """Escape a value for use in HTML attributes."""
+    return html.escape(value, quote=True)
+
+
+def _html_text(value: str) -> str:
+    """Escape a value for use in HTML text."""
+    return html.escape(value, quote=False)
+
+
+def _json_script(data: dict[str, Any]) -> str:
+    """Serialize JSON-LD without allowing accidental script termination."""
+    return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+
+
+def _root_config() -> config.LocationConfig:
+    """Return the configured default app location."""
+    cfg = config.get(config.DEFAULT_LOCATION_CODE)
+    if cfg is None:
+        raise RuntimeError(
+            f"Default location is not configured: {config.DEFAULT_LOCATION_CODE}"
+        )
+    return cfg
+
+
+def _page_title(cfg: config.LocationConfig | None, *, locations_page: bool) -> str:
+    """Build the durable app shell page title."""
+    if locations_page:
+        return "Open water swimming locations | shall we swim?"
+    if cfg is None:
+        raise RuntimeError("Location config is required for location page titles")
+    return f"{cfg.swim_location} swim conditions | shall we swim?"
+
+
+def _page_description(
+    cfg: config.LocationConfig | None, *, locations_page: bool
+) -> str:
+    """Build the durable app shell meta description."""
+    if locations_page:
+        return (
+            "Browse configured open water swimming locations with discoverable "
+            "condition data APIs."
+        )
+    if cfg is None:
+        raise RuntimeError("Location config is required for location page descriptions")
+    return (
+        f"{cfg.description}. View water temperature, tide, and current data for "
+        f"{cfg.swim_location} in {cfg.name}."
+    )
+
+
+def _head_metadata(
+    *,
+    title: str,
+    description: str,
+    canonical_url: str,
+    alternate_api_url: str,
+    json_ld: dict[str, Any],
+) -> str:
+    """Build route-specific metadata for the React app shell head."""
+    escaped_title_text = _html_text(title)
+    escaped_title_attr = _html_attr(title)
+    escaped_description = _html_attr(description)
+    escaped_canonical = _html_attr(canonical_url)
+    escaped_alternate = _html_attr(alternate_api_url)
+
+    return "\n".join(
+        [
+            f"<title>{escaped_title_text}</title>",
+            f'<meta name="description" content="{escaped_description}">',
+            f'<link rel="canonical" href="{escaped_canonical}">',
+            f'<meta property="og:title" content="{escaped_title_attr}">',
+            f'<meta property="og:description" content="{escaped_description}">',
+            f'<meta property="og:url" content="{escaped_canonical}">',
+            '<meta property="og:type" content="website">',
+            (
+                '<link rel="alternate" type="application/json" '
+                f'href="{escaped_alternate}">'
+            ),
+            (f'<script type="application/ld+json">{_json_script(json_ld)}</script>'),
+        ]
+    )
+
+
+def _json_ld(
+    *,
+    path: str,
+    title: str,
+    description: str,
+    cfg: config.LocationConfig | None,
+    include_website: bool,
+) -> dict[str, Any]:
+    """Build conservative JSON-LD for a durable app route."""
+    page_url = canonical.canonical_url(path)
+    graph: list[dict[str, Any]] = []
+
+    if include_website:
+        graph.append(
+            {
+                "@type": "WebSite",
+                "@id": f"{canonical.CANONICAL_BASE_URL}/#website",
+                "name": "shall we swim?",
+                "url": f"{canonical.CANONICAL_BASE_URL}/",
+            }
+        )
+
+    page: dict[str, Any] = {
+        "@type": "WebPage",
+        "@id": f"{page_url}#webpage",
+        "url": page_url,
+        "name": title,
+        "description": description,
+    }
+
+    if cfg is not None:
+        page["about"] = {"@id": f"{page_url}#place"}
+        graph.append(
+            {
+                "@type": "Place",
+                "@id": f"{page_url}#place",
+                "name": cfg.swim_location,
+                "url": page_url,
+                "geo": {
+                    "@type": "GeoCoordinates",
+                    "latitude": cfg.latitude,
+                    "longitude": cfg.longitude,
+                },
+            }
+        )
+
+    graph.append(page)
+    return {"@context": "https://schema.org", "@graph": graph}
+
+
+def _noscript_fallback(
+    *, cfg: config.LocationConfig | None, locations_page: bool
+) -> str:
+    """Build compact no-JavaScript fallback content for app routes."""
+    if locations_page:
+        location_links = " ".join(
+            (
+                f'<li><a href="/{_html_attr(code)}">{_html_text(location.name)}'
+                f" - {_html_text(location.swim_location)}</a></li>"
+            )
+            for code, location in config.CONFIGS.items()
+        )
+        return (
+            "<noscript>"
+            '<section aria-label="No JavaScript location list">'
+            "<h1>Open water swimming locations</h1>"
+            "<p>Browse configured swim locations and their JSON data API.</p>"
+            f"<ul>{location_links}</ul>"
+            '<p><a href="/api/locations">Location data API</a></p>'
+            "</section>"
+            "</noscript>"
+        )
+
+    if cfg is None:
+        raise RuntimeError("Location config is required for location fallback")
+
+    return (
+        "<noscript>"
+        '<section aria-label="No JavaScript location summary">'
+        f"<h1>{_html_text(cfg.name)} swim conditions</h1>"
+        f"<p>{_html_text(cfg.swim_location)}</p>"
+        "<p>"
+        f'<a href="/api/{_html_attr(cfg.code)}/conditions">Condition data API</a> '
+        '<a href="/api/locations">All locations API</a>'
+        "</p>"
+        "</section>"
+        "</noscript>"
+    )
+
+
+def _render_frontend_shell(
+    *,
+    index_html: str,
+    path: str,
+    cfg: config.LocationConfig | None,
+    locations_page: bool = False,
+    include_website: bool = False,
+) -> str:
+    """Render route-specific durable HTML around the built Vite shell."""
+    title = _page_title(cfg, locations_page=locations_page)
+    description = _page_description(cfg, locations_page=locations_page)
+    page_url = canonical.canonical_url(path)
+    if locations_page:
+        alternate_api_path = "/api/locations"
+    elif cfg is not None:
+        alternate_api_path = f"/api/{cfg.code}/conditions"
+    else:
+        raise RuntimeError("Location config is required for location API metadata")
+    alternate_api_url = canonical.canonical_url(alternate_api_path)
+    metadata = _head_metadata(
+        title=title,
+        description=description,
+        canonical_url=page_url,
+        alternate_api_url=alternate_api_url,
+        json_ld=_json_ld(
+            path=path,
+            title=title,
+            description=description,
+            cfg=cfg,
+            include_website=include_website,
+        ),
+    )
+    fallback = _noscript_fallback(cfg=cfg, locations_page=locations_page)
+
+    rendered = TITLE_RE.sub("", index_html, count=1)
+
+    if "</head>" in rendered:
+        rendered = rendered.replace("</head>", f"{metadata}\n</head>", 1)
+    else:
+        rendered = f"<head>{metadata}</head>{rendered}"
+
+    rendered, replacements = ROOT_DIV_RE.subn(
+        lambda match: f"{match.group(1)}{fallback}", rendered, count=1
+    )
+    if replacements == 0:
+        rendered = f'{rendered}<div id="root"></div>{fallback}'
+
+    return rendered
+
+
+def frontend_app_shell_response(
+    *,
+    path: str,
+    cfg: config.LocationConfig | None,
+    locations_page: bool = False,
+    include_website: bool = False,
+) -> responses.Response:
+    """Serve route-specific durable HTML for canonical React app routes."""
     index = frontend_index_path()
     if not index.is_file():
         return app_shell_missing_response()
 
-    return responses.FileResponse(
-        index,
+    return responses.HTMLResponse(
+        _render_frontend_shell(
+            index_html=index.read_text(encoding="utf-8"),
+            path=path,
+            cfg=cfg,
+            locations_page=locations_page,
+            include_website=include_website,
+        ),
         media_type="text/html",
         headers=APP_SHELL_CACHE_HEADERS,
     )
@@ -310,13 +551,21 @@ def frontend_app_shell_response() -> responses.Response:
 @app.get("/", include_in_schema=False)
 async def frontend_root() -> responses.Response:
     """Serve the React app shell for the default location dashboard."""
-    return frontend_app_shell_response()
+    return frontend_app_shell_response(
+        path="/",
+        cfg=_root_config(),
+        include_website=True,
+    )
 
 
 @app.get("/locations", include_in_schema=False)
 async def frontend_locations() -> responses.Response:
     """Serve the React app shell for the all-locations route."""
-    return frontend_app_shell_response()
+    return frontend_app_shell_response(
+        path="/locations",
+        cfg=None,
+        locations_page=True,
+    )
 
 
 # ======================================================================
@@ -490,7 +739,7 @@ async def frontend_location(location: str) -> responses.Response:
         logging.warning("Bad location: %s", location)
         raise HTTPException(status_code=404, detail=f"Bad location: {location}")
 
-    return frontend_app_shell_response()
+    return frontend_app_shell_response(path=f"/{cfg.code}", cfg=cfg)
 
 
 # ======================================================================

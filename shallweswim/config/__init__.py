@@ -2,6 +2,7 @@
 
 from shallweswim.config.locations import (
     CONFIGS,
+    DEFAULT_LOCATION_CODE,
     BaseFeedConfig,
     CoopsCurrentsFeedConfig,
     CoopsTempFeedConfig,
@@ -23,6 +24,7 @@ from shallweswim.config.locations import (
 
 __all__ = [
     "CONFIGS",
+    "DEFAULT_LOCATION_CODE",
     "BaseFeedConfig",
     "CoopsCurrentsFeedConfig",
     "CoopsTempFeedConfig",

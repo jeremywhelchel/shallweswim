@@ -90,7 +90,6 @@ def _create_tide_current_plot(*args, **kwargs):  # type: ignore[no-untyped-def]
 PLOT_TIMEOUT = 30.0
 APP_NAME = "shall we swim?"
 APP_SHORT_NAME = "shallweswim"
-DEFAULT_LOCATION_CODE = "nyc"
 APP_THEME_COLOR = "#000099"
 APP_BACKGROUND_COLOR = "#000099"
 
@@ -501,7 +500,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
         return AppBootstrapResponse(
             app_name=APP_NAME,
             short_name=APP_SHORT_NAME,
-            default_location_code=DEFAULT_LOCATION_CODE,
+            default_location_code=config_lib.DEFAULT_LOCATION_CODE,
             location_order=location_order,
             source_code_link=AppPresentationLink(
                 label="jeremywhelchel/shallweswim",

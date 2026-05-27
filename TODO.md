@@ -84,11 +84,12 @@
   only after enough organic use, should not appear in standalone/PWA display
   mode, and should support permanent dismissal via the same local preference
   store.
-- Treat durable app HTML as its own future migration project. The root-mounted
-  React app still serves one generic app shell; a later pass should make location
-  routes useful when fetched without JavaScript: location-aware HTML,
-  canonical/meta tags, links to structured JSON APIs, and machine-readable data
-  such as JSON-LD or embedded bootstrap JSON.
+- Consider richer durable app HTML only after there is a clear consumer need.
+  The current FastAPI-rendered app shell already provides location-aware
+  title/meta/canonical tags, JSON API discovery links, compact no-JavaScript
+  fallback content, and conservative JSON-LD. Deferred work should stay narrow,
+  such as adding structured condition summaries once freshness, safety language,
+  and duplicate rendering ownership are explicitly designed.
 
 ## API And Data Model
 

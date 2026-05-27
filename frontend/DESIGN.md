@@ -193,31 +193,35 @@ This avoids CORS configuration during the initial migration.
 
 ## Durable Web And App-Only Future
 
-The long-term direction may be to make the React app the only user-facing
-interface. That should not mean permanently accepting a blank JavaScript shell
-as the public web surface. The replacement should preserve the old-web virtues
-that matter for this project:
+The React app is the primary user-facing interface, but the public web surface
+is not a blank JavaScript shell. FastAPI renders a location-aware app shell for
+canonical routes, then React mounts into the same root element in the browser.
+This preserves the old-web virtues that matter for this project:
 
 - location URLs should remain useful to a human, bot, archive, or agent that
   fetches HTML without executing JavaScript
 - structured JSON APIs should stay first-class and discoverable from the page
 - app HTML should include meaningful title/meta/canonical data, API links, and
-  enough fallback content to identify the location and latest conditions
+  enough fallback content to identify the page and relevant API endpoints
 - search engines and agents should be able to understand the page through
-  ordinary HTML plus machine-readable structured data such as JSON-LD or an
-  embedded bootstrap JSON payload
-- curl/no-JavaScript checks should be part of the later durable-HTML migration
-  acceptance criteria
+  ordinary HTML plus machine-readable structured data such as JSON-LD
+- curl/no-JavaScript checks are part of route-level backend coverage
 
-Possible implementation paths:
+Implementation path:
 
-- FastAPI can serve a location-aware app HTML template instead of one generic
-  Vite `index.html`, embedding a small server-rendered fallback summary and
-  links such as `/api/{loc}/conditions`.
-- React can continue to hydrate/enhance that page in the browser after load.
+- FastAPI reads the built Vite `frontend/dist/index.html` and preserves its
+  script and stylesheet tags.
+- FastAPI injects route-specific title, description, canonical URL, Open Graph
+  tags, absolute JSON `rel="alternate"` links, compact `noscript` fallback
+  content, and conservative JSON-LD.
+- `/` renders default-location metadata, `/locations` renders location-discovery
+  metadata, and configured `/{location}` routes render location metadata.
+- The fallback uses stable `LocationConfig` fields and links to APIs such as
+  `/api/{loc}/conditions` and `/api/locations`; it intentionally does not
+  duplicate the React UI or include live condition summaries.
+- There is no full React SSR, dynamic bot rendering, or Node production runtime.
 - If static fallback HTML becomes too limiting, evaluate server-rendered or
-  pre-rendered React output, but avoid adding a second production backend runtime
-  unless the benefit is clear.
+  pre-rendered React output as a separate architecture decision.
 
 Launch decision: `/nyc` and other location URLs should serve the React app
 directly. `/app` was a transition path, not the permanent canonical route, and

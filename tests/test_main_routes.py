@@ -1,9 +1,34 @@
 """Tests for top-level HTML and crawler routes."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from shallweswim import canonical, config
 from shallweswim.main import app, start_app
+
+
+def _write_fake_frontend_dist(dist) -> None:
+    """Create a minimal Vite-like app shell for route tests."""
+    assets = dist / "assets"
+    assets.mkdir(parents=True)
+    (dist / "index.html").write_text(
+        "\n".join(
+            [
+                "<!doctype html>",
+                "<html>",
+                "<head>",
+                "<title>generic shell</title>",
+                '<script type="module" crossorigin src="/assets/index-abc.js"></script>',
+                '<link rel="stylesheet" crossorigin href="/assets/index-def.css">',
+                "</head>",
+                "<body>",
+                '<div id="root"></div>',
+                "</body>",
+                "</html>",
+            ]
+        )
+    )
+    (assets / "app.js").write_text("console.log('app')")
 
 
 def test_www_host_redirects_to_canonical_apex() -> None:
@@ -89,10 +114,7 @@ def test_root_app_route_returns_clear_not_built_response_when_dist_missing(
 def test_app_routes_serve_built_shell_and_assets(tmp_path) -> None:
     """Built frontend shell is served for canonical root app routes."""
     dist = tmp_path / "dist"
-    assets = dist / "assets"
-    assets.mkdir(parents=True)
-    (dist / "index.html").write_text("<!doctype html><div id='root'></div>")
-    (assets / "app.js").write_text("console.log('app')")
+    _write_fake_frontend_dist(dist)
 
     client = TestClient(app)
     original_frontend_dist = getattr(app.state, "frontend_dist", None)
@@ -103,6 +125,7 @@ def test_app_routes_serve_built_shell_and_assets(tmp_path) -> None:
         location_shell = client.get("/nyc")
         locations_shell = client.get("/locations")
         removed_app_route = client.get("/app")
+        invalid_location = client.get("/zzz")
         asset = client.get("/assets/app.js")
         missing_asset = client.get("/assets/missing.js")
     finally:
@@ -113,13 +136,134 @@ def test_app_routes_serve_built_shell_and_assets(tmp_path) -> None:
 
     for shell in [root, location_shell, locations_shell]:
         assert shell.status_code == 200
-        assert "<div id='root'></div>" in shell.text
+        assert '<div id="root"></div>' in shell.text
+        assert 'src="/assets/index-abc.js"' in shell.text
+        assert 'href="/assets/index-def.css"' in shell.text
+        assert "<title>generic shell</title>" not in shell.text
         assert shell.headers["cache-control"] == "no-cache, must-revalidate"
 
     assert removed_app_route.status_code == 404
+    assert invalid_location.status_code == 404
     assert asset.status_code == 200
     assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert missing_asset.status_code == 404
+
+
+def test_root_app_route_renders_default_location_metadata(tmp_path) -> None:
+    """The root app shell exposes useful default-location HTML before JS."""
+    dist = tmp_path / "dist"
+    _write_fake_frontend_dist(dist)
+    cfg = config.CONFIGS["nyc"]
+
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    app.state.frontend_dist = str(dist)
+
+    try:
+        response = client.get("/")
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+
+    assert response.status_code == 200
+    assert (
+        f"<title>{cfg.swim_location} swim conditions | shall we swim?</title>"
+        in response.text
+    )
+    assert (
+        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/">'
+        in response.text
+    )
+    assert (
+        '<link rel="alternate" type="application/json" '
+        f'href="{canonical.CANONICAL_BASE_URL}/api/nyc/conditions">'
+    ) in response.text
+    assert '<meta property="og:type" content="website">' in response.text
+    assert '"@type": "WebSite"' in response.text
+    assert '"@type": "WebPage"' in response.text
+    assert '"@type": "Place"' in response.text
+    assert "<noscript>" in response.text
+    assert cfg.name in response.text
+    assert cfg.swim_location in response.text
+    assert 'href="/api/nyc/conditions"' in response.text
+    assert 'href="/api/locations"' in response.text
+
+
+def test_location_app_route_renders_location_metadata(tmp_path) -> None:
+    """Configured location routes expose location-specific durable HTML."""
+    dist = tmp_path / "dist"
+    _write_fake_frontend_dist(dist)
+    cfg = config.CONFIGS["nyc"]
+
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    app.state.frontend_dist = str(dist)
+
+    try:
+        response = client.get("/nyc")
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+
+    assert response.status_code == 200
+    assert (
+        f"<title>{cfg.swim_location} swim conditions | shall we swim?</title>"
+        in response.text
+    )
+    assert (
+        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/nyc">'
+        in response.text
+    )
+    assert (
+        '<link rel="alternate" type="application/json" '
+        f'href="{canonical.CANONICAL_BASE_URL}/api/nyc/conditions">'
+    ) in response.text
+    assert '"latitude": 40.573' in response.text
+    assert '"longitude": -73.954' in response.text
+    assert '<div id="root"></div><noscript>' in response.text
+    assert 'href="/api/nyc/conditions"' in response.text
+
+
+def test_locations_app_route_renders_all_locations_metadata(tmp_path) -> None:
+    """The all-locations app shell advertises location discovery."""
+    dist = tmp_path / "dist"
+    _write_fake_frontend_dist(dist)
+
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    app.state.frontend_dist = str(dist)
+
+    try:
+        response = client.get("/locations")
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+
+    assert response.status_code == 200
+    assert (
+        "<title>Open water swimming locations | shall we swim?</title>" in response.text
+    )
+    assert (
+        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/locations">'
+        in response.text
+    )
+    assert (
+        '<link rel="alternate" type="application/json" '
+        f'href="{canonical.CANONICAL_BASE_URL}/api/locations">'
+    ) in response.text
+    assert '"@type": "WebPage"' in response.text
+    assert '"@type": "Place"' not in response.text
+    assert "Open water swimming locations" in response.text
+    assert 'href="/api/locations"' in response.text
+    for loc_code, cfg in config.CONFIGS.items():
+        assert f'href="/{loc_code}"' in response.text
+        assert cfg.swim_location in response.text
 
 
 def test_app_assets_reject_encoded_path_traversal(tmp_path) -> None:
@@ -128,10 +272,7 @@ def test_app_assets_reject_encoded_path_traversal(tmp_path) -> None:
     secret.write_text("do not expose")
 
     dist = tmp_path / "dist"
-    assets = dist / "assets"
-    assets.mkdir(parents=True)
-    (dist / "index.html").write_text("<!doctype html><div id='root'></div>")
-    (assets / "app.js").write_text("console.log('app')")
+    _write_fake_frontend_dist(dist)
 
     client = TestClient(app)
     original_frontend_dist = getattr(app.state, "frontend_dist", None)
@@ -155,6 +296,35 @@ def test_app_assets_reject_encoded_path_traversal(tmp_path) -> None:
         assert response.status_code == 404
         assert "do not expose" not in response.text
         assert "<div id='root'></div>" not in response.text
+
+
+@pytest.mark.integration
+def test_canonical_html_routes_expose_real_config_metadata(tmp_path) -> None:
+    """Integration coverage for durable HTML using production location config."""
+    dist = tmp_path / "dist"
+    _write_fake_frontend_dist(dist)
+
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    app.state.frontend_dist = str(dist)
+
+    try:
+        responses = {
+            "/": client.get("/"),
+            "/locations": client.get("/locations"),
+            "/nyc": client.get("/nyc"),
+        }
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+
+    for path, response in responses.items():
+        assert response.status_code == 200
+        assert f'href="{canonical.canonical_url(path)}"' in response.text
+        assert '<link rel="alternate" type="application/json"' in response.text
+        assert '<script type="application/ld+json">' in response.text
 
 
 def test_start_app_requires_frontend_dist_when_configured(tmp_path) -> None:

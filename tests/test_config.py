@@ -77,6 +77,13 @@ def test_presentation_integrations_are_typed() -> None:
     assert sdf.presentation.webcam is not None
     assert sdf.presentation.webcam.provider == sw_types.WebcamProvider.EARTHCAM_EMBED
     assert sdf.presentation.webcam.embed_url is not None
+    assert sdf.presentation.windy.overlay == "wind"
+    assert sdf.presentation.windy.product == "ecmwf"
+
+    aus = config.get("aus")
+    assert aus is not None
+    assert aus.presentation.windy.overlay == "wind"
+    assert aus.presentation.windy.product == "ecmwf"
 
 
 def configured_composite_feeds() -> list[CompositeFeed]:

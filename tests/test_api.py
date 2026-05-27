@@ -266,6 +266,7 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert nyc["metadata"]["temperature_plots"] == {"live": True, "historic": True}
     assert nyc["metadata"]["features"]["webcam"] is True
     assert nyc["metadata"]["features"]["transit"] is True
+    assert nyc["metadata"]["features"]["windy"] is True
     assert data["source_code_link"]["url"].endswith("/shallweswim")
     assert nyc["integrations"]["webcam"]["provider"] == "youtube_live"
     assert nyc["integrations"]["webcam"]["channel_id"]
@@ -281,6 +282,14 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert nyc["integrations"]["transit_source"]["url"] == "https://goodservice.io"
     assert nyc["integrations"]["transit_routes"][0]["goodservice_route_id"] == "B"
     assert nyc["integrations"]["transit_routes"][0]["goodservice_direction"] == "south"
+    assert nyc["integrations"]["windy"] == {
+        "overlay": "waves",
+        "product": "ecmwfWaves",
+        "level": "surface",
+        "zoom": 11,
+        "metric_wind": "default",
+        "metric_temp": "°F",
+    }
 
     chi = data["locations"]["chi"]
     assert chi["metadata"]["features"]["webcam"] is True
@@ -299,6 +308,8 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
         "https://share.earthcam.net/"
     )
     assert sdf["integrations"]["webcam"]["script_url"] is None
+    assert sdf["integrations"]["windy"]["overlay"] == "wind"
+    assert sdf["integrations"]["windy"]["product"] == "ecmwf"
 
 
 def test_get_location_conditions(

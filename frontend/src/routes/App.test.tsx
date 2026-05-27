@@ -57,6 +57,7 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
         webcam: null,
         transit_routes: [],
         transit_source: null,
+        windy: null,
       },
     },
   },
@@ -327,6 +328,7 @@ function syntheticLocation({
       webcam: null,
       transit_routes: [],
       transit_source: null,
+      windy: null,
       ...integrations,
     },
   };
@@ -572,6 +574,14 @@ test("renders optional page sections from synthetic feature capabilities", async
         url: "https://example.com/transit",
         description: "Synthetic transit source.",
       },
+      windy: {
+        overlay: "wind",
+        product: "ecmwf",
+        level: "surface",
+        zoom: 10,
+        metric_wind: "kt",
+        metric_temp: "°F",
+      },
     },
   });
 
@@ -595,7 +605,13 @@ test("renders optional page sections from synthetic feature capabilities", async
   ).toBeVisible();
   expect(screen.getByRole("button", { name: "Plan" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "Forecast" })).toBeVisible();
-  expect(screen.getByTitle("Windy forecast")).toBeVisible();
+  const windyFrame = screen.getByTitle("Windy forecast");
+  expect(windyFrame).toBeVisible();
+  const windyUrl = new URL(windyFrame.getAttribute("src") ?? "");
+  expect(windyUrl.searchParams.get("overlay")).toBe("wind");
+  expect(windyUrl.searchParams.get("product")).toBe("ecmwf");
+  expect(windyUrl.searchParams.get("zoom")).toBe("10");
+  expect(windyUrl.searchParams.get("metricWind")).toBe("kt");
   expect(screen.getByRole("heading", { name: "Live Webcam" })).toBeVisible();
   expect(screen.getByTitle("Synthetic webcam")).toHaveAttribute(
     "src",

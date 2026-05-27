@@ -31,6 +31,7 @@ from shallweswim.api_types import (
     AppSourceCitations,
     AppTemperaturePlotConfig,
     AppWebcamConfig,
+    AppWindyConfig,
     CurrentInfo,
     CurrentRange,
     CurrentRangePoint,
@@ -466,7 +467,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     currents=currents_enabled,
                     webcam=webcam_enabled,
                     transit=transit_enabled,
-                    windy=True,
+                    windy=cfg.presentation.windy.enabled,
                 ),
                 temperature_plots=AppTemperaturePlotConfig(
                     live=temp_enabled,
@@ -488,6 +489,18 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 transit_source=(
                     presentation_link(cfg.presentation.transit.source)
                     if cfg.presentation.transit
+                    else None
+                ),
+                windy=(
+                    AppWindyConfig(
+                        overlay=cfg.presentation.windy.overlay,
+                        product=cfg.presentation.windy.product,
+                        level=cfg.presentation.windy.level,
+                        zoom=cfg.presentation.windy.zoom,
+                        metric_wind=cfg.presentation.windy.metric_wind,
+                        metric_temp=cfg.presentation.windy.metric_temp,
+                    )
+                    if cfg.presentation.windy.enabled
                     else None
                 ),
             ),

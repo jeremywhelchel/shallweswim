@@ -6,6 +6,7 @@ via Pydantic models. Internal types are defined in types.py.
 
 # Standard library imports
 import datetime
+from typing import Literal
 
 # Third-party imports
 from pydantic import BaseModel, ConfigDict, Field
@@ -455,6 +456,25 @@ class AppWebcamConfig(BaseModel):
     )
 
 
+class AppWindyConfig(BaseModel):
+    """Windy iframe configuration exposed to the frontend."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    overlay: Literal["waves", "wind"] = Field(..., description="Windy overlay token")
+    product: Literal["ecmwfWaves", "ecmwf"] = Field(
+        ..., description="Windy product token"
+    )
+    level: Literal["surface"] = Field(..., description="Windy level token")
+    zoom: int = Field(..., description="Initial Windy map zoom level")
+    metric_wind: Literal["default", "kt", "mph", "m/s", "km/h", "bft"] = Field(
+        ..., description="Windy wind unit token"
+    )
+    metric_temp: Literal["default", "°F", "°C"] = Field(
+        ..., description="Windy temperature unit token"
+    )
+
+
 class AppExternalIntegrations(BaseModel):
     """External presentation integrations used by the React app."""
 
@@ -468,6 +488,9 @@ class AppExternalIntegrations(BaseModel):
     )
     transit_source: AppPresentationLink | None = Field(
         None, description="Transit source or citation link"
+    )
+    windy: AppWindyConfig | None = Field(
+        None, description="Windy forecast iframe configuration"
     )
 
 

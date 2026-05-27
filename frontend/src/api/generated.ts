@@ -707,6 +707,8 @@ export interface components {
             transit_source?: components["schemas"]["AppPresentationLink"] | null;
             /** @description Provider-aware webcam configuration */
             webcam?: components["schemas"]["AppWebcamConfig"] | null;
+            /** @description Windy forecast iframe configuration */
+            windy?: components["schemas"]["AppWindyConfig"] | null;
         };
         /**
          * AppFeatureFlags
@@ -900,6 +902,47 @@ export interface components {
              * @description External watch page URL when available
              */
             watch_url?: string | null;
+        };
+        /**
+         * AppWindyConfig
+         * @description Windy iframe configuration exposed to the frontend.
+         */
+        AppWindyConfig: {
+            /**
+             * Level
+             * @description Windy level token
+             * @constant
+             */
+            level: "surface";
+            /**
+             * Metric Temp
+             * @description Windy temperature unit token
+             * @enum {string}
+             */
+            metric_temp: "default" | "°F" | "°C";
+            /**
+             * Metric Wind
+             * @description Windy wind unit token
+             * @enum {string}
+             */
+            metric_wind: "default" | "kt" | "mph" | "m/s" | "km/h" | "bft";
+            /**
+             * Overlay
+             * @description Windy overlay token
+             * @enum {string}
+             */
+            overlay: "waves" | "wind";
+            /**
+             * Product
+             * @description Windy product token
+             * @enum {string}
+             */
+            product: "ecmwfWaves" | "ecmwf";
+            /**
+             * Zoom
+             * @description Initial Windy map zoom level
+             */
+            zoom: number;
         };
         /**
          * CurrentDirection

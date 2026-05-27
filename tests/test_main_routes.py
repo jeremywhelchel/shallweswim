@@ -594,6 +594,19 @@ def test_legacy_location_page_renders_windy_embed_with_layout_dimensions() -> No
     assert "product=ecmwfWaves" in response.text
 
 
+def test_legacy_location_page_uses_location_windy_config() -> None:
+    """Legacy Windy embeds use the same location-aware config as React."""
+    client = TestClient(app)
+
+    response = client.get("/legacy/sdf")
+
+    assert response.status_code == 200
+    assert "overlay=wind" in response.text
+    assert "product=ecmwf" in response.text
+    assert "overlay=waves" not in response.text
+    assert "product=ecmwfWaves" not in response.text
+
+
 def test_existing_embed_route_still_serves_legacy_embed_content() -> None:
     """Existing external embed URLs keep serving the legacy embed page."""
     client = TestClient(app)

@@ -852,9 +852,9 @@ Runtime behavior:
 External integration parity:
 
 - Windy should use the same iframe URL shape as the current `windy_iframe`
-  template macro, with location latitude/longitude, `overlay=waves`,
-  `product=ecmwfWaves`, `message=true`, `marker=true`, `calendar=now`,
-  `detail=true`, and Fahrenheit temperature units.
+  template macro, with location latitude/longitude, configured overlay/product
+  settings from `/api/app/bootstrap`, `message=true`, `marker=true`,
+  `calendar=now`, `detail=true`, and Fahrenheit temperature units.
 - YouTube should use the bootstrap embed URL and preserve the current player
   parameters: `enablejsapi=1`, `controls=0`, `playsinline=1`,
   `iv_load_policy=3`, and `rel=0`. Load the official iframe API only if needed
@@ -1476,16 +1476,24 @@ Use a React component that renders the Windy iframe URL for a location. This
 keeps the integration close to the current implementation and avoids bringing a
 Windy API key or map SDK into the client.
 
-The component should accept location configuration as props:
+The component should accept location metadata and bootstrap-provided Windy
+configuration as props:
 
 ```text
 lat
 lon
-preferred layer/options
+overlay
+product
+level
+zoom
+metricWind
+metricTemp
 ```
 
 Using the iframe also keeps Windy as an external visual embed rather than making
-Windy forecast data part of the Shall We Swim data model.
+Windy forecast data part of the Shall We Swim data model. Coastal locations can
+use wave-oriented Windy layers, while inland or river locations can use wind
+forecast layers without changing React code.
 
 ### YouTube Webcam
 

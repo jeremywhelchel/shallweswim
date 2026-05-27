@@ -30,6 +30,7 @@ type TideState = components["schemas"]["TideState"];
 type TransitRouteConfig = components["schemas"]["TransitRouteConfig"];
 type AppPresentationLink = components["schemas"]["AppPresentationLink"];
 type AppWebcamConfig = components["schemas"]["AppWebcamConfig"];
+type AppWindyConfig = components["schemas"]["AppWindyConfig"];
 
 const PLANNER_MIN_MINUTES = -180;
 const PLANNER_MAX_MINUTES = 1440;
@@ -209,7 +210,10 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
 
       {location.metadata.features.windy ? (
         <Section title="Forecast">
-          <WindyEmbed metadata={location.metadata} />
+          <WindyEmbed
+            config={location.integrations.windy}
+            metadata={location.metadata}
+          />
         </Section>
       ) : null}
 
@@ -1568,9 +1572,25 @@ function trendIndicatorText(
   return trend;
 }
 
-function WindyEmbed({ metadata }: { metadata: AppLocationMetadata }) {
+function WindyEmbed({
+  config,
+  metadata,
+}: {
+  config: AppWindyConfig | null | undefined;
+  metadata: AppLocationMetadata;
+}) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [embedSize, setEmbedSize] = useState({ width: 950, height: 350 });
+  const windyConfig =
+    config ??
+    ({
+      overlay: "waves",
+      product: "ecmwfWaves",
+      level: "surface",
+      zoom: 11,
+      metric_wind: "default",
+      metric_temp: "°F",
+    } satisfies AppWindyConfig);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -1591,6 +1611,9 @@ function WindyEmbed({ metadata }: { metadata: AppLocationMetadata }) {
     return () => observer.disconnect();
   }, []);
 
+  // The public iframe URL comes from Windy's embed generator. Keep these
+  // configurable parameter names aligned with Windy's Map Forecast docs:
+  // https://api4.windy.com/map-forecast/tutorials/parameters
   const params = new URLSearchParams({
     lat: String(metadata.latitude),
     lon: String(metadata.longitude),
@@ -1598,10 +1621,10 @@ function WindyEmbed({ metadata }: { metadata: AppLocationMetadata }) {
     detailLon: String(metadata.longitude),
     width: String(embedSize.width),
     height: String(embedSize.height),
-    zoom: "11",
-    level: "surface",
-    overlay: "waves",
-    product: "ecmwfWaves",
+    zoom: String(windyConfig.zoom),
+    level: windyConfig.level,
+    overlay: windyConfig.overlay,
+    product: windyConfig.product,
     menu: "",
     message: "true",
     marker: "true",
@@ -1610,8 +1633,8 @@ function WindyEmbed({ metadata }: { metadata: AppLocationMetadata }) {
     type: "map",
     location: "coordinates",
     detail: "true",
-    metricWind: "default",
-    metricTemp: "°F",
+    metricWind: windyConfig.metric_wind,
+    metricTemp: windyConfig.metric_temp,
     radarRange: "-1",
   });
 

@@ -23,7 +23,7 @@ import abc
 import datetime
 from datetime import tzinfo
 from types import MappingProxyType
-from typing import Annotated
+from typing import Annotated, Literal
 
 # Third-party imports
 import pytz
@@ -466,6 +466,41 @@ class TransitPresentationConfig(BaseModel, frozen=True):
     ] = None
 
 
+class WindyForecastConfig(BaseModel, frozen=True):
+    """Windy iframe configuration for a swimming location."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: Annotated[
+        bool,
+        Field(description="Whether to show the Windy forecast integration"),
+    ] = True
+    overlay: Annotated[
+        Literal["waves", "wind"],
+        Field(description="Windy overlay token, such as waves or wind"),
+    ] = "waves"
+    product: Annotated[
+        Literal["ecmwfWaves", "ecmwf"],
+        Field(description="Windy product token, such as ecmwfWaves or ecmwf"),
+    ] = "ecmwfWaves"
+    level: Annotated[
+        Literal["surface"],
+        Field(description="Windy level token"),
+    ] = "surface"
+    zoom: Annotated[
+        int,
+        Field(ge=1, le=18, description="Initial Windy map zoom level"),
+    ] = 11
+    metric_wind: Annotated[
+        Literal["default", "kt", "mph", "m/s", "km/h", "bft"],
+        Field(description="Windy wind unit token"),
+    ] = "default"
+    metric_temp: Annotated[
+        Literal["default", "°F", "°C"],
+        Field(description="Windy temperature unit token"),
+    ] = "°F"
+
+
 class LocationPresentationConfig(BaseModel, frozen=True):
     """Presentation integrations for a swimming location."""
 
@@ -479,6 +514,10 @@ class LocationPresentationConfig(BaseModel, frozen=True):
         TransitPresentationConfig | None,
         Field(description="Optional transit integration"),
     ] = None
+    windy: Annotated[
+        WindyForecastConfig,
+        Field(description="Windy forecast integration settings"),
+    ] = Field(default_factory=WindyForecastConfig)
 
 
 class LocationConfig(BaseModel, frozen=True):
@@ -845,10 +884,9 @@ _CONFIG_LIST = [
                     description="View overlooking Toehead Island swim channel.",
                 ),
             ),
+            windy=WindyForecastConfig(overlay="wind", product="ecmwf"),
         ),
         description="Louisville Kentucky open water swimming conditions",
-        # TODO:
-        # - Fix Windy embed mode. "waves" isnt relevant here.
     ),
     LocationConfig(
         code="aus",
@@ -862,6 +900,9 @@ _CONFIG_LIST = [
             site_no="08155500",
             parameter_cd="00010",
             name="Barton Springs",
+        ),
+        presentation=LocationPresentationConfig(
+            windy=WindyForecastConfig(overlay="wind", product="ecmwf"),
         ),
         description="Austin, TX open water swimming conditions",
     ),

@@ -17,8 +17,8 @@ body_attributes %}{% endblock %} {% block header %}
 </p>
 {% endblock %} {% block forecast %}
 <h2>Forecast</h2>
-{{ windy_iframe(lat=config.latitude, lon=config.longitude) }} {% endblock %} {%
-block content %} {% if config.code == 'nyc' %}
+{{ windy_iframe(config=config) }} {% endblock %} {% block content %} {% if
+config.code == 'nyc' %}
 <h2>Live Webcam</h2>
 <div class="webcamdiv">
   <iframe

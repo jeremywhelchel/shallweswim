@@ -82,6 +82,14 @@ const bootstrapPayload = {
           url: "https://goodservice.io",
           description: "MTA train status provided by:",
         },
+        windy: {
+          overlay: "waves",
+          product: "ecmwfWaves",
+          level: "surface",
+          zoom: 11,
+          metric_wind: "default",
+          metric_temp: "°F",
+        },
       },
     },
     sfo: {
@@ -118,6 +126,7 @@ const bootstrapPayload = {
         webcam: null,
         transit_routes: [],
         transit_source: null,
+        windy: null,
       },
     },
   },

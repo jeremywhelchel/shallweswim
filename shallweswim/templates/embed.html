@@ -2,8 +2,7 @@
 description %}Coney Island Brighton Beach open water swimming conditions{%
 endblock %} {% block stylesheets %} {{ super() }} {% endblock %} {% block
 body_attributes %}class="embed-page"{% endblock %} {% block forecast %} {{
-windy_iframe(lat=config.latitude, lon=config.longitude) }} {% endblock %} {%
-block footer %}
+windy_iframe(config=config) }} {% endblock %} {% block footer %}
 <br />
 <br />
 <div class="tides">

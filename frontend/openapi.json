@@ -103,6 +103,17 @@
               }
             ],
             "description": "Provider-aware webcam configuration"
+          },
+          "windy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppWindyConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Windy forecast iframe configuration"
           }
         },
         "title": "AppExternalIntegrations",
@@ -434,6 +445,74 @@
           "label"
         ],
         "title": "AppWebcamConfig",
+        "type": "object"
+      },
+      "AppWindyConfig": {
+        "additionalProperties": false,
+        "description": "Windy iframe configuration exposed to the frontend.",
+        "properties": {
+          "level": {
+            "const": "surface",
+            "description": "Windy level token",
+            "title": "Level",
+            "type": "string"
+          },
+          "metric_temp": {
+            "description": "Windy temperature unit token",
+            "enum": [
+              "default",
+              "\u00b0F",
+              "\u00b0C"
+            ],
+            "title": "Metric Temp",
+            "type": "string"
+          },
+          "metric_wind": {
+            "description": "Windy wind unit token",
+            "enum": [
+              "default",
+              "kt",
+              "mph",
+              "m/s",
+              "km/h",
+              "bft"
+            ],
+            "title": "Metric Wind",
+            "type": "string"
+          },
+          "overlay": {
+            "description": "Windy overlay token",
+            "enum": [
+              "waves",
+              "wind"
+            ],
+            "title": "Overlay",
+            "type": "string"
+          },
+          "product": {
+            "description": "Windy product token",
+            "enum": [
+              "ecmwfWaves",
+              "ecmwf"
+            ],
+            "title": "Product",
+            "type": "string"
+          },
+          "zoom": {
+            "description": "Initial Windy map zoom level",
+            "title": "Zoom",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "overlay",
+          "product",
+          "level",
+          "zoom",
+          "metric_wind",
+          "metric_temp"
+        ],
+        "title": "AppWindyConfig",
         "type": "object"
       },
       "CurrentDirection": {

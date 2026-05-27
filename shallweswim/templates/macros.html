@@ -2,13 +2,16 @@
   browser context will crash with an error of "A problem repeatedly
   occurred" when the page is zoomed.
   See: https://developer.apple.com/forums/thread/662251
+  The public iframe URL comes from Windy's embed generator. Keep these
+  configurable parameter names aligned with Windy's Map Forecast docs:
+  https://api4.windy.com/map-forecast/tutorials/parameters
 -->
-{% macro windy_iframe(lat, lon, detailLat=lat, detailLon=lon, width=950,
-height=350, zoom=11) %}
+{% macro windy_iframe(config, detailLat=config.latitude,
+detailLon=config.longitude, width=950, height=350) %}
 <iframe
   class="windyframe"
   title="Windy forecast"
-  src="https://embed.windy.com/embed2.html?lat={{ lat }}&lon={{ lon }}&detailLat={{ detailLat }}&detailLon={{ detailLon }}&width={{ width }}&height={{ height }}&zoom={{ zoom }}&level=surface&overlay=waves&product=ecmwfWaves&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind=default&metricTemp=%C2%B0F&radarRange=-1"
+  src="https://embed.windy.com/embed2.html?lat={{ config.latitude }}&lon={{ config.longitude }}&detailLat={{ detailLat }}&detailLon={{ detailLon }}&width={{ width }}&height={{ height }}&zoom={{ config.presentation.windy.zoom }}&level={{ config.presentation.windy.level|urlencode }}&overlay={{ config.presentation.windy.overlay|urlencode }}&product={{ config.presentation.windy.product|urlencode }}&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=true&metricWind={{ config.presentation.windy.metric_wind|urlencode }}&metricTemp={{ config.presentation.windy.metric_temp|urlencode }}&radarRange=-1"
   frameborder="0"
 ></iframe>
 {% endmacro %}

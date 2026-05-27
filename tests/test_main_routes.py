@@ -171,6 +171,108 @@ def test_app_routes_serve_built_shell_and_assets(tmp_path) -> None:
     assert missing_asset.status_code == 404
 
 
+def test_app_shell_cache_reuses_rendered_route_html(tmp_path, monkeypatch) -> None:
+    """Repeated app-shell requests reuse cached rendered HTML for the same route."""
+    dist = tmp_path / "dist"
+    _write_fake_frontend_dist(dist)
+
+    render_calls = 0
+    import shallweswim.main as main
+
+    original_render = main._render_frontend_shell
+
+    def counting_render(*args, **kwargs):
+        nonlocal render_calls
+        render_calls += 1
+        return original_render(*args, **kwargs)
+
+    monkeypatch.setattr(main, "_render_frontend_shell", counting_render)
+
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    original_index_cache = getattr(app.state, "frontend_index_cache", None)
+    original_shell_cache = getattr(app.state, "frontend_shell_cache", None)
+    app.state.frontend_dist = str(dist)
+    if hasattr(app.state, "frontend_index_cache"):
+        del app.state.frontend_index_cache
+    if hasattr(app.state, "frontend_shell_cache"):
+        del app.state.frontend_shell_cache
+
+    try:
+        first = client.get("/nyc")
+        second = client.get("/nyc")
+        locations = client.get("/locations")
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+        if original_index_cache is None:
+            if hasattr(app.state, "frontend_index_cache"):
+                del app.state.frontend_index_cache
+        else:
+            app.state.frontend_index_cache = original_index_cache
+        if original_shell_cache is None:
+            if hasattr(app.state, "frontend_shell_cache"):
+                del app.state.frontend_shell_cache
+        else:
+            app.state.frontend_shell_cache = original_shell_cache
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert locations.status_code == 200
+    assert first.text == second.text
+    assert render_calls == 2
+
+
+def test_app_shell_cache_is_scoped_to_frontend_dist_path(tmp_path) -> None:
+    """Changing frontend_dist uses the new Vite shell instead of stale cache data."""
+    dist_a = tmp_path / "dist-a"
+    dist_b = tmp_path / "dist-b"
+    _write_fake_frontend_dist(dist_a)
+    _write_fake_frontend_dist(dist_b)
+    (dist_b / "index.html").write_text(
+        (dist_b / "index.html")
+        .read_text()
+        .replace("/assets/index-abc.js", "/assets/index-other.js")
+    )
+
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    original_index_cache = getattr(app.state, "frontend_index_cache", None)
+    original_shell_cache = getattr(app.state, "frontend_shell_cache", None)
+    if hasattr(app.state, "frontend_index_cache"):
+        del app.state.frontend_index_cache
+    if hasattr(app.state, "frontend_shell_cache"):
+        del app.state.frontend_shell_cache
+
+    try:
+        app.state.frontend_dist = str(dist_a)
+        first = client.get("/nyc")
+        app.state.frontend_dist = str(dist_b)
+        second = client.get("/nyc")
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+        if original_index_cache is None:
+            if hasattr(app.state, "frontend_index_cache"):
+                del app.state.frontend_index_cache
+        else:
+            app.state.frontend_index_cache = original_index_cache
+        if original_shell_cache is None:
+            if hasattr(app.state, "frontend_shell_cache"):
+                del app.state.frontend_shell_cache
+        else:
+            app.state.frontend_shell_cache = original_shell_cache
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert 'src="/assets/index-abc.js"' in first.text
+    assert 'src="/assets/index-other.js"' in second.text
+
+
 def test_root_app_route_renders_default_location_metadata(tmp_path) -> None:
     """The root app shell exposes useful default-location HTML before JS."""
     dist = tmp_path / "dist"

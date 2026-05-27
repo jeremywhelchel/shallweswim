@@ -2,9 +2,31 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from markupsafe import escape
 
 from shallweswim import canonical, config
 from shallweswim.main import app, start_app
+
+
+def _escaped(value: str) -> str:
+    """Return the source form produced by Jinja autoescaping."""
+    return str(escape(value))
+
+
+def _assert_tag_with_attrs(html: str, tag: str, attrs: list[str]) -> None:
+    """Assert a tag appears with expected attrs, independent of formatting."""
+    start = 0
+    while True:
+        start = html.find(f"<{tag}", start)
+        if start == -1:
+            raise AssertionError(f"Missing <{tag}> tag with attrs: {attrs}")
+        end = html.find(">", start)
+        if end == -1:
+            raise AssertionError(f"Unclosed <{tag}> tag")
+        tag_source = html[start : end + 1]
+        if all(attr in tag_source for attr in attrs):
+            return
+        start = end + 1
 
 
 def _write_fake_frontend_dist(dist) -> None:
@@ -169,46 +191,72 @@ def test_root_app_route_renders_default_location_metadata(tmp_path) -> None:
 
     assert response.status_code == 200
     assert (
-        f"<title>{cfg.swim_location} swim conditions | shall we swim?</title>"
+        f"<title>{_escaped(cfg.swim_location)} swim conditions | shall we swim?</title>"
         in response.text
     )
-    assert (
-        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/">'
-        in response.text
+    _assert_tag_with_attrs(
+        response.text,
+        "link",
+        ['rel="canonical"', f'href="{canonical.CANONICAL_BASE_URL}/"'],
     )
-    assert (
-        '<link rel="alternate" type="application/json" '
-        f'href="{canonical.CANONICAL_BASE_URL}/api/nyc/conditions">'
-    ) in response.text
-    assert '<meta property="og:type" content="website">' in response.text
-    assert '<meta property="og:site_name" content="shall we swim?">' in response.text
-    assert (
-        '<meta property="og:image" '
-        f'content="{canonical.CANONICAL_BASE_URL}/static/android-chrome-512x512.png">'
-    ) in response.text
-    assert '<meta name="twitter:card" content="summary">' in response.text
-    assert (
-        '<link rel="icon" type="image/png" sizes="32x32" '
-        'href="/static/favicon-32x32.png">'
-    ) in response.text
+    _assert_tag_with_attrs(
+        response.text,
+        "link",
+        [
+            'rel="alternate"',
+            'type="application/json"',
+            f'href="{canonical.CANONICAL_BASE_URL}/api/nyc/conditions"',
+        ],
+    )
+    _assert_tag_with_attrs(
+        response.text,
+        "meta",
+        ['property="og:type"', 'content="website"'],
+    )
+    _assert_tag_with_attrs(
+        response.text,
+        "meta",
+        ['property="og:site_name"', 'content="shall we swim?"'],
+    )
+    _assert_tag_with_attrs(
+        response.text,
+        "meta",
+        [
+            'property="og:image"',
+            f'content="{canonical.CANONICAL_BASE_URL}/static/android-chrome-512x512.png"',
+        ],
+    )
+    _assert_tag_with_attrs(
+        response.text,
+        "meta",
+        ['name="twitter:card"', 'content="summary"'],
+    )
+    _assert_tag_with_attrs(
+        response.text,
+        "link",
+        [
+            'rel="icon"',
+            'type="image/png"',
+            'sizes="32x32"',
+            'href="/static/favicon-32x32.png"',
+        ],
+    )
     assert '"@type": "WebSite"' in response.text
     assert '"@type": "WebPage"' in response.text
     assert '"@type": "Place"' in response.text
     assert "<noscript>" in response.text
     assert 'class="durable-fallback"' in response.text
-    assert "text-decoration:underline" in response.text
+    assert "text-decoration: underline" in response.text
     assert cfg.name in response.text
-    assert cfg.swim_location in response.text
+    assert _escaped(cfg.swim_location) in response.text
     assert cfg.swim_location_link in response.text
     assert cfg.description in response.text
-    assert (
-        '<li><a href="/api/nyc/conditions">Condition data as JSON</a></li>'
-        in response.text
-    )
-    assert (
-        '<li><a href="/api/locations">All locations as JSON</a></li>' in response.text
-    )
-    assert '<li><a href="/locations">All locations</a></li>' in response.text
+    assert 'href="/api/nyc/conditions"' in response.text
+    assert "Condition data as JSON" in response.text
+    assert 'href="/api/locations"' in response.text
+    assert "All locations as JSON" in response.text
+    assert 'href="/locations"' in response.text
+    assert "All locations" in response.text
 
 
 def test_location_app_route_renders_location_metadata(tmp_path) -> None:
@@ -231,20 +279,26 @@ def test_location_app_route_renders_location_metadata(tmp_path) -> None:
 
     assert response.status_code == 200
     assert (
-        f"<title>{cfg.swim_location} swim conditions | shall we swim?</title>"
+        f"<title>{_escaped(cfg.swim_location)} swim conditions | shall we swim?</title>"
         in response.text
     )
-    assert (
-        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/nyc">'
-        in response.text
+    _assert_tag_with_attrs(
+        response.text,
+        "link",
+        ['rel="canonical"', f'href="{canonical.CANONICAL_BASE_URL}/nyc"'],
     )
-    assert (
-        '<link rel="alternate" type="application/json" '
-        f'href="{canonical.CANONICAL_BASE_URL}/api/nyc/conditions">'
-    ) in response.text
+    _assert_tag_with_attrs(
+        response.text,
+        "link",
+        [
+            'rel="alternate"',
+            'type="application/json"',
+            f'href="{canonical.CANONICAL_BASE_URL}/api/nyc/conditions"',
+        ],
+    )
     assert '"latitude": 40.573' in response.text
     assert '"longitude": -73.954' in response.text
-    assert '<div id="root"></div><noscript>' in response.text
+    assert '<div id="root"></div>\n<noscript>' in response.text
     assert 'class="durable-fallback"' in response.text
     assert cfg.swim_location_link in response.text
     assert cfg.description in response.text
@@ -272,21 +326,27 @@ def test_locations_app_route_renders_all_locations_metadata(tmp_path) -> None:
     assert (
         "<title>Open water swimming locations | shall we swim?</title>" in response.text
     )
-    assert (
-        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/locations">'
-        in response.text
+    _assert_tag_with_attrs(
+        response.text,
+        "link",
+        ['rel="canonical"', f'href="{canonical.CANONICAL_BASE_URL}/locations"'],
     )
-    assert (
-        '<link rel="alternate" type="application/json" '
-        f'href="{canonical.CANONICAL_BASE_URL}/api/locations">'
-    ) in response.text
+    _assert_tag_with_attrs(
+        response.text,
+        "link",
+        [
+            'rel="alternate"',
+            'type="application/json"',
+            f'href="{canonical.CANONICAL_BASE_URL}/api/locations"',
+        ],
+    )
     assert '"@type": "WebPage"' in response.text
     assert '"@type": "Place"' not in response.text
     assert "Open water swimming locations" in response.text
     assert 'href="/api/locations"' in response.text
     for loc_code, cfg in config.CONFIGS.items():
         assert f'href="/{loc_code}"' in response.text
-        assert cfg.swim_location in response.text
+        assert _escaped(cfg.swim_location) in response.text
 
 
 def test_app_assets_reject_encoded_path_traversal(tmp_path) -> None:

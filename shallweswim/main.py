@@ -10,7 +10,6 @@ data to help determine if swimming conditions are favorable.
 import argparse
 import contextlib
 import datetime
-import html
 import json
 import logging
 import os
@@ -102,6 +101,7 @@ APP_ASSET_CACHE_HEADERS = {
 DEFAULT_FRONTEND_DIST = Path("frontend/dist")
 ROOT_DIV_RE = re.compile(r"(<div\s+id=[\"']root[\"']\s*></div>)", re.IGNORECASE)
 TITLE_RE = re.compile(r"\s*<title>.*?</title>", re.IGNORECASE | re.DOTALL)
+HEAD_CLOSE_RE = re.compile(r"\s*</head>", re.IGNORECASE)
 SOCIAL_IMAGE_PATH = "/static/android-chrome-512x512.png"
 
 
@@ -300,19 +300,9 @@ async def frontend_asset(asset_path: str) -> responses.FileResponse:
     return responses.FileResponse(asset, headers=APP_ASSET_CACHE_HEADERS)
 
 
-def _html_attr(value: str) -> str:
-    """Escape a value for use in HTML attributes."""
-    return html.escape(value, quote=True)
-
-
-def _html_text(value: str) -> str:
-    """Escape a value for use in HTML text."""
-    return html.escape(value, quote=False)
-
-
 def _json_script(data: dict[str, Any]) -> str:
     """Serialize JSON-LD without allowing accidental script termination."""
-    return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    return json.dumps(data, ensure_ascii=False, indent=2).replace("</", "<\\/")
 
 
 def _root_config() -> config.LocationConfig:
@@ -360,41 +350,14 @@ def _head_metadata(
     json_ld: dict[str, Any],
 ) -> str:
     """Build route-specific metadata for the React app shell head."""
-    escaped_title_text = _html_text(title)
-    escaped_title_attr = _html_attr(title)
-    escaped_description = _html_attr(description)
-    escaped_canonical = _html_attr(canonical_url)
-    escaped_alternate = _html_attr(alternate_api_url)
-    escaped_social_image = _html_attr(canonical.canonical_url(SOCIAL_IMAGE_PATH))
-    escaped_social_alt = _html_attr("shall we swim? open water conditions")
-
-    return "\n".join(
-        [
-            f"<title>{escaped_title_text}</title>",
-            f'<meta name="description" content="{escaped_description}">',
-            f'<link rel="canonical" href="{escaped_canonical}">',
-            '<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">',
-            '<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">',
-            f'<meta property="og:title" content="{escaped_title_attr}">',
-            f'<meta property="og:description" content="{escaped_description}">',
-            f'<meta property="og:url" content="{escaped_canonical}">',
-            '<meta property="og:type" content="website">',
-            '<meta property="og:site_name" content="shall we swim?">',
-            f'<meta property="og:image" content="{escaped_social_image}">',
-            '<meta property="og:image:width" content="512">',
-            '<meta property="og:image:height" content="512">',
-            f'<meta property="og:image:alt" content="{escaped_social_alt}">',
-            '<meta name="twitter:card" content="summary">',
-            f'<meta name="twitter:title" content="{escaped_title_attr}">',
-            f'<meta name="twitter:description" content="{escaped_description}">',
-            f'<meta name="twitter:image" content="{escaped_social_image}">',
-            f'<meta name="twitter:image:alt" content="{escaped_social_alt}">',
-            (
-                '<link rel="alternate" type="application/json" '
-                f'href="{escaped_alternate}">'
-            ),
-            (f'<script type="application/ld+json">{_json_script(json_ld)}</script>'),
-        ]
+    return templates.env.get_template("app_shell_head.html").render(
+        title=title,
+        description=description,
+        canonical_url=canonical_url,
+        alternate_api_url=alternate_api_url,
+        social_image_url=canonical.canonical_url(SOCIAL_IMAGE_PATH),
+        social_image_alt="shall we swim? open water conditions",
+        json_ld=_json_script(json_ld),
     )
 
 
@@ -452,56 +415,18 @@ def _noscript_fallback(
     *, cfg: config.LocationConfig | None, locations_page: bool
 ) -> str:
     """Build compact no-JavaScript fallback content for app routes."""
-    fallback_styles = (
-        "<style>"
-        ".durable-fallback{max-width:42rem;margin:2rem auto;padding:0 1rem;"
-        "font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
-        "color:#102a2f}"
-        ".durable-fallback a{color:#005f73;text-decoration:underline;"
-        "text-underline-offset:0.16em}"
-        ".durable-fallback li{margin:0.35rem 0}"
-        ".durable-fallback ul{padding-left:1.25rem}"
-        "</style>"
-    )
-
     if locations_page:
-        location_links = " ".join(
-            (
-                f'<li><a href="/{_html_attr(code)}">{_html_text(location.name)}'
-                f" - {_html_text(location.swim_location)}</a></li>"
-            )
-            for code, location in config.CONFIGS.items()
-        )
-        return (
-            "<noscript>"
-            f"{fallback_styles}"
-            '<section class="durable-fallback" aria-label="No JavaScript location list">'
-            "<h1>Open water swimming locations</h1>"
-            "<p>Browse swim-condition pages and machine-readable location data.</p>"
-            f"<ul>{location_links}</ul>"
-            '<p><a href="/api/locations">Location data as JSON</a></p>'
-            "</section>"
-            "</noscript>"
+        return templates.env.get_template("app_shell_noscript.html").render(
+            locations_page=True,
+            locations=config.CONFIGS.items(),
         )
 
     if cfg is None:
         raise RuntimeError("Location config is required for location fallback")
 
-    return (
-        "<noscript>"
-        f"{fallback_styles}"
-        '<section class="durable-fallback" aria-label="No JavaScript location summary">'
-        f"<h1>{_html_text(cfg.name)} swim conditions</h1>"
-        f'<p><a href="{_html_attr(cfg.swim_location_link)}">'
-        f"{_html_text(cfg.swim_location)}</a></p>"
-        f"<p>{_html_text(cfg.description)}</p>"
-        "<ul>"
-        f'<li><a href="/api/{_html_attr(cfg.code)}/conditions">Condition data as JSON</a></li>'
-        '<li><a href="/api/locations">All locations as JSON</a></li>'
-        '<li><a href="/locations">All locations</a></li>'
-        "</ul>"
-        "</section>"
-        "</noscript>"
+    return templates.env.get_template("app_shell_noscript.html").render(
+        locations_page=False,
+        config=cfg,
     )
 
 
@@ -541,16 +466,16 @@ def _render_frontend_shell(
 
     rendered = TITLE_RE.sub("", index_html, count=1)
 
-    if "</head>" in rendered:
-        rendered = rendered.replace("</head>", f"{metadata}\n</head>", 1)
+    if HEAD_CLOSE_RE.search(rendered):
+        rendered = HEAD_CLOSE_RE.sub(f"\n{metadata}\n  </head>", rendered, count=1)
     else:
-        rendered = f"<head>{metadata}</head>{rendered}"
+        rendered = f"<head>\n{metadata}\n</head>\n{rendered}"
 
     rendered, replacements = ROOT_DIV_RE.subn(
-        lambda match: f"{match.group(1)}{fallback}", rendered, count=1
+        lambda match: f"{match.group(1)}\n{fallback}", rendered, count=1
     )
     if replacements == 0:
-        rendered = f'{rendered}<div id="root"></div>{fallback}'
+        rendered = f'{rendered}<div id="root"></div>\n{fallback}'
 
     return rendered
 

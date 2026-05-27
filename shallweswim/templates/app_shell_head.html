@@ -1,0 +1,33 @@
+<title>{{ title }}</title>
+<meta name="description" content="{{ description }}" />
+<link rel="canonical" href="{{ canonical_url }}" />
+<link
+  rel="icon"
+  type="image/png"
+  sizes="32x32"
+  href="/static/favicon-32x32.png"
+/>
+<link
+  rel="icon"
+  type="image/png"
+  sizes="16x16"
+  href="/static/favicon-16x16.png"
+/>
+<meta property="og:title" content="{{ title }}" />
+<meta property="og:description" content="{{ description }}" />
+<meta property="og:url" content="{{ canonical_url }}" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="shall we swim?" />
+<meta property="og:image" content="{{ social_image_url }}" />
+<meta property="og:image:width" content="512" />
+<meta property="og:image:height" content="512" />
+<meta property="og:image:alt" content="{{ social_image_alt }}" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="{{ title }}" />
+<meta name="twitter:description" content="{{ description }}" />
+<meta name="twitter:image" content="{{ social_image_url }}" />
+<meta name="twitter:image:alt" content="{{ social_image_alt }}" />
+<link rel="alternate" type="application/json" href="{{ alternate_api_url }}" />
+<script type="application/ld+json">
+  {{ json_ld|indent(6, true)|safe }}
+</script>

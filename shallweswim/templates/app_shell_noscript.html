@@ -1,0 +1,58 @@
+<noscript>
+  <style>
+    .durable-fallback {
+      max-width: 42rem;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      font:
+        16px/1.5 system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+      color: #102a2f;
+    }
+    .durable-fallback a {
+      color: #005f73;
+      text-decoration: underline;
+      text-underline-offset: 0.16em;
+    }
+    .durable-fallback li {
+      margin: 0.35rem 0;
+    }
+    .durable-fallback ul {
+      padding-left: 1.25rem;
+    }
+  </style>
+  {%- if locations_page %}
+  <section class="durable-fallback" aria-label="No JavaScript location list">
+    <h1>Open water swimming locations</h1>
+    <p>Browse swim-condition pages and machine-readable location data.</p>
+    <ul>
+      {%- for code, location in locations %}
+      <li>
+        <a href="/{{ code }}"
+          >{{ location.name }} - {{ location.swim_location }}</a
+        >
+      </li>
+      {%- endfor %}
+    </ul>
+    <p><a href="/api/locations">Location data as JSON</a></p>
+  </section>
+  {%- else %}
+  <section class="durable-fallback" aria-label="No JavaScript location summary">
+    <h1>{{ config.name }} swim conditions</h1>
+    <p>
+      <a href="{{ config.swim_location_link }}">{{ config.swim_location }}</a>
+    </p>
+    <p>{{ config.description }}</p>
+    <ul>
+      <li>
+        <a href="/api/{{ config.code }}/conditions">Condition data as JSON</a>
+      </li>
+      <li><a href="/api/locations">All locations as JSON</a></li>
+      <li><a href="/locations">All locations</a></li>
+    </ul>
+  </section>
+  {%- endif %}
+</noscript>

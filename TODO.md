@@ -90,6 +90,10 @@
   fallback content, and conservative JSON-LD. Deferred work should stay narrow,
   such as adding structured condition summaries once freshness, safety language,
   and duplicate rendering ownership are explicitly designed.
+- Add a proper branded social preview image for Open Graph/Twitter card
+  metadata. The app currently uses the existing 512px app icon as a conservative
+  fallback; replace it with a project-owned image, likely 1200x630, once final
+  branding/artwork is available.
 
 ## API And Data Model
 

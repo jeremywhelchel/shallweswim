@@ -267,6 +267,18 @@ def frontend_index_path() -> Path:
     return frontend_dist_dir() / "index.html"
 
 
+def frontend_index_snapshot(index: Path) -> tuple[str, str]:
+    """Return the built React shell cache key and HTML."""
+    cache_key = str(index)
+    cache = getattr(app.state, "frontend_index_cache", None)
+    if cache is not None and cache["key"] == cache_key:
+        return cache_key, cast(str, cache["html"])
+
+    index_html = index.read_text(encoding="utf-8")
+    app.state.frontend_index_cache = {"key": cache_key, "html": index_html}
+    return cache_key, index_html
+
+
 def frontend_assets_dir() -> Path:
     """Return the resolved built React app assets directory."""
     return (frontend_dist_dir() / "assets").resolve()
@@ -492,14 +504,30 @@ def frontend_app_shell_response(
     if not index.is_file():
         return app_shell_missing_response()
 
-    return responses.HTMLResponse(
-        _render_frontend_shell(
-            index_html=index.read_text(encoding="utf-8"),
+    index_key, index_html = frontend_index_snapshot(index)
+    shell_cache_key = (
+        index_key,
+        path,
+        cfg.code if cfg is not None else "",
+        locations_page,
+        include_website,
+    )
+    shell_cache = getattr(app.state, "frontend_shell_cache", {})
+    if shell_cache_key in shell_cache:
+        rendered = cast(str, shell_cache[shell_cache_key])
+    else:
+        rendered = _render_frontend_shell(
+            index_html=index_html,
             path=path,
             cfg=cfg,
             locations_page=locations_page,
             include_website=include_website,
-        ),
+        )
+        shell_cache[shell_cache_key] = rendered
+        app.state.frontend_shell_cache = shell_cache
+
+    return responses.HTMLResponse(
+        rendered,
         media_type="text/html",
         headers=APP_SHELL_CACHE_HEADERS,
     )

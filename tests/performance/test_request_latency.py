@@ -32,6 +32,7 @@ from shallweswim.core.queries import (
     prepare_current_prediction_frame,
     prepare_tide_prediction_frame,
 )
+from shallweswim.main import app as main_app
 from shallweswim.types import TIDE_TYPE_CATEGORIES
 from shallweswim.util import utc_now
 from tests.conftest import TEST_CONFIG_FULL
@@ -49,6 +50,7 @@ PERFORMANCE_CONFIG = TEST_CONFIG_FULL.model_copy(
     }
 )
 ENDPOINT_P95_LIMIT_MS = float(os.getenv("PERF_MAX_ENDPOINT_P95_MS", "25"))
+HTML_ROUTE_P95_LIMIT_MS = float(os.getenv("PERF_MAX_HTML_ROUTE_P95_MS", "25"))
 MANAGER_P95_LIMIT_MS = float(os.getenv("PERF_MAX_MANAGER_P95_MS", "5"))
 PRECOMPUTE_P95_LIMIT_MS = float(os.getenv("PERF_MAX_PRECOMPUTE_P95_MS", "25"))
 REPORT_PATH = Path(os.getenv("PERFORMANCE_RESULTS_PATH", "performance-results.json"))
@@ -114,6 +116,34 @@ def _loaded_feed(data: pd.DataFrame) -> MagicMock:
     return feed
 
 
+def _write_fake_frontend_dist(dist: Path) -> None:
+    """Create a minimal built frontend shell for app-route rendering tests."""
+    assets = dist / "assets"
+    assets.mkdir(parents=True)
+    (dist / "index.html").write_text(
+        "\n".join(
+            [
+                "<!doctype html>",
+                '<html lang="en">',
+                "  <head>",
+                '    <meta charset="UTF-8" />',
+                (
+                    '    <script type="module" crossorigin '
+                    'src="/assets/index-test.js"></script>'
+                ),
+                '    <link rel="stylesheet" crossorigin href="/assets/index-test.css">',
+                "  </head>",
+                "  <body>",
+                '    <div id="root"></div>',
+                "  </body>",
+                "</html>",
+            ]
+        )
+    )
+    (assets / "index-test.js").write_text("console.log('app shell')")
+    (assets / "index-test.css").write_text("body{margin:0}")
+
+
 def _build_manager(process_pool: ProcessPoolExecutor) -> LocationDataManager:
     """Build a data manager with deterministic, already-loaded feed data."""
     now = _now()
@@ -161,6 +191,46 @@ def performance_client(
         yield client
 
 
+@pytest.fixture
+def performance_html_client(tmp_path: Path) -> Generator[TestClient]:
+    """Provide a TestClient for root HTML routes with a fake frontend build."""
+    dist = tmp_path / "dist"
+    _write_fake_frontend_dist(dist)
+
+    original_frontend_dist = getattr(main_app.state, "frontend_dist", None)
+    original_frontend_index_cache = getattr(
+        main_app.state, "frontend_index_cache", None
+    )
+    original_frontend_shell_cache = getattr(
+        main_app.state, "frontend_shell_cache", None
+    )
+    main_app.state.frontend_dist = str(dist)
+    if hasattr(main_app.state, "frontend_index_cache"):
+        del main_app.state.frontend_index_cache
+    if hasattr(main_app.state, "frontend_shell_cache"):
+        del main_app.state.frontend_shell_cache
+
+    client = TestClient(main_app)
+    try:
+        yield client
+    finally:
+        client.close()
+        if original_frontend_dist is None:
+            del main_app.state.frontend_dist
+        else:
+            main_app.state.frontend_dist = original_frontend_dist
+        if original_frontend_index_cache is None:
+            if hasattr(main_app.state, "frontend_index_cache"):
+                del main_app.state.frontend_index_cache
+        else:
+            main_app.state.frontend_index_cache = original_frontend_index_cache
+        if original_frontend_shell_cache is None:
+            if hasattr(main_app.state, "frontend_shell_cache"):
+                del main_app.state.frontend_shell_cache
+        else:
+            main_app.state.frontend_shell_cache = original_frontend_shell_cache
+
+
 def _measure(
     action: Callable[[], Any],
     *,
@@ -177,6 +247,36 @@ def _measure(
         action()
         samples.append((time.perf_counter() - start) * 1000)
     return samples
+
+
+def _measure_pair(
+    first_action: Callable[[], Any],
+    second_action: Callable[[], Any],
+    *,
+    iterations: int = 40,
+    warmups: int = 5,
+) -> tuple[list[float], list[float]]:
+    """Measure two actions in alternating order to reduce timing bias."""
+    for _ in range(warmups):
+        first_action()
+        second_action()
+
+    first_samples = []
+    second_samples = []
+    for i in range(iterations):
+        actions = (
+            (first_action, first_samples),
+            (second_action, second_samples),
+        )
+        if i % 2:
+            actions = tuple(reversed(actions))
+
+        for action, samples in actions:
+            start = time.perf_counter()
+            action()
+            samples.append((time.perf_counter() - start) * 1000)
+
+    return first_samples, second_samples
 
 
 def _p95(samples: list[float]) -> float:
@@ -336,3 +436,35 @@ def test_fast_user_facing_api_endpoints_stay_under_latency_guardrail(
     _record_result(name, samples, ENDPOINT_P95_LIMIT_MS)
 
     assert _p95(samples) < ENDPOINT_P95_LIMIT_MS
+
+
+@pytest.mark.parametrize(
+    ("path", "legacy_path", "name"),
+    [
+        ("/", "/legacy/nyc", "html.root"),
+        ("/nyc", "/legacy/nyc", "html.location.nyc"),
+        ("/locations", "/legacy/all", "html.locations"),
+    ],
+)
+def test_durable_html_routes_stay_under_latency_guardrail(
+    performance_html_client: TestClient,
+    path: str,
+    legacy_path: str,
+    name: str,
+) -> None:
+    """Durable app shell routes stay fast relative to legacy HTML routes."""
+
+    def fetch(path_to_fetch: str) -> None:
+        response = performance_html_client.get(path_to_fetch)
+        assert response.status_code == 200
+
+    app_samples, legacy_samples = _measure_pair(
+        lambda: fetch(path),
+        lambda: fetch(legacy_path),
+    )
+    _record_result(name, app_samples, HTML_ROUTE_P95_LIMIT_MS)
+    _record_result(f"legacy.{name}", legacy_samples, HTML_ROUTE_P95_LIMIT_MS)
+
+    app_p95 = _p95(app_samples)
+    assert app_p95 < HTML_ROUTE_P95_LIMIT_MS
+    assert statistics.median(app_samples) <= statistics.median(legacy_samples)

@@ -181,14 +181,34 @@ def test_root_app_route_renders_default_location_metadata(tmp_path) -> None:
         f'href="{canonical.CANONICAL_BASE_URL}/api/nyc/conditions">'
     ) in response.text
     assert '<meta property="og:type" content="website">' in response.text
+    assert '<meta property="og:site_name" content="shall we swim?">' in response.text
+    assert (
+        '<meta property="og:image" '
+        f'content="{canonical.CANONICAL_BASE_URL}/static/android-chrome-512x512.png">'
+    ) in response.text
+    assert '<meta name="twitter:card" content="summary">' in response.text
+    assert (
+        '<link rel="icon" type="image/png" sizes="32x32" '
+        'href="/static/favicon-32x32.png">'
+    ) in response.text
     assert '"@type": "WebSite"' in response.text
     assert '"@type": "WebPage"' in response.text
     assert '"@type": "Place"' in response.text
     assert "<noscript>" in response.text
+    assert 'class="durable-fallback"' in response.text
+    assert "text-decoration:underline" in response.text
     assert cfg.name in response.text
     assert cfg.swim_location in response.text
-    assert 'href="/api/nyc/conditions"' in response.text
-    assert 'href="/api/locations"' in response.text
+    assert cfg.swim_location_link in response.text
+    assert cfg.description in response.text
+    assert (
+        '<li><a href="/api/nyc/conditions">Condition data as JSON</a></li>'
+        in response.text
+    )
+    assert (
+        '<li><a href="/api/locations">All locations as JSON</a></li>' in response.text
+    )
+    assert '<li><a href="/locations">All locations</a></li>' in response.text
 
 
 def test_location_app_route_renders_location_metadata(tmp_path) -> None:
@@ -225,6 +245,9 @@ def test_location_app_route_renders_location_metadata(tmp_path) -> None:
     assert '"latitude": 40.573' in response.text
     assert '"longitude": -73.954' in response.text
     assert '<div id="root"></div><noscript>' in response.text
+    assert 'class="durable-fallback"' in response.text
+    assert cfg.swim_location_link in response.text
+    assert cfg.description in response.text
     assert 'href="/api/nyc/conditions"' in response.text
 
 

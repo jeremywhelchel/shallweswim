@@ -102,6 +102,7 @@ APP_ASSET_CACHE_HEADERS = {
 DEFAULT_FRONTEND_DIST = Path("frontend/dist")
 ROOT_DIV_RE = re.compile(r"(<div\s+id=[\"']root[\"']\s*></div>)", re.IGNORECASE)
 TITLE_RE = re.compile(r"\s*<title>.*?</title>", re.IGNORECASE | re.DOTALL)
+SOCIAL_IMAGE_PATH = "/static/android-chrome-512x512.png"
 
 
 @app.middleware("http")
@@ -339,13 +340,13 @@ def _page_description(
     """Build the durable app shell meta description."""
     if locations_page:
         return (
-            "Browse configured open water swimming locations with discoverable "
-            "condition data APIs."
+            "Browse open water swimming condition pages and JSON data APIs for "
+            "configured swim locations."
         )
     if cfg is None:
         raise RuntimeError("Location config is required for location page descriptions")
     return (
-        f"{cfg.description}. View water temperature, tide, and current data for "
+        f"{cfg.description}. Water temperature, tide, and current data for "
         f"{cfg.swim_location} in {cfg.name}."
     )
 
@@ -364,16 +365,30 @@ def _head_metadata(
     escaped_description = _html_attr(description)
     escaped_canonical = _html_attr(canonical_url)
     escaped_alternate = _html_attr(alternate_api_url)
+    escaped_social_image = _html_attr(canonical.canonical_url(SOCIAL_IMAGE_PATH))
+    escaped_social_alt = _html_attr("shall we swim? open water conditions")
 
     return "\n".join(
         [
             f"<title>{escaped_title_text}</title>",
             f'<meta name="description" content="{escaped_description}">',
             f'<link rel="canonical" href="{escaped_canonical}">',
+            '<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">',
+            '<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">',
             f'<meta property="og:title" content="{escaped_title_attr}">',
             f'<meta property="og:description" content="{escaped_description}">',
             f'<meta property="og:url" content="{escaped_canonical}">',
             '<meta property="og:type" content="website">',
+            '<meta property="og:site_name" content="shall we swim?">',
+            f'<meta property="og:image" content="{escaped_social_image}">',
+            '<meta property="og:image:width" content="512">',
+            '<meta property="og:image:height" content="512">',
+            f'<meta property="og:image:alt" content="{escaped_social_alt}">',
+            '<meta name="twitter:card" content="summary">',
+            f'<meta name="twitter:title" content="{escaped_title_attr}">',
+            f'<meta name="twitter:description" content="{escaped_description}">',
+            f'<meta name="twitter:image" content="{escaped_social_image}">',
+            f'<meta name="twitter:image:alt" content="{escaped_social_alt}">',
             (
                 '<link rel="alternate" type="application/json" '
                 f'href="{escaped_alternate}">'
@@ -437,6 +452,18 @@ def _noscript_fallback(
     *, cfg: config.LocationConfig | None, locations_page: bool
 ) -> str:
     """Build compact no-JavaScript fallback content for app routes."""
+    fallback_styles = (
+        "<style>"
+        ".durable-fallback{max-width:42rem;margin:2rem auto;padding:0 1rem;"
+        "font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+        "color:#102a2f}"
+        ".durable-fallback a{color:#005f73;text-decoration:underline;"
+        "text-underline-offset:0.16em}"
+        ".durable-fallback li{margin:0.35rem 0}"
+        ".durable-fallback ul{padding-left:1.25rem}"
+        "</style>"
+    )
+
     if locations_page:
         location_links = " ".join(
             (
@@ -447,11 +474,12 @@ def _noscript_fallback(
         )
         return (
             "<noscript>"
-            '<section aria-label="No JavaScript location list">'
+            f"{fallback_styles}"
+            '<section class="durable-fallback" aria-label="No JavaScript location list">'
             "<h1>Open water swimming locations</h1>"
-            "<p>Browse configured swim locations and their JSON data API.</p>"
+            "<p>Browse swim-condition pages and machine-readable location data.</p>"
             f"<ul>{location_links}</ul>"
-            '<p><a href="/api/locations">Location data API</a></p>'
+            '<p><a href="/api/locations">Location data as JSON</a></p>'
             "</section>"
             "</noscript>"
         )
@@ -461,13 +489,17 @@ def _noscript_fallback(
 
     return (
         "<noscript>"
-        '<section aria-label="No JavaScript location summary">'
+        f"{fallback_styles}"
+        '<section class="durable-fallback" aria-label="No JavaScript location summary">'
         f"<h1>{_html_text(cfg.name)} swim conditions</h1>"
-        f"<p>{_html_text(cfg.swim_location)}</p>"
-        "<p>"
-        f'<a href="/api/{_html_attr(cfg.code)}/conditions">Condition data API</a> '
-        '<a href="/api/locations">All locations API</a>'
-        "</p>"
+        f'<p><a href="{_html_attr(cfg.swim_location_link)}">'
+        f"{_html_text(cfg.swim_location)}</a></p>"
+        f"<p>{_html_text(cfg.description)}</p>"
+        "<ul>"
+        f'<li><a href="/api/{_html_attr(cfg.code)}/conditions">Condition data as JSON</a></li>'
+        '<li><a href="/api/locations">All locations as JSON</a></li>'
+        '<li><a href="/locations">All locations</a></li>'
+        "</ul>"
         "</section>"
         "</noscript>"
     )

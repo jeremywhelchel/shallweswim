@@ -69,17 +69,19 @@ declare global {
 export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
   const location = bootstrap.locations[locationCode];
   const [searchParams, setSearchParams] = useSearchParams();
-  const showsWaterMovement = Boolean(location?.metadata.features.tides);
-  const showsObservedFlow = Boolean(
-    location?.metadata.features.currents && !location?.metadata.features.tides,
-  );
   const supportsWaterMovementPlanning = Boolean(
-    location?.metadata.features.tides,
+    location?.metadata.features.water_movement_planning,
   );
   const supportsWaterMovementDetail = Boolean(
-    locationCode === "nyc" &&
-      location?.metadata.features.tides &&
-      location?.metadata.features.currents,
+    location?.metadata.features.water_movement_detail,
+  );
+  const showsWaterMovement = Boolean(
+    location?.metadata.features.tides ||
+      supportsWaterMovementPlanning ||
+      supportsWaterMovementDetail,
+  );
+  const showsObservedFlow = Boolean(
+    location?.metadata.features.currents && !showsWaterMovement,
   );
   const hasWaterMovementControls =
     supportsWaterMovementPlanning || supportsWaterMovementDetail;

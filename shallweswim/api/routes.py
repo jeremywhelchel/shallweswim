@@ -434,6 +434,10 @@ def register_routes(app: fastapi.FastAPI) -> None:
         temp_enabled = cfg.temp_source is not None and cfg.temp_source.live_enabled
         tides_enabled = cfg.tide_source is not None
         currents_enabled = cfg.currents_source is not None
+        prediction_currents_enabled = (
+            cfg.currents_source is not None
+            and cfg.currents_source.source_type == types.DataSourceType.PREDICTION
+        )
         webcam_enabled = cfg.presentation.webcam is not None
         transit_enabled = cfg.presentation.transit is not None
 
@@ -465,6 +469,12 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     temperature=temp_enabled,
                     tides=tides_enabled,
                     currents=currents_enabled,
+                    water_movement_planning=(
+                        tides_enabled or prediction_currents_enabled
+                    ),
+                    water_movement_detail=(
+                        tides_enabled and prediction_currents_enabled
+                    ),
                     webcam=webcam_enabled,
                     transit=transit_enabled,
                     windy=cfg.presentation.windy.enabled,

@@ -350,6 +350,12 @@ class AppFeatureFlags(BaseModel):
     temperature: bool = Field(..., description="Whether to show temperature UI")
     tides: bool = Field(..., description="Whether to show tide UI")
     currents: bool = Field(..., description="Whether to show current UI")
+    water_movement_planning: bool = Field(
+        ..., description="Whether to show water movement planner controls"
+    )
+    water_movement_detail: bool = Field(
+        ..., description="Whether to show water movement detail controls"
+    )
     webcam: bool = Field(..., description="Whether to show webcam UI")
     transit: bool = Field(..., description="Whether to show transit UI")
     windy: bool = Field(..., description="Whether to show Windy forecast UI")

@@ -267,6 +267,8 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert nyc["metadata"]["features"]["webcam"] is True
     assert nyc["metadata"]["features"]["transit"] is True
     assert nyc["metadata"]["features"]["windy"] is True
+    assert nyc["metadata"]["features"]["water_movement_planning"] is True
+    assert nyc["metadata"]["features"]["water_movement_detail"] is True
     assert data["source_code_link"]["url"].endswith("/shallweswim")
     assert nyc["integrations"]["webcam"]["provider"] == "youtube_live"
     assert nyc["integrations"]["webcam"]["channel_id"]
@@ -294,6 +296,8 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     chi = data["locations"]["chi"]
     assert chi["metadata"]["features"]["webcam"] is True
     assert chi["metadata"]["features"]["transit"] is False
+    assert chi["metadata"]["features"]["water_movement_planning"] is False
+    assert chi["metadata"]["features"]["water_movement_detail"] is False
     assert chi["integrations"]["webcam"]["provider"] == "iframe"
     assert chi["integrations"]["webcam"]["embed_url"].startswith(
         "https://api.wetmet.net"
@@ -303,6 +307,8 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     sdf = data["locations"]["sdf"]
     assert sdf["metadata"]["temperature_plots"] == {"live": True, "historic": False}
     assert sdf["metadata"]["features"]["webcam"] is True
+    assert sdf["metadata"]["features"]["water_movement_planning"] is False
+    assert sdf["metadata"]["features"]["water_movement_detail"] is False
     assert sdf["integrations"]["webcam"]["provider"] == "earthcam_embed"
     assert sdf["integrations"]["webcam"]["embed_url"].startswith(
         "https://share.earthcam.net/"

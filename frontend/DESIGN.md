@@ -602,7 +602,8 @@ per-location display metadata:
   latitude
   longitude
   timezone
-  feature flags for temperature, tides, currents, webcam, transit, Windy
+  feature flags for temperature, tides, currents, water-movement planner/detail,
+  webcam, transit, Windy
   temperature plot capabilities for live and historical plot ranges
   source citation HTML or structured citation data
 per-location external integration config:
@@ -615,9 +616,11 @@ frontend tables. The frontend may contain generic presentation code and generic
 unavailable-state copy, but adding a location, changing a swim-location link,
 enabling/disabling a camera, changing transit route IDs, or updating citations
 should be a backend configuration/API contract change, not a frontend source-code
-change. Temperature plot availability should also come from bootstrap metadata:
-locations with current temperature data but no useful historical series should
-not render permanent unavailable historical plot frames.
+change. Temperature plot availability and water-movement planner/detail
+availability should also come from bootstrap metadata: locations with current
+temperature data but no useful historical series should not render permanent
+unavailable historical plot frames, and new current-prediction locations should
+not require frontend source edits to expose generic detail controls.
 
 ### Location Config Ownership
 
@@ -775,7 +778,7 @@ Route scope:
   planning surface lives in the Water Movement card on the dashboard
   (Milestone 3); deep links use `?planner=open&at=...` for the scrubber
   and `?detail=open&at=...` for the supporting detail panel.
-- `/app/locations` renders a React all-locations status page: bootstrap provides
+- `/locations` renders a React all-locations status page: bootstrap provides
   the configured locations and capability chips, and each card fetches
   `/api/{loc}/conditions` for the latest water temperature, station, and
   timestamp. Per-location failures render unavailable states without blocking
@@ -1166,6 +1169,12 @@ panel requires a supported detail product; today that means a current prediction
 location with `/api/{loc}/plots/current_tide?at=...`. Tide-only locations should
 not open a detail panel until a tide-only detail plot or structured chart product
 exists.
+
+The frontend should consume explicit bootstrap capabilities for planner and
+detail availability. NYC-specific guidance, maps, methodology, and legacy charts
+remain NYC interpretation code, but opening the detail panel and rendering the
+generic projection plot must be capability-driven rather than keyed to the NYC
+location code.
 
 Default for any new location: the planner trigger is **disabled** unless the
 location has a prediction-backed water-movement capability, such as tide

@@ -158,12 +158,24 @@ function locationFeatureChips(features: AppLocationFeatures): FeatureChip[] {
     { label: "Temp", enabled: features.temperature },
     { label: "Tides", enabled: features.tides },
     {
-      label:
-        features.currents && !features.tides ? "Observed flow" : "Currents",
+      label: waterMovementLabel(features),
       enabled: features.currents,
     },
     { label: "Webcam", enabled: features.webcam },
     { label: "Forecast", enabled: features.windy },
     { label: "Transit", enabled: features.transit },
   ];
+}
+
+function waterMovementLabel(features: AppLocationFeatures) {
+  if (features.water_movement_detail) {
+    return "Current detail";
+  }
+  if (features.water_movement_planning) {
+    return "Planner";
+  }
+  if (features.currents && !features.tides) {
+    return "Observed flow";
+  }
+  return "Currents";
 }

@@ -39,6 +39,8 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
           temperature: true,
           tides: true,
           currents: true,
+          water_movement_planning: true,
+          water_movement_detail: true,
           webcam: false,
           transit: false,
           windy: false,
@@ -304,6 +306,8 @@ function syntheticLocation({
         temperature: false,
         tides: false,
         currents: false,
+        water_movement_planning: false,
+        water_movement_detail: false,
         webcam: false,
         transit: false,
         windy: false,
@@ -482,6 +486,8 @@ test("renders all configured locations from bootstrap metadata", () => {
             ...bootstrapPayload.locations.nyc.metadata.features,
             tides: false,
             currents: true,
+            water_movement_planning: false,
+            water_movement_detail: false,
             transit: false,
           },
         },
@@ -528,6 +534,7 @@ test("renders all configured locations from bootstrap metadata", () => {
   expect(screen.getByText(/Data from Coney Island/)).toBeVisible();
   expect(screen.getByText(/Data from Ohio River at Water Tower/)).toBeVisible();
   expect(screen.getByText("Observed flow")).toBeVisible();
+  expect(screen.getByText("Current detail")).toBeVisible();
   expect(screen.getAllByText("Transit").length).toBeGreaterThan(0);
 });
 
@@ -537,6 +544,7 @@ test("renders optional page sections from synthetic feature capabilities", async
     features: {
       temperature: true,
       tides: true,
+      water_movement_planning: true,
       webcam: true,
       transit: true,
       windy: true,
@@ -638,6 +646,8 @@ test("omits optional page sections when synthetic capabilities are disabled", ()
     features: {
       tides: false,
       currents: false,
+      water_movement_planning: false,
+      water_movement_detail: false,
       webcam: false,
       transit: false,
       windy: false,
@@ -711,7 +721,12 @@ test.each([
       code: "tide",
       tides: conditionsPayload.tides,
     }),
-    features: { tides: true, currents: false },
+    features: {
+      tides: true,
+      currents: false,
+      water_movement_planning: true,
+      water_movement_detail: false,
+    },
     planVisible: true,
     sourceBadge: "Predicted",
     waterMovementVisible: true,
@@ -732,7 +747,12 @@ test.each([
         source_type: "observation",
       }),
     }),
-    features: { tides: false, currents: true },
+    features: {
+      tides: false,
+      currents: true,
+      water_movement_planning: false,
+      water_movement_detail: false,
+    },
     planVisible: false,
     sourceBadge: "Observed",
     waterMovementVisible: true,
@@ -902,6 +922,7 @@ test("renders an iframe webcam provider for non-NYC locations", async () => {
           features: {
             ...bootstrapPayload.locations.nyc.metadata.features,
             currents: false,
+            water_movement_detail: false,
             webcam: true,
           },
         },
@@ -963,6 +984,7 @@ test("renders a named EarthCam provider as a contained iframe", async () => {
           features: {
             ...bootstrapPayload.locations.nyc.metadata.features,
             currents: false,
+            water_movement_detail: false,
             webcam: true,
           },
         },
@@ -1101,6 +1123,39 @@ test("detail mode shows the current and tide plot independently", async () => {
   ).toHaveAttribute("src", "/static/tidecharts/low+3.png");
 });
 
+test("detail mode is enabled by capability for non-NYC prediction-current locations", () => {
+  const location = syntheticLocation({
+    code: "sfo",
+    features: {
+      tides: true,
+      currents: true,
+      water_movement_planning: true,
+      water_movement_detail: true,
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    initialEntry: "/sfo?detail=open&at=2026-05-13T08:30:00",
+    locationCode: "sfo",
+  });
+
+  expect(screen.getByRole("button", { name: "Details" })).toBeVisible();
+  expect(
+    screen.getByRole("img", {
+      name: "Tide and current plot for May 13, 2026, 8:30 AM",
+    }),
+  ).toHaveAttribute(
+    "src",
+    "/api/sfo/plots/current_tide?at=2026-05-13T08%3A30%3A00",
+  );
+  expect(
+    screen.queryByRole("heading", {
+      name: "Grimaldo's Chair current guidance",
+    }),
+  ).not.toBeInTheDocument();
+});
+
 test("NYC local map and harbor chart derive from selected time state", () => {
   const floodConditions: components["schemas"]["LocationConditions"] = {
     ...shiftedConditionsPayload,
@@ -1190,6 +1245,8 @@ test("omits water movement for locations without tide or current data", () => {
             ...bootstrapPayload.locations.nyc.metadata.features,
             currents: false,
             tides: false,
+            water_movement_planning: false,
+            water_movement_detail: false,
           },
         },
       },
@@ -1237,6 +1294,7 @@ test("supports planner mode for tide-only locations without detail controls", ()
             ...bootstrapPayload.locations.nyc.metadata.features,
             currents: false,
             tides: true,
+            water_movement_detail: false,
           },
         },
       },
@@ -1299,6 +1357,8 @@ test("renders observed flow without tidal water movement for river-current locat
             ...bootstrapPayload.locations.nyc.metadata.features,
             currents: true,
             tides: false,
+            water_movement_planning: false,
+            water_movement_detail: false,
           },
         },
       },

@@ -736,6 +736,16 @@ export interface components {
              */
             transit: boolean;
             /**
+             * Water Movement Detail
+             * @description Whether to show water movement detail controls
+             */
+            water_movement_detail: boolean;
+            /**
+             * Water Movement Planning
+             * @description Whether to show water movement planner controls
+             */
+            water_movement_planning: boolean;
+            /**
              * Webcam
              * @description Whether to show webcam UI
              */

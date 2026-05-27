@@ -143,6 +143,16 @@
             "title": "Transit",
             "type": "boolean"
           },
+          "water_movement_detail": {
+            "description": "Whether to show water movement detail controls",
+            "title": "Water Movement Detail",
+            "type": "boolean"
+          },
+          "water_movement_planning": {
+            "description": "Whether to show water movement planner controls",
+            "title": "Water Movement Planning",
+            "type": "boolean"
+          },
           "webcam": {
             "description": "Whether to show webcam UI",
             "title": "Webcam",
@@ -158,6 +168,8 @@
           "temperature",
           "tides",
           "currents",
+          "water_movement_planning",
+          "water_movement_detail",
           "webcam",
           "transit",
           "windy"

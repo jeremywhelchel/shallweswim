@@ -134,10 +134,10 @@ API/config ownership:
   not a stable external-consumer API. It may intentionally duplicate selected
   static location metadata also exposed by `/api/locations` and compose it with
   app presentation configuration to avoid extra startup requests. It may include
-  display labels, feature flags, trusted citation HTML, and external embed
-  configuration, but should not include dynamic condition data, manifest
-  metadata, station IDs, or feed internals unless there is an explicit frontend
-  need and approval.
+  display labels, feature flags, water-movement planner/detail capabilities,
+  trusted citation HTML, and external embed configuration, but should not include
+  dynamic condition data, manifest metadata, station IDs, or feed internals
+  unless there is an explicit frontend need and approval.
 
 ### Configuration
 

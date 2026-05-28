@@ -850,7 +850,8 @@ def create_tide_current_plot(
         pd.Timestamp(end_time).floor("3h"),
         freq="3h",
     ).to_pydatetime()
-    ax.set_xticks(major_ticks)
+    major_tick_values = md.date2num(major_ticks)
+    ax.set_xticks(major_tick_values)
     ax.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
     ax.set_ylabel(
         "Current Speed (kts)", fontsize=LABEL_FONT_SIZE, color=CURRENT_FLOOD_COLOR
@@ -984,7 +985,7 @@ def create_tide_current_plot(
 
     # Add a second Y axis for the tide (right)
     ax2 = ax.twinx()
-    ax2.set_xticks(major_ticks)
+    ax2.set_xticks(major_tick_values)
     ax2.set_ylabel("Tide Height (ft)", fontsize=LABEL_FONT_SIZE, color=TIDE_COLOR)
     ax2.grid(False)
     ax2.tick_params(axis="y", labelsize=LABEL_FONT_SIZE - 4, colors=TIDE_COLOR)
@@ -1103,7 +1104,7 @@ def create_tide_current_plot(
             },
         )
 
-    ax.set_xlim(start_time, end_time)
+    ax.set_xlim(md.date2num(start_time), md.date2num(end_time))
 
     # No titles for the tide/current plot as per original implementation
 

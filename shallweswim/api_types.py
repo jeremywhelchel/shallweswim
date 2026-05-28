@@ -74,9 +74,9 @@ class TemperatureInfo(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    timestamp: str = Field(
+    timestamp: datetime.datetime = Field(
         ...,
-        description="ISO 8601 formatted timestamp of the reading (in location's local timezone)",
+        description="Timestamp of the reading in the location's local timezone",
     )
     water_temp: float = Field(..., description="Water temperature in degrees")
     units: str = Field("F", description="Temperature units (F for Fahrenheit)")
@@ -90,9 +90,9 @@ class TideEntry(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    time: str = Field(
+    time: datetime.datetime = Field(
         ...,
-        description="ISO 8601 formatted timestamp of the tide event (in location's local timezone)",
+        description="Timestamp of the tide event in the location's local timezone",
     )
     type: TideCategory = Field(..., description="Type of tide (Enum: TideCategory)")
     prediction: float = Field(..., description="Height of tide in feet")
@@ -180,9 +180,9 @@ class CurrentInfo(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    timestamp: str = Field(
+    timestamp: datetime.datetime = Field(
         ...,
-        description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
+        description="Timestamp of the prediction or observation in the location's local timezone",
     )
     direction: CurrentDirection | None = Field(
         None,
@@ -287,7 +287,7 @@ class NavigationInfo(BaseModel):
         deprecated=True,
     )
     plot_url: str = Field(..., description="Matching tide/current plot URL")
-    at: str | None = Field(
+    at: datetime.datetime | None = Field(
         default=None,
         description="Location-local planner timestamp when the request used at",
     )
@@ -537,9 +537,9 @@ class CurrentsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     location: LocationInfo
-    timestamp: str = Field(
+    timestamp: datetime.datetime = Field(
         ...,
-        description="ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
+        description="Timestamp of the prediction in the location's local timezone",
     )
     current: CurrentInfo
     legacy_chart: LegacyChartInfo | None = Field(

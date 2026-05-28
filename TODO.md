@@ -114,11 +114,6 @@
   previous/next times and currents API URLs from local app state. Keep `shift`,
   `at`, and `plot_url` unless a later frontend pass removes the backend-rendered
   tide/current plot dependency too.
-- Clean up API timestamp field types. Several existing API Pydantic models use
-  `str` plus manual `.isoformat()` serialization for timestamps. Prefer
-  `datetime.datetime` fields so Pydantic/OpenAPI can expose proper `date-time`
-  schemas, then migrate route serialization and generated frontend types in one
-  coordinated pass.
 - Review whether the newer `units` fields are consistently useful in public API
   responses. Keep them where they clarify mixed-unit locations; remove or
   normalize them where they add noise.

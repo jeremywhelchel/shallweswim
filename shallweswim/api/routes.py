@@ -192,7 +192,7 @@ def api_location_info(location: str, cfg: config_lib.LocationConfig) -> Location
 def api_tide_entry(tide: types.TideEntry) -> TideEntry:
     """Convert an internal tide event to the API model."""
     return TideEntry(
-        time=tide.time.isoformat(),
+        time=tide.time,
         type=tide.type,
         prediction=tide.prediction,
     )
@@ -234,7 +234,7 @@ def api_current_info(
         magnitude = round(magnitude, magnitude_digits)
 
     return CurrentInfo(
-        timestamp=current_info.timestamp.isoformat(),
+        timestamp=current_info.timestamp,
         direction=current_info.direction,
         phase=current_info.phase,
         strength=current_info.strength,
@@ -261,7 +261,7 @@ def api_temperature_info(
 
     temp_reading = data_manager.get_current_temperature()
     return TemperatureInfo(
-        timestamp=temp_reading.timestamp.isoformat(),
+        timestamp=temp_reading.timestamp,
         water_temp=temp_reading.temperature,
         units="F",
         station_name=cfg.temp_source.name,
@@ -975,13 +975,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
             prev_hour=back,
             current_api_url=f"/api/{location}/currents",
             plot_url=f"/api/{location}/plots/current_tide?{plot_query}",
-            at=ctx.time_query.at,
+            at=ctx.timestamp if ctx.time_query.at is not None else None,
         )
 
         # Return structured response
         return CurrentsResponse(
             location=api_location_info(location, ctx.cfg),
-            timestamp=ctx.timestamp.isoformat(),
+            timestamp=ctx.timestamp,
             current=current_prediction,
             legacy_chart=legacy_chart,
             current_chart_filename=current_chart_filename,

@@ -991,7 +991,8 @@ export interface components {
             strength?: components["schemas"]["CurrentStrength"] | null;
             /**
              * Timestamp
-             * @description ISO 8601 formatted timestamp of the prediction (in location's local timezone)
+             * Format: date-time
+             * @description Timestamp of the prediction or observation in the location's local timezone
              */
             timestamp: string;
             /** @description Current trend for non-slack tidal predictions (building, easing, or steady). Null for slack or non-tidal currents. */
@@ -1068,7 +1069,8 @@ export interface components {
             navigation: components["schemas"]["NavigationInfo"];
             /**
              * Timestamp
-             * @description ISO 8601 formatted timestamp of the prediction (in location's local timezone)
+             * Format: date-time
+             * @description Timestamp of the prediction in the location's local timezone
              */
             timestamp: string;
         };
@@ -1347,7 +1349,8 @@ export interface components {
             station_name?: string | null;
             /**
              * Timestamp
-             * @description ISO 8601 formatted timestamp of the reading (in location's local timezone)
+             * Format: date-time
+             * @description Timestamp of the reading in the location's local timezone
              */
             timestamp: string;
             /**
@@ -1379,7 +1382,8 @@ export interface components {
             prediction: number;
             /**
              * Time
-             * @description ISO 8601 formatted timestamp of the tide event (in location's local timezone)
+             * Format: date-time
+             * @description Timestamp of the tide event in the location's local timezone
              */
             time: string;
             /** @description Type of tide (Enum: TideCategory) */

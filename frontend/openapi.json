@@ -617,7 +617,8 @@
             "description": "Cycle-relative current strength for non-slack tidal predictions (light, moderate, or strong). Null for slack or non-tidal currents."
           },
           "timestamp": {
-            "description": "ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
+            "description": "Timestamp of the prediction or observation in the location's local timezone",
+            "format": "date-time",
             "title": "Timestamp",
             "type": "string"
           },
@@ -771,7 +772,8 @@
             "description": "Navigation parameters for time shifting"
           },
           "timestamp": {
-            "description": "ISO 8601 formatted timestamp of the prediction (in location's local timezone)",
+            "description": "Timestamp of the prediction in the location's local timezone",
+            "format": "date-time",
             "title": "Timestamp",
             "type": "string"
           }
@@ -1173,6 +1175,7 @@
           "at": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
@@ -1238,7 +1241,8 @@
             "title": "Station Name"
           },
           "timestamp": {
-            "description": "ISO 8601 formatted timestamp of the reading (in location's local timezone)",
+            "description": "Timestamp of the reading in the location's local timezone",
+            "format": "date-time",
             "title": "Timestamp",
             "type": "string"
           },
@@ -1279,7 +1283,8 @@
             "type": "number"
           },
           "time": {
-            "description": "ISO 8601 formatted timestamp of the tide event (in location's local timezone)",
+            "description": "Timestamp of the tide event in the location's local timezone",
+            "format": "date-time",
             "title": "Time",
             "type": "string"
           },

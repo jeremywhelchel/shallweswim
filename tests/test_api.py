@@ -717,6 +717,22 @@ def test_openapi_documents_condition_state_enums(test_client: TestClient) -> Non
     assert "strength" in schemas["CurrentInfo"]["properties"]
     assert "trend" in schemas["CurrentInfo"]["properties"]
     assert "range" in schemas["CurrentInfo"]["properties"]
+    timestamp_fields = [
+        schemas["TemperatureInfo"]["properties"]["timestamp"],
+        schemas["TideEntry"]["properties"]["time"],
+        schemas["TideState"]["properties"]["timestamp"],
+        schemas["CurrentInfo"]["properties"]["timestamp"],
+        schemas["CurrentRangePoint"]["properties"]["timestamp"],
+        schemas["CurrentsResponse"]["properties"]["timestamp"],
+    ]
+    for timestamp_field in timestamp_fields:
+        assert timestamp_field["type"] == "string"
+        assert timestamp_field["format"] == "date-time"
+
+    navigation_at = schemas["NavigationInfo"]["properties"]["at"]
+    assert {"type": "string", "format": "date-time"} in navigation_at["anyOf"]
+    assert {"type": "null"} in navigation_at["anyOf"]
+
     range_point_timestamp = schemas["CurrentRangePoint"]["properties"]["timestamp"]
     assert range_point_timestamp["type"] == "string"
     assert range_point_timestamp["format"] == "date-time"

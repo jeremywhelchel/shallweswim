@@ -1,7 +1,7 @@
 [project]
 name = "shallweswim"
 version = "0.1.0"
-description = "Website to display swimming conditions at Coney Island / Brighton Beach"
+description = "Open water swimming conditions for popular swimming spots"
 authors = [{name = "Jeremy Whelchel", email = "jeremy@whelchel.me"}]
 readme = "README.md"
 requires-python = "~=3.13.0"

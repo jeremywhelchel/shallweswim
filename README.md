@@ -201,7 +201,10 @@ uv run pre-commit install
 
 ### Testing and Code Quality
 
-The project uses pytest for tests and several tools to maintain code quality. These checks are configured as pre-commit hooks:
+The project uses pytest for tests and several tools to maintain code quality.
+Pre-commit runs the fast local subset: file hygiene, formatting/linting, Markdown
+linting, Ruff, and Pyrefly. Run the broader test, browser, integration, and
+performance checks explicitly or through CI.
 
 ```bash
 # Run unit tests (excluding integration tests)
@@ -264,7 +267,8 @@ uv run playwright install chromium
 # Or install the same browser via frontend Playwright
 corepack pnpm@10.18.3 --dir frontend test:e2e:install
 
-# If your Linux container/VM is missing browser system libraries, install them too
+# If Playwright reports missing Linux system libraries in a disposable dev
+# container, VM, or CI image, install them too
 uv run playwright install-deps chromium
 
 # Run the optional Jinja browser tests
@@ -276,11 +280,12 @@ corepack pnpm@10.18.3 --dir frontend build
 uv run pytest tests/test_react_stack_browser.py -v --run-browser
 ```
 
-`playwright install-deps chromium` modifies system packages with `apt` on Linux,
-so run it only in a development container/VM or CI image where that is expected.
-If you prefer explicit package installation in a Dockerfile or GitHub Actions
-step, Playwright's Chromium dependency warning lists the needed packages for the
-current image.
+`playwright install-deps chromium` modifies system packages with `apt` on Linux.
+Do not run it as routine setup on a host machine; use it only after Playwright
+reports missing system libraries, and only in a disposable development
+container/VM or CI image where that mutation is expected. If you prefer explicit
+package installation in a Dockerfile or GitHub Actions step, Playwright's
+Chromium dependency warning lists the needed packages for the current image.
 
 Integration test teardown intentionally uses bounded waits for blocking live-API
 worker threads. This avoids GitHub Actions stalls that happened when teardown

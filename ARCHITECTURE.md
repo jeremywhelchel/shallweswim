@@ -28,7 +28,7 @@ shallweswim/
 │   ├── coops.py         # NOAA CO-OPS (tides, currents, coastal temps)
 │   ├── ndbc.py          # NOAA NDBC (buoy temperatures)
 │   └── nwis.py          # USGS NWIS (river temps, discharge)
-├── plotting.py          # Chart generation (runs in process pool)
+├── plot.py              # Chart generation (runs in process pool)
 └── util.py              # Shared utilities
 
 tests/                   # Unit and integration tests
@@ -192,7 +192,8 @@ Two error types for data availability, at different layers:
   - Use deterministic in-memory feed data, not live APIs
   - Guard important user-facing request paths against accidental feed-scale DataFrame work
   - Run separately with: `uv run pytest tests/performance -v --run-performance`
-  - GitHub Actions runs them on a weekly schedule, manually, or on PRs labeled `run-performance-tests`
+  - GitHub Actions runs them on every push and pull request, plus a weekly
+    schedule and manual dispatch
 - **Fixtures**: Use `conftest.py` for shared fixtures.
 - **Warnings as Errors**: Pytest treats all warnings as errors (`filterwarnings = ["error"]`).
   - New warnings fail tests immediately, forcing explicit decisions

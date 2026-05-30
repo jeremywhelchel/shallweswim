@@ -43,6 +43,7 @@ const TEMPERATURE_PLOT_IMAGE_SIZE = {
   width: 1200,
   height: 486,
 } as const;
+const WEBCAM_PRELOAD_MARGIN = "100px";
 
 type LocationPageProps = {
   bootstrap: AppBootstrapResponse;
@@ -1744,6 +1745,7 @@ function WindyEmbed({
     >
       <iframe
         className="block h-full w-full max-w-full border-0"
+        loading="lazy"
         src={`https://embed.windy.com/embed2.html?${params.toString()}`}
         title="Windy forecast"
       />
@@ -1753,16 +1755,29 @@ function WindyEmbed({
 
 function WebcamEmbed({ config }: { config: AppWebcamConfig }) {
   let embed: ReactNode;
+  const lazyLoad = config.provider !== "external_link";
 
   switch (config.provider) {
     case "youtube_live":
-      embed = <YouTubeLiveEmbed config={config} />;
+      embed = (
+        <DeferredWebcamFrame label={config.label}>
+          {(onLoad) => <YouTubeLiveEmbed config={config} onLoad={onLoad} />}
+        </DeferredWebcamFrame>
+      );
       break;
     case "iframe":
-      embed = <IframeWebcamEmbed config={config} />;
+      embed = (
+        <DeferredWebcamFrame label={config.label}>
+          {(onLoad) => <IframeWebcamEmbed config={config} onLoad={onLoad} />}
+        </DeferredWebcamFrame>
+      );
       break;
     case "earthcam_embed":
-      embed = <EarthCamEmbed config={config} />;
+      embed = (
+        <DeferredWebcamFrame label={config.label}>
+          {(onLoad) => <EarthCamEmbed config={config} onLoad={onLoad} />}
+        </DeferredWebcamFrame>
+      );
       break;
     case "external_link":
       embed = <ExternalWebcamLink config={config} />;
@@ -1773,12 +1788,104 @@ function WebcamEmbed({ config }: { config: AppWebcamConfig }) {
 
   return (
     <div>
-      {embed}
+      {lazyLoad ? (
+        <LazyWebcamMount label={config.label}>{embed}</LazyWebcamMount>
+      ) : (
+        embed
+      )}
       {config.note ? (
         <p className="mt-2 text-sm text-slate-600">{config.note}</p>
       ) : null}
     </div>
   );
+}
+
+type WebcamFrameProps = {
+  config: AppWebcamConfig;
+  onLoad?: () => void;
+};
+
+function WebcamPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="flex aspect-video items-center justify-center overflow-hidden rounded border border-swim-line bg-white text-sm text-slate-600">
+      {label} loading
+    </div>
+  );
+}
+
+function LazyWebcamMount({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  const [containerRef, shouldLoad] = useNearViewport<HTMLDivElement>(
+    WEBCAM_PRELOAD_MARGIN,
+  );
+
+  return (
+    <div ref={containerRef}>
+      {shouldLoad ? children : <WebcamPlaceholder label={label} />}
+    </div>
+  );
+}
+
+function DeferredWebcamFrame({
+  children,
+  label,
+}: {
+  children: (onLoad: () => void) => ReactNode;
+  label: string;
+}) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div className="relative">
+      {children(() => setLoaded(true))}
+      {loaded ? null : (
+        <div className="absolute inset-0">
+          <WebcamPlaceholder label={label} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function useNearViewport<T extends Element>(rootMargin: string) {
+  const ref = useRef<T | null>(null);
+  const [nearViewport, setNearViewport] = useState(false);
+
+  useEffect(() => {
+    if (nearViewport) {
+      return;
+    }
+
+    if (typeof IntersectionObserver === "undefined") {
+      setNearViewport(true);
+      return;
+    }
+
+    const element = ref.current;
+    if (!element) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin },
+    );
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [nearViewport, rootMargin]);
+
+  return [ref, nearViewport] as const;
 }
 
 function requireWebcamField(
@@ -1792,7 +1899,7 @@ function requireWebcamField(
   return value;
 }
 
-function YouTubeLiveEmbed({ config }: { config: AppWebcamConfig }) {
+function YouTubeLiveEmbed({ config, onLoad }: WebcamFrameProps) {
   const embedUrl = requireWebcamField(
     config.embed_url,
     config.provider,
@@ -1849,6 +1956,7 @@ function YouTubeLiveEmbed({ config }: { config: AppWebcamConfig }) {
         allowFullScreen
         className="h-full w-full"
         id="bbcam_player"
+        onLoad={onLoad}
         scrolling="no"
         src={embedUrl}
         title="Live webcam"
@@ -1857,7 +1965,7 @@ function YouTubeLiveEmbed({ config }: { config: AppWebcamConfig }) {
   );
 }
 
-function IframeWebcamEmbed({ config }: { config: AppWebcamConfig }) {
+function IframeWebcamEmbed({ config, onLoad }: WebcamFrameProps) {
   const embedUrl = requireWebcamField(
     config.embed_url,
     config.provider,
@@ -1869,6 +1977,7 @@ function IframeWebcamEmbed({ config }: { config: AppWebcamConfig }) {
       <iframe
         allowFullScreen
         className="block h-full w-full border-0"
+        onLoad={onLoad}
         scrolling="no"
         src={embedUrl}
         title={config.label}
@@ -1877,7 +1986,7 @@ function IframeWebcamEmbed({ config }: { config: AppWebcamConfig }) {
   );
 }
 
-function EarthCamEmbed({ config }: { config: AppWebcamConfig }) {
+function EarthCamEmbed({ config, onLoad }: WebcamFrameProps) {
   const embedUrl = requireWebcamField(
     config.embed_url,
     config.provider,
@@ -1892,6 +2001,7 @@ function EarthCamEmbed({ config }: { config: AppWebcamConfig }) {
       <iframe
         allowFullScreen
         className="block h-full w-full border-0"
+        onLoad={onLoad}
         scrolling="no"
         src={embedUrl}
         title={config.label}

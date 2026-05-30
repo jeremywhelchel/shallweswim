@@ -39,6 +39,10 @@ const AT_TIDE_EDGE_PCT = 0.07;
 const NEAR_TIDE_EDGE_PCT = 0.15;
 const GENTLE_CURRENT_MAX_KT = 0.4;
 const FAST_CURRENT_MIN_KT = 1.0;
+const TEMPERATURE_PLOT_IMAGE_SIZE = {
+  width: 1200,
+  height: 486,
+} as const;
 
 type LocationPageProps = {
   bootstrap: AppBootstrapResponse;
@@ -262,23 +266,29 @@ export function ConditionsSummary({
   showWaterMovement?: boolean;
   waterMovementControls?: WaterMovementControls;
 }) {
-  if (isLoading) {
-    return <ShellMessage title="Loading latest conditions" />;
-  }
-
   const detailMode = Boolean(waterMovementControls?.detailOpen);
   const showMovementPanel = showWaterMovement || showObservedFlow;
+  const summaryClassName = detailMode
+    ? "grid gap-0 rounded border border-swim-line bg-white md:gap-4 md:border-0 md:bg-transparent"
+    : showMovementPanel
+      ? "grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent"
+      : "grid gap-0 rounded border border-swim-line bg-white md:border-0 md:bg-transparent";
+
+  if (isLoading) {
+    return (
+      <section aria-busy="true" className={summaryClassName}>
+        <LoadingTemperatureSummary compact={detailMode} />
+        {showMovementPanel ? (
+          <LoadingWaterMovementSummary
+            observed={showObservedFlow && !showWaterMovement}
+          />
+        ) : null}
+      </section>
+    );
+  }
 
   return (
-    <section
-      className={
-        detailMode
-          ? "grid gap-0 rounded border border-swim-line bg-white md:gap-4 md:border-0 md:bg-transparent"
-          : showMovementPanel
-            ? "grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent"
-            : "grid gap-0 rounded border border-swim-line bg-white md:border-0 md:bg-transparent"
-      }
-    >
+    <section className={summaryClassName}>
       <TemperatureSummary
         compact={detailMode}
         conditions={conditions}
@@ -297,6 +307,93 @@ export function ConditionsSummary({
         />
       ) : null}
     </section>
+  );
+}
+
+function LoadingTemperatureSummary({ compact = false }: { compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="border-swim-line border-b p-3 md:flex md:items-center md:justify-between md:gap-4 md:rounded md:border md:bg-white">
+        <div className="min-w-0 md:flex md:flex-wrap md:items-baseline md:gap-x-3 md:gap-y-1">
+          <h2 className="font-semibold text-base md:text-lg">
+            Water Temperature
+          </h2>
+          <div className="mt-1 flex items-baseline gap-2 md:mt-0">
+            <p className="text-sm text-slate-700">The water is currently</p>
+            <p className="font-mono font-semibold text-2xl text-swim-blue">
+              Loading
+            </p>
+          </div>
+        </div>
+        <p className="mt-1 min-w-0 text-xs text-slate-600 md:mt-0 md:text-right md:text-sm">
+          Loading the latest station reading.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
+      <h2 className="font-semibold text-base md:text-lg">Water Temperature</h2>
+      <div className="mt-1 flex items-baseline gap-2 md:block">
+        <p className="text-sm text-slate-700 md:mt-2 md:text-base">
+          The water is currently
+        </p>
+        <p className="font-mono font-semibold text-2xl text-swim-blue md:mt-1 md:text-3xl">
+          Loading
+        </p>
+      </div>
+      <p className="mt-1 text-xs text-slate-600 md:mt-2 md:text-sm">
+        Loading the latest station reading.
+      </p>
+    </div>
+  );
+}
+
+function LoadingWaterMovementSummary({ observed }: { observed: boolean }) {
+  return (
+    <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
+      <WaterMovementHeader badge={observed ? "Observed" : "Predicted"} />
+      <p className="mt-2 font-semibold text-lg text-swim-current leading-snug md:text-2xl">
+        Loading water movement
+      </p>
+      <LoadingDriftBar label={observed ? "FLOW" : "TIDE"} />
+      {observed ? null : <LoadingDriftBar label="CURRENT" />}
+    </div>
+  );
+}
+
+function LoadingDriftBar({ label }: { label: string }) {
+  return (
+    <div className="mt-2 rounded border border-swim-line bg-[#f8fbfc] px-3 py-2 md:mt-3 md:px-4 md:py-2.5">
+      <div className="flex items-baseline justify-between gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.1em] md:text-xs">
+        <span>
+          <span className="text-slate-500">{label}</span>{" "}
+          <span className="font-normal normal-case tracking-normal tabular-nums text-swim-ink">
+            Loading
+          </span>
+        </span>
+        <span className="text-swim-ink">--%</span>
+      </div>
+      <div
+        aria-hidden="true"
+        className="my-2 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1"
+      >
+        <span className="font-mono font-semibold text-xl text-slate-500 leading-none">
+          [
+        </span>
+        <span className="relative h-7 min-w-0 overflow-hidden">
+          <span className="absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 bg-[#cdd6db]" />
+        </span>
+        <span className="font-mono font-semibold text-xl text-slate-500 leading-none">
+          ]
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums text-slate-500 md:text-xs">
+        <span className="min-w-0">loading</span>
+        <span className="min-w-0 text-right">loading</span>
+      </div>
+    </div>
   );
 }
 
@@ -1928,7 +2025,13 @@ function DeferredPlotImage({
       }
     >
       {image.status === "loaded" && image.src ? (
-        <img alt={alt} className="w-full" src={image.src} />
+        <img
+          alt={alt}
+          className="w-full"
+          height={TEMPERATURE_PLOT_IMAGE_SIZE.height}
+          src={image.src}
+          width={TEMPERATURE_PLOT_IMAGE_SIZE.width}
+        />
       ) : (
         <div className="flex min-h-28 items-center justify-center text-sm text-slate-600">
           {image.status === "unavailable" ? "Plot unavailable" : "Loading plot"}

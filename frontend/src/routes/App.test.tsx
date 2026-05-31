@@ -407,13 +407,20 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(screen.getByText("1.3 kt")).toBeVisible();
   expect(screen.getByText(/peak 1.8 kt/)).toBeVisible();
   expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
-  expect(screen.getByRole("link", { name: "Temp source" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "Temp source" })).toHaveAttribute(
+    "target",
+    "_blank",
+  );
+  expect(screen.getByRole("link", { name: "Temp source" })).toHaveAttribute(
+    "rel",
+    "noopener noreferrer",
+  );
   expect(
     screen.getByRole("link", { name: "NOAA CO-OPS Station NYH1905_12" }),
-  ).toBeVisible();
+  ).toHaveAttribute("target", "_blank");
   expect(
     screen.getByRole("link", { name: "NOAA CO-OPS Station ACT3876" }),
-  ).toBeVisible();
+  ).toHaveAttribute("target", "_blank");
   expect(screen.queryByRole("link", { name: "Current source" })).toBeNull();
   expect(
     screen.getByRole("link", {
@@ -636,8 +643,14 @@ test("renders optional page sections from synthetic feature capabilities", async
     screen.getByRole("link", { name: "Synthetic webcam source" }),
   ).toHaveAttribute("href", "https://example.com/synthetic-webcam");
   expect(
+    screen.getByRole("link", { name: "Synthetic webcam source" }),
+  ).toHaveAttribute("target", "_blank");
+  expect(
     screen.getByRole("link", { name: "Synthetic transit" }),
   ).toHaveAttribute("href", "https://example.com/transit");
+  expect(
+    screen.getByRole("link", { name: "Synthetic transit" }),
+  ).toHaveAttribute("target", "_blank");
 });
 
 test("omits optional page sections when synthetic capabilities are disabled", () => {
@@ -1111,6 +1124,9 @@ test("detail mode shows the current and tide plot independently", async () => {
   expect(
     screen.getByRole("link", { name: "CIBBOWS Essentials" }),
   ).toHaveAttribute("href", "https://example.com");
+  expect(
+    screen.getByRole("link", { name: "CIBBOWS Essentials" }),
+  ).toHaveAttribute("target", "_blank");
   expect(
     screen.getByRole("img", {
       name: "Coney Island ebbing current map at 55% strength",

@@ -43,7 +43,13 @@
   <section class="durable-fallback" aria-label="No JavaScript location summary">
     <h1>{{ config.name }} swim conditions</h1>
     <p>
-      <a href="{{ config.swim_location_link }}">{{ config.swim_location }}</a>
+      <a
+        href="{{ config.swim_location_link }}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {{ config.swim_location }}
+      </a>
     </p>
     <p>{{ config.description }}</p>
     <ul>

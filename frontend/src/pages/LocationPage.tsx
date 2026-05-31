@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Anchor,
   GitHub,
@@ -44,11 +44,38 @@ const TEMPERATURE_PLOT_IMAGE_SIZE = {
   height: 486,
 } as const;
 const WEBCAM_PRELOAD_MARGIN = "100px";
+const NEW_TAB_REL = "noopener noreferrer";
 
 type LocationPageProps = {
   bootstrap: AppBootstrapResponse;
   locationCode: string;
 };
+
+function isExternalHref(href: string | null | undefined) {
+  return href?.startsWith("http://") || href?.startsWith("https://");
+}
+
+function externalLinkProps(href: string | null | undefined) {
+  return isExternalHref(href) ? { rel: NEW_TAB_REL, target: "_blank" } : {};
+}
+
+function useExternalizedTrustedHtml(html: string | null | undefined) {
+  return useMemo(() => {
+    if (!html || typeof document === "undefined") {
+      return html ?? "";
+    }
+
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    for (const anchor of template.content.querySelectorAll("a[href]")) {
+      if (isExternalHref(anchor.getAttribute("href"))) {
+        anchor.setAttribute("target", "_blank");
+        anchor.setAttribute("rel", NEW_TAB_REL);
+      }
+    }
+    return template.innerHTML;
+  }, [html]);
+}
 
 declare global {
   interface Window {
@@ -174,6 +201,7 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
           <a
             className="text-swim-blue underline"
             href={location.metadata.swim_location_link}
+            {...externalLinkProps(location.metadata.swim_location_link)}
           >
             {location.metadata.swim_location}
           </a>
@@ -739,7 +767,11 @@ function NycWaterMovementGuidance({
           <p className="mt-2 text-xs text-slate-600">
             Direction references are relative to Grimaldo&apos;s Chair and
             describe current movement, not a required swim route.
-            <a className="ml-1 text-swim-blue underline" href={essentialsUrl}>
+            <a
+              className="ml-1 text-swim-blue underline"
+              href={essentialsUrl}
+              {...externalLinkProps(essentialsUrl)}
+            >
               CIBBOWS Essentials
             </a>
           </p>
@@ -2019,7 +2051,11 @@ function ExternalWebcamLink({ config }: { config: AppWebcamConfig }) {
 
   return (
     <div className="rounded border border-swim-line bg-white p-4 text-sm">
-      <a className="text-swim-blue underline" href={watchUrl}>
+      <a
+        className="text-swim-blue underline"
+        href={watchUrl}
+        {...externalLinkProps(watchUrl)}
+      >
         {config.label}
       </a>
     </div>
@@ -2172,6 +2208,7 @@ function goodServiceDirectionPathSuffix(
 
 function TransitRouteCard({ route }: { route: TransitRouteConfig }) {
   const status = useTransitRoute(route);
+  const routeUrl = `https://goodservice.io/trains/${route.goodservice_route_id}/${goodServiceDirectionPathSuffix(route.goodservice_direction)}`;
   const firstLoadUnavailable = status.isError && !status.data;
   const transit = firstLoadUnavailable
     ? { status: "Unavailable", destination: "unavailable" }
@@ -2181,7 +2218,8 @@ function TransitRouteCard({ route }: { route: TransitRouteConfig }) {
     <article className="border-swim-line rounded border bg-white p-4">
       <a
         className="flex items-center gap-3 text-swim-ink"
-        href={`https://goodservice.io/trains/${route.goodservice_route_id}/${goodServiceDirectionPathSuffix(route.goodservice_direction)}`}
+        href={routeUrl}
+        {...externalLinkProps(routeUrl)}
       >
         {route.icon_url ? (
           <img
@@ -2360,6 +2398,8 @@ function SourceHtml({
   label: string;
   html?: string | null;
 }) {
+  const externalizedHtml = useExternalizedTrustedHtml(html);
+
   if (!html) {
     return null;
   }
@@ -2376,7 +2416,7 @@ function SourceHtml({
       <span
         className="[&_a]:text-swim-blue [&_a]:underline"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: Citation HTML is trusted repository-controlled bootstrap content.
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: externalizedHtml }}
       />
     </div>
   );
@@ -2417,7 +2457,11 @@ function SourceLink({
           {includeLabel ? `${label}: ` : null}
           {linkFirst ? (
             <>
-              <a className="text-swim-blue underline" href={link.url}>
+              <a
+                className="text-swim-blue underline"
+                href={link.url}
+                {...externalLinkProps(link.url)}
+              >
                 {link.label}
               </a>
               {link.description ? ` ${link.description}` : null}
@@ -2425,7 +2469,11 @@ function SourceLink({
           ) : (
             <>
               {link.description ? `${link.description} ` : null}
-              <a className="text-swim-blue underline" href={link.url}>
+              <a
+                className="text-swim-blue underline"
+                href={link.url}
+                {...externalLinkProps(link.url)}
+              >
                 {link.label}
               </a>
             </>
@@ -2434,7 +2482,11 @@ function SourceLink({
         {secondaryLink ? (
           <span className="mt-1 block">
             {secondaryPrefix ? `${secondaryPrefix} ` : null}
-            <a className="text-swim-blue underline" href={secondaryLink.url}>
+            <a
+              className="text-swim-blue underline"
+              href={secondaryLink.url}
+              {...externalLinkProps(secondaryLink.url)}
+            >
               {secondaryLink.label}
             </a>
             {secondaryLink.description

@@ -352,6 +352,8 @@ def test_root_app_route_renders_default_location_metadata(tmp_path) -> None:
     assert cfg.name in response.text
     assert _escaped(cfg.swim_location) in response.text
     assert cfg.swim_location_link in response.text
+    assert 'target="_blank"' in response.text
+    assert 'rel="noopener noreferrer"' in response.text
     assert cfg.description in response.text
     assert 'href="/api/nyc/conditions"' in response.text
     assert "Condition data as JSON" in response.text
@@ -403,6 +405,8 @@ def test_location_app_route_renders_location_metadata(tmp_path) -> None:
     assert '<div id="root"></div>\n<noscript>' in response.text
     assert 'class="durable-fallback"' in response.text
     assert cfg.swim_location_link in response.text
+    assert 'target="_blank"' in response.text
+    assert 'rel="noopener noreferrer"' in response.text
     assert cfg.description in response.text
     assert 'href="/api/nyc/conditions"' in response.text
 

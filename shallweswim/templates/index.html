@@ -12,7 +12,13 @@ body_attributes %}{% endblock %} {% block header %}
 <p>
   <span class="note">
     ...at
-    <a href="{{ config.swim_location_link }}">{{ config.swim_location }}</a>
+    <a
+      href="{{ config.swim_location_link }}"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {{ config.swim_location }}
+    </a>
   </span>
 </p>
 {% endblock %} {% block forecast %}
@@ -38,9 +44,11 @@ config.code == 'nyc' %}
     <li>
       <a
         href="https://www.earthcam.com/usa/newyork/coneyisland/?cam=coneyisland"
+        target="_blank"
+        rel="noopener noreferrer"
       >
-        Earth Cam Coney Island</a
-      >
+        Earth Cam Coney Island
+      </a>
       - Great view, including the amusement park.
     </li>
   </ul>
@@ -97,6 +105,7 @@ config.code == 'nyc' %}
       <a
         href="https://goodservice.io/trains/{{train}}/S"
         target="_blank"
+        rel="noopener noreferrer"
         class="train-link"
       >
         <div class="train-icon">
@@ -175,9 +184,13 @@ config.code == 'nyc' %}
     <tr>
       <td><i data-feather="video"></i></td>
       <td>
-        <a href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
-          >Webcam</a
+        <a
+          href="https://www.youtube.com/channel/UChh9yX1PSFFreQFmnnIPGuQ/live"
+          target="_blank"
+          rel="noopener noreferrer"
         >
+          Webcam
+        </a>
         thanks to David K and Karol L
       </td>
     </tr>
@@ -185,7 +198,13 @@ config.code == 'nyc' %}
       <td><i data-feather="truck"></i></td>
       <td>
         MTA train status provided by:
-        <a href="https://goodservice.io">goodservice.io</a>
+        <a
+          href="https://goodservice.io"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          goodservice.io
+        </a>
       </td>
     </tr>
     {% endif %} {% if config.code == 'sdf' %}
@@ -194,8 +213,11 @@ config.code == 'nyc' %}
       <td>
         <a
           href="https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver"
-          >EarthCam</a
+          target="_blank"
+          rel="noopener noreferrer"
         >
+          EarthCam
+        </a>
         view hosted by Dave B.
       </td>
     </tr>
@@ -205,8 +227,11 @@ config.code == 'nyc' %}
       <td>
         <a
           href="https://chicago-webcams.com/willis-tower-chicago-traffic-webcams/"
-          >Willis Tower Live Cam</a
+          target="_blank"
+          rel="noopener noreferrer"
         >
+          Willis Tower Live Cam
+        </a>
       </td>
     </tr>
     {% endif %}
@@ -214,9 +239,13 @@ config.code == 'nyc' %}
       <td><i data-feather="github"></i></td>
       <td>
         Site source on github:
-        <a href="https://github.com/jeremywhelchel/shallweswim"
-          >jeremywhelchel/shallweswim</a
+        <a
+          href="https://github.com/jeremywhelchel/shallweswim"
+          target="_blank"
+          rel="noopener noreferrer"
         >
+          jeremywhelchel/shallweswim
+        </a>
       </td>
     </tr>
   </tbody>

@@ -49,9 +49,13 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
 <div>
   <span class="note">
     ...at
-    <a href="{{ config.swim_location_link|default('#') }}"
-      >{{ config.swim_location }}</a
+    <a
+      href="{{ config.swim_location_link|default('#') }}"
+      target="_blank"
+      rel="noopener noreferrer"
     >
+      {{ config.swim_location }}
+    </a>
   </span>
   <br />
   <span class="note">
@@ -189,25 +193,39 @@ conditions for {{ config.swim_location }}{% endblock %} {% block stylesheets %}
     Current predictions:
     <a
       href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=NYH1905_12"
+      target="_blank"
+      rel="noopener noreferrer"
     >
-      Rockaway Inlet Entrance (NYH1905) Depth: 5 feet</a
-    >
+      Rockaway Inlet Entrance (NYH1905) Depth: 5 feet
+    </a>
     and
     <a
       href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=ACT3876"
+      target="_blank"
+      rel="noopener noreferrer"
     >
-      Coney Island Channel, west end</a
-    >
+      Coney Island Channel, west end
+    </a>
     (NOAA Tides and Currents)
   </li>
   <li>
     Base beach map by
-    <a href="http://www.sheahartigan.com">Liam Hartigan</a>
+    <a
+      href="http://www.sheahartigan.com"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Liam Hartigan
+    </a>
   </li>
   <li>
-    <a href="https://catalog.hathitrust.org/Record/011421935">
-      Tidal current charts, New York Harbor</a
+    <a
+      href="https://catalog.hathitrust.org/Record/011421935"
+      target="_blank"
+      rel="noopener noreferrer"
     >
+      Tidal current charts, New York Harbor
+    </a>
     U.S. Department of Commerce, Coast and Geodetic Survey (1946)
   </li>
 </ul>

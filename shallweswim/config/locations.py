@@ -32,6 +32,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # Local imports
 from shallweswim import types, util
 
+EXTERNAL_LINK_HTML_ATTRS = 'target="_blank" rel="noopener noreferrer"'
+
 
 class BaseFeedConfig(BaseModel, abc.ABC, frozen=True):
     """Base configuration for any data source (temperature, tide, current)."""
@@ -135,7 +137,7 @@ class CoopsTempFeedConfig(TempFeedConfig, frozen=True):
         station_url = (
             f"https://tidesandcurrents.noaa.gov/stationhome.html?id={self.station}"
         )
-        return f'Water temperature data provided by <a href="{station_url}" target="_blank">NOAA CO-OPS Station {self.station}</a> ({self.name or "Unknown"})'
+        return f'Water temperature data provided by <a href="{station_url}" {EXTERNAL_LINK_HTML_ATTRS}>NOAA CO-OPS Station {self.station}</a> ({self.name or "Unknown"})'
 
 
 class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
@@ -165,7 +167,7 @@ class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
         station_url = (
             f"https://tidesandcurrents.noaa.gov/stationhome.html?id={self.station}"
         )
-        return f'Tide data provided by <a href="{station_url}" target="_blank">NOAA CO-OPS Station {self.station}</a> ({self.name or "Unknown"})'
+        return f'Tide data provided by <a href="{station_url}" {EXTERNAL_LINK_HTML_ATTRS}>NOAA CO-OPS Station {self.station}</a> ({self.name or "Unknown"})'
 
 
 class CurrentsFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
@@ -235,13 +237,13 @@ class CoopsCurrentsFeedConfig(CurrentsFeedConfig, frozen=True):
         if len(self.stations) == 1:
             station_id = self.stations[0]
             station_url = f"https://prod.tidesandcurrents.noaa.gov/noaacurrents/predictions.html?id={station_id}_1"
-            return f'Current data provided by <a href="{station_url}" target="_blank">NOAA CO-OPS Station {station_id}</a>'
+            return f'Current data provided by <a href="{station_url}" {EXTERNAL_LINK_HTML_ATTRS}>NOAA CO-OPS Station {station_id}</a>'
         else:
             station_links = []
             for station_id in self.stations:
                 station_url = f"https://prod.tidesandcurrents.noaa.gov/noaacurrents/predictions.html?id={station_id}_1"
                 station_links.append(
-                    f'<a href="{station_url}" target="_blank">{station_id}</a>'
+                    f'<a href="{station_url}" {EXTERNAL_LINK_HTML_ATTRS}>{station_id}</a>'
                 )
 
             return f"Current data provided by NOAA CO-OPS Stations: {', '.join(station_links)}"
@@ -290,7 +292,7 @@ class NwisCurrentFeedConfig(CurrentsFeedConfig, frozen=True):
         """
         site_url = f"https://waterdata.usgs.gov/monitoring-location/{self.site_no}/"
         source_name = self.name or f"USGS Site {self.site_no}"
-        return f'Currents data provided by <a href="{site_url}" target="_blank">{source_name}</a> via USGS NWIS.'
+        return f'Currents data provided by <a href="{site_url}" {EXTERNAL_LINK_HTML_ATTRS}>{source_name}</a> via USGS NWIS.'
 
 
 class NdbcTempFeedConfig(TempFeedConfig, frozen=True):
@@ -321,7 +323,7 @@ class NdbcTempFeedConfig(TempFeedConfig, frozen=True):
         station_url = (
             f"https://www.ndbc.noaa.gov/station_page.php?station={self.station}"
         )
-        return f'Water temperature data provided by <a href="{station_url}" target="_blank">NDBC Station {self.station}</a> ({self.name or "Unknown"})'
+        return f'Water temperature data provided by <a href="{station_url}" {EXTERNAL_LINK_HTML_ATTRS}>NDBC Station {self.station}</a> ({self.name or "Unknown"})'
 
 
 class NwisTempFeedConfig(TempFeedConfig, frozen=True):
@@ -358,7 +360,7 @@ class NwisTempFeedConfig(TempFeedConfig, frozen=True):
             HTML string with citation information for USGS NWIS data
         """
         site_url = f"https://waterdata.usgs.gov/monitoring-location/{self.site_no}/"
-        return f'Water temperature data provided by <a href="{site_url}" target="_blank">USGS NWIS Site {self.site_no}</a> ({self.name or "Unknown"})'
+        return f'Water temperature data provided by <a href="{site_url}" {EXTERNAL_LINK_HTML_ATTRS}>USGS NWIS Site {self.site_no}</a> ({self.name or "Unknown"})'
 
 
 class PresentationLinkConfig(BaseModel, frozen=True):

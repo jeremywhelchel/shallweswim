@@ -171,6 +171,55 @@ def test_app_routes_serve_built_shell_and_assets(tmp_path) -> None:
     assert missing_asset.status_code == 404
 
 
+def test_compressible_responses_support_gzip(tmp_path) -> None:
+    """HTML, JSON, and large frontend assets are gzip-compressed when requested."""
+    dist = tmp_path / "dist"
+    _write_fake_frontend_dist(dist)
+    large_asset_content = "console.log('compressed asset');\n" * 300
+    (dist / "assets" / "large.js").write_text(large_asset_content)
+
+    client = TestClient(app)
+    original_frontend_dist = getattr(app.state, "frontend_dist", None)
+    app.state.frontend_dist = str(dist)
+
+    try:
+        shell = client.get("/nyc", headers={"Accept-Encoding": "gzip"})
+        bootstrap = client.get(
+            "/api/app/bootstrap", headers={"Accept-Encoding": "gzip"}
+        )
+        asset = client.get("/assets/large.js", headers={"Accept-Encoding": "gzip"})
+    finally:
+        if original_frontend_dist is None:
+            del app.state.frontend_dist
+        else:
+            app.state.frontend_dist = original_frontend_dist
+
+    for response in [shell, bootstrap, asset]:
+        assert response.status_code == 200
+        assert response.headers["content-encoding"] == "gzip"
+        assert response.headers["vary"] == "Accept-Encoding"
+
+    assert '<div id="root"></div>' in shell.text
+    assert bootstrap.json()["app_name"] == "shall we swim?"
+    assert asset.text == large_asset_content
+    assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert int(asset.headers["content-length"]) < len(large_asset_content)
+
+
+def test_already_compressed_static_assets_skip_gzip() -> None:
+    """Image assets are not wrapped in gzip when clients request compression."""
+    client = TestClient(app)
+
+    response = client.get(
+        "/static/android-chrome-192x192.png",
+        headers={"Accept-Encoding": "gzip"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert "content-encoding" not in response.headers
+
+
 def test_app_shell_cache_reuses_rendered_route_html(tmp_path, monkeypatch) -> None:
     """Repeated app-shell requests reuse cached rendered HTML for the same route."""
     dist = tmp_path / "dist"

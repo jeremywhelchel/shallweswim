@@ -34,6 +34,7 @@ from shallweswim import api, canonical, config
 
 # Local imports
 from shallweswim.assets import AssetManager, FingerprintStaticFiles, load_asset_manifest
+from shallweswim.compression import SelectiveGZipMiddleware
 from shallweswim.logging_utils import setup_logging
 
 
@@ -84,6 +85,7 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None]:
 
 
 app = fastapi.FastAPI(lifespan=lifespan)
+app.add_middleware(SelectiveGZipMiddleware, minimum_size=1000)
 
 
 # API response headers for preventing caching

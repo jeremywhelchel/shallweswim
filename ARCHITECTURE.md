@@ -95,6 +95,11 @@ Vite asset paths. FastAPI serves:
 - `/legacy/...` for the temporary Jinja-rendered experience while it remains
   available
 
+FastAPI enables gzip compression for compressible responses larger than 1 KiB,
+including HTML shells, JSON APIs, XML/text responses, and Vite CSS/JavaScript
+assets. Hashed Vite assets still keep immutable one-year caching; compression is
+negotiated per request with `Accept-Encoding`.
+
 The app shell reuses `frontend/dist/index.html` so Vite-managed script and
 stylesheet tags remain the source of truth. FastAPI adds route-specific
 `title`, description, canonical, Open Graph, JSON alternate links, compact

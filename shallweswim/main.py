@@ -164,7 +164,7 @@ async def legacy_root_redirect() -> responses.RedirectResponse:
     return responses.RedirectResponse("/legacy/nyc", status_code=301)
 
 
-@app.get("/all")
+@app.get("/all", include_in_schema=False)
 async def legacy_all_redirect() -> responses.RedirectResponse:
     """Redirect the historical all-locations URL to the canonical route."""
     return responses.RedirectResponse("/locations", status_code=301)

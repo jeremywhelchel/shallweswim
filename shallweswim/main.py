@@ -164,6 +164,12 @@ async def legacy_root_redirect() -> responses.RedirectResponse:
     return responses.RedirectResponse("/legacy/nyc", status_code=301)
 
 
+@app.get("/all")
+async def legacy_all_redirect() -> responses.RedirectResponse:
+    """Redirect the historical all-locations URL to the canonical route."""
+    return responses.RedirectResponse("/locations", status_code=301)
+
+
 @app.get("/legacy/all")
 async def legacy_all_locations(request: fastapi.Request) -> responses.HTMLResponse:
     """Serve a landing page showing all swimming locations with their current water temperatures.

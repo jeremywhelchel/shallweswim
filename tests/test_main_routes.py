@@ -67,6 +67,16 @@ def test_www_host_redirects_to_canonical_apex() -> None:
     assert response.headers["location"] == f"{canonical.CANONICAL_BASE_URL}/nyc?foo=bar"
 
 
+def test_historical_all_url_redirects_to_canonical_locations() -> None:
+    """The old /all location-list URL redirects to the canonical React route."""
+    client = TestClient(app)
+
+    response = client.get("/all", follow_redirects=False)
+
+    assert response.status_code == 301
+    assert response.headers["location"] == "/locations"
+
+
 def test_robots_txt_points_to_sitemap() -> None:
     """robots.txt advertises the canonical sitemap."""
     client = TestClient(app)

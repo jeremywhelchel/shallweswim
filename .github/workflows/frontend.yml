@@ -57,6 +57,9 @@ jobs:
     timeout-minutes: 40
     name: Run frontend browser tests
     needs: frontend
+    container:
+      image: mcr.microsoft.com/playwright:v1.59.0-noble
+      options: --ipc=host
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -84,19 +87,8 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm --dir frontend install --frozen-lockfile
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('frontend/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-browsers-
-
       - name: Build frontend
         run: pnpm --dir frontend build
-
-      - name: Install Playwright Chromium
-        run: pnpm --dir frontend exec playwright install chromium
 
       - name: Run Playwright smoke tests
         run: pnpm --dir frontend test:e2e:smoke

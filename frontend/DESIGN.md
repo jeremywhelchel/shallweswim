@@ -510,7 +510,8 @@ Required first-milestone jobs:
 - run `pnpm --dir frontend build`
 - run `pnpm --dir frontend check:api`
 - run static frontend checks in the fast frontend job
-- install Playwright Chromium in the separate frontend browser job
+- run the separate frontend browser job in the official Playwright container
+  matching the pinned `@playwright/test` version
 - run `pnpm --dir frontend test:e2e:smoke` before
   `pnpm --dir frontend test:e2e` in the frontend browser job
 

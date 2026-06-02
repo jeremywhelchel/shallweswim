@@ -509,9 +509,10 @@ Required first-milestone jobs:
 - run `pnpm --dir frontend test`
 - run `pnpm --dir frontend build`
 - run `pnpm --dir frontend check:api`
-- install Playwright Chromium for the frontend test environment
-- run `pnpm --dir frontend test:e2e:smoke` in the fast frontend job
-- run `pnpm --dir frontend test:e2e` in a separate full browser job
+- run static frontend checks in the fast frontend job
+- install Playwright Chromium in the separate frontend browser job
+- run `pnpm --dir frontend test:e2e:smoke` before
+  `pnpm --dir frontend test:e2e` in the frontend browser job
 
 The existing Python workflows should remain in place:
 

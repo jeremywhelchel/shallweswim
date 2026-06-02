@@ -8,8 +8,8 @@ on:
 jobs:
   frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    name: Run frontend checks
+    timeout-minutes: 20
+    name: Run frontend static checks
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -37,14 +37,6 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm --dir frontend install --frozen-lockfile
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('frontend/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-browsers-
-
       - name: Lint frontend
         run: pnpm --dir frontend lint
 
@@ -60,16 +52,10 @@ jobs:
       - name: Check generated API contract
         run: pnpm --dir frontend check:api
 
-      - name: Install Playwright Chromium
-        run: pnpm --dir frontend exec playwright install chromium
-
-      - name: Run Playwright smoke tests
-        run: pnpm --dir frontend test:e2e:smoke
-
   frontend-e2e-full:
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    name: Run full frontend browser tests
+    name: Run frontend browser tests
     needs: frontend
     steps:
       - name: Checkout repository
@@ -99,7 +85,7 @@ jobs:
         run: pnpm --dir frontend install --frozen-lockfile
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('frontend/pnpm-lock.yaml') }}
@@ -111,6 +97,9 @@ jobs:
 
       - name: Install Playwright Chromium
         run: pnpm --dir frontend exec playwright install chromium
+
+      - name: Run Playwright smoke tests
+        run: pnpm --dir frontend test:e2e:smoke
 
       - name: Run full Playwright browser tests
         run: pnpm --dir frontend test:e2e

@@ -53,7 +53,64 @@ jobs:
         run: pnpm --dir frontend check:api
 
       - name: Install Playwright Chromium
-        run: pnpm --dir frontend exec playwright install --with-deps chromium
+        run: pnpm --dir frontend exec playwright install chromium
 
-      - name: Run Playwright browser tests
+      - name: Run Playwright smoke tests
+        run: pnpm --dir frontend test:e2e:smoke
+
+  frontend-e2e-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    name: Run full frontend browser tests
+    needs: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install backend dependencies
+        run: uv sync --dev
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.3 --activate
+          pnpm --version
+
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm --dir frontend build
+
+      - name: Install Playwright Chromium
+        run: pnpm --dir frontend exec playwright install chromium
+
+      - name: Run full Playwright browser tests
         run: pnpm --dir frontend test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-playwright-test-results
+          path: frontend/test-results/
+          retention-days: 7

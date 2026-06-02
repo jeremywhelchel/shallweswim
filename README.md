@@ -220,13 +220,17 @@ uv run pytest tests/test_react_stack_browser.py -v --run-browser
 # Run frontend checks
 corepack pnpm@10.18.3 --dir frontend typecheck
 corepack pnpm@10.18.3 --dir frontend test
+corepack pnpm@10.18.3 --dir frontend build
 corepack pnpm@10.18.3 --dir frontend test:e2e:install
+corepack pnpm@10.18.3 --dir frontend test:e2e:smoke
 corepack pnpm@10.18.3 --dir frontend test:e2e
 
 # Same checks without Corepack, using ephemeral pinned pnpm
 npx --yes pnpm@10.18.3 --dir frontend typecheck
 npx --yes pnpm@10.18.3 --dir frontend test
+npx --yes pnpm@10.18.3 --dir frontend build
 npx --yes pnpm@10.18.3 --dir frontend test:e2e:install
+npx --yes pnpm@10.18.3 --dir frontend test:e2e:smoke
 npx --yes pnpm@10.18.3 --dir frontend test:e2e
 
 # Run optional performance guardrails
@@ -259,6 +263,9 @@ Browser tests exercise the frontend JavaScript in a real Chromium browser.
 They are not part of the default test run. Python Playwright and frontend
 Playwright are pinned to the same version and use the default shared Playwright
 browser cache, so either install command below prepares Chromium for both.
+Frontend Playwright tests run against the production Vite build via
+`vite preview`, so run `corepack pnpm@10.18.3 --dir frontend build` before
+`test:e2e:smoke` or `test:e2e`.
 
 ```bash
 # Install the Playwright Chromium browser binary via Python Playwright

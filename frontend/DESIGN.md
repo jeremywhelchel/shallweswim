@@ -421,12 +421,14 @@ Expected scripts:
 
 ```bash
 pnpm dev           # Vite development server
+pnpm preview       # Serve the production build for browser tests
 pnpm build         # TypeScript check plus Vite production build
 pnpm typecheck     # tsc --noEmit
 pnpm generate-api  # Generate TS API types/client from frontend/openapi.json
 pnpm test          # Frontend unit/component tests
 pnpm test:e2e:install  # Install Playwright Chromium into frontend/node_modules
-pnpm test:e2e      # Playwright browser tests
+pnpm test:e2e:smoke  # Fast Playwright smoke test against the built app
+pnpm test:e2e      # Richer Playwright browser tests against the built app
 ```
 
 Production output:
@@ -508,7 +510,8 @@ Required first-milestone jobs:
 - run `pnpm --dir frontend build`
 - run `pnpm --dir frontend check:api`
 - install Playwright Chromium for the frontend test environment
-- run `pnpm --dir frontend test:e2e`
+- run `pnpm --dir frontend test:e2e:smoke` in the fast frontend job
+- run `pnpm --dir frontend test:e2e` in a separate full browser job
 
 The existing Python workflows should remain in place:
 
@@ -1289,6 +1292,8 @@ Milestone acceptance checks:
 - `pnpm build`
 - `pnpm typecheck`
 - `pnpm test`
+- `pnpm test:e2e:smoke` with JavaScript Playwright browser tests under
+  `frontend/`
 - `pnpm test:e2e` with JavaScript Playwright browser tests under `frontend/`
 - existing backend unit tests
 - OpenAPI/generated-client freshness check

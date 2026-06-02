@@ -41,7 +41,7 @@ jobs:
         run: pnpm --dir frontend build
 
       - name: Install Playwright Chromium
-        run: uv run playwright install --with-deps chromium
+        run: uv run playwright install chromium
 
       - name: Run browser tests
         run: uv run pytest tests/test_frontend_browser.py -v --run-browser --junitxml=jinja-browser-results.xml

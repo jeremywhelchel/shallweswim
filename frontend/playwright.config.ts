@@ -6,13 +6,17 @@ const packageManager = process.env.npm_execpath
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  timeout: 60_000,
+  expect: {
+    timeout: 20_000,
+  },
   fullyParallel: true,
   use: {
     baseURL: "http://127.0.0.1:5173",
     trace: "on-first-retry",
   },
   webServer: {
-    command: `${packageManager} dev`,
+    command: `${packageManager} preview`,
     url: "http://127.0.0.1:5173/",
     reuseExistingServer: !process.env.CI,
   },

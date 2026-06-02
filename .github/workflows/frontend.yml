@@ -27,8 +27,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Enable pinned pnpm
         run: |
@@ -90,8 +88,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Enable pinned pnpm
         run: |

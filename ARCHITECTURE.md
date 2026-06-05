@@ -399,11 +399,17 @@ different layers.
 
 Historical temperature plots are backend-rendered SVGs generated from the
 `historic_temps` feed. The feed fetches each configured year from the same
-temperature source used for the location, combines years, sorts by timestamp,
-and resamples to hourly rows. Plot generation then pivots the data with
-`util.pivot_year()`, which moves the year into columns and normalizes every
-timestamp onto leap-year calendar year 2020 so all years can be compared on one
-month/day axis.
+temperature source used for the location, normalizes and validates each year
+independently, and only publishes a new combined dataset when every required
+year succeeds. Per-year normalization uses the same hourly resampling path as
+the final combined feed, so source quirks such as duplicate local timestamps
+around daylight-saving transitions are resolved before schema validation.
+Incomplete attempts record the successful and failed years for diagnostics but
+leave the previously published complete dataset and plots untouched. After a
+complete fetch, the feed combines years, sorts by timestamp, and resamples to
+hourly rows. Plot generation then pivots the data with `util.pivot_year()`,
+which moves the year into columns and normalizes every timestamp onto leap-year
+calendar year 2020 so all years can be compared on one month/day axis.
 
 `plot._historic_temperature_plot_frame()` owns the visible yearly and monthly
 trend-line preparation. Treat this output as **visual artifact suppression for

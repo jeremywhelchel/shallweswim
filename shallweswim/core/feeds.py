@@ -28,6 +28,15 @@ from shallweswim.clients.nwis import NwisApi
 from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
 
 
+class HistoricalTempsIncompleteError(StationUnavailableError):
+    """Raised when historical temperature data is incomplete for required years."""
+
+    def __init__(self, failed_years: dict[int, str]) -> None:
+        self.failed_years = failed_years
+        years = ", ".join(str(year) for year in sorted(failed_years))
+        super().__init__(f"Historical temperature fetch incomplete for years: {years}")
+
+
 class FeedName(StrEnum):
     """Names of data feeds. Used as keys in feeds dicts throughout the app."""
 
@@ -1065,11 +1074,33 @@ class HistoricalTempsFeed(CompositeFeed):
     end_year: int
     interval: Literal["h", "6-min"] = "h"
     clients: dict[str, BaseApiClient] = {}  # Add clients dict parameter
+    _last_required_years: tuple[int, ...] = ()
+    _last_successful_years: tuple[int, ...] = ()
+    _last_failed_years: dict[int, str] = {}
 
     @property
     def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
+
+    @property
+    def last_required_years(self) -> tuple[int, ...]:
+        """Years required by the last historical temperature fetch attempt."""
+        return self._last_required_years
+
+    @property
+    def last_successful_years(self) -> tuple[int, ...]:
+        """Years successfully fetched by the last historical temperature attempt."""
+        return self._last_successful_years
+
+    @property
+    def last_failed_years(self) -> dict[int, str]:
+        """Year-to-error map from the last historical temperature fetch attempt."""
+        return dict(self._last_failed_years)
+
+    def _required_years(self) -> tuple[int, ...]:
+        """Return the complete configured historical year range."""
+        return tuple(range(self.start_year, self.end_year + 1))
 
     def _get_feeds(self, clients: dict[str, BaseApiClient]) -> list[Feed]:
         """Create temperature feeds for each year in the range.
@@ -1113,6 +1144,67 @@ class HistoricalTempsFeed(CompositeFeed):
             )
             feeds.append(feed)
         return feeds
+
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+        """Fetch all required historical years and publish only complete results."""
+        required_years = self._required_years()
+        self._last_required_years = required_years
+        self._last_successful_years = ()
+        self._last_failed_years = {}
+
+        year_feeds = self._get_feeds(clients=clients)
+        if len(year_feeds) != len(required_years):
+            raise ValueError(
+                "Historical temperature feed construction mismatch: "
+                f"expected {len(required_years)} feeds for years {required_years}, "
+                f"got {len(year_feeds)}"
+            )
+
+        tasks = [feed._fetch(clients=clients) for feed in year_feeds]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        successful_dataframes: dict[int, pd.DataFrame] = {}
+        failed_years: dict[int, str] = {}
+        failed_exceptions: dict[int, Exception] = {}
+        for year, result in zip(required_years, results, strict=True):
+            if isinstance(result, Exception):
+                failed_years[year] = f"{result.__class__.__name__}: {result}"
+                failed_exceptions[year] = result
+                continue
+
+            try:
+                normalized_result = self._combine_feeds([result])
+                self._validate_frame(normalized_result)
+            except Exception as e:
+                failed_years[year] = f"{e.__class__.__name__}: {e}"
+                failed_exceptions[year] = e
+                continue
+
+            successful_dataframes[year] = normalized_result
+
+        self._last_successful_years = tuple(sorted(successful_dataframes))
+        self._last_failed_years = failed_years
+
+        if failed_years:
+            self.log(
+                "Historical temperature fetch incomplete: "
+                f"successful_years={list(self._last_successful_years)}, "
+                f"failed_years={sorted(failed_years)}",
+                logging.WARNING,
+            )
+            if all(
+                isinstance(error, StationUnavailableError)
+                for error in failed_exceptions.values()
+            ):
+                raise StationUnavailableError(
+                    "Historical temperature data unavailable for required years: "
+                    f"{sorted(failed_years)}"
+                )
+            raise HistoricalTempsIncompleteError(failed_years)
+
+        return self._combine_feeds(
+            [successful_dataframes[year] for year in required_years]
+        )
 
     def _combine_feeds(self, dataframes: list[pd.DataFrame]) -> pd.DataFrame:
         """Combine temperature data from multiple years.

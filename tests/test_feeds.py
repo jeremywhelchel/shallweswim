@@ -24,6 +24,7 @@ from shallweswim.api_types import DataFrameSummary
 from shallweswim.clients.base import (
     BaseApiClient,
     RetryableClientError,
+    StationUnavailableError,
 )
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
@@ -39,6 +40,7 @@ from shallweswim.feeds import (
     CoopsTidesFeed,
     Feed,
     HistoricalTempsFeed,
+    HistoricalTempsIncompleteError,
     MultiStationCurrentsFeed,
 )
 from tests.helpers import assert_json_serializable
@@ -1371,6 +1373,16 @@ class TestMultiStationCurrentsFeed:
 class TestHistoricalTempsFeed:
     """Tests for the HistoricalTempsFeed class."""
 
+    @staticmethod
+    def _year_temp_dataframe(year: int) -> pd.DataFrame:
+        index = pd.date_range(
+            start=datetime.datetime(year, 7, 15, 12, 0, 0),
+            end=datetime.datetime(year, 7, 15, 14, 0, 0),
+            freq="1h",
+            name="time",
+        )
+        return pd.DataFrame({"water_temp": [60.0, 61.0, 62.0]}, index=index)
+
     def test_get_feeds_creates_correct_feeds(
         self,
         historical_temps_feed: HistoricalTempsFeed,
@@ -1477,10 +1489,115 @@ class TestHistoricalTempsFeed:
             historical_temps_feed._combine_feeds([])
 
     @pytest.mark.asyncio
-    async def test_fetch_handles_year_errors(
+    async def test_fetch_tracks_successful_required_years(
         self,
         historical_temps_feed: HistoricalTempsFeed,
-        valid_temp_dataframe: pd.DataFrame,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """Historical fetch records year-level success before combining."""
+
+        class TestFeedConfig(config_lib.BaseFeedConfig, frozen=True):
+            @property
+            def citation(self) -> str:
+                return "Test Feed Citation"
+
+        class TestFeed(Feed):
+            feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
+            year: int
+
+            @property
+            def data_model(self) -> type[pa.DataFrameModel]:
+                return WaterTempDataModel  # type: ignore[return-value]
+
+            async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+                return TestHistoricalTempsFeed._year_temp_dataframe(self.year)
+
+        with patch.object(
+            historical_temps_feed,
+            "_get_feeds",
+            return_value=[
+                TestFeed(
+                    location_config=historical_temps_feed.location_config,
+                    expiration_interval=datetime.timedelta(hours=3),
+                    year=historical_temps_feed.start_year,
+                ),
+                TestFeed(
+                    location_config=historical_temps_feed.location_config,
+                    expiration_interval=datetime.timedelta(hours=3),
+                    year=historical_temps_feed.end_year,
+                ),
+            ],
+        ):
+            result = await historical_temps_feed._fetch(clients=mock_clients)
+
+        assert historical_temps_feed.last_required_years == (
+            historical_temps_feed.start_year,
+            historical_temps_feed.end_year,
+        )
+        assert historical_temps_feed.last_successful_years == (
+            historical_temps_feed.start_year,
+            historical_temps_feed.end_year,
+        )
+        assert historical_temps_feed.last_failed_years == {}
+        assert len(result.dropna()) == 6
+
+    @pytest.mark.asyncio
+    async def test_fetch_normalizes_years_before_validation(
+        self,
+        historical_temps_feed: HistoricalTempsFeed,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """Raw yearly frames may need historical resampling before validation."""
+
+        class TestFeedConfig(config_lib.BaseFeedConfig, frozen=True):
+            @property
+            def citation(self) -> str:
+                return "Test Feed Citation"
+
+        class DuplicateTimestampFeed(Feed):
+            feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
+            year: int
+
+            @property
+            def data_model(self) -> type[pa.DataFrameModel]:
+                return WaterTempDataModel  # type: ignore[return-value]
+
+            async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+                index = pd.DatetimeIndex(
+                    [
+                        datetime.datetime(self.year, 11, 1, 1, 0, 0),
+                        datetime.datetime(self.year, 11, 1, 1, 0, 0),
+                        datetime.datetime(self.year, 11, 1, 2, 0, 0),
+                    ],
+                    name="time",
+                )
+                return pd.DataFrame({"water_temp": [60.0, 61.0, 62.0]}, index=index)
+
+        with patch.object(
+            historical_temps_feed,
+            "_get_feeds",
+            return_value=[
+                DuplicateTimestampFeed(
+                    location_config=historical_temps_feed.location_config,
+                    expiration_interval=datetime.timedelta(hours=3),
+                    year=historical_temps_feed.start_year,
+                ),
+                DuplicateTimestampFeed(
+                    location_config=historical_temps_feed.location_config,
+                    expiration_interval=datetime.timedelta(hours=3),
+                    year=historical_temps_feed.end_year,
+                ),
+            ],
+        ):
+            result = await historical_temps_feed._fetch(clients=mock_clients)
+
+        assert historical_temps_feed.last_failed_years == {}
+        assert result.index.is_unique
+
+    @pytest.mark.asyncio
+    async def test_fetch_tracks_year_errors(
+        self,
+        historical_temps_feed: HistoricalTempsFeed,
         mock_clients: dict[str, BaseApiClient],
     ) -> None:
         """Test error handling when one year fails but others succeed."""
@@ -1511,7 +1628,9 @@ class TestHistoricalTempsFeed:
                 return WaterTempDataModel  # type: ignore[return-value]
 
             async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
-                return valid_temp_dataframe
+                return TestHistoricalTempsFeed._year_temp_dataframe(
+                    historical_temps_feed.end_year
+                )
 
         # Mock _get_feeds to return one error feed and one success feed
         with patch.object(
@@ -1528,6 +1647,95 @@ class TestHistoricalTempsFeed:
                 ),
             ],
         ):
-            # Call _fetch and expect it to raise an exception (following the project principle of failing fast)
-            with pytest.raises(ValueError, match="Test year error"):
+            with pytest.raises(
+                HistoricalTempsIncompleteError,
+                match=f"{historical_temps_feed.start_year}",
+            ) as exc_info:
                 await historical_temps_feed._fetch(clients=mock_clients)
+
+        assert exc_info.value.failed_years == {
+            historical_temps_feed.start_year: "ValueError: Test year error"
+        }
+        assert historical_temps_feed.last_required_years == (
+            historical_temps_feed.start_year,
+            historical_temps_feed.end_year,
+        )
+        assert historical_temps_feed.last_successful_years == (
+            historical_temps_feed.end_year,
+        )
+        assert historical_temps_feed.last_failed_years == {
+            historical_temps_feed.start_year: "ValueError: Test year error"
+        }
+
+    @pytest.mark.asyncio
+    async def test_update_keeps_existing_data_on_incomplete_fetch(
+        self,
+        historical_temps_feed: HistoricalTempsFeed,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """Incomplete historical refreshes leave the published dataset untouched."""
+        previous_data = self._year_temp_dataframe(historical_temps_feed.start_year)
+        historical_temps_feed._data = previous_data
+        historical_temps_feed._fetch_timestamp = util.utc_now()
+
+        async def incomplete_fetch(
+            clients: dict[str, BaseApiClient],
+        ) -> pd.DataFrame:
+            raise HistoricalTempsIncompleteError(
+                {historical_temps_feed.start_year: "ValueError: Test year error"}
+            )
+
+        with patch.object(historical_temps_feed, "_fetch", incomplete_fetch):
+            await historical_temps_feed.update(clients=mock_clients)
+
+        assert historical_temps_feed._data is previous_data
+        assert historical_temps_feed._next_fetch_after is not None
+        assert isinstance(
+            historical_temps_feed._last_error, HistoricalTempsIncompleteError
+        )
+
+    @pytest.mark.asyncio
+    async def test_fetch_preserves_station_unavailable_classification(
+        self,
+        historical_temps_feed: HistoricalTempsFeed,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """Expected no-data year failures remain StationUnavailableError."""
+
+        class TestFeedConfig(config_lib.BaseFeedConfig, frozen=True):
+            @property
+            def citation(self) -> str:
+                return "Test Feed Citation"
+
+        class UnavailableFeed(Feed):
+            feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
+
+            @property
+            def data_model(self) -> type[pa.DataFrameModel]:
+                return WaterTempDataModel  # type: ignore[return-value]
+
+            async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+                raise StationUnavailableError("Station has no data")
+
+        with patch.object(
+            historical_temps_feed,
+            "_get_feeds",
+            return_value=[
+                UnavailableFeed(
+                    location_config=historical_temps_feed.location_config,
+                    expiration_interval=datetime.timedelta(hours=3),
+                ),
+                UnavailableFeed(
+                    location_config=historical_temps_feed.location_config,
+                    expiration_interval=datetime.timedelta(hours=3),
+                ),
+            ],
+        ):
+            with pytest.raises(StationUnavailableError, match="required years"):
+                await historical_temps_feed._fetch(clients=mock_clients)
+
+        assert historical_temps_feed.last_successful_years == ()
+        assert set(historical_temps_feed.last_failed_years) == {
+            historical_temps_feed.start_year,
+            historical_temps_feed.end_year,
+        }

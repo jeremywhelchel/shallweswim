@@ -286,8 +286,10 @@ after a successful fetch, they do not refresh automatically.
 ### Client Request Wrapping
 
 `BaseApiClient` owns shared retry and logging behavior through
-`request_with_retry()`. Each concrete client owns its request helper signature
-because CO-OPS, NDBC, and NWIS all require different request parameters.
+`request_with_retry()`, plus small HTTP mechanics such as standard timeout
+objects, retryable status checks, and retryable network/timeout error messages.
+Each concrete client owns its request helper signature because CO-OPS, NDBC,
+and NWIS all require different request parameters.
 Do not add `_execute_request` back to the base class contract just to share a
 name; pass the concrete helper into `request_with_retry()` instead.
 

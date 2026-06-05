@@ -16,10 +16,12 @@ import pandas as pd
 from shallweswim.clients.base import (
     BaseApiClient,
     BaseClientError,
-    RetryableClientError,
     StationUnavailableError,
-    is_retryable_http_status,
     provider_request_slot,
+    raise_if_retryable_http_status,
+    request_timeout,
+    retryable_network_error,
+    retryable_timeout_error,
 )
 from shallweswim.util import c_to_f
 
@@ -139,7 +141,7 @@ class NdbcApi(BaseApiClient):
         location_code: str,
     ) -> "_NdbcHttpResponse":
         """Fetch one NDBC URL with real async timeout and process-wide throttling."""
-        timeout = aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT)
+        timeout = request_timeout(self.REQUEST_TIMEOUT)
 
         try:
             if self._session is None:
@@ -159,13 +161,16 @@ class NdbcApi(BaseApiClient):
                 timeout=timeout,
             )
         except TimeoutError as e:
-            raise RetryableClientError(
-                f"Request timed out after {self.REQUEST_TIMEOUT}s for NDBC station {station_id}"
+            raise retryable_timeout_error(
+                timeout_seconds=self.REQUEST_TIMEOUT,
+                provider="NDBC",
+                resource=f"station {station_id}",
             ) from e
         except aiohttp.ClientError as e:
-            raise RetryableClientError(
-                f"Network error during NDBC request for station {station_id}: "
-                f"{e.__class__.__name__}: {e}"
+            raise retryable_network_error(
+                provider="NDBC",
+                action=f"for station {station_id}",
+                error=e,
             ) from e
 
     async def _fetch_url_with_session(
@@ -181,10 +186,10 @@ class NdbcApi(BaseApiClient):
             self.log(f"GET {url}", level=logging.DEBUG, location_code=location_code)
             async with session.get(url, timeout=timeout, allow_redirects=True) as resp:
                 body = await resp.text()
-                if is_retryable_http_status(resp.status):
-                    raise RetryableClientError(
-                        f"NDBC request for station {station_id} returned HTTP {resp.status}"
-                    )
+                raise_if_retryable_http_status(
+                    resp.status,
+                    f"NDBC request for station {station_id} returned HTTP {resp.status}",
+                )
                 return _NdbcHttpResponse(status=resp.status, body=body)
 
     @classmethod

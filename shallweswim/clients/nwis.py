@@ -26,8 +26,11 @@ from shallweswim.clients.base import (
     BaseClientError,
     RetryableClientError,
     StationUnavailableError,
-    is_retryable_http_status,
     provider_request_slot,
+    raise_if_retryable_http_status,
+    request_timeout,
+    retryable_network_error,
+    retryable_timeout_error,
 )
 from shallweswim.util import c_to_f
 
@@ -125,13 +128,16 @@ class NwisApi(BaseApiClient):
                 location_code=location_code,
             )
         except TimeoutError as e:
-            raise RetryableClientError(
-                f"Request timed out after {self.REQUEST_TIMEOUT}s for NWIS site {sites}"
+            raise retryable_timeout_error(
+                timeout_seconds=self.REQUEST_TIMEOUT,
+                provider="NWIS",
+                resource=f"site {sites}",
             ) from e
         except aiohttp.ClientError as e:
-            raise RetryableClientError(
-                f"Network error during NWIS request for site {sites}: "
-                f"{e.__class__.__name__}: {e}"
+            raise retryable_network_error(
+                provider="NWIS",
+                action=f"for site {sites}",
+                error=e,
             ) from e
 
         # --- Validation phase (outside try - exceptions propagate naturally) ---
@@ -231,7 +237,7 @@ class NwisApi(BaseApiClient):
         location_code: str,
     ) -> dict[str, Any]:
         """Fetch one USGS JSON page."""
-        timeout = aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT)
+        timeout = request_timeout(self.REQUEST_TIMEOUT)
         self.log(f"GET {url}", level=logging.DEBUG, location_code=location_code)
 
         async with provider_request_slot(NWIS_PROVIDER, NWIS_MAX_CONCURRENT_REQUESTS):
@@ -243,8 +249,7 @@ class NwisApi(BaseApiClient):
             ) as response:
                 if response.status != 200:
                     error_msg = f"NWIS request for site {site_no} returned HTTP {response.status}"
-                    if is_retryable_http_status(response.status):
-                        raise RetryableClientError(error_msg)
+                    raise_if_retryable_http_status(response.status, error_msg)
                     self.log(
                         error_msg, level=logging.ERROR, location_code=location_code
                     )

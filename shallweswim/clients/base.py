@@ -102,6 +102,36 @@ def is_retryable_http_status(status_code: int) -> bool:
     return status_code in RETRYABLE_HTTP_STATUSES
 
 
+def request_timeout(timeout_seconds: float) -> aiohttp.ClientTimeout:
+    """Return the standard aiohttp timeout object for one upstream request."""
+    return aiohttp.ClientTimeout(total=timeout_seconds)
+
+
+def retryable_timeout_error(
+    *, timeout_seconds: float, provider: str, resource: str
+) -> RetryableClientError:
+    """Build a retryable timeout error with consistent wording."""
+    return RetryableClientError(
+        f"Request timed out after {timeout_seconds}s for {provider} {resource}"
+    )
+
+
+def retryable_network_error(
+    *, provider: str, action: str, error: BaseException
+) -> RetryableClientError:
+    """Build a retryable network/protocol error with consistent details."""
+    return RetryableClientError(
+        f"Network error during {provider} request {action}: "
+        f"{error.__class__.__name__}: {error}"
+    )
+
+
+def raise_if_retryable_http_status(status_code: int, message: str) -> None:
+    """Raise RetryableClientError when an HTTP status should be retried."""
+    if is_retryable_http_status(status_code):
+        raise RetryableClientError(message)
+
+
 ResponseT = TypeVar("ResponseT")
 
 _provider_request_semaphores: dict[str, asyncio.Semaphore] = {}

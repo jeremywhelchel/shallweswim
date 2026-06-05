@@ -15,10 +15,11 @@ import pandas as pd
 from shallweswim.clients.base import (
     BaseApiClient,
     BaseClientError,
-    RetryableClientError,
     StationUnavailableError,
-    is_retryable_http_status,
     provider_request_slot,
+    raise_if_retryable_http_status,
+    request_timeout,
+    retryable_network_error,
 )
 from shallweswim.types import (
     TIDE_TYPE_CATEGORIES,
@@ -147,15 +148,14 @@ class CoopsApi(BaseApiClient):
         )
         csv_data: str
         try:
-            timeout = aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT)
+            timeout = request_timeout(self.REQUEST_TIMEOUT)
             async with provider_request_slot(
                 COOPS_PROVIDER, COOPS_MAX_CONCURRENT_REQUESTS
             ):
                 async with self._session.get(url, timeout=timeout) as response:
                     if response.status != 200:
                         error_msg = f"HTTP error {response.status} for {url}"
-                        if is_retryable_http_status(response.status):
-                            raise RetryableClientError(error_msg)
+                        raise_if_retryable_http_status(response.status, error_msg)
 
                         self.log(
                             error_msg, level=logging.ERROR, location_code=location_code
@@ -167,9 +167,12 @@ class CoopsApi(BaseApiClient):
 
         except (TimeoutError, aiohttp.ClientError) as e:
             # Convert specific connection/timeout errors into our standard retryable error
-            error_msg = f"Network error during CO-OPS request to {url}: {e.__class__.__name__}: {e}"
             # Log is handled by the tenacity retry logger in the base class
-            raise RetryableClientError(error_msg) from e
+            raise retryable_network_error(
+                provider="CO-OPS",
+                action=f"to {url}",
+                error=e,
+            ) from e
 
         # --- Parsing logic (outside the network try/except) ---
         try:

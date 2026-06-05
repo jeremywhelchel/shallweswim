@@ -14,6 +14,7 @@ from shallweswim.clients.base import (
 )
 from shallweswim.clients.nwis import (
     NWIS_PAGE_LIMIT,
+    USGS_WATERDATA_API_KEY_ENV,
     NwisApi,
     NwisApiError,
     NwisDataError,
@@ -411,6 +412,55 @@ def test_continuous_request_params_use_local_historical_year_boundaries() -> Non
     )
 
     assert params["time"] == "2025-01-01T05:00:00Z/2026-01-01T04:59:59Z"
+
+
+def test_request_headers_omit_usgs_key_when_unset(
+    nwis_client: NwisApi,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unauthenticated local/dev requests should not send an empty API key."""
+    monkeypatch.delenv(USGS_WATERDATA_API_KEY_ENV, raising=False)
+
+    headers = nwis_client._request_headers()
+
+    assert "X-Api-Key" not in headers
+
+
+def test_request_headers_include_usgs_key_when_configured(
+    nwis_client: NwisApi,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configured USGS API keys are sent in headers rather than URLs."""
+    monkeypatch.setenv(USGS_WATERDATA_API_KEY_ENV, "test-key")
+
+    headers = nwis_client._request_headers()
+
+    assert headers["X-Api-Key"] == "test-key"
+
+
+@pytest.mark.asyncio
+async def test_fetch_json_page_sends_configured_usgs_key(
+    nwis_client: NwisApi,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each USGS page request receives the configured API key header."""
+    monkeypatch.setenv(USGS_WATERDATA_API_KEY_ENV, "test-key")
+    response = AsyncMock()
+    response.status = 200
+    response.json.return_value = {"type": "FeatureCollection", "features": []}
+    response.__aenter__.return_value = response
+    nwis_client._session.get.return_value = response
+
+    await nwis_client._fetch_json_page(
+        url="https://example.test",
+        params={},
+        site_no="01463500",
+        location_code="test",
+    )
+
+    assert (
+        nwis_client._session.get.call_args.kwargs["headers"]["X-Api-Key"] == "test-key"
+    )
 
 
 def test_parse_continuous_payloads_filters_parameter_and_statistic() -> None:

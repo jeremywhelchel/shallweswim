@@ -397,6 +397,11 @@ timed out once and succeeded on retry. Louisville live temperature and currents
 each completed in one request. The modern API's production quota/API-key policy
 must be resolved before deploying this client path.
 
+For local authenticated NWIS testing, create `.env` from `.env.example` and set
+`USGS_WATERDATA_API_KEY`. The client sends it as an `X-Api-Key` header when
+present and falls back to unauthenticated requests when it is omitted. Do not
+commit API keys.
+
 ### Testing Philosophy
 
 The test suite uses a tiered strategy:

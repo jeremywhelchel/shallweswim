@@ -13,6 +13,7 @@ References:
 
 import datetime
 import logging
+import os
 from typing import Any
 from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
@@ -34,6 +35,7 @@ NWIS_CONTINUOUS_ITEMS_PATH = "collections/continuous/items"
 NWIS_PAGE_LIMIT = 50000
 NWIS_MAX_PAGES = 100
 NWIS_INSTANTANEOUS_STATISTIC_ID = "00011"
+USGS_WATERDATA_API_KEY_ENV = "USGS_WATERDATA_API_KEY"
 NWIS_REQUEST_HEADERS = {
     "Accept": "application/geo+json, application/json",
     "User-Agent": "shallweswim/0.1 (+https://shallweswim.today)",
@@ -70,6 +72,15 @@ class NwisApi(BaseApiClient):
             session: The aiohttp client session.
         """
         super().__init__(session)
+
+    @staticmethod
+    def _request_headers() -> dict[str, str]:
+        """Return USGS request headers, adding an API key when configured."""
+        headers = dict(NWIS_REQUEST_HEADERS)
+        api_key = os.getenv(USGS_WATERDATA_API_KEY_ENV, "").strip()
+        if api_key:
+            headers["X-Api-Key"] = api_key
+        return headers
 
     async def _execute_request(
         self,
@@ -224,7 +235,7 @@ class NwisApi(BaseApiClient):
             url,
             params=params,
             timeout=timeout,
-            headers=NWIS_REQUEST_HEADERS,
+            headers=self._request_headers(),
         ) as response:
             if response.status != 200:
                 error_msg = (

@@ -35,6 +35,7 @@ jobs:
       - name: Run integration tests
         env:
           MPLBACKEND: Agg
+          USGS_WATERDATA_API_KEY: ${{ secrets.USGS_WATERDATA_API_KEY }}
         run: uv run pytest -v -m integration --run-integration --timeout=300 --log-cli-level=INFO --junitxml=integration-test-results.xml --reruns 3 --reruns-delay 60
 
       - name: Upload test results on failure

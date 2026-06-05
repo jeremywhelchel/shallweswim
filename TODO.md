@@ -215,16 +215,18 @@ Notes:
 ### Monitoring And Alerting
 
 - Set up Cloud Monitoring coverage for `/api/status`. The status endpoint already
-  exposes per-feed `is_healthy`, `is_expired`, and `age_seconds`; production
-  monitoring should retain that feed-level visibility rather than relying only on
-  the coarse service health check.
+  exposes per-feed `is_healthy`, `is_expired`, `age_seconds`,
+  `consecutive_failures`, and next-fetch scheduling state; production monitoring
+  should retain that feed-level visibility rather than relying only on the coarse
+  service health check.
 - Add alerting policies for stale or unhealthy critical feeds. Start with NYC
   feeds as the highest-priority alerts, then use lower-priority policies for
   other locations once the signal/noise balance is understood.
 - Build a feed-health visibility dashboard that tracks `age_seconds`,
-  `is_healthy`, and `is_expired` over time across all feeds. Use the observed
-  outage patterns to guide future health-policy decisions rather than guessing
-  which feeds should be mandatory for each location.
+  `is_healthy`, `is_expired`, `consecutive_failures`, and historical temperature
+  missing/failed years over time across all feeds. Use the observed outage
+  patterns to guide future health-policy decisions rather than guessing which
+  feeds should be mandatory for each location.
 - Revisit stricter location health rules after monitoring data exists. The
   current app treats a location as having data if any feed works; future policy
   may need per-location critical feeds, but that should be driven by production

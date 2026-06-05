@@ -896,6 +896,11 @@
             "description": "Data age in seconds at the time of status check",
             "title": "Age Seconds"
           },
+          "consecutive_failures": {
+            "description": "Consecutive failed fetch attempts since the last successful update; resets to zero on success",
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
           "data_summary": {
             "anyOf": [
               {
@@ -956,7 +961,7 @@
             "description": "Year-level diagnostics for HistoricalTempsFeed. Null for other feeds."
           },
           "is_expired": {
-            "description": "Whether the data is considered expired",
+            "description": "Whether the feed is due for a scheduled refresh or retry attempt",
             "title": "Is Expired",
             "type": "boolean"
           },
@@ -974,11 +979,37 @@
             "description": "Class name of the Feed",
             "title": "Name",
             "type": "string"
+          },
+          "next_fetch_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timestamp of the next scheduled refresh or retry attempt (naive UTC)",
+            "title": "Next Fetch After"
+          },
+          "seconds_until_next_fetch": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seconds until the next scheduled refresh or retry attempt",
+            "title": "Seconds Until Next Fetch"
           }
         },
         "required": [
           "name",
           "location",
+          "consecutive_failures",
           "is_expired",
           "is_healthy"
         ],

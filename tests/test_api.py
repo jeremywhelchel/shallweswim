@@ -119,7 +119,10 @@ def mock_data_managers(
                 name="NoaaTidesFeed",
                 location="nyc",
                 fetch_timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+                next_fetch_after=datetime.datetime.fromisoformat("2025-04-28T12:00:00"),
                 age_seconds=3600,
+                seconds_until_next_fetch=82800,
+                consecutive_failures=0,
                 is_expired=False,
                 is_healthy=True,
                 expiration_seconds=86400,
@@ -130,7 +133,10 @@ def mock_data_managers(
                 name="MultiStationCurrentsFeed",
                 location="nyc",
                 fetch_timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+                next_fetch_after=datetime.datetime.fromisoformat("2025-04-28T12:00:00"),
                 age_seconds=3600,
+                seconds_until_next_fetch=82800,
+                consecutive_failures=0,
                 is_expired=False,
                 is_healthy=True,
                 expiration_seconds=86400,
@@ -141,7 +147,10 @@ def mock_data_managers(
                 name="HistoricalTempsFeed",
                 location="nyc",
                 fetch_timestamp=None,
+                next_fetch_after=datetime.datetime.fromisoformat("2025-04-27T12:01:00"),
                 age_seconds=None,
+                seconds_until_next_fetch=60,
+                consecutive_failures=1,
                 is_expired=True,
                 is_healthy=False,
                 expiration_seconds=10800,
@@ -173,7 +182,10 @@ def mock_data_managers(
                 name="NoaaTidesFeed",
                 location="sfo",
                 fetch_timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+                next_fetch_after=datetime.datetime.fromisoformat("2025-04-28T12:00:00"),
                 age_seconds=3600,
+                seconds_until_next_fetch=82800,
+                consecutive_failures=0,
                 is_expired=False,
                 is_healthy=True,
                 expiration_seconds=86400,
@@ -222,6 +234,8 @@ def test_location_status_endpoint(
     assert "currents" in status_data["feeds"]
     assert status_data["feeds"]["tides"]["name"] == "NoaaTidesFeed"
     assert status_data["feeds"]["tides"]["location"] == "nyc"
+    assert status_data["feeds"]["historic_temps"]["consecutive_failures"] == 1
+    assert status_data["feeds"]["historic_temps"]["seconds_until_next_fetch"] == 60
     assert status_data["feeds"]["historic_temps"]["historical_temp_status"] == {
         "required_years": [2024, 2025],
         "available_years": [2024],

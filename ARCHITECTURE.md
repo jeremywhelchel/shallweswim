@@ -223,19 +223,30 @@ Feeds track two timestamps:
 - `_fetch_timestamp`: When data was successfully fetched (for `age` monitoring)
 - `_next_fetch_after`: When to attempt next fetch (for scheduling)
 
-Both success and failure update `_next_fetch_after`, preventing runaway retries:
+Feed scheduling is a small state machine:
 
-- **Success**: Set both `_fetch_timestamp` and `_next_fetch_after`
-- **StationUnavailableError**: Only set `_next_fetch_after` (data stays stale but won't retry immediately)
-- **Other errors**: Set `_next_fetch_after`, then propagate error for logging
+| State | `_fetch_timestamp` | `_next_fetch_after` | Behavior |
+| --- | --- | --- | --- |
+| Never attempted | `None` | `None` | Fetch immediately |
+| Success, refreshable feed | Updated to success time | Success time + `expiration_interval` | Refresh on normal cadence |
+| Success, never-expiring feed | Updated to success time | `None` | Do not refresh automatically |
+| Failure before first success | `None` | Failure time + retry delay | Retry after backoff |
+| Failure after prior success | Unchanged | Failure time + retry delay | Serve stale data and retry after backoff |
+
+Failure retries use a shared feed-level sequence: **1 minute, 2 minutes,
+5 minutes, 10 minutes, 20 minutes, 30 minutes**. If a feed has an
+`expiration_interval`, the retry delay is capped at that interval so retries
+never become less frequent than the feed's ordinary refresh cadence. Feeds with
+`expiration_interval=None` still retry failed attempts using the same sequence;
+after a successful fetch, they do not refresh automatically.
 
 ### Two Code Paths
 
 **Background feed refresh** (populates data):
 
-- `StationUnavailableError` → WARNING log (no alert), schedules retry at normal interval
-- Other `BaseClientError` → ERROR log (alert), schedules retry at normal interval
-- Other exceptions → ERROR log (alert), schedules retry at normal interval
+- `StationUnavailableError` → WARNING log (no alert), schedules feed-level retry
+- Other `BaseClientError` → ERROR log (alert), schedules feed-level retry
+- Other exceptions → ERROR log (alert), schedules feed-level retry
 
 **API request handlers** (serves users):
 
@@ -279,6 +290,13 @@ Both success and failure update `_next_fetch_after`, preventing runaway retries:
 because CO-OPS, NDBC, and NWIS all require different request parameters.
 Do not add `_execute_request` back to the base class contract just to share a
 name; pass the concrete helper into `request_with_retry()` instead.
+
+Client request retries and feed scheduling are separate layers:
+
+- `BaseApiClient.request_with_retry()` uses tenacity to retry transient
+  HTTP/network failures inside one fetch attempt over seconds.
+- `Feed.update()` schedules the next whole-feed attempt over minutes after the
+  fetch attempt finishes. This state is visible in `/api/status`.
 
 **Core (`core/queries.py`)**:
 
@@ -475,7 +493,9 @@ be tuned from production or local logs.
 ### Monitoring (`/api/status`)
 
 - Returns detailed status for all locations/feeds
-- Shows `is_healthy`, `is_expired`, `age_seconds` per feed
+- Shows `is_healthy`, `is_expired`, `age_seconds`,
+  `consecutive_failures`, `next_fetch_after`, and
+  `seconds_until_next_fetch` per feed
 - Shows year-level `historic_temps` diagnostics, including required, cached,
   available, missing, fetched, and failed years
 - Use external monitoring (GCP Cloud Monitoring) to alert on stale data
@@ -498,9 +518,14 @@ Each feed has an **expiration interval** that determines how often it refreshes:
 **Feed status properties**:
 
 - `has_data`: Any data exists (used by API endpoints - serve stale over 503)
-- `is_expired`: Data older than refresh interval (triggers background refresh)
+- `is_expired`: Feed is due for a scheduled refresh or retry attempt
 - `is_healthy`: Data within interval + 15-minute buffer (for monitoring display)
+- `next_fetch_after`: Next scheduled refresh or retry attempt
+- `seconds_until_next_fetch`: Countdown to the next scheduled attempt
+- `consecutive_failures`: Failed attempts since the last successful update
 - `historical_temp_status`: Optional diagnostics for the `historic_temps` feed,
   exposing year-cache progress without changing the public swimming data API.
 
-Background tasks continuously refresh feeds. Failed fetches leave the feed stale (serving old data) until the next successful refresh.
+Background tasks continuously check feeds. Successful fetches schedule the next
+normal refresh; failed fetches leave the feed stale (serving old data) and
+schedule a bounded retry.

@@ -34,6 +34,7 @@ from shallweswim.dataframe_models import (
     WaterTempDataModel,
 )
 from shallweswim.feeds import (
+    FEED_RETRY_INTERVALS,
     CompositeFeed,
     CoopsCurrentsFeed,
     CoopsTempFeed,
@@ -294,12 +295,26 @@ class TestFeedBase:
         assert concrete_feed.is_expired is True
 
     @pytest.mark.asyncio
-    async def test_is_expired_with_no_interval(self, concrete_feed: Feed) -> None:
-        """Test that a feed with no expiration interval is not expired."""
+    async def test_never_expiring_feed_waits_for_scheduled_retry(
+        self, concrete_feed: Feed
+    ) -> None:
+        """Never-expiring feeds still honor scheduled retries after failures."""
         concrete_feed._next_fetch_after = util.utc_now() + datetime.timedelta(
             minutes=10
         )
         concrete_feed.expiration_interval = None
+        assert concrete_feed.is_expired is False
+
+    @pytest.mark.asyncio
+    async def test_successful_feed_with_no_interval_never_expires(
+        self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
+    ) -> None:
+        """A never-expiring feed stops refreshing after it has data."""
+        concrete_feed.expiration_interval = None
+        concrete_feed._data = valid_temp_dataframe
+        concrete_feed._fetch_timestamp = util.utc_now()
+        concrete_feed._next_fetch_after = None
+
         assert concrete_feed.is_expired is False
 
     @pytest.mark.asyncio
@@ -393,16 +408,14 @@ class TestFeedBase:
             assert concrete_feed._fetch_timestamp is not None
             # Scheduling: _next_fetch_after should also be set
             assert concrete_feed._next_fetch_after is not None
+            assert concrete_feed._last_error is None
+            assert concrete_feed._consecutive_failures == 0
 
     @pytest.mark.asyncio
-    async def test_update_sets_next_fetch_after_on_station_unavailable(
+    async def test_station_unavailable_schedules_first_retry_after_one_minute(
         self, concrete_feed: Feed, mock_clients: dict[str, BaseApiClient]
     ) -> None:
-        """Test that _next_fetch_after is set even when StationUnavailableError occurs.
-
-        This prevents runaway retry loops - the feed schedules its next
-        attempt and doesn't retry immediately.
-        """
+        """StationUnavailableError schedules the first retry after one minute."""
         from shallweswim.clients.base import StationUnavailableError
 
         async def mock_fetch_unavailable(
@@ -416,20 +429,20 @@ class TestFeedBase:
 
         # _next_fetch_after should be set (scheduling next attempt)
         assert concrete_feed._next_fetch_after is not None
+        retry_delay = concrete_feed._next_fetch_after - util.utc_now()
+        assert 55 <= retry_delay.total_seconds() <= 60
         # _fetch_timestamp should NOT be set (no data was fetched)
         assert concrete_feed._fetch_timestamp is None
         # _last_error should capture the error
         assert concrete_feed._last_error is not None
         assert isinstance(concrete_feed._last_error, StationUnavailableError)
+        assert concrete_feed._consecutive_failures == 1
 
     @pytest.mark.asyncio
-    async def test_update_sets_next_fetch_after_on_other_error(
+    async def test_unexpected_error_schedules_first_retry_and_propagates(
         self, concrete_feed: Feed, mock_clients: dict[str, BaseApiClient]
     ) -> None:
-        """Test that _next_fetch_after is set even when other errors occur.
-
-        This ensures all errors schedule a retry, preventing runaway loops.
-        """
+        """Unexpected errors schedule the first retry and still propagate."""
 
         async def mock_fetch_error(clients: dict[str, BaseApiClient]) -> pd.DataFrame:
             raise ValueError("Some unexpected error")
@@ -441,8 +454,86 @@ class TestFeedBase:
 
         # _next_fetch_after should still be set (scheduling next attempt)
         assert concrete_feed._next_fetch_after is not None
+        retry_delay = concrete_feed._next_fetch_after - util.utc_now()
+        assert 55 <= retry_delay.total_seconds() <= 60
         # _fetch_timestamp should NOT be set (no data was fetched)
         assert concrete_feed._fetch_timestamp is None
+        assert concrete_feed._consecutive_failures == 1
+
+    @pytest.mark.asyncio
+    async def test_repeated_failures_follow_shared_retry_sequence(
+        self, concrete_feed: Feed, mock_clients: dict[str, BaseApiClient]
+    ) -> None:
+        """Repeated failures follow the shared retry sequence."""
+
+        async def mock_fetch_error(clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+            raise ValueError("retry me")
+
+        with patch.object(concrete_feed, "_fetch", mock_fetch_error):
+            for expected_delay in FEED_RETRY_INTERVALS[:4]:
+                concrete_feed._next_fetch_after = None
+                with pytest.raises(ValueError):
+                    await concrete_feed.update(clients=mock_clients)
+
+                assert concrete_feed._next_fetch_after is not None
+                retry_delay = concrete_feed._next_fetch_after - util.utc_now()
+                assert expected_delay.total_seconds() - 5 <= retry_delay.total_seconds()
+                assert retry_delay.total_seconds() <= expected_delay.total_seconds()
+
+        assert concrete_feed._consecutive_failures == 4
+
+    @pytest.mark.asyncio
+    async def test_retry_delay_caps_at_expiration_interval(
+        self, concrete_feed: Feed, mock_clients: dict[str, BaseApiClient]
+    ) -> None:
+        """Retries never become less frequent than ordinary refreshes."""
+        concrete_feed.expiration_interval = datetime.timedelta(minutes=3)
+
+        async def mock_fetch_error(clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+            raise ValueError("retry me")
+
+        with patch.object(concrete_feed, "_fetch", mock_fetch_error):
+            for _ in range(4):
+                concrete_feed._next_fetch_after = None
+                with pytest.raises(ValueError):
+                    await concrete_feed.update(clients=mock_clients)
+
+        assert concrete_feed._next_fetch_after is not None
+        retry_delay = concrete_feed._next_fetch_after - util.utc_now()
+        assert 175 <= retry_delay.total_seconds() <= 180
+
+    @pytest.mark.asyncio
+    async def test_never_expiring_feed_retries_until_first_success(
+        self, concrete_feed: Feed, mock_clients: dict[str, BaseApiClient]
+    ) -> None:
+        """expiration_interval=None means no refresh after success, not no retry."""
+        concrete_feed.expiration_interval = None
+
+        async def mock_fetch_error(clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+            raise ValueError("initial failure")
+
+        with patch.object(concrete_feed, "_fetch", mock_fetch_error):
+            with pytest.raises(ValueError):
+                await concrete_feed.update(clients=mock_clients)
+
+        assert concrete_feed._next_fetch_after is not None
+        retry_delay = concrete_feed._next_fetch_after - util.utc_now()
+        assert 55 <= retry_delay.total_seconds() <= 60
+        assert concrete_feed.is_expired is False
+
+        concrete_feed._next_fetch_after = util.utc_now() - datetime.timedelta(seconds=1)
+
+        async def mock_fetch_success(clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+            index = pd.date_range(start="2023-01-01", periods=3, freq="h", name="time")
+            return pd.DataFrame({"value": [1, 2, 3]}, index=index)
+
+        with patch.object(concrete_feed, "_fetch", mock_fetch_success):
+            await concrete_feed.update(clients=mock_clients)
+
+        assert concrete_feed._fetch_timestamp is not None
+        assert concrete_feed._next_fetch_after is None
+        assert concrete_feed._consecutive_failures == 0
+        assert concrete_feed.is_expired is False
 
     def test_validate_frame_with_valid_dataframe(self, concrete_feed: Feed) -> None:
         """Test that _validate_frame accepts a valid DataFrame."""
@@ -648,8 +739,11 @@ class TestFeedBase:
         assert status.name == "ConcreteFeed"
         assert status.location == concrete_feed.location_config.code
         assert status.fetch_timestamp is None
+        assert status.next_fetch_after is None
         assert status.data_summary is None
         assert status.age_seconds is None
+        assert status.seconds_until_next_fetch is None
+        assert status.consecutive_failures == 0
         assert status.is_expired is True
         assert status.is_healthy is False  # Not healthy if never fetched
         assert status.historical_temp_status is None
@@ -672,6 +766,7 @@ class TestFeedBase:
         assert status.name == "ConcreteFeed"
         assert status.location == concrete_feed.location_config.code
         assert status.fetch_timestamp is not None
+        assert status.next_fetch_after is not None
         assert isinstance(
             status.data_summary, DataFrameSummary
         )  # Check it's the Pydantic model
@@ -686,6 +781,8 @@ class TestFeedBase:
         assert status.data_summary.index_newest == expected_newest
 
         assert status.age_seconds is not None
+        assert status.seconds_until_next_fetch is not None
+        assert status.consecutive_failures == 0
         assert status.is_expired is False
         assert status.is_healthy is True  # Healthy if within buffer
 

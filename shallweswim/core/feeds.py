@@ -70,6 +70,15 @@ HEALTH_CHECK_BUFFER = datetime.timedelta(
     minutes=15
 )  # Longer buffer for service health checks
 
+FEED_RETRY_INTERVALS = (
+    datetime.timedelta(minutes=1),
+    datetime.timedelta(minutes=2),
+    datetime.timedelta(minutes=5),
+    datetime.timedelta(minutes=10),
+    datetime.timedelta(minutes=20),
+    datetime.timedelta(minutes=30),
+)
+
 
 class Feed(BaseModel, abc.ABC):
     """Abstract base class for all data feeds.
@@ -77,6 +86,13 @@ class Feed(BaseModel, abc.ABC):
     A feed represents a source of time-series data that can be fetched,
     processed, and cached. Feeds handle their own expiration logic and
     can be configured to refresh at different intervals.
+
+    Scheduling uses two timestamps with separate meanings:
+    _fetch_timestamp records the last successful data publish for age/health
+    checks, while _next_fetch_after gates the next refresh or retry attempt.
+    Successful updates schedule the normal refresh cadence, or stop refreshing
+    when expiration_interval is None. Failed attempts preserve existing data and
+    schedule retry backoff through _next_fetch_after.
     """
 
     # Configuration for the location this feed is associated with
@@ -85,8 +101,9 @@ class Feed(BaseModel, abc.ABC):
     # Feed configuration
     feed_config: config_lib.BaseFeedConfig
 
-    # Frequency in which this data needs to be fetched, otherwise it is considered expired.
-    # If None, this dataset will never expire and only needs to be fetched once.
+    # Normal refresh cadence after a successful update. If None, failed attempts
+    # still retry with backoff until first success; after success the feed will
+    # not refresh automatically.
     expiration_interval: datetime.timedelta | None
 
     # Private fields - not included in serialization but still validated
@@ -98,6 +115,7 @@ class Feed(BaseModel, abc.ABC):
     # Event used to signal when data is ready
     _ready_event: asyncio.Event = asyncio.Event()
     _last_error: Exception | None = None
+    _consecutive_failures: int = 0
 
     # Modern Pydantic v2 configuration using model_config
     model_config = ConfigDict(
@@ -138,17 +156,59 @@ class Feed(BaseModel, abc.ABC):
     def is_expired(self) -> bool:
         """Check if the feed should attempt a new fetch.
 
-        Uses _next_fetch_after for scheduling, which is set on both success
-        and failure. This prevents runaway retries when a station is unavailable.
+        Uses _next_fetch_after for scheduling. Feeds with expiration_interval=None
+        never refresh after a successful fetch, but failed attempts still schedule
+        retries via _next_fetch_after until the first successful fetch.
 
         Returns:
             True if we should attempt to fetch, False otherwise
         """
+        if self._next_fetch_after is not None:
+            return utc_now() > self._next_fetch_after
+        has_successful_never_expiring_data = (
+            self._fetch_timestamp is not None
+            and self._data is not None
+            and self.expiration_interval is None
+        )
+        return not has_successful_never_expiring_data
+
+    @property
+    def seconds_until_next_fetch(self) -> float | None:
+        """Seconds until the next scheduled fetch attempt."""
         if self._next_fetch_after is None:
-            return True  # Never attempted, should fetch
-        if not self.expiration_interval:
-            return False  # No expiration configured, never expires
-        return utc_now() > self._next_fetch_after
+            return None
+        return max(0.0, (self._next_fetch_after - utc_now()).total_seconds())
+
+    def _failure_retry_delay(self) -> datetime.timedelta:
+        """Return retry delay for the current consecutive failure count.
+
+        The shared feed retry sequence starts quickly for transient upstream
+        failures, then backs off. If a feed has a normal refresh interval, the
+        retry delay never exceeds that interval; retries should not become less
+        frequent than the feed's ordinary refresh cadence.
+        """
+        retry_index = min(
+            self._consecutive_failures - 1,
+            len(FEED_RETRY_INTERVALS) - 1,
+        )
+        retry_delay = FEED_RETRY_INTERVALS[retry_index]
+        if self.expiration_interval is not None:
+            retry_delay = min(retry_delay, self.expiration_interval)
+        return retry_delay
+
+    def _schedule_after_success(self, now: datetime.datetime) -> None:
+        """Schedule the next fetch after a successful data publish."""
+        self._last_error = None
+        self._consecutive_failures = 0
+        if self.expiration_interval is None:
+            self._next_fetch_after = None
+        else:
+            self._next_fetch_after = now + self.expiration_interval
+
+    def _schedule_after_failure(self, now: datetime.datetime) -> None:
+        """Schedule the next fetch after a failed attempt."""
+        self._consecutive_failures += 1
+        self._next_fetch_after = now + self._failure_retry_delay()
 
     @property
     def is_healthy(self) -> bool:
@@ -227,7 +287,10 @@ class Feed(BaseModel, abc.ABC):
             name=self.__class__.__name__,
             location=self.location_config.code,
             fetch_timestamp=self._fetch_timestamp,  # Pass datetime object directly
+            next_fetch_after=self._next_fetch_after,
             age_seconds=age_sec,
+            seconds_until_next_fetch=self.seconds_until_next_fetch,
+            consecutive_failures=self._consecutive_failures,
             is_expired=self.is_expired,
             is_healthy=self.is_healthy,
             expiration_seconds=expiration_sec,
@@ -267,8 +330,10 @@ class Feed(BaseModel, abc.ABC):
     async def update(self, clients: dict[str, BaseApiClient]) -> None:
         """Update the data from this feed if it is expired.
 
-        On success: updates _fetch_timestamp (for age tracking) and _next_fetch_after.
-        On failure: only updates _next_fetch_after to prevent runaway retries.
+        On success, publish the new data, reset failure state, update
+        _fetch_timestamp for age tracking, and schedule the normal refresh
+        cadence. On failure, keep any existing data, increment consecutive
+        failure state, and schedule a bounded retry through _next_fetch_after.
 
         StationUnavailableError is handled gracefully - the feed schedules its next
         attempt and doesn't propagate the error. Other errors are re-raised.
@@ -291,9 +356,11 @@ class Feed(BaseModel, abc.ABC):
             df = self._remove_outliers(df)
 
             self._data = df
-            self._fetch_timestamp = utc_now()  # Track when data was fetched (for age)
+            now = utc_now()
+            self._fetch_timestamp = now  # Track when data was fetched (for age)
             # Set the ready event to signal that data is available
             self._ready_event.set()
+            self._schedule_after_success(now)
             self.log(f"Successfully updated {self.__class__.__name__}")
 
         except StationUnavailableError as e:
@@ -305,16 +372,14 @@ class Feed(BaseModel, abc.ABC):
                 logging.WARNING,
             )
             self._last_error = e
-            # Don't raise - just schedule next attempt via finally block
+            self._schedule_after_failure(utc_now())
+            # Don't raise - scheduled retry preserves existing data.
         except Exception as e:
             # Unexpected error - log at ERROR (triggers GCP alerts)
             self.log(f"Error updating {self.__class__.__name__}: {e}", logging.ERROR)
             self._last_error = e
+            self._schedule_after_failure(utc_now())
             raise
-        finally:
-            # Always schedule next fetch attempt to prevent runaway retries
-            if self.expiration_interval:
-                self._next_fetch_after = utc_now() + self.expiration_interval
 
     @abc.abstractmethod
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:

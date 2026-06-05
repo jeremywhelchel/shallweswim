@@ -1388,7 +1388,10 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
             name=f"MockFeed{i}",
             location="nyc",
             fetch_timestamp=datetime.datetime.fromisoformat("2025-04-27T12:00:00"),
+            next_fetch_after=datetime.datetime.fromisoformat("2025-04-27T13:00:00"),
             age_seconds=3600,
+            seconds_until_next_fetch=0,
+            consecutive_failures=0,
             is_expired=False,
             expiration_seconds=3600,
             data_summary=None,  # Explicitly set optional fields if needed

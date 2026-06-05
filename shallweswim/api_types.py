@@ -329,10 +329,31 @@ class FeedStatus(BaseModel):
     fetch_timestamp: datetime.datetime | None = Field(
         None, description="Timestamp of the last successful data fetch (naive UTC)"
     )
+    next_fetch_after: datetime.datetime | None = Field(
+        None,
+        description=(
+            "Timestamp of the next scheduled refresh or retry attempt (naive UTC)"
+        ),
+    )
     age_seconds: float | None = Field(
         None, description="Data age in seconds at the time of status check"
     )
-    is_expired: bool = Field(..., description="Whether the data is considered expired")
+    seconds_until_next_fetch: float | None = Field(
+        None, description="Seconds until the next scheduled refresh or retry attempt"
+    )
+    consecutive_failures: int = Field(
+        ...,
+        description=(
+            "Consecutive failed fetch attempts since the last successful update; "
+            "resets to zero on success"
+        ),
+    )
+    is_expired: bool = Field(
+        ...,
+        description=(
+            "Whether the feed is due for a scheduled refresh or retry attempt"
+        ),
+    )
     expiration_seconds: float | None = Field(
         None, description="Configured expiration time in seconds for the feed"
     )

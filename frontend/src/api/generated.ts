@@ -1138,6 +1138,11 @@ export interface components {
              * @description Data age in seconds at the time of status check
              */
             age_seconds?: number | null;
+            /**
+             * Consecutive Failures
+             * @description Consecutive failed fetch attempts since the last successful update; resets to zero on success
+             */
+            consecutive_failures: number;
             /** @description Summary statistics of the feed's DataFrame, if available */
             data_summary?: components["schemas"]["DataFrameSummary"] | null;
             /**
@@ -1159,7 +1164,7 @@ export interface components {
             historical_temp_status?: components["schemas"]["HistoricalTempStatus"] | null;
             /**
              * Is Expired
-             * @description Whether the data is considered expired
+             * @description Whether the feed is due for a scheduled refresh or retry attempt
              */
             is_expired: boolean;
             /**
@@ -1177,6 +1182,16 @@ export interface components {
              * @description Class name of the Feed
              */
             name: string;
+            /**
+             * Next Fetch After
+             * @description Timestamp of the next scheduled refresh or retry attempt (naive UTC)
+             */
+            next_fetch_after?: string | null;
+            /**
+             * Seconds Until Next Fetch
+             * @description Seconds until the next scheduled refresh or retry attempt
+             */
+            seconds_until_next_fetch?: number | null;
         };
         /**
          * GoodServiceDirection

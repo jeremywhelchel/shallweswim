@@ -1155,6 +1155,8 @@ export interface components {
              * @description Timestamp of the last successful data fetch (naive UTC)
              */
             fetch_timestamp?: string | null;
+            /** @description Year-level diagnostics for HistoricalTempsFeed. Null for other feeds. */
+            historical_temp_status?: components["schemas"]["HistoricalTempStatus"] | null;
             /**
              * Is Expired
              * @description Whether the data is considered expired
@@ -1186,6 +1188,44 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HistoricalTempStatus
+         * @description Year-level diagnostics for the historical temperature feed.
+         */
+        HistoricalTempStatus: {
+            /**
+             * Available Years
+             * @description Required years currently available from the year cache.
+             */
+            available_years: number[];
+            /**
+             * Cached Years
+             * @description All years currently present in the year cache.
+             */
+            cached_years: number[];
+            /**
+             * Failed Years
+             * @description Year-to-error map from the latest historical fetch attempt.
+             */
+            failed_years: {
+                [key: string]: string;
+            };
+            /**
+             * Fetched Years
+             * @description Years fetched successfully during the latest attempt.
+             */
+            fetched_years: number[];
+            /**
+             * Missing Years
+             * @description Required years not currently available from the year cache.
+             */
+            missing_years: number[];
+            /**
+             * Required Years
+             * @description Configured years required before historical data is published.
+             */
+            required_years: number[];
         };
         /**
          * LegacyChartInfo

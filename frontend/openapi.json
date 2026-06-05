@@ -944,6 +944,17 @@
             "description": "Timestamp of the last successful data fetch (naive UTC)",
             "title": "Fetch Timestamp"
           },
+          "historical_temp_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HistoricalTempStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Year-level diagnostics for HistoricalTempsFeed. Null for other feeds."
+          },
           "is_expired": {
             "description": "Whether the data is considered expired",
             "title": "Is Expired",
@@ -994,6 +1005,70 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HistoricalTempStatus": {
+        "additionalProperties": false,
+        "description": "Year-level diagnostics for the historical temperature feed.",
+        "properties": {
+          "available_years": {
+            "description": "Required years currently available from the year cache.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Available Years",
+            "type": "array"
+          },
+          "cached_years": {
+            "description": "All years currently present in the year cache.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Cached Years",
+            "type": "array"
+          },
+          "failed_years": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Year-to-error map from the latest historical fetch attempt.",
+            "title": "Failed Years",
+            "type": "object"
+          },
+          "fetched_years": {
+            "description": "Years fetched successfully during the latest attempt.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Fetched Years",
+            "type": "array"
+          },
+          "missing_years": {
+            "description": "Required years not currently available from the year cache.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Missing Years",
+            "type": "array"
+          },
+          "required_years": {
+            "description": "Configured years required before historical data is published.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Required Years",
+            "type": "array"
+          }
+        },
+        "required": [
+          "required_years",
+          "available_years",
+          "cached_years",
+          "missing_years",
+          "fetched_years",
+          "failed_years"
+        ],
+        "title": "HistoricalTempStatus",
         "type": "object"
       },
       "LegacyChartInfo": {

@@ -183,9 +183,16 @@ Notes:
 
 ### Source Client Work
 
-- Evaluate replacing the `ndbc-api` dependency with a first-party async NDBC
-  client. The current client wrapper still carries thread-bound behavior and
-  dependency-update friction; a local client may be simpler to own.
+- Consider adding direct NDBC data-file availability checks to the debug script
+  for configured stations and years. Prefer probing the same text files the
+  runtime client consumes; avoid scraping NDBC station HTML pages unless direct
+  file checks are insufficient.
+- Evaluate replacing the synchronous USGS NWIS `dataretrieval` dependency with
+  a first-party async client for both temperature and current feeds. Preserve the
+  current `NwisApi.temperature()` and `NwisApi.current_speed()` interfaces for a
+  low-risk migration.
+- After any NWIS client replacement, audit and remove the shared blocking I/O
+  executor if no external data client still needs synchronous library calls.
 - Investigate San Diego station availability before changing any station
   configuration. Do not change production stations without explicit approval.
 - Investigate whether SDF should add USGS discharge-rate context in addition to

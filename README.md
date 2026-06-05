@@ -361,6 +361,19 @@ prints counts by visual artifact stage and year, and writes:
 Use `--start-year` and `--end-year` to narrow a tuning run. Because this command
 hits NOAA/USGS directly, results can change as upstream station data changes.
 
+#### Debugging NDBC Temperature Fetches
+
+Use the NDBC client debug script to exercise station fetches without starting the
+full service:
+
+```bash
+uv run python -m shallweswim.scripts.debug_ndbc_fetch --location bos \
+  --start-year 2011 --end-year 2026 --yearly --concurrency 2
+```
+
+The command uses the same first-party NDBC client as the app and reports per-year
+row counts, missing temperature counts, date bounds, and elapsed time.
+
 ### Testing Philosophy
 
 The test suite uses a tiered strategy:

@@ -48,11 +48,8 @@ async def test_live_temperature_fetch_stdmet() -> None:
     end_date = datetime.date.today()
     begin_date = end_date - datetime.timedelta(days=8)
 
-    # NOTE: NdbcApi(session=None) works because NdbcApi._execute_request currently
-    # bypasses the BaseApiClient's aiohttp session. Instead, it creates its own
-    # synchronous NdbcApiClient (from the ndbc-api library) and calls its methods
-    # using asyncio.to_thread. If NdbcApi is refactored to use aiohttp directly,
-    # this test will need a valid session fixture.
+    # NdbcApi(session=None) creates short-lived aiohttp sessions for direct
+    # script/test usage. The app passes a shared session.
     ndbc_api = NdbcApi(session=None)
 
     # Fetch temperature data from NDBC station using stdmet mode

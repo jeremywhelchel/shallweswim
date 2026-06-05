@@ -252,7 +252,7 @@ Both success and failure update `_next_fetch_after`, preventing runaway retries:
 
 - **`StationUnavailableError`**: Use ONLY for confirmed "no data" conditions
 
-  - NDBC returns empty dict `{}`
+  - NDBC text files are unavailable or empty for the requested range
   - COOPS returns "No data was found"
   - USGS NWIS/dataretrieval returns a known no-sites/no-data response
   - Empty DataFrame for time range
@@ -352,7 +352,11 @@ use string models until a future coordinated cleanup.
 All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIMEOUT` in `clients/base.py`):
 
 - **COOPS**: Uses aiohttp per-request timeout
-- **NWIS/NDBC**: Uses `asyncio.wait_for()` around synchronous library calls
+- **NDBC**: Uses direct aiohttp text-file requests with a process-local
+  concurrency gate. The NDBC base URL, path fragments, historical cutoff, and
+  request concurrency limit are named constants in `shallweswim/clients/ndbc.py`;
+  do not duplicate endpoint paths elsewhere.
+- **NWIS**: Uses `asyncio.wait_for()` around synchronous dataretrieval calls
 
 Timeouts raise `RetryableClientError` and are automatically retried by `request_with_retry()`.
 

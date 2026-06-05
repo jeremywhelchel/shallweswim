@@ -9,12 +9,20 @@ from unittest.mock import AsyncMock, patch
 # Third-party imports
 import pandas as pd
 import pytest
-import requests
 
 from shallweswim.clients.base import RetryableClientError
 
 # Local imports
-from shallweswim.clients.ndbc import NdbcApi, NdbcDataError
+from shallweswim.clients.ndbc import (
+    NDBC_BASE_URL,
+    NDBC_CURRENT_MONTH_FILE_EXTENSION,
+    NDBC_DATA_PATH,
+    NDBC_HISTORICAL_DATA_PATH,
+    NDBC_HISTORICAL_VIEW_PATH,
+    NDBC_REALTIME_PATH,
+    NdbcApi,
+    NdbcDataError,
+)
 from shallweswim.util import c_to_f
 
 
@@ -55,7 +63,7 @@ def ndbc_client() -> NdbcApi:
 # Mock data fixtures
 @pytest.fixture
 def mock_ndbc_stdmet_raw() -> pd.DataFrame:
-    """Mock raw DataFrame for stdmet data from ndbc_api."""
+    """Mock raw DataFrame for stdmet data from NDBC."""
     index = pd.MultiIndex.from_tuples(
         [
             ("44013", pd.Timestamp("2025-04-19 10:00:00")),
@@ -68,7 +76,7 @@ def mock_ndbc_stdmet_raw() -> pd.DataFrame:
 
 @pytest.fixture
 def mock_ndbc_ocean_raw() -> pd.DataFrame:
-    """Mock raw DataFrame for ocean data from ndbc_api."""
+    """Mock raw DataFrame for ocean data from NDBC."""
     index = pd.MultiIndex.from_tuples(
         [
             ("44013", pd.Timestamp("2025-04-19 10:00:00")),
@@ -175,16 +183,17 @@ async def test_api_error(
 
 
 @pytest.mark.asyncio
-async def test_execute_request_retries_content_decoding_errors(
+async def test_execute_request_retries_client_errors(
     ndbc_client: NdbcApi,
 ) -> None:
-    """Protocol/decode failures from requests are transient for NDBC."""
-    with patch("shallweswim.clients.ndbc.NdbcApiClient") as mock_api_class:
-        mock_api_class.return_value.get_data.side_effect = (
-            requests.exceptions.ContentDecodingError("bad gzip")
-        )
-
-        with pytest.raises(RetryableClientError, match="ContentDecodingError"):
+    """Transient fetch failures propagate as retryable NDBC errors."""
+    with patch.object(
+        ndbc_client,
+        "_fetch_url",
+        new_callable=AsyncMock,
+        side_effect=RetryableClientError("bad response"),
+    ):
+        with pytest.raises(RetryableClientError, match="bad response"):
             await ndbc_client._execute_request(
                 station_id="44013",
                 mode="stdmet",
@@ -194,17 +203,84 @@ async def test_execute_request_retries_content_decoding_errors(
             )
 
 
+def test_build_request_urls_for_current_year_historical_range() -> None:
+    """Current-year historical ranges include monthly and realtime NDBC URLs."""
+    urls = NdbcApi._build_request_urls(
+        station_id="44013",
+        mode="stdmet",
+        start_time=datetime.datetime(2026, 1, 1),
+        end_time=datetime.datetime(2026, 6, 4),
+        now=datetime.datetime(2026, 6, 4),
+    )
+
+    assert urls == [
+        f"{NDBC_BASE_URL}{NDBC_HISTORICAL_VIEW_PATH}?filename=4401312026.txt.gz&dir={NDBC_DATA_PATH}stdmet/Jan/",
+        f"{NDBC_BASE_URL}{NDBC_HISTORICAL_VIEW_PATH}?filename=4401322026.txt.gz&dir={NDBC_DATA_PATH}stdmet/Feb/",
+        f"{NDBC_BASE_URL}{NDBC_HISTORICAL_VIEW_PATH}?filename=4401332026.txt.gz&dir={NDBC_DATA_PATH}stdmet/Mar/",
+        f"{NDBC_BASE_URL}{NDBC_HISTORICAL_VIEW_PATH}?filename=4401342026.txt.gz&dir={NDBC_DATA_PATH}stdmet/Apr/",
+        f"{NDBC_BASE_URL}{NDBC_DATA_PATH}stdmet/Apr/44013.txt",
+        f"{NDBC_BASE_URL}{NDBC_REALTIME_PATH}44013.txt",
+    ]
+    assert urls[0].startswith(f"{NDBC_BASE_URL}{NDBC_HISTORICAL_VIEW_PATH}")
+    assert urls[0].endswith(f"&dir={NDBC_DATA_PATH}stdmet/Jan/")
+    assert urls[-2].endswith(f"/44013{NDBC_CURRENT_MONTH_FILE_EXTENSION}")
+    assert urls[-1].endswith("/44013.txt")
+
+
+def test_build_request_urls_for_ocean_current_year_historical_range() -> None:
+    """Ocean archive URLs use .txt current-month files and .ocean realtime files."""
+    urls = NdbcApi._build_request_urls(
+        station_id="npqn6",
+        mode="ocean",
+        start_time=datetime.datetime(2026, 1, 1),
+        end_time=datetime.datetime(2026, 6, 4),
+        now=datetime.datetime(2026, 6, 4),
+    )
+
+    assert urls == [
+        f"{NDBC_BASE_URL}{NDBC_HISTORICAL_VIEW_PATH}?filename=npqn612026.txt.gz&dir={NDBC_DATA_PATH}ocean/Jan/",
+        f"{NDBC_BASE_URL}{NDBC_HISTORICAL_VIEW_PATH}?filename=npqn622026.txt.gz&dir={NDBC_DATA_PATH}ocean/Feb/",
+        f"{NDBC_BASE_URL}{NDBC_HISTORICAL_VIEW_PATH}?filename=npqn632026.txt.gz&dir={NDBC_DATA_PATH}ocean/Mar/",
+        f"{NDBC_BASE_URL}{NDBC_HISTORICAL_VIEW_PATH}?filename=npqn642026.txt.gz&dir={NDBC_DATA_PATH}ocean/Apr/",
+        f"{NDBC_BASE_URL}{NDBC_DATA_PATH}ocean/Apr/npqn6{NDBC_CURRENT_MONTH_FILE_EXTENSION}",
+        f"{NDBC_BASE_URL}{NDBC_REALTIME_PATH}NPQN6.ocean",
+    ]
+    assert all(NDBC_HISTORICAL_DATA_PATH not in url for url in urls[:-2])
+    assert urls[-2].endswith("/npqn6.txt")
+    assert urls[-1].endswith("/NPQN6.ocean")
+
+
+def test_parse_stdmet_response_body() -> None:
+    """NDBC whitespace text responses parse into timestamp-indexed frames."""
+    body = (
+        "#YY  MM DD hh mm WDIR WSPD GST  WVHT   DPD   APD MWD   PRES  ATMP  WTMP  DEWP  VIS  TIDE\n"
+        "#yr  mo dy hr mn degT m/s  m/s     m   sec   sec degT   hPa  degC  degC  degC   mi    ft\n"
+        "2025 01 01 00 00 169  4.7  5.9 99.00 99.00 99.00 999 1012.6   7.0   7.6   3.2 99.0 99.00\n"
+        "2025 01 01 00 10 167  4.7  5.7  0.70  9.09  4.88  89 1012.6   7.0   MM   3.3 99.0 99.00\n"
+    )
+
+    result = NdbcApi._parse_response_body(body=body, station_id="44013", mode="stdmet")
+
+    assert list(result.index) == [
+        pd.Timestamp("2025-01-01 00:00:00"),
+        pd.Timestamp("2025-01-01 00:10:00"),
+    ]
+    assert result["WTMP"].iloc[0] == pytest.approx(7.6)
+    assert pd.isna(result["WTMP"].iloc[1])
+
+
 @pytest.mark.asyncio
-async def test_execute_request_retries_chunked_encoding_errors(
+async def test_execute_request_retries_http_5xx(
     ndbc_client: NdbcApi,
 ) -> None:
-    """Broken chunked responses from requests are transient for NDBC."""
-    with patch("shallweswim.clients.ndbc.NdbcApiClient") as mock_api_class:
-        mock_api_class.return_value.get_data.side_effect = (
-            requests.exceptions.ChunkedEncodingError("broken chunk")
-        )
-
-        with pytest.raises(RetryableClientError, match="ChunkedEncodingError"):
+    """Retryable HTTP statuses are transient for NDBC."""
+    with patch.object(
+        ndbc_client,
+        "_fetch_url",
+        new_callable=AsyncMock,
+        side_effect=RetryableClientError("NDBC request returned HTTP 503"),
+    ):
+        with pytest.raises(RetryableClientError, match="HTTP 503"):
             await ndbc_client._execute_request(
                 station_id="44013",
                 mode="stdmet",

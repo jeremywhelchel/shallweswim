@@ -125,7 +125,7 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
         for data_manager in app.state.data_managers.values():
             await data_manager.stop()
 
-        # Shut down the blocking I/O executor used by NWIS/NDBC clients.
+        # Shut down the blocking I/O executor used by NWIS clients.
         #
         # This is intentionally bounded. Earlier teardown variants waited for
         # every blocking I/O thread to finish, which caused GitHub Actions

@@ -70,13 +70,14 @@ import tenacity
 # =============================================================================
 # Shared Thread Pool Executor
 # =============================================================================
-# Used by NWIS and NDBC clients that wrap synchronous libraries (dataretrieval,
-# ndbc-api) in threads. Having our own executor allows us to control shutdown
-# behavior - particularly important for tests where we need to abandon stuck
-# threads without blocking teardown.
+# Used by NWIS clients that wrap synchronous dataretrieval calls in threads.
+# Having our own executor allows us to control shutdown behavior - particularly
+# important for tests where we need to abandon stuck threads without blocking
+# teardown.
 #
-# The underlying libraries use `requests` internally without configurable
-# timeouts, so threads may block indefinitely on slow HTTP responses.
+# The underlying dataretrieval library uses `requests` internally without
+# configurable timeouts, so threads may block indefinitely on slow HTTP
+# responses.
 # With our own executor, we can call shutdown(cancel_futures=True) to
 # abandon these threads cleanly.
 
@@ -126,7 +127,7 @@ class StationUnavailableError(BaseClientError):
     NOT for unexpected data formats or parsing failures.
 
     Examples:
-    - NDBC returns empty dict {}
+    - NDBC text files are unavailable or empty for the requested range
     - COOPS returns "No data was found" message
     - Empty DataFrame with zero rows for requested time range
     """

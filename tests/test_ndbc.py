@@ -3,10 +3,13 @@
 # pylint: disable=duplicate-code
 
 # Standard library imports
+import contextlib
 import datetime
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, patch
 
 # Third-party imports
+import aiohttp
 import pandas as pd
 import pytest
 
@@ -19,6 +22,7 @@ from shallweswim.clients.ndbc import (
     NDBC_DATA_PATH,
     NDBC_HISTORICAL_DATA_PATH,
     NDBC_HISTORICAL_VIEW_PATH,
+    NDBC_MAX_CONCURRENT_REQUESTS,
     NDBC_REALTIME_PATH,
     NdbcApi,
     NdbcDataError,
@@ -201,6 +205,54 @@ async def test_execute_request_retries_client_errors(
                 end_time="2025-04-20",
                 location_code="test",
             )
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_with_session_uses_provider_request_gate(
+    ndbc_client: NdbcApi,
+) -> None:
+    """NDBC HTTP calls pass through the shared provider request gate."""
+    entered_gate = False
+
+    @contextlib.asynccontextmanager
+    async def mock_provider_request_slot(
+        provider: str, max_concurrent_requests: int
+    ) -> AsyncIterator[None]:
+        nonlocal entered_gate
+        entered_gate = True
+        assert provider == "ndbc"
+        assert max_concurrent_requests == NDBC_MAX_CONCURRENT_REQUESTS
+        yield
+
+    class MockResponse:
+        status = 200
+
+        async def __aenter__(self) -> "MockResponse":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def text(self) -> str:
+            return "body"
+
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    session.get.return_value = MockResponse()
+
+    with patch(
+        "shallweswim.clients.ndbc.provider_request_slot",
+        mock_provider_request_slot,
+    ):
+        response = await ndbc_client._fetch_url_with_session(
+            session=session,
+            url="https://example.test",
+            station_id="44013",
+            location_code="test",
+            timeout=aiohttp.ClientTimeout(total=30),
+        )
+
+    assert entered_gate
+    assert response.body == "body"
 
 
 def test_build_request_urls_for_current_year_historical_range() -> None:

@@ -1,8 +1,10 @@
 """Tests for NOAA CO-OPS API client."""
 
 # Standard library imports
+import contextlib
 import datetime
 import io
+from collections.abc import AsyncIterator
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -208,6 +210,46 @@ async def test_execute_request_retries_transient_http_statuses(
 
     with pytest.raises(RetryableClientError, match=f"HTTP error {status_code}"):
         await coops_client._execute_request("https://example.test", "test")
+
+
+@pytest.mark.asyncio
+async def test_execute_request_uses_provider_request_gate(
+    coops_client: CoopsApi,
+) -> None:
+    """CO-OPS HTTP calls pass through the shared provider request gate."""
+    entered_gate = False
+
+    @contextlib.asynccontextmanager
+    async def mock_provider_request_slot(
+        provider: str, max_concurrent_requests: int
+    ) -> AsyncIterator[None]:
+        nonlocal entered_gate
+        entered_gate = True
+        assert provider == "coops"
+        assert max_concurrent_requests == 4
+        yield
+
+    class MockResponse:
+        status = 200
+
+        async def __aenter__(self) -> "MockResponse":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def text(self) -> str:
+            return "Date Time, Prediction, Type\n2025-04-19 10:00,5.2,H\n"
+
+    cast(MagicMock, coops_client._session.get).return_value = MockResponse()
+
+    with patch(
+        "shallweswim.clients.coops.provider_request_slot",
+        mock_provider_request_slot,
+    ):
+        await coops_client._execute_request("https://example.test", "test")
+
+    assert entered_gate
 
 
 @pytest.mark.asyncio

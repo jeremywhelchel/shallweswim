@@ -4,7 +4,6 @@ References:
     - NDBC Measurement Descriptions: https://www.ndbc.noaa.gov/faq/measdes.shtml
 """
 
-import asyncio
 import datetime
 import logging
 from calendar import month_abbr
@@ -20,6 +19,7 @@ from shallweswim.clients.base import (
     RetryableClientError,
     StationUnavailableError,
     is_retryable_http_status,
+    provider_request_slot,
 )
 from shallweswim.util import c_to_f
 
@@ -38,23 +38,10 @@ NDBC_HISTORICAL_VIEW_PATH = "view_text_file.php"
 NDBC_DATA_PATH = "data/"
 NDBC_HISTORICAL_DATA_PATH = "data/historical/"
 NDBC_CURRENT_MONTH_FILE_EXTENSION = ".txt"
+NDBC_PROVIDER = "ndbc"
 NDBC_MAX_CONCURRENT_REQUESTS = 3
 NDBC_HISTORICAL_THRESHOLD = datetime.timedelta(days=44)
 NDBC_NAN_VALUES = ["MM", 99.0, 999, 9999, 9999.0]
-
-_ndbc_request_semaphore: asyncio.Semaphore | None = None
-_ndbc_request_loop: asyncio.AbstractEventLoop | None = None
-
-
-def _get_ndbc_request_semaphore() -> asyncio.Semaphore:
-    """Return a process-local semaphore for NDBC HTTP concurrency."""
-    global _ndbc_request_loop, _ndbc_request_semaphore
-
-    loop = asyncio.get_running_loop()
-    if _ndbc_request_semaphore is None or _ndbc_request_loop is not loop:
-        _ndbc_request_loop = loop
-        _ndbc_request_semaphore = asyncio.Semaphore(NDBC_MAX_CONCURRENT_REQUESTS)
-    return _ndbc_request_semaphore
 
 
 class NdbcApi(BaseApiClient):
@@ -190,8 +177,7 @@ class NdbcApi(BaseApiClient):
         location_code: str,
         timeout: aiohttp.ClientTimeout,
     ) -> "_NdbcHttpResponse":
-        semaphore = _get_ndbc_request_semaphore()
-        async with semaphore:
+        async with provider_request_slot(NDBC_PROVIDER, NDBC_MAX_CONCURRENT_REQUESTS):
             self.log(f"GET {url}", level=logging.DEBUG, location_code=location_code)
             async with session.get(url, timeout=timeout, allow_redirects=True) as resp:
                 body = await resp.text()

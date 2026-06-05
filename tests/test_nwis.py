@@ -1,5 +1,6 @@
 """Tests for USGS NWIS API client."""
 
+import asyncio
 import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,6 +14,7 @@ from shallweswim.clients.base import (
     StationUnavailableError,
 )
 from shallweswim.clients.nwis import (
+    NWIS_MAX_CONCURRENT_REQUESTS,
     NWIS_PAGE_LIMIT,
     USGS_WATERDATA_API_KEY_ENV,
     NwisApi,
@@ -461,6 +463,48 @@ async def test_fetch_json_page_sends_configured_usgs_key(
     assert (
         nwis_client._session.get.call_args.kwargs["headers"]["X-Api-Key"] == "test-key"
     )
+
+
+@pytest.mark.asyncio
+async def test_fetch_json_page_limits_active_nwis_http_requests(
+    nwis_client: NwisApi,
+) -> None:
+    """NWIS fanout is bounded at the upstream HTTP request boundary."""
+    active_requests = 0
+    max_active_requests = 0
+
+    class MockResponse:
+        status = 200
+
+        async def __aenter__(self) -> "MockResponse":
+            nonlocal active_requests, max_active_requests
+            active_requests += 1
+            max_active_requests = max(max_active_requests, active_requests)
+            await asyncio.sleep(0)
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            nonlocal active_requests
+            active_requests -= 1
+
+        async def json(self) -> dict[str, object]:
+            return {"type": "FeatureCollection", "features": []}
+
+    nwis_client._session.get.side_effect = lambda *args, **kwargs: MockResponse()
+
+    await asyncio.gather(
+        *(
+            nwis_client._fetch_json_page(
+                url="https://example.test",
+                params={},
+                site_no=f"0146350{index}",
+                location_code="test",
+            )
+            for index in range(NWIS_MAX_CONCURRENT_REQUESTS + 3)
+        )
+    )
+
+    assert max_active_requests == NWIS_MAX_CONCURRENT_REQUESTS
 
 
 def test_parse_continuous_payloads_filters_parameter_and_statistic() -> None:

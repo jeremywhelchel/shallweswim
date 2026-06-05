@@ -58,8 +58,10 @@ Error Hierarchy
   - *DataError (per client): Unexpected response format
 """
 
+import asyncio
+import contextlib
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, TypeVar
 
 import aiohttp
@@ -101,6 +103,40 @@ def is_retryable_http_status(status_code: int) -> bool:
 
 
 ResponseT = TypeVar("ResponseT")
+
+_provider_request_semaphores: dict[str, asyncio.Semaphore] = {}
+_provider_request_loops: dict[str, asyncio.AbstractEventLoop] = {}
+
+
+def get_provider_request_semaphore(
+    provider: str, max_concurrent_requests: int
+) -> asyncio.Semaphore:
+    """Return the process-local request semaphore for an upstream provider.
+
+    Semaphores are bound to the current event loop, so tests and app restarts
+    that create a new loop must get a fresh semaphore.
+    """
+    if max_concurrent_requests < 1:
+        raise ValueError("max_concurrent_requests must be at least 1")
+
+    loop = asyncio.get_running_loop()
+    existing_loop = _provider_request_loops.get(provider)
+    semaphore = _provider_request_semaphores.get(provider)
+    if semaphore is None or existing_loop is not loop:
+        semaphore = asyncio.Semaphore(max_concurrent_requests)
+        _provider_request_semaphores[provider] = semaphore
+        _provider_request_loops[provider] = loop
+    return semaphore
+
+
+@contextlib.asynccontextmanager
+async def provider_request_slot(
+    provider: str, max_concurrent_requests: int
+) -> AsyncIterator[None]:
+    """Limit active HTTP requests to one upstream provider in this process."""
+    semaphore = get_provider_request_semaphore(provider, max_concurrent_requests)
+    async with semaphore:
+        yield
 
 
 class BaseApiClient:

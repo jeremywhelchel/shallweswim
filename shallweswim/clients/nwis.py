@@ -27,6 +27,7 @@ from shallweswim.clients.base import (
     RetryableClientError,
     StationUnavailableError,
     is_retryable_http_status,
+    provider_request_slot,
 )
 from shallweswim.util import c_to_f
 
@@ -35,6 +36,8 @@ NWIS_CONTINUOUS_ITEMS_PATH = "collections/continuous/items"
 NWIS_PAGE_LIMIT = 50000
 NWIS_MAX_PAGES = 100
 NWIS_INSTANTANEOUS_STATISTIC_ID = "00011"
+NWIS_PROVIDER = "nwis"
+NWIS_MAX_CONCURRENT_REQUESTS = 2
 USGS_WATERDATA_API_KEY_ENV = "USGS_WATERDATA_API_KEY"
 NWIS_REQUEST_HEADERS = {
     "Accept": "application/geo+json, application/json",
@@ -231,27 +234,28 @@ class NwisApi(BaseApiClient):
         timeout = aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT)
         self.log(f"GET {url}", level=logging.DEBUG, location_code=location_code)
 
-        async with self._session.get(
-            url,
-            params=params,
-            timeout=timeout,
-            headers=self._request_headers(),
-        ) as response:
-            if response.status != 200:
-                error_msg = (
-                    f"NWIS request for site {site_no} returned HTTP {response.status}"
-                )
-                if is_retryable_http_status(response.status):
-                    raise RetryableClientError(error_msg)
-                self.log(error_msg, level=logging.ERROR, location_code=location_code)
-                raise NwisConnectionError(error_msg)
+        async with provider_request_slot(NWIS_PROVIDER, NWIS_MAX_CONCURRENT_REQUESTS):
+            async with self._session.get(
+                url,
+                params=params,
+                timeout=timeout,
+                headers=self._request_headers(),
+            ) as response:
+                if response.status != 200:
+                    error_msg = f"NWIS request for site {site_no} returned HTTP {response.status}"
+                    if is_retryable_http_status(response.status):
+                        raise RetryableClientError(error_msg)
+                    self.log(
+                        error_msg, level=logging.ERROR, location_code=location_code
+                    )
+                    raise NwisConnectionError(error_msg)
 
-            try:
-                payload = await response.json()
-            except Exception as e:
-                raise NwisDataError(
-                    f"Failed to parse NWIS JSON response for site {site_no}: {e}"
-                ) from e
+                try:
+                    payload = await response.json()
+                except Exception as e:
+                    raise NwisDataError(
+                        f"Failed to parse NWIS JSON response for site {site_no}: {e}"
+                    ) from e
 
         if not isinstance(payload, dict):
             raise NwisDataError(f"NWIS response for site {site_no} was not an object")

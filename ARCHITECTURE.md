@@ -298,6 +298,22 @@ Client request retries and feed scheduling are separate layers:
 - `Feed.update()` schedules the next whole-feed attempt over minutes after the
   fetch attempt finishes. This state is visible in `/api/status`.
 
+External request pressure is controlled at the actual HTTP boundary, not by
+blocking async fanout at higher layers:
+
+- Composite feeds may intentionally create many async tasks, such as one
+  historical temperature task per year.
+- Each concrete client wraps `aiohttp` calls in a provider request slot before
+  opening the upstream request.
+- Provider request slots are process-local semaphores keyed by upstream provider.
+  They bound active HTTP requests within one app instance, while queued
+  coroutines remain suspended by the event loop.
+- Cloud Run instances multiply these limits. For example, two instances with an
+  NWIS cap of `2` can make up to four active NWIS HTTP requests at once.
+- These gates are not rate-limit accounting or cross-instance distributed locks;
+  they are local backpressure so startup, refresh, and retry bursts do not
+  overwhelm upstream services or the app process.
+
 **Core (`core/queries.py`)**:
 
 - **`DataUnavailableError`**: Feed data requested but not currently available
@@ -365,20 +381,23 @@ events are available. It includes `timestamp`, `estimated_height`, `units`,
 so OpenAPI exposes it as `format: date-time`; existing timestamp fields still
 use string models until a future coordinated cleanup.
 
-### Client Timeouts
+### Client Timeouts And Provider Gates
 
 All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIMEOUT` in `clients/base.py`):
 
-- **COOPS**: Uses aiohttp per-request timeout
+- **COOPS**: Uses aiohttp per-request timeout and a process-local request gate
+  capped by `COOPS_MAX_CONCURRENT_REQUESTS` in `shallweswim/clients/coops.py`.
 - **NDBC**: Uses direct aiohttp text-file requests with a process-local
-  concurrency gate. The NDBC base URL, path fragments, historical cutoff, and
-  request concurrency limit are named constants in `shallweswim/clients/ndbc.py`;
-  do not duplicate endpoint paths elsewhere.
+  request gate capped by `NDBC_MAX_CONCURRENT_REQUESTS`. The NDBC base URL,
+  path fragments, historical cutoff, and request concurrency limit are named
+  constants in `shallweswim/clients/ndbc.py`; do not duplicate endpoint paths
+  elsewhere.
 - **NWIS**: Uses direct aiohttp requests against the modern USGS Water Data
-  continuous-values endpoint. The base URL, path, page limit, and instantaneous
-  statistic id are named constants in `shallweswim/clients/nwis.py`; do not
-  duplicate endpoint paths elsewhere. The client follows USGS pagination links
-  and maps empty FeatureCollections to `StationUnavailableError`. If
+  continuous-values endpoint with a process-local request gate capped by
+  `NWIS_MAX_CONCURRENT_REQUESTS`. The base URL, path, page limit, and
+  instantaneous statistic id are named constants in `shallweswim/clients/nwis.py`;
+  do not duplicate endpoint paths elsewhere. The client follows USGS pagination
+  links and maps empty FeatureCollections to `StationUnavailableError`. If
   `USGS_WATERDATA_API_KEY` is set, the client sends it as an `X-Api-Key` header
   on every page request; otherwise requests remain unauthenticated.
   `shallweswim.scripts.debug_nwis_fetch` is the operational validation tool for

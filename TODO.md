@@ -194,19 +194,11 @@ Notes:
   for configured stations and years. Prefer probing the same text files the
   runtime client consumes; avoid scraping NDBC station HTML pages unless direct
   file checks are insufficient.
-- Review the first-party async clients (CO-OPS, NDBC, NWIS) for small shared
-  HTTP/request-shaping helpers once their behavior has stabilized. Keep this
-  bounded to repeated mechanics such as page following, timeout/error mapping,
-  and endpoint constants; avoid forcing the different upstream APIs into one
+- Continue reviewing the first-party async clients (CO-OPS, NDBC, NWIS) for
+  small shared mechanics after provider request gates have settled. Keep this
+  bounded to repeated request behavior such as timeout/error mapping, headers,
+  and debug instrumentation; avoid forcing the different upstream APIs into one
   generic client abstraction.
-- Finish production quota management for the modern USGS Water Data API before
-  deploying the first-party NWIS client. The client already supports optional
-  `USGS_WATERDATA_API_KEY` via `X-Api-Key`; create a separate production key,
-  store it in Secret Manager, add a GitHub Actions secret for live integration
-  if needed, and verify keyed Cloud Run/CI behavior with `debug_nwis_fetch.py`.
-  Current configured NWIS cold-start work measured about 19-21 HTTP attempts per
-  instance and no live pagination, but unauthenticated IP-based quota behavior
-  produced HTTP 429s when tested from a quota-exhausted network path.
 - Investigate San Diego station availability before changing any station
   configuration. Do not change production stations without explicit approval.
 - Investigate whether SDF should add USGS discharge-rate context in addition to

@@ -18,6 +18,7 @@ from shallweswim.clients.base import (
     RetryableClientError,
     StationUnavailableError,
     is_retryable_http_status,
+    provider_request_slot,
 )
 from shallweswim.types import (
     TIDE_TYPE_CATEGORIES,
@@ -29,6 +30,8 @@ ProductType = Literal[
 ]
 TimeInterval = Literal["hilo", "MAX_SLACK", "h", "6-min", None]
 DateFormat = "%Y%m%d"
+COOPS_PROVIDER = "coops"
+COOPS_MAX_CONCURRENT_REQUESTS = 4
 
 # Temperature product types
 air_temperature = "air_temperature"
@@ -145,19 +148,22 @@ class CoopsApi(BaseApiClient):
         csv_data: str
         try:
             timeout = aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT)
-            async with self._session.get(url, timeout=timeout) as response:
-                if response.status != 200:
-                    error_msg = f"HTTP error {response.status} for {url}"
-                    if is_retryable_http_status(response.status):
-                        raise RetryableClientError(error_msg)
+            async with provider_request_slot(
+                COOPS_PROVIDER, COOPS_MAX_CONCURRENT_REQUESTS
+            ):
+                async with self._session.get(url, timeout=timeout) as response:
+                    if response.status != 200:
+                        error_msg = f"HTTP error {response.status} for {url}"
+                        if is_retryable_http_status(response.status):
+                            raise RetryableClientError(error_msg)
 
-                    self.log(
-                        error_msg, level=logging.ERROR, location_code=location_code
-                    )
-                    raise CoopsConnectionError(error_msg)
+                        self.log(
+                            error_msg, level=logging.ERROR, location_code=location_code
+                        )
+                        raise CoopsConnectionError(error_msg)
 
-                # Read CSV data if status is OK
-                csv_data = await response.text()
+                    # Read CSV data if status is OK
+                    csv_data = await response.text()
 
         except (TimeoutError, aiohttp.ClientError) as e:
             # Convert specific connection/timeout errors into our standard retryable error

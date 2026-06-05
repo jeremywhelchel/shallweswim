@@ -124,6 +124,11 @@ class CoopsApi(BaseApiClient):
             date = date.date()
         return date.strftime(DateFormat)
 
+    def _build_url(self, params: CoopsRequestParams) -> str:
+        """Build a CO-OPS datagetter URL with default and request params."""
+        url_params = dict(self.BASE_PARAMS, **params)
+        return self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
+
     async def _execute_request(self, url: str, location_code: str) -> pd.DataFrame:
         """Performs the CO-OPS API request, handles errors, and parses the response.
 
@@ -249,9 +254,7 @@ class CoopsApi(BaseApiClient):
             location_code=location_code,
         )
 
-        # Construct URL and call using request_with_retry
-        url_params = dict(self.BASE_PARAMS, **params)
-        url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
+        url = self._build_url(params)
         raw_df = await self.request_with_retry(
             location_code, self._execute_request, url
         )
@@ -304,9 +307,7 @@ class CoopsApi(BaseApiClient):
             location_code=location_code,
         )
 
-        # Construct URL and call using request_with_retry
-        url_params = dict(self.BASE_PARAMS, **params)
-        url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
+        url = self._build_url(params)
         raw_df = await self.request_with_retry(
             location_code, self._execute_request, url
         )
@@ -383,9 +384,7 @@ class CoopsApi(BaseApiClient):
             location_code=location_code,
         )
 
-        # Construct URL and call using request_with_retry
-        url_params = dict(self.BASE_PARAMS, **params)
-        url = self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
+        url = self._build_url(params)
         raw_df = await self.request_with_retry(
             location_code, self._execute_request, url
         )

@@ -4,6 +4,7 @@
 import contextlib
 import datetime
 import io
+import urllib.parse
 from collections.abc import AsyncIterator
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -78,6 +79,33 @@ def mock_temperature_data() -> pd.DataFrame:
     }
     df = pd.DataFrame(data)
     return df
+
+
+def test_build_url_merges_base_and_request_params(coops_client: CoopsApi) -> None:
+    """CO-OPS URL construction applies default API params consistently."""
+    url = coops_client._build_url(
+        {
+            "product": "water_temperature",
+            "begin_date": "20250419",
+            "end_date": "20250420",
+            "station": 9414290,
+            "interval": None,
+        }
+    )
+
+    parsed = urllib.parse.urlparse(url)
+    query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+
+    assert url.startswith(CoopsApi.BASE_URL + "?")
+    assert query["application"] == ["shallweswim"]
+    assert query["time_zone"] == ["lst_ldt"]
+    assert query["units"] == ["english"]
+    assert query["format"] == ["csv"]
+    assert query["product"] == ["water_temperature"]
+    assert query["begin_date"] == ["20250419"]
+    assert query["end_date"] == ["20250420"]
+    assert query["station"] == ["9414290"]
+    assert query["interval"] == ["None"]
 
 
 @pytest.mark.asyncio

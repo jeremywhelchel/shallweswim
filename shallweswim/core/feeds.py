@@ -606,8 +606,8 @@ class NdbcTempFeed(TempFeed):
 class NwisTempFeed(TempFeed):
     """USGS NWIS specific implementation of temperature data feed.
 
-    Fetches temperature data from USGS National Water Information System (NWIS) sites
-    using the nwis module.
+    Fetches temperature data from USGS National Water Information System (NWIS)
+    sites through the configured NWIS API client.
     """
 
     feed_config: config_lib.NwisTempFeedConfig  # type: ignore[assignment]
@@ -1062,7 +1062,7 @@ def create_tide_feed(
 class NwisCurrentFeed(CurrentsFeed):
     """Feed for fetching current data from USGS NWIS.
 
-    Uses the NwisClient to retrieve current velocity/discharge data based on
+    Uses the NWIS API client to retrieve current velocity/discharge data based on
     site number and parameter code specified in the configuration.
     """
 

@@ -807,17 +807,13 @@ class LocationDataManager:
 
         Args:
             timeout: Max seconds to wait for task cancellation. If exceeded,
-                    the task is abandoned (thread may still be running but
-                    won't block shutdown).
+                    the task is abandoned so shutdown is not blocked.
         """
         if self._update_task and not self._update_task.done():
             self.log("Stopping data fetch task")
             self._update_task.cancel()
             try:
                 # Wait for the task to finish cancelling, but don't block forever.
-                # If the task is stuck in asyncio.to_thread(), the thread can't
-                # be interrupted - it will complete eventually but we shouldn't
-                # block teardown waiting for it.
                 await asyncio.wait_for(self._update_task, timeout=timeout)
             except asyncio.CancelledError:
                 # This is expected, signifies successful cancellation

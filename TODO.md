@@ -194,18 +194,29 @@ Notes:
   for configured stations and years. Prefer probing the same text files the
   runtime client consumes; avoid scraping NDBC station HTML pages unless direct
   file checks are insufficient.
-- Evaluate replacing the synchronous USGS NWIS `dataretrieval` dependency with
-  a first-party async client for both temperature and current feeds. Preserve the
-  current `NwisApi.temperature()` and `NwisApi.current_speed()` interfaces for a
-  low-risk migration.
-- After any NWIS client replacement, audit and remove the shared blocking I/O
-  executor if no external data client still needs synchronous library calls.
+- Review the first-party async clients (CO-OPS, NDBC, NWIS) for small shared
+  HTTP/request-shaping helpers once their behavior has stabilized. Keep this
+  bounded to repeated mechanics such as page following, timeout/error mapping,
+  and endpoint constants; avoid forcing the different upstream APIs into one
+  generic client abstraction.
+- Decide and implement production quota management for the modern USGS Water
+  Data API before deploying the first-party NWIS client. Validate whether Cloud
+  Run needs an `api.data.gov` key stored in Secret Manager, document local/CI
+  setup if used, and verify keyed and unkeyed behavior with
+  `debug_nwis_fetch.py`. Current configured NWIS cold-start work measured about
+  19-21 HTTP attempts per instance and no live pagination, but unauthenticated
+  IP-based quota behavior produced HTTP 429s when tested from a quota-exhausted
+  network path.
 - Investigate San Diego station availability before changing any station
   configuration. Do not change production stations without explicit approval.
 - Investigate whether SDF should add USGS discharge-rate context in addition to
   the existing observed river-current feed. Parameter `72294` may support a more
   useful river-current presentation, but should be evaluated before changing the
   configured source.
+- Investigate a better Louisville/SDF historical water-temperature source. The
+  configured USGS Water Tower temperature series is useful for live conditions
+  but appears to start in 2025, so `historic_enabled` remains false until there
+  is a source with enough multi-year coverage for historical plots/baselines.
 - Investigate an alternative Chicago temperature source for year-round coverage,
   such as the daily NOAA/NWS marine observation text product, before changing
   configured data sources.

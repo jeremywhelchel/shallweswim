@@ -1,40 +1,46 @@
 """USGS NWIS (National Water Information System) API client.
 
-The USGS NWIS API provides access to water data from rivers, lakes, wells, and other
-water bodies across the United States. This module focuses on retrieving water temperature
-data from NWIS stations.
+The USGS Water Data APIs provide access to water data from rivers, lakes,
+wells, and other water bodies across the United States. This module focuses on
+retrieving continuous water temperature and current observations from USGS
+monitoring locations.
 
 References:
-    - USGS NWIS Web Services: https://waterservices.usgs.gov/
+    - USGS Water Data APIs: https://api.waterdata.usgs.gov/
+    - Continuous values: https://api.waterdata.usgs.gov/ogcapi/v0/collections/continuous
     - USGS Water Data for the Nation: https://waterdata.usgs.gov/nwis
 """
 
-# Standard library imports
-import asyncio
 import datetime
 import logging
-from functools import partial
+from typing import Any
+from urllib.parse import urljoin
+from zoneinfo import ZoneInfo
 
-# Third-party imports
 import aiohttp
-import dataretrieval.nwis as nwis
 import pandas as pd
-from dataretrieval.utils import NoSitesError
 
-# Local imports
 from shallweswim.clients.base import (
-    RETRYABLE_REQUESTS_EXCEPTIONS,
     BaseApiClient,
-    BaseClientError,  # Import BaseClientError
+    BaseClientError,
     RetryableClientError,
     StationUnavailableError,
-    get_blocking_executor,
-    is_retryable_dataretrieval_error,
+    is_retryable_http_status,
 )
 from shallweswim.util import c_to_f
 
+NWIS_BASE_URL = "https://api.waterdata.usgs.gov/ogcapi/v0/"
+NWIS_CONTINUOUS_ITEMS_PATH = "collections/continuous/items"
+NWIS_PAGE_LIMIT = 50000
+NWIS_MAX_PAGES = 100
+NWIS_INSTANTANEOUS_STATISTIC_ID = "00011"
+NWIS_REQUEST_HEADERS = {
+    "Accept": "application/geo+json, application/json",
+    "User-Agent": "shallweswim/0.1 (+https://shallweswim.today)",
+}
 
-class NwisApiError(BaseClientError):  # Inherit from BaseClientError
+
+class NwisApiError(BaseClientError):
     """Base error for USGS NWIS API calls."""
 
 
@@ -47,10 +53,10 @@ class NwisDataError(NwisApiError):
 
 
 class NwisApi(BaseApiClient):
-    """Client for the USGS NWIS API using the dataretrieval library.
+    """Client for USGS continuous water observations using direct async HTTP.
 
-    This class provides methods to fetch hydrological and water quality data
-    from USGS's National Water Information System (NWIS) stations.
+    The public methods intentionally preserve the old NWIS client interface so
+    feed code can migrate without changing call sites.
     """
 
     @property
@@ -61,7 +67,7 @@ class NwisApi(BaseApiClient):
         """Initialize the NWIS client.
 
         Args:
-            session: The aiohttp client session (required by base class, but not used directly by dataretrieval).
+            session: The aiohttp client session.
         """
         super().__init__(session)
 
@@ -73,27 +79,24 @@ class NwisApi(BaseApiClient):
         start: str,
         end: str,
         location_code: str,
+        timezone: str = "UTC",
     ) -> pd.DataFrame:
-        """Executes the nwis.get_record call within asyncio.to_thread and handles errors.
+        """Fetch raw continuous observations and return legacy-compatible rows."""
+        if service != "iv":
+            raise NwisDataError(f"Unsupported NWIS service '{service}'")
+        if len(parameterCd) != 1:
+            raise NwisDataError("NWIS client expects exactly one parameter code")
 
-        This method is called by the `request_with_retry` logic in the base class.
+        parameter_cd = parameterCd[0]
+        url = urljoin(NWIS_BASE_URL, NWIS_CONTINUOUS_ITEMS_PATH)
+        params = self._continuous_request_params(
+            site_no=sites,
+            parameter_cd=parameter_cd,
+            start=start,
+            end=end,
+            timezone=timezone,
+        )
 
-        Args:
-            sites: Site number.
-            service: NWIS service (e.g., 'iv').
-            parameterCd: List of parameter codes.
-            start: Start date string (YYYY-MM-DD).
-            end: End date string (YYYY-MM-DD).
-            location_code: Location code for logging.
-
-        Returns:
-            The raw DataFrame returned by nwis.get_record.
-
-        Raises:
-            RetryableClientError: If a transient connection/timeout error occurs.
-            NwisDataError: If no data is returned or essential columns are missing.
-            NwisApiError: For other unexpected errors during the nwis call.
-        """
         self.log(
             f"Executing NWIS request for site {sites}, params={parameterCd}, start={start}, end={end}",
             location_code=location_code,
@@ -101,64 +104,240 @@ class NwisApi(BaseApiClient):
 
         # --- Fetch phase (network errors caught here) ---
         try:
-            # Fetch the data using our shared executor to avoid blocking.
-            # Using our own executor (vs asyncio.to_thread's default) allows us
-            # to control shutdown - important for tests where threads may be stuck.
-            loop = asyncio.get_running_loop()
-            raw_result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    get_blocking_executor(),
-                    partial(
-                        nwis.get_record,
-                        sites=sites,
-                        service=service,
-                        parameterCd=parameterCd,
-                        start=start,
-                        end=end,
-                    ),
-                ),
-                timeout=self.REQUEST_TIMEOUT,
+            payloads = await self._fetch_json_pages(
+                url=url,
+                params=params,
+                site_no=sites,
+                location_code=location_code,
             )
         except TimeoutError as e:
-            # Convert timeout to our retryable error type
-            error_msg = (
+            raise RetryableClientError(
                 f"Request timed out after {self.REQUEST_TIMEOUT}s for NWIS site {sites}"
-            )
-            raise RetryableClientError(error_msg) from e
-        except RETRYABLE_REQUESTS_EXCEPTIONS as e:
-            # Convert known transient network errors to our retryable type
-            error_msg = f"Network error during NWIS request for site {sites}: {e.__class__.__name__}: {e}"
-            raise RetryableClientError(error_msg) from e
-        except NoSitesError as e:
-            error_msg = (
-                f"NWIS site {sites} returned no data for params {parameterCd}: {e}"
-            )
-            self.log(error_msg, level=logging.WARNING, location_code=location_code)
-            raise StationUnavailableError(error_msg) from e
-        except ValueError as e:
-            if is_retryable_dataretrieval_error(e):
-                error_msg = f"Transient NWIS service error for site {sites}: {e}"
-                raise RetryableClientError(error_msg) from e
-            error_msg = f"Unexpected error during NWIS fetch for site {sites}: {e.__class__.__name__}: {e}"
-            self.log(error_msg, level=logging.ERROR, location_code=location_code)
-            raise NwisApiError(error_msg) from e
-        except Exception as e:
-            # Catch other potential errors from dataretrieval within the thread
-            error_msg = f"Unexpected error during NWIS fetch for site {sites}: {e.__class__.__name__}: {e}"
-            self.log(error_msg, level=logging.ERROR, location_code=location_code)
-            raise NwisApiError(error_msg) from e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise RetryableClientError(
+                f"Network error during NWIS request for site {sites}: "
+                f"{e.__class__.__name__}: {e}"
+            ) from e
 
         # --- Validation phase (outside try - exceptions propagate naturally) ---
-        if (
-            raw_result is None
-            or not isinstance(raw_result, pd.DataFrame)
-            or raw_result.empty
-        ):
+        raw_result = self._parse_continuous_payloads(
+            payloads=payloads,
+            site_no=sites,
+            parameter_cd=parameter_cd,
+        )
+        if raw_result.empty:
             error_msg = f"NWIS site {sites} returned no data for params {parameterCd}"
             self.log(error_msg, level=logging.WARNING, location_code=location_code)
             raise StationUnavailableError(error_msg)
 
         return raw_result
+
+    @classmethod
+    def _continuous_request_params(
+        cls,
+        *,
+        site_no: str,
+        parameter_cd: str,
+        start: str,
+        end: str,
+        timezone: str,
+    ) -> dict[str, str | int]:
+        """Build query params for the USGS continuous values endpoint."""
+        return {
+            "f": "json",
+            "lang": "en-US",
+            "monitoring_location_id": f"USGS-{site_no}",
+            "parameter_code": parameter_cd,
+            "time": f"{cls._local_date_to_utc_rfc3339(start, timezone=timezone)}/{cls._local_date_to_utc_rfc3339(end, timezone=timezone, end_of_day=True)}",
+            "skipGeometry": "true",
+            "limit": NWIS_PAGE_LIMIT,
+        }
+
+    @staticmethod
+    def _local_date_to_utc_rfc3339(
+        date_string: str,
+        *,
+        timezone: str,
+        end_of_day: bool = False,
+    ) -> str:
+        """Convert a local YYYY-MM-DD boundary to a UTC RFC3339 timestamp."""
+        date = datetime.datetime.strptime(date_string, "%Y-%m-%d").date()
+        time = datetime.time.max if end_of_day else datetime.time.min
+        return (
+            datetime.datetime.combine(date, time, tzinfo=ZoneInfo(timezone))
+            .astimezone(datetime.UTC)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
+
+    async def _fetch_json_pages(
+        self,
+        *,
+        url: str,
+        params: dict[str, str | int],
+        site_no: str,
+        location_code: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch all pages for a USGS continuous-values request."""
+        payloads: list[dict[str, Any]] = []
+        next_url: str | None = url
+        next_params: dict[str, str | int] | None = params
+        seen_urls: set[str] = set()
+
+        while next_url:
+            if next_url in seen_urls:
+                raise NwisDataError(
+                    f"NWIS pagination loop detected for site {site_no}: {next_url}"
+                )
+            if len(seen_urls) >= NWIS_MAX_PAGES:
+                raise NwisDataError(
+                    f"NWIS pagination exceeded {NWIS_MAX_PAGES} pages for site {site_no}"
+                )
+            seen_urls.add(next_url)
+
+            payload = await self._fetch_json_page(
+                url=next_url,
+                params=next_params,
+                site_no=site_no,
+                location_code=location_code,
+            )
+            payloads.append(payload)
+            next_url = self._next_page_url(payload)
+            next_params = None
+
+        return payloads
+
+    async def _fetch_json_page(
+        self,
+        *,
+        url: str,
+        params: dict[str, str | int] | None,
+        site_no: str,
+        location_code: str,
+    ) -> dict[str, Any]:
+        """Fetch one USGS JSON page."""
+        timeout = aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT)
+        self.log(f"GET {url}", level=logging.DEBUG, location_code=location_code)
+
+        async with self._session.get(
+            url,
+            params=params,
+            timeout=timeout,
+            headers=NWIS_REQUEST_HEADERS,
+        ) as response:
+            if response.status != 200:
+                error_msg = (
+                    f"NWIS request for site {site_no} returned HTTP {response.status}"
+                )
+                if is_retryable_http_status(response.status):
+                    raise RetryableClientError(error_msg)
+                self.log(error_msg, level=logging.ERROR, location_code=location_code)
+                raise NwisConnectionError(error_msg)
+
+            try:
+                payload = await response.json()
+            except Exception as e:
+                raise NwisDataError(
+                    f"Failed to parse NWIS JSON response for site {site_no}: {e}"
+                ) from e
+
+        if not isinstance(payload, dict):
+            raise NwisDataError(f"NWIS response for site {site_no} was not an object")
+        return payload
+
+    @staticmethod
+    def _next_page_url(payload: dict[str, Any]) -> str | None:
+        """Return the next page URL from a USGS FeatureCollection payload."""
+        links = payload.get("links", [])
+        if not isinstance(links, list):
+            return None
+
+        for link in links:
+            if (
+                isinstance(link, dict)
+                and link.get("rel") == "next"
+                and isinstance(link.get("href"), str)
+            ):
+                return link["href"]
+        return None
+
+    @staticmethod
+    def _parse_continuous_payloads(
+        *,
+        payloads: list[dict[str, Any]],
+        site_no: str,
+        parameter_cd: str,
+    ) -> pd.DataFrame:
+        """Parse USGS FeatureCollection pages into the legacy raw NWIS shape."""
+        records: list[tuple[pd.Timestamp, float]] = []
+        matched_observations = 0
+        invalid_values = 0
+
+        for payload in payloads:
+            features = payload.get("features")
+            if not isinstance(features, list):
+                raise NwisDataError(
+                    f"NWIS response for site {site_no} missing features list"
+                )
+
+            for feature in features:
+                if not isinstance(feature, dict):
+                    raise NwisDataError(
+                        f"NWIS response for site {site_no} contained invalid feature"
+                    )
+                properties = feature.get("properties")
+                if not isinstance(properties, dict):
+                    raise NwisDataError(
+                        f"NWIS response for site {site_no} contained feature without properties"
+                    )
+
+                if properties.get("parameter_code") != parameter_cd:
+                    continue
+                if properties.get("statistic_id") != NWIS_INSTANTANEOUS_STATISTIC_ID:
+                    continue
+
+                matched_observations += 1
+                timestamp_value = properties.get("time")
+                if not isinstance(timestamp_value, str):
+                    raise NwisDataError(
+                        f"NWIS observation for site {site_no} missing timestamp"
+                    )
+
+                try:
+                    timestamp = pd.Timestamp(timestamp_value)
+                except Exception as e:
+                    raise NwisDataError(
+                        f"NWIS observation for site {site_no} had invalid timestamp"
+                    ) from e
+
+                value = pd.to_numeric(properties.get("value"), errors="coerce")
+                if pd.isna(value):
+                    invalid_values += 1
+                    continue
+                if timestamp.tz is None:
+                    raise NwisDataError(
+                        f"NWIS timestamp for site {site_no} was not timezone-aware"
+                    )
+
+                records.append((timestamp, float(value)))
+
+        if not records:
+            if matched_observations and invalid_values:
+                raise NwisDataError(
+                    f"NWIS response for site {site_no} had observations but no parseable values"
+                )
+            return pd.DataFrame()
+
+        index = pd.DatetimeIndex([record[0] for record in records], name="datetime")
+        column_name = f"{parameter_cd}_{NWIS_INSTANTANEOUS_STATISTIC_ID}"
+        return pd.DataFrame(
+            {
+                "site_no": site_no,
+                column_name: [record[1] for record in records],
+            },
+            index=index,
+        )
 
     async def temperature(
         self,
@@ -207,6 +386,7 @@ class NwisApi(BaseApiClient):
             param_list,
             begin_date_str,
             end_date_str,
+            timezone=timezone,
         )
 
         # --- Post-processing starts (UNCHANGED from original logic) ---
@@ -311,6 +491,7 @@ class NwisApi(BaseApiClient):
                 parameterCd=[parameter_cd],
                 start=start_date_str,
                 end=end_date_str,
+                timezone=timezone,
             )
 
             # Post-processing similar to temperature method

@@ -374,6 +374,29 @@ uv run python -m shallweswim.scripts.debug_ndbc_fetch --location bos \
 The command uses the same first-party NDBC client as the app and reports per-year
 row counts, missing temperature counts, date bounds, and elapsed time.
 
+#### Debugging NWIS Temperature and Current Fetches
+
+Use the NWIS client debug script to exercise configured USGS fetches without
+starting the full service:
+
+```bash
+uv run python -m shallweswim.scripts.debug_nwis_fetch --location aus --feed live-temp
+uv run python -m shallweswim.scripts.debug_nwis_fetch --location sdf --feed currents
+uv run python -m shallweswim.scripts.debug_nwis_fetch --all --startup-workload
+```
+
+The command uses the same first-party NWIS client as the app and reports row
+counts, date bounds, HTTP request counts, response statuses, rate-limit headers,
+and an estimated multi-instance request count.
+
+Use this script before deploying NWIS client changes. During the modern USGS
+Water Data API migration, configured NWIS cold-start work measured about 19-21
+HTTP attempts per instance: Austin historical temperature years completed in
+one request per year with no live pagination observed, while two year requests
+timed out once and succeeded on retry. Louisville live temperature and currents
+each completed in one request. The modern API's production quota/API-key policy
+must be resolved before deploying this client path.
+
 ### Testing Philosophy
 
 The test suite uses a tiered strategy:
@@ -389,7 +412,7 @@ The test suite uses a tiered strategy:
 **Key principles:**
 
 - **Unit/E2E tests are deterministic** - No external dependencies, fake configs defined in `tests/conftest.py`
-- **Integration tests validate real-world compatibility** - May fail due to external factors (station outages, API changes)
+- **Integration tests validate real-world compatibility** - May fail due to external factors (station outages, API changes). NWIS integration tests must fail, not skip, if the live USGS API returns retryable failures such as rate limiting.
 - **Fake configs are explicit** - Each test controls exactly what scenario it tests, independent of production config
 
 ## Monitoring & Station Outages
@@ -422,7 +445,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (Center for Operational Oceanographic Products and Services) for tide, current, and temperature data
 - [NOAA NDBC API](https://www.ndbc.noaa.gov/) (National Data Buoy Center) for buoy-based water temperature data
-- [USGS NWIS API](https://waterservices.usgs.gov/) (National Water Information System) for water temperature and river current data
+- [USGS Water Data APIs](https://api.waterdata.usgs.gov/) (National Water Information System) for water temperature and river current data
 - [FastAPI](https://fastapi.tiangolo.com/) for the web framework
 - [Matplotlib](https://matplotlib.org/) for data visualization
 - [Feather Icons](https://feathericons.com/) for UI icons

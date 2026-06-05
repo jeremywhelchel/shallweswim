@@ -25,83 +25,66 @@ pytestmark = pytest.mark.integration
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_temperature() -> None:
-    """Integration test for fetching NWIS temperature data."""
-    # Dates known to have data for this site
-    begin_date = datetime.date(2024, 6, 1)
-    end_date = datetime.date(2024, 6, 2)
-    site_no = "01463500"  # Use Delaware River @ Trenton
-    timezone = "America/New_York"
-    location_code = "test_loc"
+    """Integration test for fetching configured Austin NWIS temperature data."""
+    begin_date = datetime.date(2026, 6, 1)
+    end_date = datetime.date(2026, 6, 2)
 
-    # Create a real session and client instance
     async with aiohttp.ClientSession() as session:
         nwis_client = NwisApi(session)
-        # Call on instance
         df = await nwis_client.temperature(
-            site_no=site_no,
+            site_no="08155500",  # Barton Springs (used in aus config)
+            parameter_cd="00010",
             begin_date=begin_date,
             end_date=end_date,
-            timezone=timezone,
-            location_code=location_code,
+            timezone="America/Chicago",
+            location_code="aus",
         )
 
-    # Basic checks
     assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+    assert "water_temp" in df.columns
+    assert df.index.name == "time"
+    assert df["water_temp"].between(32.0, 100.0).all()
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_missing_temp_column() -> None:
-    """Integration test for a site known to be missing the standard temp parameter."""
-    # Dates known to have data for this site
-    begin_date = datetime.date(2024, 6, 1)
-    end_date = datetime.date(2024, 6, 2)
-    site_no = (
-        "01646500"  # Potomac River near Washington, D.C. - Known *not* to have 00010
-    )
-    timezone = "America/New_York"
-    location_code = "test_loc_missing"
+    """Integration test for a configured site missing a requested temp parameter."""
+    begin_date = datetime.date(2026, 6, 1)
+    end_date = datetime.date(2026, 6, 2)
 
-    # Use parameter 00011 (Fahrenheit) for site 01646500, expecting no data
-    # With principled error handling, missing data raises StationUnavailableError
-    with pytest.raises(StationUnavailableError, match="returned no data"):
-        # Create a real session and client instance
-        async with aiohttp.ClientSession() as session:
-            nwis_client = NwisApi(session)
-            # Call on instance
+    async with aiohttp.ClientSession() as session:
+        nwis_client = NwisApi(session)
+        with pytest.raises(StationUnavailableError, match="returned no data"):
             await nwis_client.temperature(
-                site_no=site_no,
+                site_no="03292494",  # SDF uses 00011; 00010 should be absent
+                parameter_cd="00010",
                 begin_date=begin_date,
                 end_date=end_date,
-                timezone=timezone,
-                location_code=location_code,
-                parameter_cd="00011",  # Explicitly request the parameter known to be missing
+                timezone="America/New_York",
+                location_code="sdf",
             )
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_integration_live_temperature_fetch() -> None:
-    """Integration test for fetching temperature data from the live USGS NWIS API."""
-    # Use a date range in the past to ensure data is available
-    # (past 7 days should be safe)
-    end_date = datetime.datetime.now().date()
-    begin_date = end_date - datetime.timedelta(days=7)
+async def test_integration_sdf_temperature_fetch_with_parameter_cd() -> None:
+    """Integration test for configured SDF Fahrenheit temperature data."""
+    begin_date = datetime.date(2026, 6, 1)
+    end_date = datetime.date(2026, 6, 2)
 
-    # Create a real session and client instance
     async with aiohttp.ClientSession() as session:
         nwis_client = NwisApi(session)
-        # Call on instance
         df = await nwis_client.temperature(
-            site_no="01463500",  # Delaware River @ Trenton
-            parameter_cd="00010",  # Water temperature, Celsius
+            site_no="03292494",  # Ohio River at Water Tower (used in sdf config)
+            parameter_cd="00011",
             begin_date=begin_date,
             end_date=end_date,
-            timezone="US/Eastern",
+            timezone="America/New_York",
             location_code="sdf",
         )
 
-    # Log the results for debugging
     logging.info(f"Fetched {len(df)} temperature readings")
     if not df.empty:
         logging.info(
@@ -109,14 +92,10 @@ async def test_integration_live_temperature_fetch() -> None:
         )
         logging.info(f"Date range: {df.index.min()} - {df.index.max()}")
 
-    # Verify the results
     assert isinstance(df, pd.DataFrame)
     assert not df.empty, "No temperature data returned"
     assert "water_temp" in df.columns
     assert df.index.name == "time"
-
-    # Check that the temperatures are reasonable for water
-    # Water shouldn't be below freezing (32°F) or above 100°F
     assert df["water_temp"].min() >= 32.0, (
         f"Water temperature below freezing: {df['water_temp'].min()}°F"
     )
@@ -124,62 +103,16 @@ async def test_integration_live_temperature_fetch() -> None:
         f"Water temperature too high: {df['water_temp'].max()}°F"
     )
 
-    # Check that the timestamps are in the requested range
-    # Allow a buffer of one day on each end
     buffer_begin = pd.Timestamp(begin_date) - pd.Timedelta(days=1)
     buffer_end = pd.Timestamp(end_date) + pd.Timedelta(days=1)
 
-    # Get the min and max timestamps from the DataFrame index
-    # Use pandas' built-in comparison methods which handle type compatibility
-    assert not df.empty, "DataFrame is empty, cannot check timestamp range"
-
-    # Convert to strings for the assertion message to avoid type issues
     min_ts_str = str(df.index.min())
     max_ts_str = str(df.index.max())
-
-    # Use pandas' built-in comparison which handles type compatibility
     assert all(df.index >= buffer_begin), (
         f"Earliest timestamp {min_ts_str} before requested begin date {begin_date}"
     )
     assert all(df.index <= buffer_end), (
         f"Latest timestamp {max_ts_str} after requested end date {end_date}"
-    )
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_integration_live_temperature_fetch_with_parameter_cd() -> None:
-    """Integration test for fetching temperature data with a specific parameter code."""
-    # Use a date range in the past to ensure data is available
-    end_date = datetime.datetime.now().date()
-    begin_date = end_date - datetime.timedelta(days=7)
-
-    # Create a real session and client instance
-    async with aiohttp.ClientSession() as session:
-        nwis_client = NwisApi(session)
-        # Call on instance
-        df = await nwis_client.temperature(
-            site_no="01463500",  # Delaware River @ Trenton
-            parameter_cd="00010",  # Water temperature in Celsius
-            begin_date=begin_date,
-            end_date=end_date,
-            timezone="US/Eastern",
-            location_code="sdf",
-        )
-
-    # Verify the results
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty, "No temperature data returned"
-    assert "water_temp" in df.columns
-    assert df.index.name == "time"
-
-    # Check that the temperatures are reasonable for water
-    # Water shouldn't be below freezing (32°F) or above 100°F
-    assert df["water_temp"].min() >= 32.0, (
-        f"Water temperature below freezing: {df['water_temp'].min()}°F"
-    )
-    assert df["water_temp"].max() <= 100.0, (
-        f"Water temperature too high: {df['water_temp'].max()}°F"
     )
 
 
@@ -200,19 +133,18 @@ async def test_get_nwis_currents() -> None:
                 timezone=timezone,
                 location_code="test-currents",
             )
-
-            # Basic checks
-            assert isinstance(df, pd.DataFrame)
-            assert not df.empty, (
-                f"No current data returned for site {site_no}, param {parameter_cd}"
-            )
-            assert "velocity_fps" in df.columns
-            assert isinstance(df.index, pd.DatetimeIndex)
-            # Note: NWIS 'iv' service might only return one row
-            print(f"\nReceived {len(df)} current readings for {site_no}:")
-            print(df.head())
-
         except NwisDataError as e:
             pytest.fail(f"NwisDataError encountered: {e}")
         except NwisApiError as e:
             pytest.fail(f"NwisApiError encountered: {e}")
+
+        # Basic checks
+        assert isinstance(df, pd.DataFrame)
+        assert not df.empty, (
+            f"No current data returned for site {site_no}, param {parameter_cd}"
+        )
+        assert "velocity_fps" in df.columns
+        assert isinstance(df.index, pd.DatetimeIndex)
+        # Note: NWIS 'iv' service might only return one row
+        print(f"\nReceived {len(df)} current readings for {site_no}:")
+        print(df.head())

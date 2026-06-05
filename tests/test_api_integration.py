@@ -14,7 +14,6 @@ import datetime
 import logging
 import os
 import platform
-import threading
 from collections.abc import AsyncGenerator
 from concurrent.futures import ProcessPoolExecutor
 
@@ -29,7 +28,6 @@ import pytest
 import pytest_asyncio
 
 from shallweswim import api, config
-from shallweswim.clients.base import shutdown_blocking_executor
 from shallweswim.types import (
     CurrentDirection,
     CurrentPhase,
@@ -124,22 +122,6 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
         # Clean up all data managers after tests are complete
         for data_manager in app.state.data_managers.values():
             await data_manager.stop()
-
-        # Shut down the blocking I/O executor used by NWIS clients.
-        #
-        # This is intentionally bounded. Earlier teardown variants waited for
-        # every blocking I/O thread to finish, which caused GitHub Actions
-        # integration jobs to stall when a live external API call hung below
-        # our async layer. The current behavior favors reliable CI completion:
-        # cancel queued work, give active blocking-io threads a short grace
-        # period to close sockets, then continue teardown. Local full-suite
-        # integration runs may still report unclosed socket ResourceWarnings
-        # after all tests pass; do not switch back to unbounded executor waits
-        # without first proving the scheduled GitHub Actions job cannot hang.
-        shutdown_blocking_executor()  # wait=False, cancel_futures=True
-        for t in threading.enumerate():
-            if t.name.startswith("blocking-io"):
-                t.join(timeout=5.0)
 
         # Shut down the process pool
         pool.shutdown(wait=False)

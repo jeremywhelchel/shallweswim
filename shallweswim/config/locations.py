@@ -856,7 +856,8 @@ _CONFIG_LIST = [
             site_no="03292494",
             parameter_cd="00011",  # Water temperature
             name="Ohio River at Water Tower",
-            # It appears that this source may only provide ~120 days worth of data.
+            # This time series appears to start in 2025, so it is useful for
+            # live temperature but not enough for multi-year historical plots.
             historic_enabled=False,
             start_year=2025,
         ),

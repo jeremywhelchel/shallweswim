@@ -60,51 +60,10 @@ Error Hierarchy
 
 import logging
 from collections.abc import Awaitable, Callable
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, TypeVar
 
 import aiohttp
-import requests
 import tenacity
-
-# =============================================================================
-# Shared Thread Pool Executor
-# =============================================================================
-# Used by NWIS clients that wrap synchronous dataretrieval calls in threads.
-# Having our own executor allows us to control shutdown behavior - particularly
-# important for tests where we need to abandon stuck threads without blocking
-# teardown.
-#
-# The underlying dataretrieval library uses `requests` internally without
-# configurable timeouts, so threads may block indefinitely on slow HTTP
-# responses.
-# With our own executor, we can call shutdown(cancel_futures=True) to
-# abandon these threads cleanly.
-
-_blocking_executor: ThreadPoolExecutor | None = None
-
-
-def get_blocking_executor() -> ThreadPoolExecutor:
-    """Get or create the shared executor for blocking I/O operations."""
-    global _blocking_executor
-    if _blocking_executor is None:
-        _blocking_executor = ThreadPoolExecutor(
-            max_workers=8, thread_name_prefix="blocking-io"
-        )
-    return _blocking_executor
-
-
-def shutdown_blocking_executor(wait: bool = False, cancel_futures: bool = True) -> None:
-    """Shut down the shared blocking executor.
-
-    Args:
-        wait: If True, wait for all pending futures to complete.
-        cancel_futures: If True, cancel pending futures (Python 3.9+).
-    """
-    global _blocking_executor
-    if _blocking_executor is not None:
-        _blocking_executor.shutdown(wait=wait, cancel_futures=cancel_futures)
-        _blocking_executor = None
 
 
 class BaseClientError(Exception):
@@ -135,26 +94,10 @@ class StationUnavailableError(BaseClientError):
 
 RETRYABLE_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
 
-RETRYABLE_REQUESTS_EXCEPTIONS = (
-    requests.exceptions.ConnectionError,
-    requests.exceptions.Timeout,
-    requests.exceptions.ReadTimeout,
-    requests.exceptions.ChunkedEncodingError,
-    requests.exceptions.ContentDecodingError,
-)
-
 
 def is_retryable_http_status(status_code: int) -> bool:
     """Return whether an HTTP status usually represents a transient failure."""
     return status_code in RETRYABLE_HTTP_STATUSES
-
-
-def is_retryable_dataretrieval_error(error: ValueError) -> bool:
-    """Return whether a dataretrieval ValueError wraps a transient HTTP failure."""
-    message = str(error)
-    return any(
-        f"Service Unavailable: {status}" in message for status in (500, 502, 503)
-    )
 
 
 ResponseT = TypeVar("ResponseT")

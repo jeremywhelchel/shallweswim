@@ -265,7 +265,8 @@ after a successful fetch, they do not refresh automatically.
 
   - NDBC text files are unavailable or empty for the requested range
   - COOPS returns "No data was found"
-  - USGS NWIS/dataretrieval returns a known no-sites/no-data response
+  - USGS NWIS continuous-values response has no observations for the requested
+    site, parameter, and time range
   - Empty DataFrame for time range
 
 - **`*DataError`**: Unexpected data format, parsing failures
@@ -277,7 +278,6 @@ after a successful fetch, they do not refresh automatically.
   - Timeouts and connection errors
   - Broken protocol responses such as chunked transfer or content decoding errors
   - Retryable HTTP statuses: `429`, `500`, `502`, `503`, `504`
-  - USGS NWIS/dataretrieval `Service Unavailable` wrappers for upstream `5xx`
   - Automatically retried by `BaseApiClient.request_with_retry()`
 
 - **`*ApiError`**: Unexpected client/library/API failures that are not known
@@ -374,7 +374,16 @@ All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIM
   concurrency gate. The NDBC base URL, path fragments, historical cutoff, and
   request concurrency limit are named constants in `shallweswim/clients/ndbc.py`;
   do not duplicate endpoint paths elsewhere.
-- **NWIS**: Uses `asyncio.wait_for()` around synchronous dataretrieval calls
+- **NWIS**: Uses direct aiohttp requests against the modern USGS Water Data
+  continuous-values endpoint. The base URL, path, page limit, and instantaneous
+  statistic id are named constants in `shallweswim/clients/nwis.py`; do not
+  duplicate endpoint paths elsewhere. The client follows USGS pagination links
+  and maps empty FeatureCollections to `StationUnavailableError`.
+  `shallweswim.scripts.debug_nwis_fetch` is the operational validation tool for
+  configured NWIS request counts, response statuses, retry behavior, and
+  rate-limit headers. Current configured sources did not produce live pagination
+  during migration validation, so pagination remains unit-tested rather than
+  live-proven against production station configs.
 
 Timeouts raise `RetryableClientError` and are automatically retried by `request_with_retry()`.
 

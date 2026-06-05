@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict
 # Local imports
 from shallweswim import config as config_lib
 from shallweswim import dataframe_models as df_models
-from shallweswim.api_types import DataFrameSummary, FeedStatus
+from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempStatus
 from shallweswim.clients import coops, ndbc, nwis
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
@@ -1075,8 +1075,11 @@ class HistoricalTempsFeed(CompositeFeed):
     interval: Literal["h", "6-min"] = "h"
     clients: dict[str, BaseApiClient] = {}  # Add clients dict parameter
     _last_required_years: tuple[int, ...] = ()
-    _last_successful_years: tuple[int, ...] = ()
+    _last_fetched_years: tuple[int, ...] = ()
+    _last_available_years: tuple[int, ...] = ()
     _last_failed_years: dict[int, str] = {}
+    _year_cache: dict[int, pd.DataFrame] = {}
+    _year_cache_fetch_timestamp: dict[int, datetime.datetime] = {}
 
     @property
     def data_model(self) -> type[DataFrameModel]:
@@ -1090,17 +1093,62 @@ class HistoricalTempsFeed(CompositeFeed):
 
     @property
     def last_successful_years(self) -> tuple[int, ...]:
-        """Years successfully fetched by the last historical temperature attempt."""
-        return self._last_successful_years
+        """Years available after the last attempt; kept for compatibility."""
+        return self._last_available_years
+
+    @property
+    def last_fetched_years(self) -> tuple[int, ...]:
+        """Years fetched successfully during the last historical temperature attempt."""
+        return self._last_fetched_years
+
+    @property
+    def last_available_years(self) -> tuple[int, ...]:
+        """Required years currently available from the in-memory year cache."""
+        return self._last_available_years
 
     @property
     def last_failed_years(self) -> dict[int, str]:
         """Year-to-error map from the last historical temperature fetch attempt."""
         return dict(self._last_failed_years)
 
+    @property
+    def status(self) -> FeedStatus:
+        """Get feed status with year-level historical temperature diagnostics."""
+        required_years = self._last_required_years or self._required_years()
+        available_years = tuple(
+            year for year in required_years if year in self._year_cache
+        )
+        missing_years = tuple(
+            year for year in required_years if year not in self._year_cache
+        )
+        historical_temp_status = HistoricalTempStatus(
+            required_years=list(required_years),
+            available_years=list(available_years),
+            cached_years=sorted(self._year_cache),
+            missing_years=list(missing_years),
+            fetched_years=list(self._last_fetched_years),
+            failed_years=self.last_failed_years,
+        )
+        return super().status.model_copy(
+            update={"historical_temp_status": historical_temp_status}
+        )
+
     def _required_years(self) -> tuple[int, ...]:
         """Return the complete configured historical year range."""
         return tuple(range(self.start_year, self.end_year + 1))
+
+    def _current_historical_year(self) -> int:
+        """Return the current year for historical feed refresh policy."""
+        return utc_now().year
+
+    def _years_to_fetch(self, required_years: tuple[int, ...]) -> tuple[int, ...]:
+        """Return required years that are missing or need refresh."""
+        current_year = self._current_historical_year()
+        return tuple(
+            year
+            for year in required_years
+            if year not in self._year_cache or year == current_year
+        )
 
     def _get_feeds(self, clients: dict[str, BaseApiClient]) -> list[Feed]:
         """Create temperature feeds for each year in the range.
@@ -1149,16 +1197,21 @@ class HistoricalTempsFeed(CompositeFeed):
         """Fetch all required historical years and publish only complete results."""
         required_years = self._required_years()
         self._last_required_years = required_years
-        self._last_successful_years = ()
+        self._last_fetched_years = ()
+        self._last_available_years = ()
         self._last_failed_years = {}
 
-        year_feeds = self._get_feeds(clients=clients)
-        if len(year_feeds) != len(required_years):
+        all_year_feeds = self._get_feeds(clients=clients)
+        if len(all_year_feeds) != len(required_years):
             raise ValueError(
                 "Historical temperature feed construction mismatch: "
                 f"expected {len(required_years)} feeds for years {required_years}, "
-                f"got {len(year_feeds)}"
+                f"got {len(all_year_feeds)}"
             )
+
+        feed_by_year = dict(zip(required_years, all_year_feeds, strict=True))
+        years_to_fetch = self._years_to_fetch(required_years)
+        year_feeds = [feed_by_year[year] for year in years_to_fetch]
 
         tasks = [feed._fetch(clients=clients) for feed in year_feeds]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1166,7 +1219,7 @@ class HistoricalTempsFeed(CompositeFeed):
         successful_dataframes: dict[int, pd.DataFrame] = {}
         failed_years: dict[int, str] = {}
         failed_exceptions: dict[int, Exception] = {}
-        for year, result in zip(required_years, results, strict=True):
+        for year, result in zip(years_to_fetch, results, strict=True):
             if isinstance(result, Exception):
                 failed_years[year] = f"{result.__class__.__name__}: {result}"
                 failed_exceptions[year] = result
@@ -1182,14 +1235,27 @@ class HistoricalTempsFeed(CompositeFeed):
 
             successful_dataframes[year] = normalized_result
 
-        self._last_successful_years = tuple(sorted(successful_dataframes))
+        now = utc_now()
+        for year, dataframe in successful_dataframes.items():
+            self._year_cache[year] = dataframe
+            self._year_cache_fetch_timestamp[year] = now
+
+        self._last_fetched_years = tuple(sorted(successful_dataframes))
+        self._last_available_years = tuple(
+            year for year in required_years if year in self._year_cache
+        )
         self._last_failed_years = failed_years
 
-        if failed_years:
+        missing_years = tuple(
+            year for year in required_years if year not in self._year_cache
+        )
+        if failed_years or missing_years:
             self.log(
                 "Historical temperature fetch incomplete: "
-                f"successful_years={list(self._last_successful_years)}, "
-                f"failed_years={sorted(failed_years)}",
+                f"available_years={list(self._last_available_years)}, "
+                f"fetched_years={list(self._last_fetched_years)}, "
+                f"failed_years={sorted(failed_years)}, "
+                f"missing_years={list(missing_years)}",
                 logging.WARNING,
             )
             if all(
@@ -1198,13 +1264,15 @@ class HistoricalTempsFeed(CompositeFeed):
             ):
                 raise StationUnavailableError(
                     "Historical temperature data unavailable for required years: "
-                    f"{sorted(failed_years)}"
+                    f"{sorted(set(failed_years) | set(missing_years))}"
                 )
-            raise HistoricalTempsIncompleteError(failed_years)
+            incomplete_years = {
+                **dict.fromkeys(missing_years, "missing from cache"),
+                **failed_years,
+            }
+            raise HistoricalTempsIncompleteError(incomplete_years)
 
-        return self._combine_feeds(
-            [successful_dataframes[year] for year in required_years]
-        )
+        return self._combine_feeds([self._year_cache[year] for year in required_years])
 
     def _combine_feeds(self, dataframes: list[pd.DataFrame]) -> pd.DataFrame:
         """Combine temperature data from multiple years.

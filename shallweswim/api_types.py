@@ -69,6 +69,32 @@ class DataFrameSummary(BaseModel):
     )
 
 
+class HistoricalTempStatus(BaseModel):
+    """Year-level diagnostics for the historical temperature feed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    required_years: list[int] = Field(
+        ...,
+        description="Configured years required before historical data is published.",
+    )
+    available_years: list[int] = Field(
+        ..., description="Required years currently available from the year cache."
+    )
+    cached_years: list[int] = Field(
+        ..., description="All years currently present in the year cache."
+    )
+    missing_years: list[int] = Field(
+        ..., description="Required years not currently available from the year cache."
+    )
+    fetched_years: list[int] = Field(
+        ..., description="Years fetched successfully during the latest attempt."
+    )
+    failed_years: dict[int, str] = Field(
+        ..., description="Year-to-error map from the latest historical fetch attempt."
+    )
+
+
 class TemperatureInfo(BaseModel):
     """Water temperature information for API responses."""
 
@@ -318,6 +344,12 @@ class FeedStatus(BaseModel):
     )
     error: str | None = Field(
         None, description="Last error message encountered by the feed, if any"
+    )
+    historical_temp_status: HistoricalTempStatus | None = Field(
+        None,
+        description=(
+            "Year-level diagnostics for HistoricalTempsFeed. Null for other feeds."
+        ),
     )
 
 

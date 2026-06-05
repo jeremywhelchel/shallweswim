@@ -21,7 +21,12 @@ from shallweswim import types as sw_types
 
 # Local imports
 from shallweswim.api import initialize_location_data, register_routes
-from shallweswim.api_types import FeedStatus, LocationConditions, LocationStatus
+from shallweswim.api_types import (
+    FeedStatus,
+    HistoricalTempStatus,
+    LocationConditions,
+    LocationStatus,
+)
 from shallweswim.config import (
     CoopsCurrentsFeedConfig,
     CoopsTempFeedConfig,
@@ -132,6 +137,25 @@ def mock_data_managers(
                 data_summary=None,
                 error=None,
             ),
+            "historic_temps": FeedStatus(
+                name="HistoricalTempsFeed",
+                location="nyc",
+                fetch_timestamp=None,
+                age_seconds=None,
+                is_expired=True,
+                is_healthy=False,
+                expiration_seconds=10800,
+                data_summary=None,
+                error="Historical temperature fetch incomplete for years: 2025",
+                historical_temp_status=HistoricalTempStatus(
+                    required_years=[2024, 2025],
+                    available_years=[2024],
+                    cached_years=[2024],
+                    missing_years=[2025],
+                    fetched_years=[],
+                    failed_years={2025: "ValueError: test failure"},
+                ),
+            ),
         }
     )
     nyc_data.ready = True
@@ -198,6 +222,14 @@ def test_location_status_endpoint(
     assert "currents" in status_data["feeds"]
     assert status_data["feeds"]["tides"]["name"] == "NoaaTidesFeed"
     assert status_data["feeds"]["tides"]["location"] == "nyc"
+    assert status_data["feeds"]["historic_temps"]["historical_temp_status"] == {
+        "required_years": [2024, 2025],
+        "available_years": [2024],
+        "cached_years": [2024],
+        "missing_years": [2025],
+        "fetched_years": [],
+        "failed_years": {"2025": "ValueError: test failure"},
+    }
 
     # Test the SF location status endpoint
     response = test_client.get("/api/sfo/status")
@@ -240,6 +272,9 @@ def test_all_locations_status_endpoint(
     assert "currents" in status_data["nyc"]["feeds"]
     assert status_data["nyc"]["feeds"]["tides"]["name"] == "NoaaTidesFeed"
     assert status_data["nyc"]["feeds"]["tides"]["location"] == "nyc"
+    assert status_data["nyc"]["feeds"]["historic_temps"]["historical_temp_status"][
+        "missing_years"
+    ] == [2025]
 
     # Check the SF data
     assert "feeds" in status_data["sfo"]

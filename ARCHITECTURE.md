@@ -401,15 +401,18 @@ Historical temperature plots are backend-rendered SVGs generated from the
 `historic_temps` feed. The feed fetches each configured year from the same
 temperature source used for the location, normalizes and validates each year
 independently, and only publishes a new combined dataset when every required
-year succeeds. Per-year normalization uses the same hourly resampling path as
-the final combined feed, so source quirks such as duplicate local timestamps
-around daylight-saving transitions are resolved before schema validation.
-Incomplete attempts record the successful and failed years for diagnostics but
-leave the previously published complete dataset and plots untouched. After a
-complete fetch, the feed combines years, sorts by timestamp, and resamples to
-hourly rows. Plot generation then pivots the data with `util.pivot_year()`,
-which moves the year into columns and normalizes every timestamp onto leap-year
-calendar year 2020 so all years can be compared on one month/day axis.
+year succeeds. Successful years are cached in memory for the process lifetime:
+past years do not expire once fetched, while the current year refreshes on the
+historical feed interval. Per-year normalization uses the same hourly resampling
+path as the final combined feed, so source quirks such as duplicate local
+timestamps around daylight-saving transitions are resolved before schema
+validation. Incomplete attempts record the successful and failed years for
+diagnostics but leave the previously published complete dataset and plots
+untouched. After a complete fetch, the feed combines years, sorts by timestamp,
+and resamples to hourly rows. Plot generation then pivots the data with
+`util.pivot_year()`, which moves the year into columns and normalizes every
+timestamp onto leap-year calendar year 2020 so all years can be compared on one
+month/day axis.
 
 `plot._historic_temperature_plot_frame()` owns the visible yearly and monthly
 trend-line preparation. Treat this output as **visual artifact suppression for
@@ -473,6 +476,8 @@ be tuned from production or local logs.
 
 - Returns detailed status for all locations/feeds
 - Shows `is_healthy`, `is_expired`, `age_seconds` per feed
+- Shows year-level `historic_temps` diagnostics, including required, cached,
+  available, missing, fetched, and failed years
 - Use external monitoring (GCP Cloud Monitoring) to alert on stale data
 - Recommended: Alert if `is_healthy: false` persists > 30 minutes for critical feeds
 - Missing/empty location manager state returns **500** because `/api/status`
@@ -495,5 +500,7 @@ Each feed has an **expiration interval** that determines how often it refreshes:
 - `has_data`: Any data exists (used by API endpoints - serve stale over 503)
 - `is_expired`: Data older than refresh interval (triggers background refresh)
 - `is_healthy`: Data within interval + 15-minute buffer (for monitoring display)
+- `historical_temp_status`: Optional diagnostics for the `historic_temps` feed,
+  exposing year-cache progress without changing the public swimming data API.
 
 Background tasks continuously refresh feeds. Failed fetches leave the feed stale (serving old data) until the next successful refresh.

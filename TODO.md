@@ -194,10 +194,6 @@ Notes:
   for configured stations and years. Prefer probing the same text files the
   runtime client consumes; avoid scraping NDBC station HTML pages unless direct
   file checks are insufficient.
-- Add an in-memory per-year cache for historical temperature fetches. Past years
-  should never expire during a process lifetime once fetched successfully; the
-  current year should refresh on the historical feed interval; published
-  historical data and plots should remain all-or-nothing.
 - Evaluate replacing the synchronous USGS NWIS `dataretrieval` dependency with
   a first-party async client for both temperature and current feeds. Preserve the
   current `NwisApi.temperature()` and `NwisApi.current_speed()` interfaces for a

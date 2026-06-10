@@ -12,6 +12,10 @@ import type { TransitStatus } from "../api/transit";
 import { ConditionsSummary, LocationPage } from "../pages/LocationPage";
 import { LocationsPage } from "../pages/LocationsPage";
 
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
   app_name: "shall we swim?",
   short_name: "shallweswim",
@@ -35,6 +39,7 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
         latitude: 40.573,
         longitude: -73.954,
         timezone: "US/Eastern",
+        default_temperature_unit: "F",
         features: {
           temperature: true,
           tides: true,
@@ -75,6 +80,8 @@ const conditionsPayload: components["schemas"]["LocationConditions"] = {
     timestamp: "2026-05-13T07:30:00-04:00",
     water_temp: 61.4,
     units: "F",
+    water_temp_f: 61.4,
+    water_temp_c: 16.3,
     station_name: "Coney Island",
   },
   tides: {
@@ -252,6 +259,8 @@ function renderConditions(
         }}
         hasError={false}
         isLoading={false}
+        onSetTemperatureUnit={() => {}}
+        temperatureUnit="F"
       />
     </MemoryRouter>,
   );
@@ -455,6 +464,21 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   ).not.toBeInTheDocument();
 });
 
+test("toggles water temperature units and persists the preference", async () => {
+  renderLocation();
+
+  expect(await screen.findByText("61.4°F")).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "°C" }));
+
+  expect(screen.getByText("16.3°C")).toBeVisible();
+  expect(
+    JSON.parse(
+      window.localStorage.getItem("shallweswim.appPreferences") ?? "{}",
+    ).temperatureUnit,
+  ).toBe("C");
+});
+
 test("renders all configured locations from bootstrap metadata", () => {
   const sdfConditions: components["schemas"]["LocationConditions"] = {
     ...conditionsPayload,
@@ -467,6 +491,8 @@ test("renders all configured locations from bootstrap metadata", () => {
       timestamp: "2026-05-13T07:30:00-04:00",
       water_temp: 66.7,
       units: "F",
+      water_temp_f: 66.7,
+      water_temp_c: 19.3,
       station_name: "Ohio River at Water Tower",
     },
     current: {
@@ -489,6 +515,7 @@ test("renders all configured locations from bootstrap metadata", () => {
           nav_label: "Louisville",
           swim_location: "Community Boathouse",
           description: "Louisville Kentucky open water swimming conditions",
+          default_temperature_unit: "C",
           features: {
             ...bootstrapPayload.locations.nyc.metadata.features,
             tides: false,
@@ -537,7 +564,7 @@ test("renders all configured locations from bootstrap metadata", () => {
     "/sdf",
   );
   expect(screen.getByText("61.4°F")).toBeVisible();
-  expect(screen.getByText("66.7°F")).toBeVisible();
+  expect(screen.getByText("19.3°C")).toBeVisible();
   expect(screen.getByText(/Data from Coney Island/)).toBeVisible();
   expect(screen.getByText(/Data from Ohio River at Water Tower/)).toBeVisible();
   expect(screen.getByText("Observed flow")).toBeVisible();
@@ -627,6 +654,12 @@ test("renders optional page sections from synthetic feature capabilities", async
   expect(windyUrl.searchParams.get("product")).toBe("ecmwf");
   expect(windyUrl.searchParams.get("zoom")).toBe("10");
   expect(windyUrl.searchParams.get("metricWind")).toBe("kt");
+  expect(windyUrl.searchParams.get("metricTemp")).toBe("°F");
+  fireEvent.click(screen.getByRole("button", { name: "°C" }));
+  await waitFor(() => {
+    const updatedWindyUrl = new URL(windyFrame.getAttribute("src") ?? "");
+    expect(updatedWindyUrl.searchParams.get("metricTemp")).toBe("°C");
+  });
   expect(screen.getByRole("heading", { name: "Live Webcam" })).toBeVisible();
   expect(screen.getByTitle("Synthetic webcam")).toHaveAttribute(
     "src",
@@ -1399,7 +1432,12 @@ test("renders observed flow without tidal water movement for river-current locat
 test("renders unavailable condition states on first-load failure", () => {
   render(
     <MemoryRouter>
-      <ConditionsSummary hasError isLoading={false} />
+      <ConditionsSummary
+        hasError
+        isLoading={false}
+        onSetTemperatureUnit={() => {}}
+        temperatureUnit="F"
+      />
     </MemoryRouter>,
   );
 
@@ -1426,6 +1464,8 @@ test("keeps water movement summary when tide state is unavailable", () => {
         }}
         hasError={false}
         isLoading={false}
+        onSetTemperatureUnit={() => {}}
+        temperatureUnit="F"
       />
     </MemoryRouter>,
   );

@@ -99,7 +99,7 @@ class TemperatureReading:
     timestamp: (
         datetime.datetime
     )  # Time of the reading (timezone-naive, in location's local timezone)
-    temperature: float  # Water temperature in degrees Celsius
+    temperature: float  # Water temperature in degrees Fahrenheit
 
 
 @dataclass

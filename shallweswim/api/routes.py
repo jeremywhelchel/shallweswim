@@ -260,10 +260,14 @@ def api_temperature_info(
         return None
 
     temp_reading = data_manager.get_current_temperature()
+    water_temp_f = temp_reading.temperature
+    water_temp_c = round(util.f_to_c(water_temp_f), 1)
     return TemperatureInfo(
         timestamp=temp_reading.timestamp,
-        water_temp=temp_reading.temperature,
+        water_temp=water_temp_f,
         units="F",
+        water_temp_f=water_temp_f,
+        water_temp_c=water_temp_c,
         station_name=cfg.temp_source.name,
     )
 
@@ -465,6 +469,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 latitude=cfg.latitude,
                 longitude=cfg.longitude,
                 timezone=timezone_name(cfg),
+                default_temperature_unit=cfg.default_temperature_unit,
                 features=AppFeatureFlags(
                     temperature=temp_enabled,
                     tides=tides_enabled,

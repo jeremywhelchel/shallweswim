@@ -69,6 +69,12 @@
   `up 1.2°F in 24h`, `down 3.0°F this week`, or `near seasonal range`. Do this
   from structured historical/live temperature data rather than inferring it from
   plot images or adding filler copy in the frontend.
+- Let the selected temperature unit control temperature plot primary axes. The
+  current Matplotlib plots show Fahrenheit as the primary y-axis and Celsius as
+  the secondary y-axis. A later pass should add a `unit=F|C` plot query
+  parameter, include unit in plot cache keys, make the selected unit primary,
+  keep the other unit secondary, and have the React plot URLs follow the saved
+  temperature-unit preference.
 - Add a lightweight water-temperature projection cone. Start with a deterministic
   forecast rather than a heavy model: build a seasonal climatology from prior
   years, calculate historical spread/quantiles by day-of-year, compare the

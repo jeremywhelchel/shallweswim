@@ -592,6 +592,10 @@ class LocationConfig(BaseModel, frozen=True):
             description="Timezone object for correctly displaying time-based data such as tide charts (e.g., pytz.timezone('US/Eastern'))"
         ),
     ]
+    default_temperature_unit: Annotated[
+        Literal["F", "C"],
+        Field(description="Default temperature display unit for this location"),
+    ]
 
     # Data source configurations
     temp_source: Annotated[
@@ -685,6 +689,7 @@ _CONFIG_LIST = [
         latitude=40.573,
         longitude=-73.954,
         timezone=pytz.timezone("US/Eastern"),
+        default_temperature_unit="F",
         test_required=True,
         temp_source=CoopsTempFeedConfig(
             station=8518750,
@@ -758,6 +763,7 @@ _CONFIG_LIST = [
         latitude=32.850,
         longitude=-117.272,
         timezone=pytz.timezone("US/Pacific"),
+        default_temperature_unit="F",
         temp_source=CoopsTempFeedConfig(
             station=9410230,
             name="La Jolla, CA",
@@ -776,6 +782,7 @@ _CONFIG_LIST = [
         latitude=41.894,
         longitude=-87.613,
         timezone=pytz.timezone("US/Central"),
+        default_temperature_unit="F",
         temp_source=NdbcTempFeedConfig(
             station="45198",
             name="Chicago Buoy",
@@ -822,6 +829,7 @@ _CONFIG_LIST = [
         latitude=37.808,
         longitude=-122.426,
         timezone=pytz.timezone("US/Pacific"),
+        default_temperature_unit="F",
         # The San Francisco, CA - Station ID: 9414290 is not currently available.
         # Disabled - 2025-01-17 02:01:00, Suspect Data - Data failed to meet QC standards - under review.
         # temp_source=CoopsTempFeedConfig(
@@ -850,6 +858,7 @@ _CONFIG_LIST = [
         latitude=38.264,
         longitude=-85.732,
         timezone=pytz.timezone("US/Eastern"),
+        default_temperature_unit="F",
         # Ohio River Water Tower
         # https://waterdata.usgs.gov/monitoring-location/03292494/#dataTypeId=continuous-00011-0&period=P365D
         temp_source=NwisTempFeedConfig(
@@ -899,6 +908,7 @@ _CONFIG_LIST = [
         latitude=30.2639,
         longitude=-97.77,
         timezone=pytz.timezone("US/Central"),
+        default_temperature_unit="F",
         temp_source=NwisTempFeedConfig(
             site_no="08155500",
             parameter_cd="00010",
@@ -917,6 +927,7 @@ _CONFIG_LIST = [
         latitude=42.329,
         longitude=-71.036,
         timezone=pytz.timezone("US/Eastern"),
+        default_temperature_unit="F",
         temp_source=NdbcTempFeedConfig(
             station="44013",
             name="Boston Approach Lighted Buoy (16 NM East)",
@@ -935,6 +946,7 @@ _CONFIG_LIST = [
         latitude=47.580,
         longitude=-122.410,
         timezone=pytz.timezone("US/Pacific"),
+        default_temperature_unit="F",
         temp_source=CoopsTempFeedConfig(
             station=9446484,
             name="Station TCNW1 - Tacoma, WA",
@@ -954,6 +966,7 @@ _CONFIG_LIST = [
         latitude=25.9,
         longitude=-89.7,
         timezone=pytz.timezone("US/Central"),
+        default_temperature_unit="F",
         # https://www.ndbc.noaa.gov/station_page.php?station=42001
         temp_source=NdbcTempFeedConfig(
             station="42001",  # 44025",

@@ -28,6 +28,8 @@ from shallweswim.types import (
 # API TYPES - Used for external API request/response models  #
 #############################################################
 
+TemperatureUnit = Literal["F", "C"]
+
 
 class LocationInfo(BaseModel):
     """Location information for API responses."""
@@ -104,8 +106,20 @@ class TemperatureInfo(BaseModel):
         ...,
         description="Timestamp of the reading in the location's local timezone",
     )
-    water_temp: float = Field(..., description="Water temperature in degrees")
-    units: str = Field("F", description="Temperature units (F for Fahrenheit)")
+    water_temp: float = Field(
+        ...,
+        description="Deprecated. Water temperature in degrees Fahrenheit; use water_temp_f or water_temp_c.",
+        deprecated=True,
+    )
+    units: str = Field(
+        "F",
+        description="Deprecated. Temperature units for water_temp; use explicit water_temp_f or water_temp_c.",
+        deprecated=True,
+    )
+    water_temp_f: float = Field(
+        ..., description="Water temperature in degrees Fahrenheit"
+    )
+    water_temp_c: float = Field(..., description="Water temperature in degrees Celsius")
     station_name: str | None = Field(
         None, description="Human-readable name of the temperature station"
     )
@@ -453,6 +467,9 @@ class AppLocationMetadata(BaseModel):
     latitude: float = Field(..., description="Latitude in decimal degrees")
     longitude: float = Field(..., description="Longitude in decimal degrees")
     timezone: str = Field(..., description="IANA timezone name")
+    default_temperature_unit: TemperatureUnit = Field(
+        ..., description="Default temperature unit for this location's display"
+    )
     features: AppFeatureFlags = Field(..., description="Enabled presentation features")
     temperature_plots: AppTemperaturePlotConfig = Field(
         ..., description="Enabled temperature plot capabilities"

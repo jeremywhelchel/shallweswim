@@ -104,11 +104,16 @@
           })
           .then((data) => {
             // Update temperature if available
-            if (data.temperature && data.temperature.water_temp !== null) {
-              tempElement.textContent = `${data.temperature.water_temp}°${data.temperature.units}`;
+            if (data.temperature) {
+              const tempValue =
+                data.temperature.water_temp_f ?? data.temperature.water_temp;
+              if (tempValue === null || tempValue === undefined) {
+                return;
+              }
+              tempElement.textContent = `${tempValue}°F`;
 
               // Add color based on temperature
-              const temp = parseFloat(data.temperature.water_temp);
+              const temp = parseFloat(tempValue);
               if (!isNaN(temp)) {
                 if (temp < 60) {
                   tempElement.classList.add("cold");

@@ -812,7 +812,9 @@ Page content and ordering should match the current NYC page:
 
 1. Header with `shall we swim today?` and the configured swim-location link.
 2. Conditions summary:
-   - water temperature: `The water is currently {water_temp}{degree symbol}{units}`
+   - water temperature: `The water is currently {temperature}{degree symbol}{unit}`,
+     using the saved temperature-unit preference when present and otherwise the
+     location metadata default
    - station note: `at {station_name} as of {formatted timestamp}.`
    - last tide, next tide, and following tide rows
    - current estimate: `{state_description or direction} at {magnitude} knots`
@@ -1478,7 +1480,7 @@ Potential future persisted preferences:
 - selected temperature plot mode
 - dismissed existing-site adoption banner
 - dismissed or snoozed install-app prompt
-- preferred units if the app ever supports more than Fahrenheit
+- preferred temperature unit
 
 ## External Embeds And Third-Party Data
 
@@ -1505,6 +1507,11 @@ zoom
 metricWind
 metricTemp
 ```
+
+The React app should derive `metricTemp` from the saved temperature-unit
+preference or location default so Windy temperature labels match the app's
+water-temperature display. Legacy Jinja embeds can keep their configured static
+Windy unit.
 
 Using the iframe also keeps Windy as an external visual embed rather than making
 Windy forecast data part of the Shall We Swim data model. Coastal locations can

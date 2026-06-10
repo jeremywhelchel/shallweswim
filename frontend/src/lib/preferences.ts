@@ -1,6 +1,8 @@
 const PREFERENCES_KEY = "shallweswim.appPreferences";
 const PREFERENCES_VERSION = 1;
 
+export type TemperatureUnit = "F" | "C";
+
 type InstallPromptPreferences = {
   dismissedAt?: string;
   lastSeenAt?: string;
@@ -10,6 +12,7 @@ type InstallPromptPreferences = {
 export type AppPreferences = {
   installPrompt?: InstallPromptPreferences;
   lastLocationCode?: string;
+  temperatureUnit?: TemperatureUnit;
   version: typeof PREFERENCES_VERSION;
 };
 
@@ -64,6 +67,17 @@ export function clearLastLocationCode() {
   });
 }
 
+export function getTemperatureUnit() {
+  return readAppPreferences().temperatureUnit ?? null;
+}
+
+export function setTemperatureUnit(unit: TemperatureUnit) {
+  updateAppPreferences((preferences) => ({
+    ...preferences,
+    temperatureUnit: unit,
+  }));
+}
+
 export function recordAppVisit() {
   if (appVisitRecordedForThisPage) {
     return readAppPreferences();
@@ -99,6 +113,10 @@ function normalizePreferences(value: unknown): AppPreferences {
 
   if (typeof value.lastLocationCode === "string" && value.lastLocationCode) {
     preferences.lastLocationCode = value.lastLocationCode;
+  }
+
+  if (value.temperatureUnit === "F" || value.temperatureUnit === "C") {
+    preferences.temperatureUnit = value.temperatureUnit;
   }
 
   if (isObject(value.installPrompt)) {

@@ -769,6 +769,12 @@ export interface components {
              */
             code: string;
             /**
+             * Default Temperature Unit
+             * @description Default temperature unit for this location's display
+             * @enum {string}
+             */
+            default_temperature_unit: "F" | "C";
+            /**
              * Description
              * @description Description of the swimming location
              */
@@ -1410,15 +1416,27 @@ export interface components {
             timestamp: string;
             /**
              * Units
-             * @description Temperature units (F for Fahrenheit)
+             * @deprecated
+             * @description Deprecated. Temperature units for water_temp; use explicit water_temp_f or water_temp_c.
              * @default F
              */
             units: string;
             /**
              * Water Temp
-             * @description Water temperature in degrees
+             * @deprecated
+             * @description Deprecated. Water temperature in degrees Fahrenheit; use water_temp_f or water_temp_c.
              */
             water_temp: number;
+            /**
+             * Water Temp C
+             * @description Water temperature in degrees Celsius
+             */
+            water_temp_c: number;
+            /**
+             * Water Temp F
+             * @description Water temperature in degrees Fahrenheit
+             */
+            water_temp_f: number;
         };
         /**
          * TideCategory

@@ -247,13 +247,15 @@ function updateTemperature(data) {
     return;
   }
 
-  if (!temperature || temperature.water_temp === null) {
+  const tempValue = temperature?.water_temp_f ?? temperature?.water_temp;
+
+  if (!temperature || tempValue === null || tempValue === undefined) {
     updateTemperatureUnavailable();
     return;
   }
 
   if (tempElement) {
-    tempElement.textContent = `${temperature.water_temp}°${temperature.units || "F"}`;
+    tempElement.textContent = `${tempValue}°F`;
   }
 
   if (tempStationElement) {

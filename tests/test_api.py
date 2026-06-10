@@ -69,6 +69,7 @@ def mock_data_managers(
         latitude=40.7128,
         longitude=-74.0060,
         timezone=pytz.timezone("US/Eastern"),
+        default_temperature_unit="F",
         temp_source=CoopsTempFeedConfig(
             station=8518750, name="The Battery", live_enabled=True
         ),
@@ -88,6 +89,7 @@ def mock_data_managers(
         latitude=37.7749,
         longitude=-122.4194,
         timezone=pytz.timezone("US/Pacific"),
+        default_temperature_unit="F",
         tide_source=CoopsTideFeedConfig(
             station=9414290, name="San Francisco"
         ),  # Example tide source
@@ -311,6 +313,7 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
 
     nyc = data["locations"]["nyc"]
     assert nyc["metadata"]["code"] == "nyc"
+    assert nyc["metadata"]["default_temperature_unit"] == "F"
     assert nyc["metadata"]["features"]["temperature"] is True
     assert nyc["metadata"]["temperature_plots"] == {"live": True, "historic": True}
     assert nyc["metadata"]["features"]["webcam"] is True
@@ -462,6 +465,10 @@ def test_get_location_conditions(
     assert data["temperature"]["timestamp"] == mock_dt.isoformat()
     assert data["temperature"]["water_temp"] == mock_temp_value
     assert data["temperature"]["units"] == "F"  # Default unit in TemperatureInfo
+    assert data["temperature"]["water_temp_f"] == mock_temp_value
+    assert data["temperature"]["water_temp_c"] == pytest.approx(
+        round((mock_temp_value - 32) * 5 / 9, 1)
+    )
     nyc_config = mock_data_managers["nyc"]
     assert nyc_config.temp_source is not None  # Help mypy
     assert (
@@ -911,6 +918,7 @@ def test_get_feed_data_configured_location_missing_manager_returns_500() -> None
         latitude=40.7128,
         longitude=-74.0060,
         timezone=pytz.timezone("US/Eastern"),
+        default_temperature_unit="F",
         temp_source=CoopsTempFeedConfig(
             station=8518750, name="The Battery", live_enabled=True
         ),
@@ -1201,6 +1209,7 @@ def test_currents_endpoint_returns_503_when_chart_data_unavailable(
         latitude=40.7128,
         longitude=-74.0060,
         timezone=pytz.timezone("US/Eastern"),
+        default_temperature_unit="F",
         temp_source=CoopsTempFeedConfig(
             station=8518750, name="The Battery", live_enabled=True
         ),

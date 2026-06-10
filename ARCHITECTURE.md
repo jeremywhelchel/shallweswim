@@ -144,11 +144,23 @@ API/config ownership:
   dynamic condition data, manifest metadata, station IDs, or feed internals
   unless there is an explicit frontend need and approval.
 
+Temperature API contract:
+
+- Internal temperature feed data is currently normalized to Fahrenheit in the
+  `water_temp` dataframe column.
+- `/api/{location}/conditions` exposes explicit `water_temp_f` and
+  `water_temp_c` fields. Legacy `water_temp` and `units` remain during the
+  migration period for existing clients and should not be used by new frontend
+  code.
+- Default display unit is static location metadata exposed through
+  `/api/app/bootstrap`, not dynamic condition data.
+
 ### Configuration
 
 - All static configuration is in `config/locations.py`.
 - Use Pydantic models for configuration schemas (e.g., `LocationConfig`, `BaseFeedConfig`).
 - Avoid hardcoding constants in logic files; move them to `config/` or module-level constants if they are "magic numbers".
+- Every `LocationConfig` must explicitly set `default_temperature_unit`; do not infer it from geography or rely on hidden defaults.
 
 ## 2. Coding Standards
 

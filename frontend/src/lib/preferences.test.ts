@@ -1,10 +1,12 @@
 import {
   clearLastLocationCode,
   getLastLocationCode,
+  getTemperatureUnit,
   readAppPreferences,
   recordAppVisit,
   resetPreferenceRuntimeForTests,
   setLastLocationCode,
+  setTemperatureUnit,
   writeAppPreferences,
 } from "./preferences";
 
@@ -58,6 +60,16 @@ test("keeps install prompt state when updating the last location", () => {
   });
 });
 
+test("stores and reads the selected temperature unit", () => {
+  setTemperatureUnit("C");
+
+  expect(getTemperatureUnit()).toBe("C");
+  expect(readAppPreferences()).toEqual({
+    version: 1,
+    temperatureUnit: "C",
+  });
+});
+
 test("resets invalid or stale stored preferences", () => {
   window.localStorage.setItem(STORAGE_KEY, "{bad json");
   expect(readAppPreferences()).toEqual({ version: 1 });
@@ -65,6 +77,12 @@ test("resets invalid or stale stored preferences", () => {
   window.localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({ version: 0, lastLocationCode: "nyc" }),
+  );
+  expect(readAppPreferences()).toEqual({ version: 1 });
+
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ version: 1, temperatureUnit: "K" }),
   );
   expect(readAppPreferences()).toEqual({ version: 1 });
 });

@@ -23,6 +23,7 @@ const bootstrapPayload = {
         latitude: 40.573,
         longitude: -73.954,
         timezone: "US/Eastern",
+        default_temperature_unit: "F",
         features: {
           temperature: true,
           tides: true,
@@ -106,6 +107,7 @@ const bootstrapPayload = {
         latitude: 37.806,
         longitude: -122.422,
         timezone: "US/Pacific",
+        default_temperature_unit: "F",
         features: {
           temperature: true,
           tides: false,
@@ -146,6 +148,8 @@ const conditionsPayload = {
     timestamp: "2026-05-13T07:30:00-04:00",
     water_temp: 61.4,
     units: "F",
+    water_temp_f: 61.4,
+    water_temp_c: 16.3,
     station_name: "Coney Island",
   },
   tides: {
@@ -214,6 +218,8 @@ const sfoConditionsPayload = {
     timestamp: "2026-05-13T07:30:00-07:00",
     water_temp: 55.2,
     units: "F",
+    water_temp_f: 55.2,
+    water_temp_c: 12.9,
     station_name: "San Francisco",
   },
   tides: {

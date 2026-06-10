@@ -307,6 +307,7 @@ def test_create_tide_current_plot_requires_enough_tides() -> None:
         latitude=40.7128,
         longitude=-74.0060,
         timezone=datetime.UTC,
+        default_temperature_unit="F",
         swim_location="Test Beach",
         swim_location_link="https://example.com/test-beach",
     )
@@ -341,6 +342,7 @@ def _test_location_config() -> config_lib.LocationConfig:
         latitude=40.7128,
         longitude=-74.0060,
         timezone=datetime.UTC,
+        default_temperature_unit="F",
         swim_location="Test Beach",
         swim_location_link="https://example.com/test-beach",
     )

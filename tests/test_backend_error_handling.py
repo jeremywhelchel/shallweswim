@@ -34,6 +34,7 @@ def create_minimal_config() -> LocationConfig:
         latitude=40.0,
         longitude=-74.0,
         timezone=pytz.timezone("US/Eastern"),
+        default_temperature_unit="F",
         enabled=True,
         # No feed sources - we'll manually set _feeds
     )

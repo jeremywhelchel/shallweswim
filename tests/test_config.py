@@ -204,6 +204,7 @@ def test_timezone_objects() -> None:
         latitude=0.0,
         longitude=0.0,
         timezone=tz_obj,  # Using timezone object
+        default_temperature_unit="F",
     )
     assert loc.timezone is tz_obj
 
@@ -220,6 +221,7 @@ def test_timezone_objects() -> None:
             latitude=0.0,
             longitude=0.0,
             timezone="US/Eastern",  # type: ignore # String should fail - intentional invalid input
+            default_temperature_unit="F",
         )
 
 

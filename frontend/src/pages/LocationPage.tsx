@@ -19,6 +19,15 @@ import {
   formatTideHeight,
   formatTime,
 } from "../lib/format";
+import {
+  getTemperatureUnit,
+  setTemperatureUnit as persistTemperatureUnit,
+  type TemperatureUnit,
+} from "../lib/preferences";
+import {
+  formatWaterTemperature,
+  resolveTemperatureUnit,
+} from "../lib/temperature";
 
 type AppBootstrapResponse = components["schemas"]["AppBootstrapResponse"];
 type AppBootstrapLocation = components["schemas"]["AppBootstrapLocation"];
@@ -101,6 +110,8 @@ declare global {
 export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
   const location = bootstrap.locations[locationCode];
   const [searchParams, setSearchParams] = useSearchParams();
+  const [preferredTemperatureUnit, setPreferredTemperatureUnit] =
+    useState<TemperatureUnit | null>(() => getTemperatureUnit());
   const supportsWaterMovementPlanning = Boolean(
     location?.metadata.features.water_movement_planning,
   );
@@ -126,6 +137,14 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
     : null;
   const conditions = useLocationConditions(locationCode, plannerAt);
   const firstConditionsSettled = !conditions.isPending;
+  const temperatureUnit = resolveTemperatureUnit({
+    locationDefault: location?.metadata.default_temperature_unit,
+    preference: preferredTemperatureUnit,
+  });
+  const setTemperatureUnit = (unit: TemperatureUnit) => {
+    setPreferredTemperatureUnit(unit);
+    persistTemperatureUnit(unit);
+  };
 
   if (!location) {
     return (
@@ -212,8 +231,10 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
         conditions={conditions.data}
         hasError={conditions.isError && !conditions.data}
         isLoading={conditions.isPending}
+        onSetTemperatureUnit={setTemperatureUnit}
         showObservedFlow={showsObservedFlow}
         showWaterMovement={showsWaterMovement}
+        temperatureUnit={temperatureUnit}
         waterMovementControls={
           hasWaterMovementControls
             ? {
@@ -248,6 +269,7 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
           <WindyEmbed
             config={location.integrations.windy}
             metadata={location.metadata}
+            temperatureUnit={temperatureUnit}
           />
         </Section>
       ) : null}
@@ -284,15 +306,19 @@ export function ConditionsSummary({
   conditions,
   hasError,
   isLoading,
+  onSetTemperatureUnit,
   showObservedFlow = false,
   showWaterMovement = true,
+  temperatureUnit,
   waterMovementControls,
 }: {
   conditions?: LocationConditions;
   hasError: boolean;
   isLoading: boolean;
+  onSetTemperatureUnit: (unit: TemperatureUnit) => void;
   showObservedFlow?: boolean;
   showWaterMovement?: boolean;
+  temperatureUnit: TemperatureUnit;
   waterMovementControls?: WaterMovementControls;
 }) {
   const detailMode = Boolean(waterMovementControls?.detailOpen);
@@ -322,6 +348,8 @@ export function ConditionsSummary({
         compact={detailMode}
         conditions={conditions}
         hasError={hasError}
+        onSetTemperatureUnit={onSetTemperatureUnit}
+        temperatureUnit={temperatureUnit}
       />
       {showWaterMovement ? (
         <WaterMovementSummary
@@ -516,14 +544,18 @@ function TemperatureSummary({
   compact = false,
   conditions,
   hasError,
+  onSetTemperatureUnit,
+  temperatureUnit,
 }: {
   compact?: boolean;
   conditions?: LocationConditions;
   hasError: boolean;
+  onSetTemperatureUnit: (unit: TemperatureUnit) => void;
+  temperatureUnit: TemperatureUnit;
 }) {
   const temperatureValue =
     conditions?.temperature && !hasError
-      ? `${conditions.temperature.water_temp}°${conditions.temperature.units || "F"}`
+      ? formatWaterTemperature(conditions.temperature, temperatureUnit)
       : "Unavailable";
   const stationName =
     conditions?.temperature && !hasError
@@ -539,10 +571,16 @@ function TemperatureSummary({
   if (compact) {
     return (
       <div className="border-swim-line border-b p-3 md:flex md:items-center md:justify-between md:gap-4 md:rounded md:border md:bg-white">
-        <div className="min-w-0 md:flex md:flex-wrap md:items-baseline md:gap-x-3 md:gap-y-1">
-          <h2 className="font-semibold text-base md:text-lg">
-            Water Temperature
-          </h2>
+        <div className="min-w-0 md:flex md:flex-wrap md:items-center md:gap-x-3 md:gap-y-1">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-base md:text-lg">
+              Water Temperature
+            </h2>
+            <TemperatureUnitToggle
+              onChange={onSetTemperatureUnit}
+              unit={temperatureUnit}
+            />
+          </div>
           <div className="mt-1 flex items-baseline gap-2 md:mt-0">
             <p className="text-sm text-slate-700">The water is currently</p>
             <p className="font-mono font-semibold text-2xl text-swim-blue">
@@ -573,7 +611,15 @@ function TemperatureSummary({
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
-      <h2 className="font-semibold text-base md:text-lg">Water Temperature</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold text-base md:text-lg">
+          Water Temperature
+        </h2>
+        <TemperatureUnitToggle
+          onChange={onSetTemperatureUnit}
+          unit={temperatureUnit}
+        />
+      </div>
       <div className="mt-1 flex items-baseline gap-2 md:block">
         <p className="text-sm text-slate-700 md:mt-2 md:text-base">
           The water is currently
@@ -600,6 +646,37 @@ function TemperatureSummary({
         )}
       </p>
     </div>
+  );
+}
+
+function TemperatureUnitToggle({
+  onChange,
+  unit,
+}: {
+  onChange: (unit: TemperatureUnit) => void;
+  unit: TemperatureUnit;
+}) {
+  return (
+    <fieldset
+      aria-label="Temperature unit"
+      className="inline-grid grid-cols-2 overflow-hidden rounded border border-swim-line bg-white text-xs"
+    >
+      {(["F", "C"] as const).map((option) => (
+        <button
+          aria-pressed={unit === option}
+          className={
+            unit === option
+              ? "bg-swim-blue px-2 py-1 font-semibold text-white"
+              : "px-2 py-1 font-semibold text-slate-600 hover:bg-slate-50"
+          }
+          key={option}
+          onClick={() => onChange(option)}
+          type="button"
+        >
+          °{option}
+        </button>
+      ))}
+    </fieldset>
   );
 }
 
@@ -1707,9 +1784,11 @@ function trendIndicatorText(
 function WindyEmbed({
   config,
   metadata,
+  temperatureUnit,
 }: {
   config: AppWindyConfig | null | undefined;
   metadata: AppLocationMetadata;
+  temperatureUnit: TemperatureUnit;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [embedSize, setEmbedSize] = useState({ width: 950, height: 350 });
@@ -1766,7 +1845,7 @@ function WindyEmbed({
     location: "coordinates",
     detail: "true",
     metricWind: windyConfig.metric_wind,
-    metricTemp: windyConfig.metric_temp,
+    metricTemp: `°${temperatureUnit}`,
     radarRange: "-1",
   });
 

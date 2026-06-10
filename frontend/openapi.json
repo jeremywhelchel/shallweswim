@@ -190,6 +190,15 @@
             "title": "Code",
             "type": "string"
           },
+          "default_temperature_unit": {
+            "description": "Default temperature unit for this location's display",
+            "enum": [
+              "F",
+              "C"
+            ],
+            "title": "Default Temperature Unit",
+            "type": "string"
+          },
           "description": {
             "description": "Description of the swimming location",
             "title": "Description",
@@ -249,6 +258,7 @@
           "latitude",
           "longitude",
           "timezone",
+          "default_temperature_unit",
           "features",
           "temperature_plots",
           "citations"
@@ -1354,19 +1364,33 @@
           },
           "units": {
             "default": "F",
-            "description": "Temperature units (F for Fahrenheit)",
+            "deprecated": true,
+            "description": "Deprecated. Temperature units for water_temp; use explicit water_temp_f or water_temp_c.",
             "title": "Units",
             "type": "string"
           },
           "water_temp": {
-            "description": "Water temperature in degrees",
+            "deprecated": true,
+            "description": "Deprecated. Water temperature in degrees Fahrenheit; use water_temp_f or water_temp_c.",
             "title": "Water Temp",
+            "type": "number"
+          },
+          "water_temp_c": {
+            "description": "Water temperature in degrees Celsius",
+            "title": "Water Temp C",
+            "type": "number"
+          },
+          "water_temp_f": {
+            "description": "Water temperature in degrees Fahrenheit",
+            "title": "Water Temp F",
             "type": "number"
           }
         },
         "required": [
           "timestamp",
-          "water_temp"
+          "water_temp",
+          "water_temp_f",
+          "water_temp_c"
         ],
         "title": "TemperatureInfo",
         "type": "object"

@@ -66,6 +66,7 @@ def location_config() -> config_lib.LocationConfig:
         latitude=40.7128,
         longitude=-74.0060,
         timezone=pytz.timezone("America/New_York"),
+        default_temperature_unit="F",
         swim_location="Brighton Beach",
         swim_location_link="https://example.com/brighton-beach",
     )

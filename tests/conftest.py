@@ -37,6 +37,7 @@ TEST_CONFIG_FULL = LocationConfig(
     latitude=40.0,
     longitude=-74.0,
     timezone=pytz.timezone("US/Eastern"),
+    default_temperature_unit="F",
     temp_source=CoopsTempFeedConfig(station=1234567, name="Test Temp Station"),
     tide_source=CoopsTideFeedConfig(station=1234567, name="Test Tide Station"),
     currents_source=CoopsCurrentsFeedConfig(
@@ -56,6 +57,7 @@ TEST_CONFIG_OBSERVATION_CURRENTS = LocationConfig(
     latitude=35.0,
     longitude=-80.0,
     timezone=pytz.timezone("US/Eastern"),
+    default_temperature_unit="F",
     temp_source=CoopsTempFeedConfig(station=2345678, name="Other Temp"),
     tide_source=CoopsTideFeedConfig(station=2345678, name="Other Tide"),
     currents_source=NwisCurrentFeedConfig(
@@ -74,6 +76,7 @@ TEST_CONFIG_PREDICTION_NO_CHARTS = LocationConfig(
     latitude=32.0,
     longitude=-82.0,
     timezone=pytz.timezone("US/Eastern"),
+    default_temperature_unit="F",
     temp_source=CoopsTempFeedConfig(station=4567890, name="Chartless Temp"),
     tide_source=CoopsTideFeedConfig(station=4567890, name="Chartless Tide"),
     currents_source=CoopsCurrentsFeedConfig(
@@ -92,6 +95,7 @@ TEST_CONFIG_NO_CURRENTS = LocationConfig(
     latitude=30.0,
     longitude=-85.0,
     timezone=pytz.timezone("US/Eastern"),
+    default_temperature_unit="F",
     temp_source=CoopsTempFeedConfig(station=3456789, name="Calm Temp"),
     tide_source=CoopsTideFeedConfig(station=3456789, name="Calm Tide"),
     currents_source=None,  # No currents

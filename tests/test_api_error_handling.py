@@ -44,6 +44,7 @@ def create_nyc_config() -> LocationConfig:
         latitude=40.7128,
         longitude=-74.0060,
         timezone=pytz.timezone("US/Eastern"),
+        default_temperature_unit="F",
         temp_source=CoopsTempFeedConfig(
             station=8518750, name="The Battery", live_enabled=True
         ),

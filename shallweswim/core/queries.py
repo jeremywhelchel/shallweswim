@@ -610,7 +610,7 @@ def get_current_temperature(
     Returns:
         A TemperatureReading object containing:
             - timestamp: datetime of when the reading was taken
-            - temperature: float representing the water temperature in degrees Celsius
+            - temperature: float representing the water temperature in degrees Fahrenheit
 
     Raises:
         DataUnavailableError: If no temperature data is available or the feed is not configured

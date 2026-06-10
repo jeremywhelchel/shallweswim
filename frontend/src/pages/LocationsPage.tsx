@@ -4,6 +4,11 @@ import { useLocationConditions } from "../api/conditions";
 import type { components } from "../api/generated";
 import { PageMessage } from "../components/PageMessage";
 import { formatStationTimestamp } from "../lib/format";
+import { getTemperatureUnit } from "../lib/preferences";
+import {
+  formatWaterTemperature,
+  resolveTemperatureUnit,
+} from "../lib/temperature";
 
 type AppBootstrapResponse = components["schemas"]["AppBootstrapResponse"];
 type AppBootstrapLocation = components["schemas"]["AppBootstrapLocation"];
@@ -72,7 +77,11 @@ function LocationCard({ location }: { location: AppBootstrapLocation }) {
   const metadata = location.metadata;
   const featureChips = locationFeatureChips(metadata.features);
   const conditions = useLocationConditions(metadata.code);
-  const temperature = temperatureStatus(conditions.data);
+  const temperatureUnit = resolveTemperatureUnit({
+    locationDefault: metadata.default_temperature_unit,
+    preference: getTemperatureUnit(),
+  });
+  const temperature = temperatureStatus(conditions.data, temperatureUnit);
   const hasTemperatureError = conditions.isError && !conditions.data;
 
   return (
@@ -134,7 +143,10 @@ function LocationCard({ location }: { location: AppBootstrapLocation }) {
   );
 }
 
-function temperatureStatus(conditions?: LocationConditions) {
+function temperatureStatus(
+  conditions: LocationConditions | undefined,
+  temperatureUnit: components["schemas"]["AppLocationMetadata"]["default_temperature_unit"],
+) {
   const temperature = conditions?.temperature;
 
   if (!temperature) {
@@ -149,7 +161,7 @@ function temperatureStatus(conditions?: LocationConditions) {
 
   return {
     detail: `Data from ${station}${timestamp ? ` as of ${timestamp}` : ""}.`,
-    value: `${temperature.water_temp}°${temperature.units || "F"}`,
+    value: formatWaterTemperature(temperature, temperatureUnit),
   };
 }
 

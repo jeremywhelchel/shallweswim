@@ -58,6 +58,8 @@ def _conditions_payload() -> dict[str, Any]:
         "temperature": {
             "water_temp": 53.1,
             "units": "F",
+            "water_temp_f": 53.1,
+            "water_temp_c": 11.7,
             "timestamp": "2026-05-12T09:06:00-04:00",
             "station_name": "The Battery, NY",
         },

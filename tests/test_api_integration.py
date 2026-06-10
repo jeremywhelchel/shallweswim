@@ -152,15 +152,14 @@ def _parse_naive_time(timestamp: str) -> datetime.datetime:
 def validate_temperature_data(temp: dict) -> None:
     """Validate the structure of temperature data."""
     assert "timestamp" in temp, "Missing temperature timestamp"
-    assert "water_temp" in temp, "Missing water temperature value"
-    assert "units" in temp, "Missing temperature units"
+    assert "water_temp" not in temp, "Legacy water_temp should not be present"
+    assert "units" not in temp, "Legacy temperature units should not be present"
     assert "water_temp_f" in temp, "Missing explicit Fahrenheit temperature value"
     assert "water_temp_c" in temp, "Missing explicit Celsius temperature value"
-    if temp["water_temp"] is not None:
-        assert isinstance(temp["water_temp"], int | float), (
-            "Water temperature is not a number"
+    if temp["water_temp_f"] is not None:
+        assert isinstance(temp["water_temp_f"], int | float), (
+            "Fahrenheit water temperature is not a number"
         )
-        assert temp["water_temp"] == temp["water_temp_f"]
         assert isinstance(temp["water_temp_c"], int | float), (
             "Celsius water temperature is not a number"
         )

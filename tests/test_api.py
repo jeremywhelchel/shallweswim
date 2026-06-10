@@ -463,8 +463,8 @@ def test_get_location_conditions(
     assert data["temperature"] is not None
     # Check timestamp in the response
     assert data["temperature"]["timestamp"] == mock_dt.isoformat()
-    assert data["temperature"]["water_temp"] == mock_temp_value
-    assert data["temperature"]["units"] == "F"  # Default unit in TemperatureInfo
+    assert "water_temp" not in data["temperature"]
+    assert "units" not in data["temperature"]
     assert data["temperature"]["water_temp_f"] == mock_temp_value
     assert data["temperature"]["water_temp_c"] == pytest.approx(
         round((mock_temp_value - 32) * 5 / 9, 1)

@@ -394,8 +394,10 @@ async def test_conditions_with_mock_data(mock_api_client: TestClient) -> None:
 
     # Temperature should be present (NYC has live temps)
     assert data["temperature"] is not None
-    assert data["temperature"]["water_temp"] == 68.5
-    assert data["temperature"]["units"] == "F"
+    assert data["temperature"]["water_temp_f"] == 68.5
+    assert data["temperature"]["water_temp_c"] == pytest.approx(20.3)
+    assert "water_temp" not in data["temperature"]
+    assert "units" not in data["temperature"]
 
     # Tides should be present
     assert data["tides"] is not None

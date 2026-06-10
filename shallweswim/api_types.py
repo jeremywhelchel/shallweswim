@@ -106,16 +106,6 @@ class TemperatureInfo(BaseModel):
         ...,
         description="Timestamp of the reading in the location's local timezone",
     )
-    water_temp: float = Field(
-        ...,
-        description="Deprecated. Water temperature in degrees Fahrenheit; use water_temp_f or water_temp_c.",
-        deprecated=True,
-    )
-    units: str = Field(
-        "F",
-        description="Deprecated. Temperature units for water_temp; use explicit water_temp_f or water_temp_c.",
-        deprecated=True,
-    )
     water_temp_f: float = Field(
         ..., description="Water temperature in degrees Fahrenheit"
     )

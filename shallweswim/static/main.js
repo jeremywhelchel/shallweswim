@@ -247,7 +247,7 @@ function updateTemperature(data) {
     return;
   }
 
-  const tempValue = temperature?.water_temp_f ?? temperature?.water_temp;
+  const tempValue = temperature?.water_temp_f;
 
   if (!temperature || tempValue === null || tempValue === undefined) {
     updateTemperatureUnavailable();

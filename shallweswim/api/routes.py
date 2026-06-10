@@ -264,8 +264,6 @@ def api_temperature_info(
     water_temp_c = round(util.f_to_c(water_temp_f), 1)
     return TemperatureInfo(
         timestamp=temp_reading.timestamp,
-        water_temp=water_temp_f,
-        units="F",
         water_temp_f=water_temp_f,
         water_temp_c=water_temp_c,
         station_name=cfg.temp_source.name,

@@ -1362,19 +1362,6 @@
             "title": "Timestamp",
             "type": "string"
           },
-          "units": {
-            "default": "F",
-            "deprecated": true,
-            "description": "Deprecated. Temperature units for water_temp; use explicit water_temp_f or water_temp_c.",
-            "title": "Units",
-            "type": "string"
-          },
-          "water_temp": {
-            "deprecated": true,
-            "description": "Deprecated. Water temperature in degrees Fahrenheit; use water_temp_f or water_temp_c.",
-            "title": "Water Temp",
-            "type": "number"
-          },
           "water_temp_c": {
             "description": "Water temperature in degrees Celsius",
             "title": "Water Temp C",
@@ -1388,7 +1375,6 @@
         },
         "required": [
           "timestamp",
-          "water_temp",
           "water_temp_f",
           "water_temp_c"
         ],

@@ -18,9 +18,7 @@ export function formatWaterTemperature(
   unit: TemperatureUnit,
 ) {
   const value =
-    unit === "C"
-      ? temperature.water_temp_c
-      : (temperature.water_temp_f ?? temperature.water_temp);
+    unit === "C" ? temperature.water_temp_c : temperature.water_temp_f;
 
   return `${formatTemperatureValue(value)}°${unit}`;
 }

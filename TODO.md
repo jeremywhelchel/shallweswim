@@ -120,8 +120,8 @@
   previous/next times and currents API URLs from local app state. Keep `shift`,
   `at`, and `plot_url` unless a later frontend pass removes the backend-rendered
   tide/current plot dependency too.
-- Review whether the newer `units` fields are consistently useful in public API
-  responses. Keep them where they clarify mixed-unit locations; remove or
+- Review whether public API `units` fields are consistently useful in tide and
+  current responses. Keep them where they clarify mixed-unit locations; remove or
   normalize them where they add noise.
 
 ### Tide Curve Source Upgrade

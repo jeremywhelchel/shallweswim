@@ -78,8 +78,6 @@ const conditionsPayload: components["schemas"]["LocationConditions"] = {
   },
   temperature: {
     timestamp: "2026-05-13T07:30:00-04:00",
-    water_temp: 61.4,
-    units: "F",
     water_temp_f: 61.4,
     water_temp_c: 16.3,
     station_name: "Coney Island",
@@ -489,8 +487,6 @@ test("renders all configured locations from bootstrap metadata", () => {
     },
     temperature: {
       timestamp: "2026-05-13T07:30:00-04:00",
-      water_temp: 66.7,
-      units: "F",
       water_temp_f: 66.7,
       water_temp_c: 19.3,
       station_name: "Ohio River at Water Tower",

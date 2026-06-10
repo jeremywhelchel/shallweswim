@@ -146,8 +146,6 @@ const conditionsPayload = {
   },
   temperature: {
     timestamp: "2026-05-13T07:30:00-04:00",
-    water_temp: 61.4,
-    units: "F",
     water_temp_f: 61.4,
     water_temp_c: 16.3,
     station_name: "Coney Island",
@@ -216,8 +214,6 @@ const sfoConditionsPayload = {
   },
   temperature: {
     timestamp: "2026-05-13T07:30:00-07:00",
-    water_temp: 55.2,
-    units: "F",
     water_temp_f: 55.2,
     water_temp_c: 12.9,
     station_name: "San Francisco",

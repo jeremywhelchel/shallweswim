@@ -120,8 +120,7 @@
         .then((data) => {
           // Update temperature if available
           if (data.temperature) {
-            const tempValue =
-              data.temperature.water_temp_f ?? data.temperature.water_temp;
+            const tempValue = data.temperature.water_temp_f;
             if (tempValue === null || tempValue === undefined) {
               return;
             }

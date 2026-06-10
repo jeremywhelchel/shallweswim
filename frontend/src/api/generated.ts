@@ -1415,19 +1415,6 @@ export interface components {
              */
             timestamp: string;
             /**
-             * Units
-             * @deprecated
-             * @description Deprecated. Temperature units for water_temp; use explicit water_temp_f or water_temp_c.
-             * @default F
-             */
-            units: string;
-            /**
-             * Water Temp
-             * @deprecated
-             * @description Deprecated. Water temperature in degrees Fahrenheit; use water_temp_f or water_temp_c.
-             */
-            water_temp: number;
-            /**
              * Water Temp C
              * @description Water temperature in degrees Celsius
              */

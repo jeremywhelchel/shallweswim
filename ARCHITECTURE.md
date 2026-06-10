@@ -149,9 +149,7 @@ Temperature API contract:
 - Internal temperature feed data is currently normalized to Fahrenheit in the
   `water_temp` dataframe column.
 - `/api/{location}/conditions` exposes explicit `water_temp_f` and
-  `water_temp_c` fields. Legacy `water_temp` and `units` remain during the
-  migration period for existing clients and should not be used by new frontend
-  code.
+  `water_temp_c` fields for public API consumers.
 - Default display unit is static location metadata exposed through
   `/api/app/bootstrap`, not dynamic condition data.
 

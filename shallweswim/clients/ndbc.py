@@ -68,6 +68,7 @@ class NdbcApi(BaseApiClient):
         """Fetch and parse raw NDBC data for a station/date range."""
         start_dt = datetime.datetime.strptime(start_time, "%Y-%m-%d")
         end_dt = datetime.datetime.strptime(end_time, "%Y-%m-%d")
+        end_exclusive_dt = end_dt + datetime.timedelta(days=1)
         station_id = station_id.lower()
 
         urls = self._build_request_urls(
@@ -124,7 +125,9 @@ class NdbcApi(BaseApiClient):
             .set_index("timestamp")
             .sort_index()
         )
-        result = result.loc[(result.index >= start_dt) & (result.index <= end_dt)]
+        result = result.loc[
+            (result.index >= start_dt) & (result.index < end_exclusive_dt)
+        ]
         if result.empty:
             raise StationUnavailableError(
                 f"NDBC station {station_id} returned no data in requested range"

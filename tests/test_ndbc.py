@@ -208,6 +208,43 @@ async def test_execute_request_retries_client_errors(
 
 
 @pytest.mark.asyncio
+async def test_execute_request_includes_full_end_date_without_next_day(
+    ndbc_client: NdbcApi,
+) -> None:
+    """Same-day requests include the full end date but not the next day."""
+    response_body = """#YY  MM DD hh mm WDIR WSPD GST  WVHT   DPD   APD MWD   PRES  ATMP  WTMP  DEWP  VIS PTDY  TIDE
+#yr  mo dy hr mn degT m/s  m/s     m   sec   sec degT   hPa  degC  degC  degC  nmi  hPa    ft
+2026 06 11 00 00 250  2.6   MM   1.3    MM     6  MM 1017.3  12.4  14.9   7.9   11   MM    MM
+2026 06 10 17 00 250  2.6   MM   1.3    MM     6  MM 1017.3  12.4  14.8   7.9   11   MM    MM
+2026 06 10 00 00 250  3.6   MM   0.5    MM     6  MM 1014.2  13.0  14.1   8.1   11   MM    MM
+2026 06 09 23 00 240  4.1   MM   0.6    MM     6  MM 1014.0  13.2  14.0   8.0   11   MM    MM
+"""
+
+    with patch.object(
+        ndbc_client,
+        "_fetch_url",
+        new_callable=AsyncMock,
+        return_value=type("Response", (), {"status": 200, "body": response_body})(),
+    ):
+        result = await ndbc_client._execute_request(
+            station_id="62304",
+            mode="stdmet",
+            start_time="2026-06-10",
+            end_time="2026-06-10",
+            location_code="test",
+        )
+
+    timestamps = result.index.get_level_values("timestamp")
+    assert list(timestamps) == [
+        pd.Timestamp("2026-06-10 00:00:00"),
+        pd.Timestamp("2026-06-10 17:00:00"),
+    ]
+    assert pd.Timestamp("2026-06-10 17:00:00") in timestamps
+    assert pd.Timestamp("2026-06-09 23:00:00") not in timestamps
+    assert pd.Timestamp("2026-06-11 00:00:00") not in timestamps
+
+
+@pytest.mark.asyncio
 async def test_fetch_url_with_session_uses_provider_request_gate(
     ndbc_client: NdbcApi,
 ) -> None:

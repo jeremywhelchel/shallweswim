@@ -958,6 +958,25 @@ _CONFIG_LIST = [
         description="Seattle, WA open water swimming conditions",
     ),
     LocationConfig(
+        code="dov",
+        name="Dover",
+        swim_location="Swimmer's Beach",
+        swim_location_link="https://www.doverchanneltraining.com/swim-zone",
+        latitude=51.12275,
+        longitude=1.316194,
+        timezone=pytz.timezone("Europe/London"),
+        default_temperature_unit="C",
+        temp_source=NdbcTempFeedConfig(
+            station="62304",
+            name="Sandettie Lightship",
+            historic_enabled=False,
+        ),
+        presentation=LocationPresentationConfig(
+            windy=WindyForecastConfig(metric_temp="°C"),
+        ),
+        description="Dover Harbour open water swimming conditions",
+    ),
+    LocationConfig(
         enabled=False,
         code="tst",
         name="Test",

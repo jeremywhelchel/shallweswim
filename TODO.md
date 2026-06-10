@@ -316,6 +316,10 @@ Notes:
   other established open-water swim groups with reliable public data sources.
 - Canadian candidates: Kingston, Vancouver area, and Oakville/Toronto.
 - International candidates: Dover, UK and Sandycove, Ireland.
+- Source remaining Dover data before enabling full condition coverage. Live
+  temperature currently uses NDBC Sandettie Lightship, but historical water
+  temperature, tide predictions/observations, and currents still need source
+  approval and validation.
 - Add support needed for non-US locations before committing to international
   production coverage: non-NOAA/non-USGS data clients, Celsius-first display
   defaults where appropriate, timezone handling, source citations, and location

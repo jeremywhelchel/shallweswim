@@ -13,12 +13,14 @@ import { useLocationConditions } from "../api/conditions";
 import type { components } from "../api/generated";
 import { useTransitRoute } from "../api/transit";
 import { useDeferredImage } from "../hooks/useDeferredImage";
+import { usePageTitle } from "../hooks/usePageTitle";
 import {
   formatMagnitude,
   formatStationTimestamp,
   formatTideHeight,
   formatTime,
 } from "../lib/format";
+import { LOCATION_NOT_FOUND_TITLE, locationPageTitle } from "../lib/pageTitle";
 import {
   getTemperatureUnit,
   setTemperatureUnit as persistTemperatureUnit,
@@ -109,6 +111,11 @@ declare global {
 
 export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
   const location = bootstrap.locations[locationCode];
+  usePageTitle(
+    location
+      ? locationPageTitle(location.metadata.swim_location)
+      : LOCATION_NOT_FOUND_TITLE,
+  );
   const [searchParams, setSearchParams] = useSearchParams();
   const [preferredTemperatureUnit, setPreferredTemperatureUnit] =
     useState<TemperatureUnit | null>(() => getTemperatureUnit());

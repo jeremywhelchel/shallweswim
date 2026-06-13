@@ -3,7 +3,9 @@ import { useAppBootstrap } from "../api/bootstrap";
 import { useLocationConditions } from "../api/conditions";
 import type { components } from "../api/generated";
 import { PageMessage } from "../components/PageMessage";
+import { usePageTitle } from "../hooks/usePageTitle";
 import { formatStationTimestamp } from "../lib/format";
+import { LOCATIONS_PAGE_TITLE } from "../lib/pageTitle";
 import { getTemperatureUnit } from "../lib/preferences";
 import {
   formatWaterTemperature,
@@ -23,6 +25,7 @@ type FeatureChip = {
 
 export function LocationsRoutePage() {
   const bootstrap = useAppBootstrap();
+  usePageTitle(LOCATIONS_PAGE_TITLE);
 
   if (bootstrap.isLoading) {
     return <PageMessage title="Loading locations" />;
@@ -46,6 +49,7 @@ export function LocationsPage({
 }: {
   bootstrap: AppBootstrapResponse;
 }) {
+  usePageTitle(LOCATIONS_PAGE_TITLE);
   const locations = bootstrap.location_order
     .map((code) => bootstrap.locations[code])
     .filter(Boolean);

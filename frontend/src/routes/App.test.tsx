@@ -9,11 +9,18 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import type { components } from "../api/generated";
 import type { TransitStatus } from "../api/transit";
+import {
+  LOCATIONS_PAGE_TITLE,
+  locationPageTitle,
+  PAGE_NOT_FOUND_TITLE,
+} from "../lib/pageTitle";
 import { ConditionsSummary, LocationPage } from "../pages/LocationPage";
 import { LocationsPage } from "../pages/LocationsPage";
+import { NotFoundPage } from "../pages/NotFoundPage";
 
 beforeEach(() => {
   window.localStorage.clear();
+  document.title = "shall we swim?";
 });
 
 const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
@@ -263,6 +270,82 @@ function renderConditions(
     </MemoryRouter>,
   );
 }
+
+test("updates the document title for the selected location", async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+    },
+  });
+  const syntheticSfoLocation = syntheticLocation({ code: "sfo" });
+  const sfoLocation = {
+    ...syntheticSfoLocation,
+    metadata: {
+      ...syntheticSfoLocation.metadata,
+      swim_location: "Aquatic Park",
+    },
+  };
+  const bootstrap = {
+    ...bootstrapPayload,
+    location_order: ["nyc", "sfo"],
+    locations: {
+      ...bootstrapPayload.locations,
+      sfo: sfoLocation,
+    },
+  };
+
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <LocationPage bootstrap={bootstrap} locationCode="nyc" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() =>
+    expect(document.title).toBe(locationPageTitle("Grimaldo's Chair")),
+  );
+
+  view.rerender(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <LocationPage bootstrap={bootstrap} locationCode="sfo" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() =>
+    expect(document.title).toBe(locationPageTitle("Aquatic Park")),
+  );
+});
+
+test("updates the document title for route-level non-location pages", async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+    },
+  });
+
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <LocationsPage bootstrap={bootstrapPayload} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => expect(document.title).toBe(LOCATIONS_PAGE_TITLE));
+
+  view.rerender(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <NotFoundPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => expect(document.title).toBe(PAGE_NOT_FOUND_TITLE));
+});
 
 function tideState(
   trend: components["schemas"]["TideTrend"],

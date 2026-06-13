@@ -1,4 +1,9 @@
+import { usePageTitle } from "../hooks/usePageTitle";
+import { PAGE_NOT_FOUND_TITLE } from "../lib/pageTitle";
+
 export function NotFoundPage() {
+  usePageTitle(PAGE_NOT_FOUND_TITLE);
+
   return (
     <section className="border-swim-line rounded border bg-white p-4">
       <h1 className="font-semibold text-xl">Page not found</h1>

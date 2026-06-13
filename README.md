@@ -340,8 +340,10 @@ unavailable state instead of leaving placeholder text on screen.
 
 Historical temperature plots apply visual artifact suppression during plot
 generation to avoid rendering bad station artifacts as misleading trend lines.
-This is plot-only cleanup, not a replacement for the source feed data. The full
-pipeline is documented in [ARCHITECTURE.md](ARCHITECTURE.md#historical-temperature-plot-processing).
+This is plot-only cleanup, not a replacement for the source feed data. Some
+sources, such as CSPF Sandettie, provide source-specific plot policy overrides
+for sparse historical observations. The full pipeline is documented in
+[ARCHITECTURE.md](ARCHITECTURE.md#historical-temperature-plot-processing).
 
 To inspect what the plot artifact masks suppress for a real location, run:
 
@@ -351,8 +353,8 @@ uv run python -m shallweswim.scripts.inspect_historic_temp_plot_artifacts bos \
 ```
 
 The command fetches live historical data from the configured historical
-temperature source,
-prints counts by visual artifact stage and year, and writes:
+temperature source, applies the same configured plot policy used by runtime
+chart generation, prints counts by visual artifact stage and year, and writes:
 
 - `plot_suppressed_points.csv`: one row per plot-suppressed point with stage, year,
   pivoted calendar timestamp, original timestamp, source temperature, value
@@ -361,7 +363,8 @@ prints counts by visual artifact stage and year, and writes:
   historical plot
 
 Use `--start-year` and `--end-year` to narrow a tuning run. Because this command
-hits NOAA/USGS directly, results can change as upstream station data changes.
+hits NOAA/USGS/CSPF directly, results can change as upstream station data
+changes.
 
 #### Debugging NDBC Temperature Fetches
 

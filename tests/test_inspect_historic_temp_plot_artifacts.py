@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from shallweswim import plot
 from shallweswim.scripts import inspect_historic_temp_plot_artifacts as inspect
 
 
@@ -11,7 +12,9 @@ def test_build_visual_artifact_outputs_reports_suppressed_stages() -> None:
     hist_temps.loc[pd.Timestamp("2022-01-15 12:00:00"), "water_temp"] = 80.0
 
     plot_suppressed_points, final_plot_frame, counts = (
-        inspect._build_visual_artifact_outputs(hist_temps)
+        inspect._build_visual_artifact_outputs(
+            hist_temps, plot.DEFAULT_HISTORIC_TEMP_PLOT_POLICY
+        )
     )
 
     assert counts["raw"] == {"2022": 1}

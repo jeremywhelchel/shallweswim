@@ -277,6 +277,30 @@ def test_historic_temperature_plot_frame_removes_short_orphan_segments() -> None
     assert plot_frame.loc[orphan, 2025].isna().all()
 
 
+def test_historic_temperature_plot_policy_preserves_sparse_recent_segment() -> None:
+    index = pd.date_range("2020-01-01", periods=10 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame({2026: [np.nan] * len(index)}, index=index)
+    dense_segment = pd.date_range("2020-01-01", periods=72, freq="h")
+    recent_points = pd.to_datetime(
+        ["2020-01-09 00:00", "2020-01-09 06:00", "2020-01-09 12:00"]
+    )
+    water_temp_by_year.loc[dense_segment, 2026] = 58.0
+    water_temp_by_year.loc[recent_points, 2026] = [59.0, 59.5, 60.0]
+
+    default_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
+    sparse_frame = plot._historic_temperature_plot_frame(
+        water_temp_by_year,
+        plot.HistoricTempPlotPolicy(
+            smoothing_min_periods=3,
+            min_segment=pd.Timedelta(hours=6),
+        ),
+    )
+
+    assert default_frame.loc["2020-01-09", 2026].isna().all()
+    assert sparse_frame.loc["2020-01-09", 2026].notna().any()
+    assert sparse_frame.loc["2020-01-05", 2026].isna().all()
+
+
 def test_historic_temperature_short_segment_counts() -> None:
     index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
     plot_frame = pd.DataFrame({2025: [np.nan] * len(index)}, index=index)

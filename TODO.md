@@ -184,11 +184,11 @@ Notes:
   outliers; conditioning owns named derived products such as a visualization
   plot series, forecast training series, or seasonal baseline; plotting and
   serving only render or serialize those products.
-- Improve historical temperature plot artifact auditability before tuning gets
-  serious. The inspection script currently reports suppressed points by
-  stage/year; add segment-level output with start/end, duration, min/max source
-  temperature, residual range, and neighboring valid context so a contiguous bad
-  tail is distinguishable from scattered isolated artifacts.
+- Improve historical temperature plot artifact auditability as source-specific
+  plot tuning expands. The inspection script currently reports suppressed points
+  by stage/year; add segment-level output with start/end, duration, min/max
+  source temperature, residual range, and neighboring valid context so a
+  contiguous bad tail is distinguishable from scattered isolated artifacts.
 - Sort out realtime versus historical modes explicitly. Live condition serving,
   historical plot inputs, seasonal baselines, and future projection products
   should not quietly share assumptions just because they all start from

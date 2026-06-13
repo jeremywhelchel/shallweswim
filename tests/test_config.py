@@ -86,6 +86,23 @@ def test_presentation_integrations_are_typed() -> None:
     assert aus.presentation.windy.product == "ecmwf"
 
 
+def test_historic_temp_plot_policy_defaults_and_sparse_overrides() -> None:
+    """Historical temp plot policy overrides are source-scoped."""
+    nyc = config.get("nyc")
+    assert nyc is not None
+    assert nyc.historic_temp_source is not None
+    assert nyc.historic_temp_source.historic_plot_policy.smoothing_min_periods is None
+    assert nyc.historic_temp_source.historic_plot_policy.min_segment is None
+
+    dov = config.get("dov")
+    assert dov is not None
+    assert isinstance(dov.historic_temp_source, config.CspfTempFeedConfig)
+    assert dov.historic_temp_source.historic_plot_policy.smoothing_min_periods == 3
+    assert dov.historic_temp_source.historic_plot_policy.min_segment == (
+        datetime.timedelta(hours=6)
+    )
+
+
 def configured_composite_feeds() -> list[CompositeFeed]:
     """Build configured composite feeds whose combine output owns schema shape."""
     feeds: list[CompositeFeed] = []

@@ -18,6 +18,7 @@ import pandas as pd
 from shallweswim import config, plot, util
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.core import feeds
@@ -56,6 +57,7 @@ def _parse_args() -> argparse.Namespace:
 def _api_clients(session: aiohttp.ClientSession) -> dict[str, BaseApiClient]:
     return {
         "coops": CoopsApi(session=session),
+        "cspf": CspfApi(session=session),
         "nwis": NwisApi(session=session),
         "ndbc": NdbcApi(session=session),
     }
@@ -173,6 +175,7 @@ def _counts_by_year(mask: pd.DataFrame) -> dict[str, int]:
 
 def _build_visual_artifact_outputs(
     hist_temps: pd.DataFrame,
+    policy: plot.HistoricTempPlotPolicy,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, dict[str, int]]]:
     year_df = util.pivot_year(hist_temps)
     source_frame = cast(pd.DataFrame, year_df["water_temp"])
@@ -180,22 +183,26 @@ def _build_visual_artifact_outputs(
     raw_masks = {}
     for column in source_frame.columns:
         source = pd.to_numeric(source_frame[column], errors="coerce")
-        raw_masks[column] = plot._historic_temperature_plot_spike_artifact_mask(source)
+        raw_masks[column] = plot._historic_temperature_plot_spike_artifact_mask(
+            source, policy
+        )
     raw_mask = pd.DataFrame(raw_masks, index=source_frame.index)
 
-    smoothed_frame = plot._historic_temperature_smoothed_plot_frame(source_frame)
+    smoothed_frame = plot._historic_temperature_smoothed_plot_frame(
+        source_frame, policy
+    )
     cross_year_mask = plot._historic_temperature_plot_cross_year_artifact_mask(
-        smoothed_frame
+        smoothed_frame, policy
     )
     cross_year_suppressed = smoothed_frame.mask(cross_year_mask)
     volatility_mask = plot._historic_temperature_plot_volatility_artifact_mask(
-        cross_year_suppressed
+        cross_year_suppressed, policy
     )
     volatility_suppressed = cross_year_suppressed.mask(volatility_mask)
     short_segment_mask = plot._short_historic_temperature_plot_segment_mask(
-        volatility_suppressed
+        volatility_suppressed, policy
     )
-    final_plot_frame = plot._historic_temperature_plot_frame(source_frame)
+    final_plot_frame = plot._historic_temperature_plot_frame(source_frame, policy)
 
     plot_suppressed_points = _plot_suppressed_points_frame(
         source_frame=source_frame,
@@ -234,8 +241,11 @@ async def _async_main() -> None:
         start_year=start_year,
         end_year=end_year,
     )
+    policy = plot._resolve_historic_temperature_plot_policy(
+        temp_source.historic_plot_policy
+    )
     plot_suppressed_points, final_plot_frame, counts = _build_visual_artifact_outputs(
-        hist_temps
+        hist_temps, policy
     )
 
     print(

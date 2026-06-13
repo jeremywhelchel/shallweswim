@@ -654,6 +654,11 @@ class LocationDataManager:
             if self.config.historic_temp_source
             else None
         )
+        historic_temp_plot_policy = (
+            self.config.historic_temp_source.historic_plot_policy
+            if self.config.historic_temp_source
+            else None
+        )
         now = utc_now()
 
         if need_live:
@@ -679,6 +684,7 @@ class LocationDataManager:
                     data,
                     self.config.code,
                     historic_temp_source_name,
+                    historic_temp_plot_policy,
                 )
                 self._pending_plot_futures[feeds.FEED_HISTORIC_TEMPS] = (future, now)
 

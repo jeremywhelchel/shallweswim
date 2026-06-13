@@ -503,7 +503,8 @@ artifacts:
    `MAX_HISTORIC_TEMP_PLOT_GAP`; longer missing spans remain `NaN` so
    Matplotlib breaks the plotted line instead of drawing a false diagonal.
 3. **24-hour smoothing**: apply the rolling mean used for the visible trend
-   lines.
+   lines. Dense sources use the global 24-row minimum. Sparse sources may lower
+   `smoothing_min_periods` through source-level plot policy overrides.
 4. **Cross-year seasonal artifact mask**: compare each smoothed year to the
    same day/hour median across years and suppress points whose residual exceeds
    `MAX_HISTORIC_TEMP_PLOT_CROSS_YEAR_RESIDUAL_F`.
@@ -512,6 +513,12 @@ artifacts:
    that are not single-point spikes but still produce jagged visual artifacts.
 6. **Short-segment cleanup**: after the other masks are applied, remove
    remaining visible segments shorter than `MIN_HISTORIC_TEMP_PLOT_SEGMENT`.
+
+Historical temperature source configs may provide `historic_plot_policy`
+overrides for presentation-only tuning. Defaults preserve the global dense-source
+behavior. CSPF Sandettie uses a sparse-source override (`smoothing_min_periods=3`
+and `min_segment=6 hours`) so recent valid monthly-page observations remain
+visible without changing the global NOAA/NDBC/NWIS plot policy.
 
 These masks affect only the rendered historical temperature plots. They do not
 mutate cached feed data, live temperature readings, condition summaries, API

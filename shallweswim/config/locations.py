@@ -58,6 +58,49 @@ class SourceCitationRow(BaseModel, frozen=True):
     html: Annotated[str, Field(description="Rendered HTML citation snippet")]
 
 
+class HistoricTempPlotPolicyConfig(BaseModel, frozen=True):
+    """Optional source-specific historical temperature plot overrides."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_gap: Annotated[
+        datetime.timedelta | None,
+        Field(description="Maximum missing-data gap to interpolate in plots."),
+    ] = None
+    smoothing_window_rows: Annotated[
+        int | None,
+        Field(ge=1, description="Rolling mean window size, in plot rows."),
+    ] = None
+    smoothing_min_periods: Annotated[
+        int | None,
+        Field(ge=1, description="Minimum non-null points required for smoothing."),
+    ] = None
+    artifact_window: Annotated[
+        datetime.timedelta | None,
+        Field(description="Window for raw spike artifact detection."),
+    ] = None
+    max_spike_residual_f: Annotated[
+        float | None,
+        Field(gt=0, description="Maximum raw spike residual before suppression."),
+    ] = None
+    max_cross_year_residual_f: Annotated[
+        float | None,
+        Field(gt=0, description="Maximum cross-year residual before suppression."),
+    ] = None
+    volatility_window: Annotated[
+        datetime.timedelta | None,
+        Field(description="Window for smoothed volatility artifact detection."),
+    ] = None
+    max_smoothed_range_f: Annotated[
+        float | None,
+        Field(gt=0, description="Maximum smoothed range before suppression."),
+    ] = None
+    min_segment: Annotated[
+        datetime.timedelta | None,
+        Field(description="Minimum visible plot segment duration."),
+    ] = None
+
+
 def temperature_source_citation_rows(
     live_citation: SourceCitation | None,
     historic_citation: SourceCitation | None,
@@ -163,6 +206,11 @@ class TempFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
             description="Ending year for historical temperature data. If not provided, defaults to current year."
         ),
     ] = None
+
+    historic_plot_policy: Annotated[
+        HistoricTempPlotPolicyConfig,
+        Field(description="Optional historical temperature plot tuning overrides."),
+    ] = Field(default_factory=HistoricTempPlotPolicyConfig)
 
     @property
     @abc.abstractmethod
@@ -479,6 +527,16 @@ class CspfTempFeedConfig(TempFeedConfig, frozen=True):
     """CSPF Sandettie historical temperature source configuration."""
 
     model_config = ConfigDict(extra="forbid")
+
+    historic_plot_policy: Annotated[
+        HistoricTempPlotPolicyConfig,
+        Field(description="Sparse-source historical temperature plot overrides."),
+    ] = Field(
+        default_factory=lambda: HistoricTempPlotPolicyConfig(
+            smoothing_min_periods=3,
+            min_segment=datetime.timedelta(hours=6),
+        )
+    )
 
     station_slug: Annotated[
         str,

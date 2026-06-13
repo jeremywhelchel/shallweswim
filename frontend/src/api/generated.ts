@@ -861,6 +861,11 @@ export interface components {
              */
             live_temperature?: string | null;
             /**
+             * Location Info
+             * @description Trusted HTML citation for local swimming location info
+             */
+            location_info?: string | null;
+            /**
              * Temperature
              * @description Trusted HTML citation when live and historical temperature data share a source
              */

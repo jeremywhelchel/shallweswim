@@ -433,6 +433,9 @@ class AppSourceCitations(BaseModel):
     historical_temperature: str | None = Field(
         None, description="Trusted HTML citation for historical temperature data"
     )
+    location_info: str | None = Field(
+        None, description="Trusted HTML citation for local swimming location info"
+    )
     tides: str | None = Field(None, description="Trusted HTML citation for tide data")
     currents: str | None = Field(
         None, description="Trusted HTML citation for current data"

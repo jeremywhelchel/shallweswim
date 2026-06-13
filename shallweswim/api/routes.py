@@ -7,6 +7,7 @@ This module contains FastAPI route handlers for the API endpoints and data manag
 import asyncio
 import dataclasses
 import datetime
+import html
 import io
 import logging
 import urllib.parse
@@ -276,6 +277,7 @@ def app_source_citations(cfg: config_lib.LocationConfig) -> AppSourceCitations:
     temperature: str | None = None
     live_temperature: str | None = None
     historical_temperature: str | None = None
+    location_info_label = cfg.location_info_source or cfg.swim_location
     for row in cfg.temperature_source_citations:
         if row.label == "Temperature":
             temperature = row.html
@@ -288,6 +290,12 @@ def app_source_citations(cfg: config_lib.LocationConfig) -> AppSourceCitations:
         temperature=temperature,
         live_temperature=live_temperature,
         historical_temperature=historical_temperature,
+        location_info=(
+            "Location info: "
+            f'<a href="{html.escape(cfg.swim_location_link, quote=True)}" '
+            'target="_blank" rel="noopener noreferrer">'
+            f"{html.escape(location_info_label)}</a>"
+        ),
         tides=cfg.tide_source.citation if cfg.tide_source else None,
         currents=cfg.currents_source.citation if cfg.currents_source else None,
     )
@@ -490,7 +498,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
             metadata=AppLocationMetadata(
                 code=cfg.code,
                 name=cfg.name,
-                nav_label=cfg.name,
+                nav_label=cfg.nav_label or cfg.name,
                 swim_location=cfg.swim_location,
                 swim_location_link=cfg.swim_location_link,
                 description=cfg.description,

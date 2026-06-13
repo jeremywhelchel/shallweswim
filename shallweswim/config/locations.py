@@ -758,6 +758,14 @@ class LocationConfig(BaseModel, frozen=True):
         str,
         Field(description="City or region name (e.g., 'New York', 'San Francisco')"),
     ]
+    nav_label: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Short disambiguated label for cards and navigation (e.g., 'Dover, UK')"
+            ),
+        ),
+    ] = None
 
     swim_location: Annotated[
         str,
@@ -768,6 +776,10 @@ class LocationConfig(BaseModel, frozen=True):
     swim_location_link: Annotated[
         str, Field(description="URL with information about the swim location")
     ]
+    location_info_source: Annotated[
+        str | None,
+        Field(description="Short source label for the local swimming location link"),
+    ] = None
 
     description: Annotated[
         str,
@@ -901,8 +913,10 @@ _CONFIG_LIST = [
     LocationConfig(
         code="nyc",
         name="New York",
+        nav_label="New York, NY",
         swim_location="Grimaldo's Chair",
         swim_location_link="https://cibbows.org/about/essentials/",
+        location_info_source="CIBBOWS, essentials",
         latitude=40.573,
         longitude=-73.954,
         timezone=pytz.timezone("US/Eastern"),
@@ -972,13 +986,18 @@ _CONFIG_LIST = [
                 ),
             ),
         ),
-        description="Coney Island Brighton Beach open water swimming conditions",
+        description=(
+            "A mid-beach swimming spot at NYC's Brighton Beach, near Coney "
+            "Island, used by local swimmers year-round."
+        ),
     ),
     LocationConfig(
         code="san",
         name="San Diego",
+        nav_label="San Diego, CA",
         swim_location="La Jolla Cove",
         swim_location_link="https://www.lajollacoveswimclub.com/page-1518748",
+        location_info_source="La Jolla Cove Swim Club, Cove Tips",
         latitude=32.850,
         longitude=-117.272,
         timezone=pytz.timezone("US/Pacific"),
@@ -993,13 +1012,18 @@ _CONFIG_LIST = [
             station=9410230,
             name="La Jolla, CA",
         ),
-        description="La Jolla Cove open water swimming conditions",
+        description=(
+            "A protected cove in La Jolla with clear-water coastal swimming "
+            "and easy shore access."
+        ),
     ),
     LocationConfig(
         code="chi",
         name="Chicago",
+        nav_label="Chicago, IL",
         swim_location="Ohio Street Beach",
         swim_location_link="https://www.chicagoparkdistrict.com/parks-facilities/ohio-street-beach",
+        location_info_source="Chicago Park District, Ohio Street Beach",
         latitude=41.894,
         longitude=-87.613,
         timezone=pytz.timezone("US/Central"),
@@ -1041,14 +1065,19 @@ _CONFIG_LIST = [
                 ),
             ),
         ),
-        description="Chicago Ohio Street Beach open water swimming conditions",
+        description=(
+            "A Lake Michigan swim area near downtown Chicago, popular for "
+            "shoreline training along the lakefront."
+        ),
     ),
     LocationConfig(
         # TODO more SF stuff can be added. see here: https://dolphinclub.org/weather/
         code="sfo",
         name="San Francisco",
+        nav_label="San Francisco, CA",
         swim_location="Aquatic Park",
         swim_location_link="https://serc.com/swimming/swimming-in-aquatic-park/",
+        location_info_source="South End Rowing Club, Swimming in Aquatic Park",
         latitude=37.808,
         longitude=-122.426,
         timezone=pytz.timezone("US/Pacific"),
@@ -1072,14 +1101,19 @@ _CONFIG_LIST = [
             station=9414305,
             name="North Point Pier",
         ),
-        description="San Francisco Aquatic Park open water swimming conditions",
+        description=(
+            "A sheltered San Francisco Bay swim area beside the historic "
+            "Aquatic Park piers."
+        ),
         # webcam https://dolphinclub.org/weather/ (code in page JS source...)
     ),
     LocationConfig(
         code="sdf",
         name="Louisville",
+        nav_label="Louisville, KY",
         swim_location="Community Boathouse",
         swim_location_link="https://www.kylmsc.org/rats",
+        location_info_source="Kentucky LMSC, River Rats",
         latitude=38.264,
         longitude=-85.732,
         timezone=pytz.timezone("US/Eastern"),
@@ -1119,13 +1153,18 @@ _CONFIG_LIST = [
             ),
             windy=WindyForecastConfig(overlay="wind", product="ecmwf"),
         ),
-        description="Louisville Kentucky open water swimming conditions",
+        description=(
+            "An Ohio River swim channel near Louisville's Community Boathouse "
+            "and Towhead Island."
+        ),
     ),
     LocationConfig(
         code="aus",
         name="Austin",
+        nav_label="Austin, TX",
         swim_location="Barton Springs",
         swim_location_link="https://www.austintexas.gov/department/barton-springs-pool",
+        location_info_source="Austin Parks and Recreation, Barton Springs Pool",
         latitude=30.2639,
         longitude=-97.77,
         timezone=pytz.timezone("US/Central"),
@@ -1140,13 +1179,18 @@ _CONFIG_LIST = [
         presentation=LocationPresentationConfig(
             windy=WindyForecastConfig(overlay="wind", product="ecmwf"),
         ),
-        description="Austin, TX open water swimming conditions",
+        description=(
+            "A spring-fed pool in Zilker Park with steady cool water and "
+            "year-round lap swimming."
+        ),
     ),
     LocationConfig(
         code="bos",
         name="Boston",
+        nav_label="Boston, MA",
         swim_location="L Street Beach",
         swim_location_link="https://www.openwaterpedia.com/wiki/L_Street_Bathhouse",
+        location_info_source="Openwaterpedia, L Street Bathhouse",
         latitude=42.329,
         longitude=-71.036,
         timezone=pytz.timezone("US/Eastern"),
@@ -1161,13 +1205,17 @@ _CONFIG_LIST = [
             station=8443970,
             name="Boston, MA",
         ),
-        description="Boston, MA open water swimming conditions",
+        description=(
+            "A South Boston beach and bathhouse area used by local open water swimmers."
+        ),
     ),
     LocationConfig(
         code="sea",
         name="Seattle",
+        nav_label="Seattle, WA",
         swim_location="Alki Beach",
         swim_location_link="https://www.seattle.gov/parks/rentals-and-permits/indoor-event-rentals/alki-beach-bathhouse",
+        location_info_source="Seattle Parks and Recreation, Alki Beach Bathhouse",
         latitude=47.580,
         longitude=-122.410,
         timezone=pytz.timezone("US/Pacific"),
@@ -1182,13 +1230,18 @@ _CONFIG_LIST = [
             station=9447130,
             name="Seattle, WA",
         ),
-        description="Seattle, WA open water swimming conditions",
+        description=(
+            "A Puget Sound beach in West Seattle with mountain views and "
+            "cold-water swimming."
+        ),
     ),
     LocationConfig(
         code="dov",
         name="Dover",
+        nav_label="Dover, UK",
         swim_location="Swimmer's Beach",
         swim_location_link="https://www.doverchanneltraining.com/swim-zone",
+        location_info_source="Dover Channel Training, swim zone",
         latitude=51.12275,
         longitude=1.316194,
         timezone=pytz.timezone("Europe/London"),
@@ -1204,7 +1257,10 @@ _CONFIG_LIST = [
         presentation=LocationPresentationConfig(
             windy=WindyForecastConfig(metric_temp="°C"),
         ),
-        description="Dover Harbour open water swimming conditions",
+        description=(
+            "A swimmer mecca on Dover Harbour and training spot for those "
+            "aspiring to swim the English Channel."
+        ),
     ),
     LocationConfig(
         enabled=False,

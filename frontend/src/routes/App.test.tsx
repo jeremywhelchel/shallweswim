@@ -38,11 +38,11 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
       metadata: {
         code: "nyc",
         name: "New York",
-        nav_label: "New York",
+        nav_label: "New York, NY",
         swim_location: "Grimaldo's Chair",
         swim_location_link: "https://example.com",
         description:
-          "Coney Island Brighton Beach open water swimming conditions",
+          "A mid-beach swimming spot at NYC's Brighton Beach, near Coney Island, used by local swimmers year-round.",
         latitude: 40.573,
         longitude: -73.954,
         timezone: "US/Eastern",
@@ -62,6 +62,8 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
           historic: true,
         },
         citations: {
+          location_info:
+            'Location info: <a href="https://example.com">CIBBOWS, essentials</a>',
           temperature: '<a href="https://example.com/temp">Temp source</a>',
           tides: '<a href="https://example.com/tides">Tide source</a>',
           currents: '<a href="https://example.com/currents">Current source</a>',
@@ -409,6 +411,8 @@ function syntheticLocation({
         ...temperaturePlots,
       },
       citations: {
+        location_info:
+          'Location info: <a href="https://example.com/test-beach">Test Beach</a>',
         temperature: '<a href="https://example.com/temp">Temp source</a>',
         tides: features.tides
           ? '<a href="https://example.com/tides">Tide source</a>'
@@ -469,6 +473,9 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
     await screen.findByRole("heading", { name: "shall we swim today?" }),
   ).toBeVisible();
   expect(screen.getByText("Grimaldo's Chair")).toBeVisible();
+  expect(
+    screen.getByText(/A mid-beach swimming spot at NYC's Brighton Beach/),
+  ).toBeVisible();
   expect(screen.getByText("61.4°F")).toBeVisible();
   expect(screen.getByRole("heading", { name: "Water Movement" })).toBeVisible();
   expect(screen.getByText("Predicted")).toBeVisible();
@@ -591,9 +598,10 @@ test("renders all configured locations from bootstrap metadata", () => {
           ...bootstrapPayload.locations.nyc.metadata,
           code: "sdf",
           name: "Louisville",
-          nav_label: "Louisville",
+          nav_label: "Louisville, KY",
           swim_location: "Community Boathouse",
-          description: "Louisville Kentucky open water swimming conditions",
+          description:
+            "An Ohio River swim channel near Louisville's Community Boathouse and Towhead Island.",
           default_temperature_unit: "C",
           features: {
             ...bootstrapPayload.locations.nyc.metadata.features,
@@ -634,18 +642,22 @@ test("renders all configured locations from bootstrap metadata", () => {
   expect(
     screen.getByRole("heading", { name: "All Swim Locations" }),
   ).toBeVisible();
-  expect(screen.getByRole("link", { name: /New York/ })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: /New York, NY/ })).toHaveAttribute(
     "href",
     "/nyc",
   );
-  expect(screen.getByRole("link", { name: /Louisville/ })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: /Louisville, KY/ })).toHaveAttribute(
     "href",
     "/sdf",
   );
-  expect(screen.getAllByText("New York")).toHaveLength(1);
+  expect(screen.getAllByText("New York, NY")).toHaveLength(1);
   expect(screen.getByText("Grimaldo's Chair")).toBeVisible();
-  expect(screen.getAllByText("Louisville")).toHaveLength(1);
+  expect(
+    screen.getByText(/A mid-beach swimming spot at NYC's Brighton Beach/),
+  ).toBeVisible();
+  expect(screen.getAllByText("Louisville, KY")).toHaveLength(1);
   expect(screen.getByText("Community Boathouse")).toBeVisible();
+  expect(screen.getByText(/An Ohio River swim channel/)).toBeVisible();
   expect(screen.getByText("61.4°F")).toBeVisible();
   expect(screen.getByText("19.3°C")).toBeVisible();
   expect(screen.getByText(/Data from Coney Island/)).toBeVisible();

@@ -231,6 +231,10 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
           >
             {location.metadata.swim_location}
           </a>
+          <span className="text-slate-500">
+            {" "}
+            - {location.metadata.description}
+          </span>
         </p>
       </header>
 
@@ -2398,6 +2402,11 @@ function SourcesList({
   return (
     <Section title="Sources">
       <div className="overflow-hidden rounded border border-swim-line bg-white">
+        <SourceHtml
+          icon={<MapIcon aria-hidden="true" />}
+          label="Location info"
+          html={citations.location_info}
+        />
         <SourceHtml
           icon={<Thermometer aria-hidden="true" />}
           label="Temperature"

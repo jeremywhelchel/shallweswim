@@ -340,6 +340,18 @@
             "description": "Trusted HTML citation for live temperature data",
             "title": "Live Temperature"
           },
+          "location_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Trusted HTML citation for local swimming location info",
+            "title": "Location Info"
+          },
           "temperature": {
             "anyOf": [
               {

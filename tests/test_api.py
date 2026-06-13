@@ -318,9 +318,14 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
 
     nyc = data["locations"]["nyc"]
     assert nyc["metadata"]["code"] == "nyc"
+    assert nyc["metadata"]["nav_label"] == "New York, NY"
     assert nyc["metadata"]["default_temperature_unit"] == "F"
     assert nyc["metadata"]["features"]["temperature"] is True
     assert nyc["metadata"]["temperature_plots"] == {"live": True, "historic": True}
+    assert nyc["metadata"]["citations"]["location_info"] == (
+        'Location info: <a href="https://cibbows.org/about/essentials/" '
+        'target="_blank" rel="noopener noreferrer">CIBBOWS, essentials</a>'
+    )
     assert nyc["metadata"]["citations"]["temperature"] is not None
     assert nyc["metadata"]["citations"]["live_temperature"] is None
     assert nyc["metadata"]["citations"]["historical_temperature"] is None
@@ -381,6 +386,7 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert sdf["integrations"]["windy"]["product"] == "ecmwf"
 
     dov = data["locations"]["dov"]
+    assert dov["metadata"]["nav_label"] == "Dover, UK"
     assert dov["metadata"]["default_temperature_unit"] == "C"
     assert dov["metadata"]["temperature_plots"] == {"live": True, "historic": True}
     assert dov["metadata"]["citations"]["temperature"] is None

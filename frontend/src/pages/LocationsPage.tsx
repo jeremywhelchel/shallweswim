@@ -96,7 +96,7 @@ function LocationCard({ location }: { location: AppBootstrapLocation }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-lg group-hover:text-swim-blue">
-            {metadata.name}
+            {metadata.nav_label}
           </h2>
         </div>
         <span className="rounded border border-swim-line px-2 py-1 font-mono text-xs text-slate-600 uppercase">
@@ -106,6 +106,9 @@ function LocationCard({ location }: { location: AppBootstrapLocation }) {
 
       <p className="mt-2 text-sm font-medium text-slate-700">
         {metadata.swim_location}
+      </p>
+      <p className="mt-1 text-sm leading-5 text-slate-600">
+        {metadata.description}
       </p>
       <div className="mt-4">
         <p className="text-sm text-slate-700">Water temperature</p>

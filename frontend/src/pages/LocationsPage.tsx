@@ -95,10 +95,7 @@ function LocationCard({ location }: { location: AppBootstrapLocation }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-medium text-swim-current text-xs uppercase">
-            {metadata.nav_label}
-          </p>
-          <h2 className="mt-1 font-semibold text-lg group-hover:text-swim-blue">
+          <h2 className="font-semibold text-lg group-hover:text-swim-blue">
             {metadata.name}
           </h2>
         </div>

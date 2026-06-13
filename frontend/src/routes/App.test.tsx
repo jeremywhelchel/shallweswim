@@ -642,6 +642,10 @@ test("renders all configured locations from bootstrap metadata", () => {
     "href",
     "/sdf",
   );
+  expect(screen.getAllByText("New York")).toHaveLength(1);
+  expect(screen.getByText("Grimaldo's Chair")).toBeVisible();
+  expect(screen.getAllByText("Louisville")).toHaveLength(1);
+  expect(screen.getByText("Community Boathouse")).toBeVisible();
   expect(screen.getByText("61.4°F")).toBeVisible();
   expect(screen.getByText("19.3°C")).toBeVisible();
   expect(screen.getByText(/Data from Coney Island/)).toBeVisible();

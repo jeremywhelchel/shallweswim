@@ -327,6 +327,15 @@ Notes:
   predictions/observations and currents still need source approval and
   validation. Continue pursuing a more official Met Office route for Sandettie
   history if practical.
+- Add tide-only detail views for locations that have tide predictions but no
+  current feed. The current detail/plot experience is oriented around combined
+  tide-current locations such as NYC; tide-only locations should still have a
+  useful drill-down focused on tide timing and any height context we trust.
+- Add diagnostic validation for Dover harmonic tide predictions against recent
+  Environment Agency Dover readings. Keep this out of the runtime prediction
+  path unless the live gauge quality is trusted; use it to track timing/height
+  residuals, detect datum drift or source outages, and decide when the model
+  should be regenerated.
 - Add support needed for non-US locations before committing to international
   production coverage: non-NOAA/non-USGS data clients, Celsius-first display
   defaults where appropriate, timezone handling, source citations, and location

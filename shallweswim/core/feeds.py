@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 # Local imports
 from shallweswim import config as config_lib
 from shallweswim import dataframe_models as df_models
+from shallweswim import harmonic_tides
 from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempStatus
 from shallweswim.clients import coops, cspf, ndbc, nwis
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
@@ -27,6 +28,8 @@ from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
+
+METERS_TO_FEET = 3.280839895013123
 
 
 class HistoricalTempsIncompleteError(StationUnavailableError):
@@ -741,6 +744,60 @@ class CoopsTidesFeed(Feed):
             raise
 
 
+class LocalHarmonicTidesFeed(Feed):
+    """Feed for locally generated harmonic tide predictions.
+
+    The model coefficients are derived offline from observed tide-gauge history.
+    Runtime fetching only loads the compact model and generates the same
+    yesterday-through-two-days-ahead high/low prediction window as CO-OPS tides.
+    Internal tide predictions are feet, matching NOAA CO-OPS and API/plot
+    expectations, so meter-native model output is converted here.
+    """
+
+    feed_config: config_lib.LocalHarmonicTideFeedConfig  # type: ignore[assignment]
+
+    @property
+    def data_model(self) -> type[DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return df_models.TidePredictionDataModel  # type: ignore[return-value]
+
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+        """Generate tide predictions locally from stored harmonic coefficients."""
+        model = harmonic_tides.load_model(self.feed_config.model_path)
+        today = datetime.datetime.now(datetime.UTC).date()
+        start_utc = datetime.datetime.combine(
+            today - datetime.timedelta(days=1),
+            datetime.time.min,
+            tzinfo=datetime.UTC,
+        )
+        end_utc = datetime.datetime.combine(
+            today + datetime.timedelta(days=2),
+            datetime.time.max,
+            tzinfo=datetime.UTC,
+        )
+        df = harmonic_tides.predict_high_low_events(
+            model,
+            start_utc=start_utc,
+            end_utc=end_utc,
+            timezone=self.location_config.timezone,
+        )
+        return _convert_tide_predictions_to_feet(df, model.height_units)
+
+
+def _convert_tide_predictions_to_feet(
+    tides: pd.DataFrame, source_units: str
+) -> pd.DataFrame:
+    """Return tide predictions in feet, the app's internal tide-height unit."""
+    normalized_units = source_units.strip().lower()
+    if normalized_units in {"ft", "feet", "foot"}:
+        return tides
+    if normalized_units in {"m", "meter", "meters", "metre", "metres"}:
+        converted = tides.copy()
+        converted["prediction"] = converted["prediction"] * METERS_TO_FEET
+        return converted
+    raise ValueError(f"Unsupported harmonic tide height units: {source_units}")
+
+
 class CoopsCurrentsFeed(CurrentsFeed):
     """Feed for NOAA CO-OPS current predictions.
 
@@ -1088,27 +1145,36 @@ def create_current_feed(
 
 def create_tide_feed(
     location_config: config_lib.LocationConfig,
-    tide_config: config_lib.CoopsTideFeedConfig,
+    tide_config: config_lib.TideFeedConfig,
     expiration_interval: datetime.timedelta | None = None,
 ) -> Feed:
     """Create a tide feed based on the configuration type.
 
     This factory function creates the appropriate tide feed based on the
-    tide source configuration. Currently only supports NOAA CO-OPS tide sources.
+    tide source configuration.
 
     Args:
         location_config: Location configuration
-        tide_config: NOAA CO-OPS tide source configuration
+        tide_config: Tide source configuration
         expiration_interval: Custom expiration interval (optional)
 
     Returns:
         Configured tide feed
     """
-    # Create the tide feed
-    return CoopsTidesFeed(
-        location_config=location_config,
-        feed_config=tide_config,
-        expiration_interval=expiration_interval,
+    if isinstance(tide_config, config_lib.CoopsTideFeedConfig):
+        return CoopsTidesFeed(
+            location_config=location_config,
+            feed_config=tide_config,
+            expiration_interval=expiration_interval,
+        )
+    if isinstance(tide_config, config_lib.LocalHarmonicTideFeedConfig):
+        return LocalHarmonicTidesFeed(
+            location_config=location_config,
+            feed_config=tide_config,
+            expiration_interval=expiration_interval,
+        )
+    raise TypeError(
+        f"Unsupported tide configuration type: {type(tide_config).__name__}"
     )
 
 

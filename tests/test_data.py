@@ -255,6 +255,37 @@ def test_temperature_feed_configuration_skips_missing_historical_source(
     historical_temps_feed.assert_not_called()
 
 
+def test_tide_feed_configuration_supports_stationless_local_harmonic_source(
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+    mocker: MockerFixture,
+) -> None:
+    """Local harmonic tide configs do not have NOAA station IDs."""
+    tide_source = config_lib.LocalHarmonicTideFeedConfig(
+        name="Synthetic tide",
+        model_path="data/tides/synthetic.json",
+        source_url="https://example.com/tides",
+        attribution="Synthetic gauge",
+    )
+    cfg = create_test_location_config(code="lht").model_copy(
+        update={"tide_source": tide_source}
+    )
+    tide_feed = MagicMock(spec=feeds.LocalHarmonicTidesFeed)
+    create_tide_feed = mocker.patch(
+        "shallweswim.core.manager.feeds.create_tide_feed",
+        return_value=tide_feed,
+    )
+
+    manager = LocationDataManager(
+        cfg,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+
+    assert manager._feeds[feeds.FEED_TIDES] is tide_feed
+    assert create_tide_feed.call_args.kwargs["tide_config"] is tide_source
+
+
 @pytest_asyncio.fixture
 async def mock_data_with_currents(
     mock_config: config_lib.LocationConfig,

@@ -426,6 +426,31 @@ reports per-year row counts, date bounds, failures, and elapsed time. The client
 uses monthly CSPF pages first because they are denser than annual summaries, and
 falls back to an annual page only when monthly pages have no data.
 
+#### Deriving Local Harmonic Tide Models
+
+For locations where a suitable tide prediction API is unavailable, local
+harmonic tide models can be derived offline from observed gauge history:
+
+```bash
+uv run python -m shallweswim.scripts.derive_harmonic_tide_model \
+  --fetch \
+  --cache /tmp/dover_ea_local.csv \
+  --archive-start 2025-06-25 \
+  --archive-end 2026-06-01
+
+uv run python -m shallweswim.scripts.derive_harmonic_tide_model \
+  --fit --eval --backtest \
+  --cache /tmp/dover_ea_local.csv \
+  --output /tmp/dov_harmonics.json
+```
+
+The generated JSON contains compact coefficients for `LocalHarmonicTidesFeed`,
+which generates the normal short high/low tide prediction window locally at
+runtime. Model derivation is intentionally offline; the app should not fetch
+large tide-gauge archives or fit harmonics during startup. If a source model is
+meter-native, the runtime feed converts generated tide heights to feet before
+the values enter the shared API and plotting path.
+
 ### Testing Philosophy
 
 The test suite uses a tiered strategy:

@@ -5,6 +5,7 @@
 # Standard library imports
 import asyncio
 import datetime
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -30,6 +31,7 @@ from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
+from shallweswim.core import queries
 from shallweswim.dataframe_models import (
     CurrentDataModel,
     WaterTempDataModel,
@@ -44,8 +46,10 @@ from shallweswim.feeds import (
     Feed,
     HistoricalTempsFeed,
     HistoricalTempsIncompleteError,
+    LocalHarmonicTidesFeed,
     MultiStationCurrentsFeed,
     create_temp_feed,
+    create_tide_feed,
 )
 from tests.helpers import assert_json_serializable
 
@@ -884,6 +888,110 @@ class TestCoopsTidesFeed:
         # Call _fetch and expect it to raise an exception
         with pytest.raises(RetryableClientError, match="API Error"):
             await feed._fetch(clients=mock_clients)
+
+
+class TestLocalHarmonicTidesFeed:
+    """Tests for locally generated harmonic tide predictions."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_converts_meter_model_output_to_internal_feet(
+        self,
+        tmp_path: Path,
+        location_config: config_lib.LocationConfig,
+    ) -> None:
+        """Meter-native harmonic models publish feet for normal tide consumers."""
+        model_path = tmp_path / "synthetic_harmonics.json"
+        model_path.write_text(
+            """
+{
+  "schema_version": 1,
+  "name": "Synthetic local tide",
+  "epoch_utc": "2026-06-13T00:00:00Z",
+  "intercept": 0.0,
+  "height_units": "m",
+  "height_datum": "synthetic datum",
+  "source": "synthetic source",
+  "constituents": [
+    {
+      "name": "M2",
+      "speed_degrees_per_hour": 28.9841042,
+      "cos": 1.0,
+      "sin": 0.0
+    }
+  ],
+  "metadata": {}
+}
+""".strip()
+        )
+        feed = LocalHarmonicTidesFeed(
+            location_config=location_config,
+            feed_config=config_lib.LocalHarmonicTideFeedConfig(
+                name="Synthetic tide",
+                model_path=str(model_path),
+                source_url="https://example.com/tides",
+                attribution="Synthetic gauge",
+            ),
+            expiration_interval=datetime.timedelta(hours=24),
+        )
+
+        result = await feed._fetch(clients={})
+
+        assert not result.empty
+        assert set(result["type"].astype(str)) == {"high", "low"}
+        assert all(
+            timestamp.second == 0 and timestamp.microsecond == 0
+            for timestamp in result.index
+        )
+        assert result["prediction"].abs().max() == pytest.approx(
+            3.280839895013123,
+            rel=1e-4,
+        )
+        frame = queries.prepare_tide_prediction_frame(result)
+        state = queries.predict_tide_from_precomputed_frame(
+            frame,
+            location_config,
+            frame.index[len(frame) // 2].to_pydatetime(),
+        )
+        assert state.estimated_height is not None
+
+    @pytest.mark.asyncio
+    async def test_dover_config_loads_packaged_model(self) -> None:
+        """Production Dover config loads its packaged harmonic model."""
+        location_config = config_lib.get("dov")
+        assert location_config is not None
+        assert isinstance(
+            location_config.tide_source, config_lib.LocalHarmonicTideFeedConfig
+        )
+        feed = create_tide_feed(
+            location_config=location_config,
+            tide_config=location_config.tide_source,
+            expiration_interval=datetime.timedelta(hours=24),
+        )
+
+        result = await feed._fetch(clients={})
+
+        assert not result.empty
+        assert set(result["type"].astype(str)) == {"high", "low"}
+        assert result.index.is_monotonic_increasing
+        assert result["prediction"].max() > result["prediction"].min()
+
+    def test_create_tide_feed_supports_local_harmonic_config(
+        self,
+        location_config: config_lib.LocationConfig,
+    ) -> None:
+        """The tide factory dispatches local harmonic configs to their feed."""
+        feed = create_tide_feed(
+            location_config=location_config,
+            tide_config=config_lib.LocalHarmonicTideFeedConfig(
+                name="Synthetic tide",
+                model_path="data/tides/synthetic.json",
+                source_url="https://example.com/tides",
+                attribution="Synthetic gauge",
+            ),
+            expiration_interval=datetime.timedelta(hours=24),
+        )
+
+        assert isinstance(feed, LocalHarmonicTidesFeed)
 
 
 class TestCoopsCurrentsFeed:

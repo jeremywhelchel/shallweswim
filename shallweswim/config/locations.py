@@ -275,8 +275,20 @@ class CoopsTempFeedConfig(TempFeedConfig, frozen=True):
         return f"coops:temperature:{self.station}"
 
 
-class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
-    """Configuration for tide data source.
+class TideFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
+    """Base configuration for tide prediction data sources."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    @property
+    @abc.abstractmethod
+    def source_type(self) -> types.DataSourceType:
+        """Return the type of tide source."""
+        pass
+
+
+class CoopsTideFeedConfig(TideFeedConfig, frozen=True):
+    """Configuration for NOAA CO-OPS tide predictions.
 
     Defines the NOAA CO-OPS station for fetching tide predictions.
     """
@@ -291,6 +303,11 @@ class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
             description="NOAA tide station ID (7 digits) for fetching tide predictions (e.g., 8517741 for Coney Island)",
         ),
     ]
+
+    @property
+    def source_type(self) -> types.DataSourceType:
+        """NOAA CO-OPS tide feeds provide predictions."""
+        return types.DataSourceType.PREDICTION
 
     @property
     def citation(self) -> str:
@@ -308,6 +325,51 @@ class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
     def citation_key(self) -> str:
         """Return a stable NOAA CO-OPS tide station identity."""
         return f"coops:tide:{self.station}"
+
+
+class LocalHarmonicTideFeedConfig(TideFeedConfig, frozen=True):
+    """Configuration for local harmonic tide predictions.
+
+    Local harmonic tide models are derived offline from observed gauge history
+    and stored as compact JSON model files. Runtime feeds generate short-window
+    predictions locally instead of calling an external tide service.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    model_path: Annotated[
+        str,
+        Field(
+            min_length=1,
+            description="Package-relative or absolute path to a harmonic tide model JSON file.",
+        ),
+    ]
+    source_url: Annotated[
+        str,
+        Field(description="Canonical source URL for attribution."),
+    ]
+    attribution: Annotated[
+        str,
+        Field(description="Human-readable attribution text."),
+    ]
+
+    @property
+    def source_type(self) -> types.DataSourceType:
+        """Local harmonic tide feeds provide predictions."""
+        return types.DataSourceType.PREDICTION
+
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with local harmonic tide model attribution."""
+        return (
+            f'Tide timing model derived from <a href="{self.source_url}" '
+            f"{EXTERNAL_LINK_HTML_ATTRS}>{self.attribution}</a>"
+        )
+
+    @property
+    def citation_key(self) -> str:
+        """Return a stable local harmonic tide model identity."""
+        return f"local-harmonic:tide:{self.model_path}"
 
 
 class CurrentsFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
@@ -820,7 +882,7 @@ class LocationConfig(BaseModel, frozen=True):
     ] = None
 
     tide_source: Annotated[
-        CoopsTideFeedConfig | None,
+        TideFeedConfig | None,
         Field(description="Configuration for tide data source"),
     ] = None
 
@@ -1239,7 +1301,7 @@ _CONFIG_LIST = [
         code="dov",
         name="Dover",
         nav_label="Dover, UK",
-        swim_location="Swimmer's Beach",
+        swim_location="Swimmer’s Beach",  # noqa: RUF001 - official display punctuation
         swim_location_link="https://www.doverchanneltraining.com/swim-zone",
         location_info_source="Dover Channel Training, swim zone",
         latitude=51.12275,
@@ -1253,6 +1315,17 @@ _CONFIG_LIST = [
         historic_temp_source=CspfTempFeedConfig(
             name="Sandettie Lightship",
             start_year=2011,
+        ),
+        # Dover tide model is fitted from Environment Agency measure E71624
+        # (tidal level in meters). EA links this measure to E71639 mAOD; same-time
+        # readings differ by 3.67 m, matching NTSLF's Dover Chart Datum versus
+        # Ordnance Datum offset. Treat E71624 as already chart-datum-style and
+        # do not apply an additional runtime vertical offset.
+        tide_source=LocalHarmonicTideFeedConfig(
+            name="Dover tide timing model",
+            model_path="data/tides/dov_harmonics.json",
+            source_url="https://environment.data.gov.uk/flood-monitoring/id/stations/E71624.html",
+            attribution="Environment Agency Dover tide gauge",
         ),
         presentation=LocationPresentationConfig(
             windy=WindyForecastConfig(metric_temp="°C"),

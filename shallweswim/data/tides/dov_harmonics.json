@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "name": "Dover local harmonic tide timing model",
+  "epoch_utc": "2025-06-25T00:00:00Z",
+  "intercept": 3.9222068525053597,
+  "height_units": "m",
+  "height_datum": "Environment Agency local tide gauge datum",
+  "source": "Environment Agency Dover tide gauge measure E71624-level-tidal_level-Mean-15_min-m",
+  "constituents": [
+    {
+      "name": "M2",
+      "speed_degrees_per_hour": 28.9841042,
+      "cos": 1.4828620570102933,
+      "sin": -1.5958479136308608
+    },
+    {
+      "name": "S2",
+      "speed_degrees_per_hour": 30.0,
+      "cos": 0.6601902156942333,
+      "sin": 0.28323086339405645
+    },
+    {
+      "name": "N2",
+      "speed_degrees_per_hour": 28.4397295,
+      "cos": 0.3574916571832326,
+      "sin": -0.15868391865697176
+    },
+    {
+      "name": "K2",
+      "speed_degrees_per_hour": 30.0821373,
+      "cos": -0.2691301394848275,
+      "sin": -0.03981576877177081
+    },
+    {
+      "name": "K1",
+      "speed_degrees_per_hour": 15.0410686,
+      "cos": -0.03982803618914289,
+      "sin": -0.03925376103707758
+    },
+    {
+      "name": "O1",
+      "speed_degrees_per_hour": 13.9430356,
+      "cos": 0.06118098129388791,
+      "sin": -0.027900401403327457
+    },
+    {
+      "name": "P1",
+      "speed_degrees_per_hour": 14.9589314,
+      "cos": -0.023324435487372876,
+      "sin": -0.007711556775376782
+    },
+    {
+      "name": "Q1",
+      "speed_degrees_per_hour": 13.3986609,
+      "cos": 0.021232568284566534,
+      "sin": -0.0006410271738248488
+    },
+    {
+      "name": "M4",
+      "speed_degrees_per_hour": 57.9682084,
+      "cos": -0.2432276680075029,
+      "sin": -0.009411847175420929
+    },
+    {
+      "name": "MS4",
+      "speed_degrees_per_hour": 58.9841042,
+      "cos": -0.04506133566613391,
+      "sin": -0.1668924972918179
+    },
+    {
+      "name": "MN4",
+      "speed_degrees_per_hour": 57.4238337,
+      "cos": -0.07802864887896856,
+      "sin": -0.040128941397439416
+    }
+  ],
+  "metadata": {
+    "derived_at_utc": "2026-06-13T17:51:26.849112Z",
+    "measure": "E71624-level-tidal_level-Mean-15_min-m",
+    "source_url": "https://environment.data.gov.uk/flood-monitoring/id/measures/E71624-level-tidal_level-Mean-15_min-m",
+    "observation_count": 28762,
+    "first_observation_utc": "2025-06-25T00:00:00+00:00",
+    "last_observation_utc": "2026-05-28T23:45:00+00:00",
+    "excluded_day_count": 120,
+    "min_daily_rows": 90,
+    "min_daily_span": 3.0,
+    "note": "Model is for swimmer-condition timing context, not navigation. Predicted heights use the fitted source datum, not necessarily Chart Datum.",
+    "fit_condition_number": 1.513974956755985
+  }
+}

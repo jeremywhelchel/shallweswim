@@ -236,8 +236,6 @@ class LocationDataManager:
             return None
 
         tide_config = self.config.tide_source
-        if not tide_config.station:
-            return None
 
         # Use the factory function to create the appropriate feed
         try:

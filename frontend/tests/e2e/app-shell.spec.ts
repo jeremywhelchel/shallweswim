@@ -366,7 +366,7 @@ test("restores the last selected location from local preferences", async ({
   await expect(
     page.getByRole("heading", { name: "shall we swim today?" }),
   ).toBeVisible();
-  await expect(page.getByText("Aquatic Park")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Aquatic Park" })).toBeVisible();
   await expect(page.getByText("55.2°F")).toBeVisible();
   await expect
     .poll(async () =>
@@ -385,7 +385,7 @@ test("restores the last selected location from local preferences", async ({
   await gotoApp(page, "/");
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByText("Aquatic Park")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Aquatic Park" })).toBeVisible();
   await expect(page.getByText("55.2°F")).toBeVisible();
 
   await page.evaluate(() => {

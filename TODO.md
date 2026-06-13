@@ -193,6 +193,11 @@ Notes:
   historical plot inputs, seasonal baselines, and future projection products
   should not quietly share assumptions just because they all start from
   temperature frames.
+- Separate data-quality rejection from natural low-range tide conditions in
+  offline harmonic tide fitting. The current Dover script can exclude days by
+  row count and daily tidal span; a later modeling pass should distinguish
+  sensor gaps/flatlines from valid neap-ish low-range days so the training set
+  does not quietly bias toward larger tidal ranges.
 
 ### Source Client Work
 

@@ -475,6 +475,33 @@ class NwisTempFeedConfig(TempFeedConfig, frozen=True):
         return f"nwis:temperature:{self.site_no}:{self.parameter_cd}"
 
 
+class CspfTempFeedConfig(TempFeedConfig, frozen=True):
+    """CSPF Sandettie historical temperature source configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    station_slug: Annotated[
+        str,
+        Field(
+            description="CSPF Sandettie data slug used in page URLs.",
+        ),
+    ] = "sandettie-data"
+
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with CSPF/Met Office citation information."""
+        source_url = f"https://cspf.co.uk/{self.station_slug}"
+        return (
+            f'<a href="{source_url}" {EXTERNAL_LINK_HTML_ATTRS}>CSPF Sandettie '
+            "data</a> from the Met Office."
+        )
+
+    @property
+    def citation_key(self) -> str:
+        """Return a stable CSPF Sandettie source identity."""
+        return f"cspf:temperature:{self.station_slug}"
+
+
 class PresentationLinkConfig(BaseModel, frozen=True):
     """Stable presentation link configured for the frontend app."""
 
@@ -1111,6 +1138,10 @@ _CONFIG_LIST = [
         live_temp_source=NdbcTempFeedConfig(
             station="62304",
             name="Sandettie Lightship",
+        ),
+        historic_temp_source=CspfTempFeedConfig(
+            name="Sandettie Lightship",
+            start_year=2011,
         ),
         presentation=LocationPresentationConfig(
             windy=WindyForecastConfig(metric_temp="°C"),

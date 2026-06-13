@@ -25,6 +25,7 @@ from shallweswim.api_types import FeedStatus
 # Import API client classes
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.core import queries
@@ -173,6 +174,7 @@ def mock_clients() -> Mapping[str, BaseApiClient]:
     """Provide mock API clients for testing."""
     return {
         "coops": MagicMock(spec=CoopsApi),
+        "cspf": MagicMock(spec=CspfApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }  # type: ignore[return-value]
@@ -865,6 +867,7 @@ async def test_current_prediction_at_ebb_peak(
     # Create mock clients
     mock_clients = {
         "coops": MagicMock(spec=CoopsApi),
+        "cspf": MagicMock(spec=CspfApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }
@@ -959,6 +962,7 @@ async def test_current_prediction_at_slack_before_flood(
     config = create_test_location_config()
     mock_clients = {
         "coops": MagicMock(spec=CoopsApi),
+        "cspf": MagicMock(spec=CspfApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }
@@ -1060,6 +1064,7 @@ async def test_current_prediction_strengthening() -> None:
     # Create mock clients
     mock_clients = {
         "coops": MagicMock(spec=CoopsApi),
+        "cspf": MagicMock(spec=CspfApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }  # type: ignore[assignment]
@@ -1114,6 +1119,7 @@ async def test_current_prediction_weakening() -> None:
     # Create mock clients
     mock_clients = {
         "coops": MagicMock(spec=CoopsApi),
+        "cspf": MagicMock(spec=CspfApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }  # type: ignore[assignment]
@@ -1168,6 +1174,7 @@ async def test_process_peaks_function() -> None:
     # Create mock clients
     mock_clients = {
         "coops": MagicMock(spec=CoopsApi),
+        "cspf": MagicMock(spec=CspfApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }  # type: ignore[assignment]
@@ -1452,6 +1459,7 @@ async def test_data_status_property(process_pool: ProcessPoolExecutor) -> None:
     # Create mock clients
     mock_clients = {
         "coops": MagicMock(spec=CoopsApi),
+        "cspf": MagicMock(spec=CspfApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }  # type: ignore[assignment]

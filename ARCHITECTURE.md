@@ -26,6 +26,7 @@ shallweswim/
 ├── clients/             # External API clients
 │   ├── base.py          # BaseApiClient with retry logic, error hierarchy
 │   ├── coops.py         # NOAA CO-OPS (tides, currents, coastal temps)
+│   ├── cspf.py          # CSPF Sandettie historical temperatures
 │   ├── ndbc.py          # NOAA NDBC (buoy temperatures)
 │   └── nwis.py          # USGS NWIS (river temps, discharge)
 ├── plot.py              # Chart generation (runs in process pool)
@@ -232,7 +233,7 @@ Two error types for data availability, at different layers:
 
 ## 5. Station Outage Handling
 
-External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) may have temporary outages. The application handles these gracefully through principled error handling.
+External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF) may have temporary outages. The application handles these gracefully through principled error handling.
 
 ### Feed Scheduling
 
@@ -307,7 +308,7 @@ after a successful fetch, they do not refresh automatically.
 `request_with_retry()`, plus small HTTP mechanics such as standard timeout
 objects, retryable status checks, and retryable network/timeout error messages.
 Each concrete client owns its request helper signature because CO-OPS, NDBC,
-and NWIS all require different request parameters.
+NWIS, and CSPF all require different request parameters.
 Do not add `_execute_request` back to the base class contract just to share a
 name; pass the concrete helper into `request_with_retry()` instead.
 
@@ -333,6 +334,12 @@ blocking async fanout at higher layers:
 - These gates are not rate-limit accounting or cross-instance distributed locks;
   they are local backpressure so startup, refresh, and retry bursts do not
   overwhelm upstream services or the app process.
+- The CSPF client is intentionally narrow: it fetches Dover/Sandettie
+  historical temperature fallback data from CSPF Sandettie pages. It parses the
+  embedded sea-temperature JavaScript series, normalizes Celsius to the internal
+  Fahrenheit `water_temp` column, uses monthly pages as the primary source
+  because they are denser than annual summaries, and falls back to annual pages
+  only when monthly pages have no data.
 
 **Core (`core/queries.py`)**:
 

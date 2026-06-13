@@ -317,9 +317,11 @@ Notes:
 - Canadian candidates: Kingston, Vancouver area, and Oakville/Toronto.
 - International candidates: Dover, UK and Sandycove, Ireland.
 - Source remaining Dover data before enabling full condition coverage. Live
-  temperature currently uses NDBC Sandettie Lightship, but historical water
-  temperature, tide predictions/observations, and currents still need source
-  approval and validation.
+  temperature currently uses NDBC Sandettie Lightship and historical water
+  temperature uses CSPF Sandettie as a same-station fallback, but tide
+  predictions/observations and currents still need source approval and
+  validation. Continue pursuing a more official Met Office route for Sandettie
+  history if practical.
 - Add support needed for non-US locations before committing to international
   production coverage: non-NOAA/non-USGS data clients, Celsius-first display
   defaults where appropriate, timezone handling, source citations, and location

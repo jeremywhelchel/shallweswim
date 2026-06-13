@@ -50,6 +50,7 @@ from shallweswim.api_types import (
 )
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.core.feeds import (
@@ -365,6 +366,7 @@ async def initialize_location_data(
     # Create API client instances using the shared session
     api_clients: dict[str, BaseApiClient] = {
         "coops": CoopsApi(session=session),
+        "cspf": CspfApi(session=session),
         "nwis": NwisApi(session=session),
         "ndbc": NdbcApi(session=session),
     }

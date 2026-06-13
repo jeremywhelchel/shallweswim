@@ -27,6 +27,7 @@ from shallweswim.clients.base import (
     StationUnavailableError,
 )
 from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.dataframe_models import (
@@ -39,10 +40,12 @@ from shallweswim.feeds import (
     CoopsCurrentsFeed,
     CoopsTempFeed,
     CoopsTidesFeed,
+    CspfTempFeed,
     Feed,
     HistoricalTempsFeed,
     HistoricalTempsIncompleteError,
     MultiStationCurrentsFeed,
+    create_temp_feed,
 )
 from tests.helpers import assert_json_serializable
 
@@ -163,6 +166,7 @@ def mock_clients() -> dict[str, BaseApiClient]:
     """Provides a mock dictionary of specific API clients."""
     return {
         "coops": MagicMock(spec=CoopsApi),
+        "cspf": MagicMock(spec=CspfApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }
@@ -1152,6 +1156,78 @@ class TestCoopsTempFeed:
         # Allow for small differences due to test execution timing
         date_diff = (end_date - begin_date).days
         assert date_diff == 8
+
+
+class TestCspfTempFeed:
+    """Tests for the CSPF temperature feed."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_calls_cspf_client(
+        self,
+        location_config: config_lib.LocationConfig,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """CSPF temp feed calls the CSPF client with configured source data."""
+        cspf_config = config_lib.CspfTempFeedConfig(
+            name="Sandettie Lightship",
+            station_slug="sandettie-data",
+        )
+        start = datetime.datetime(2025, 1, 1)
+        end = datetime.datetime(2025, 12, 31, 23, 59, 59)
+        expected = pd.DataFrame(
+            {"water_temp": [50.0]},
+            index=pd.DatetimeIndex([datetime.datetime(2025, 4, 1)], name="time"),
+        )
+        mock_cspf_client = cast(CspfApi, mock_clients["cspf"])
+        cast(MagicMock, mock_cspf_client.sandettie_temperature).return_value = expected
+
+        feed = CspfTempFeed(
+            location_config=location_config,
+            feed_config=cspf_config,
+            start=start,
+            end=end,
+            expiration_interval=None,
+        )
+
+        result = await feed._fetch(clients=mock_clients)
+
+        assert result is expected
+        cast(MagicMock, mock_cspf_client.sandettie_temperature).assert_called_once_with(
+            begin_date=start,
+            end_date=end,
+            station_slug="sandettie-data",
+            timezone=location_config.timezone,
+            location_code=location_config.code,
+        )
+
+
+def test_create_temp_feed_supports_cspf_source(
+    location_config: config_lib.LocationConfig,
+    mock_clients: dict[str, BaseApiClient],
+) -> None:
+    """Temperature feed factory supports CSPF source configs."""
+    cspf_config = config_lib.CspfTempFeedConfig(name="Sandettie Lightship")
+
+    feed = create_temp_feed(
+        location_config=location_config,
+        temp_config=cspf_config,
+        clients=mock_clients,
+    )
+
+    assert isinstance(feed, CspfTempFeed)
+    assert feed.feed_config is cspf_config
+
+
+def test_create_temp_feed_requires_cspf_client(
+    location_config: config_lib.LocationConfig,
+) -> None:
+    """CSPF source configs require the CSPF client in the client dictionary."""
+    with pytest.raises(TypeError, match="CSPF client not found"):
+        create_temp_feed(
+            location_config=location_config,
+            temp_config=config_lib.CspfTempFeedConfig(name="Sandettie Lightship"),
+            clients={},
+        )
 
 
 class TestCompositeFeed:

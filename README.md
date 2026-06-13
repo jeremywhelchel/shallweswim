@@ -19,7 +19,8 @@
 
 ## Features
 
-- **Real-time conditions** from NOAA CO-OPS, NOAA NDBC, and USGS NWIS APIs
+- **Real-time conditions** from NOAA CO-OPS, NOAA NDBC, and USGS NWIS APIs,
+  with CSPF Sandettie pages used for Dover historical water temperature
 - **Tide predictions** with high/low tide times, heights, and estimated tide state
 - **Current velocity** data with flood/ebb/slack phase, strength, trend, and absolute speed
 - **Water temperature trends** (48-hour, 2-month, and multi-year)
@@ -255,7 +256,7 @@ uv run pytest --cov=shallweswim
 uv run pytest --cov=shallweswim --cov-report=html
 ```
 
-Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser tests are also opt-in; they use Playwright to run a real Chromium browser and are skipped unless `--run-browser` is passed.
+Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser tests are also opt-in; they use Playwright to run a real Chromium browser and are skipped unless `--run-browser` is passed.
 
 #### Optional Browser Tests
 
@@ -407,6 +408,21 @@ For local authenticated NWIS testing, create `.env` from `.env.example` and set
 present and falls back to unauthenticated requests when it is omitted. Do not
 commit API keys.
 
+#### Debugging CSPF Sandettie Historical Temperatures
+
+Use the CSPF debug script to exercise Dover's Sandettie historical temperature
+fallback without starting the full service:
+
+```bash
+uv run python -m shallweswim.scripts.debug_cspf_fetch --location dov \
+  --start-year 2011 --end-year 2026
+```
+
+The command fetches the same CSPF Sandettie pages as the runtime client and
+reports per-year row counts, date bounds, failures, and elapsed time. The client
+uses monthly CSPF pages first because they are denser than annual summaries, and
+falls back to an annual page only when monthly pages have no data.
+
 ### Testing Philosophy
 
 The test suite uses a tiered strategy:
@@ -427,7 +443,7 @@ The test suite uses a tiered strategy:
 
 ## Monitoring & Station Outages
 
-External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS) occasionally experience outages. The application handles these gracefully:
+External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF) occasionally experience outages. The application handles these gracefully:
 
 - **Health check (`/api/healthy`, alias `/api/health`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
 - **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, `age_seconds`, `consecutive_failures`, and the next scheduled fetch time. Historical temperature feeds also include year-level diagnostics for required, cached, missing, fetched, and failed years. Use this for granular monitoring and alerting.
@@ -456,6 +472,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (Center for Operational Oceanographic Products and Services) for tide, current, and temperature data
 - [NOAA NDBC API](https://www.ndbc.noaa.gov/) (National Data Buoy Center) for buoy-based water temperature data
 - [USGS Water Data APIs](https://api.waterdata.usgs.gov/) (National Water Information System) for water temperature and river current data
+- [Channel Swimming and Piloting Federation](https://cspf.co.uk/sandettie-data) for Sandettie historical water temperature data sourced from the Met Office
 - [FastAPI](https://fastapi.tiangolo.com/) for the web framework
 - [Matplotlib](https://matplotlib.org/) for data visualization
 - [Feather Icons](https://feathericons.com/) for UI icons

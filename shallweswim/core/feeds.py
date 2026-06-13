@@ -21,9 +21,10 @@ from pydantic import BaseModel, ConfigDict
 from shallweswim import config as config_lib
 from shallweswim import dataframe_models as df_models
 from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempStatus
-from shallweswim.clients import coops, ndbc, nwis
+from shallweswim.clients import coops, cspf, ndbc, nwis
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
+from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
 
@@ -659,6 +660,44 @@ class NwisTempFeed(TempFeed):
             raise
 
 
+class CspfTempFeed(TempFeed):
+    """CSPF Sandettie historical temperature feed."""
+
+    feed_config: config_lib.CspfTempFeedConfig  # type: ignore[assignment]
+    interval: Literal["h", "6-min"] = "h"
+
+    @property
+    def data_model(self) -> type[DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return df_models.WaterTempDataModel  # type: ignore[return-value]
+
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+        """Fetch historical Sandettie temperatures from CSPF pages."""
+        begin_date = self.start or (
+            datetime.datetime.today() - datetime.timedelta(days=8)
+        )
+        end_date = self.end or datetime.datetime.today()
+
+        try:
+            cspf_client: CspfApi = clients["cspf"]  # type: ignore
+            temp_df = await cspf_client.sandettie_temperature(
+                begin_date=begin_date,
+                end_date=end_date,
+                station_slug=self.feed_config.station_slug,
+                timezone=self.location_config.timezone,
+                location_code=self.location_config.code,
+            )
+
+            self.log(
+                f"Successfully fetched {len(temp_df)} temperature readings from CSPF Sandettie",
+                logging.INFO,
+            )
+            return temp_df
+        except cspf.CspfApiError as e:
+            self.log(f"Error fetching CSPF data: {e}", logging.WARNING)
+            raise
+
+
 class CoopsTidesFeed(Feed):
     """Feed for NOAA CO-OPS tide predictions.
 
@@ -963,6 +1002,20 @@ def create_temp_feed(
             end=end,
             expiration_interval=expiration_interval,
             **feed_kwargs,
+        )
+    elif isinstance(temp_config, config_lib.CspfTempFeedConfig):
+        cspf_client = clients.get("cspf")
+        if not isinstance(cspf_client, cspf.CspfApi):
+            raise TypeError(
+                "CSPF client not found or incorrect type in provided clients dict"
+            )
+
+        return CspfTempFeed(
+            location_config=location_config,
+            feed_config=temp_config,
+            start=start,
+            end=end,
+            expiration_interval=expiration_interval,
         )
     else:
         # Unsupported temperature source type - fail fast and loud

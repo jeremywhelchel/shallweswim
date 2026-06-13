@@ -380,6 +380,13 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert sdf["integrations"]["windy"]["overlay"] == "wind"
     assert sdf["integrations"]["windy"]["product"] == "ecmwf"
 
+    dov = data["locations"]["dov"]
+    assert dov["metadata"]["default_temperature_unit"] == "C"
+    assert dov["metadata"]["temperature_plots"] == {"live": True, "historic": True}
+    assert dov["metadata"]["citations"]["temperature"] is None
+    assert dov["metadata"]["citations"]["live_temperature"] is not None
+    assert dov["metadata"]["citations"]["historical_temperature"] is not None
+
 
 def test_app_source_citations_split_different_temperature_sources() -> None:
     """Different live and historical temperature sources get scoped citations."""

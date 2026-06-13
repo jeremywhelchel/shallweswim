@@ -23,7 +23,7 @@ import abc
 import datetime
 from datetime import tzinfo
 from types import MappingProxyType
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypedDict
 
 # Third-party imports
 import pytz
@@ -33,6 +33,65 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from shallweswim import types, util
 
 EXTERNAL_LINK_HTML_ATTRS = 'target="_blank" rel="noopener noreferrer"'
+
+
+class SourceCitation(BaseModel, frozen=True):
+    """Rendered source citation with a stable identity for de-duplication."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: Annotated[
+        str,
+        Field(
+            description="Stable source identity used to de-duplicate equivalent citations"
+        ),
+    ]
+    html: Annotated[str, Field(description="Rendered HTML citation snippet")]
+
+
+class SourceCitationRow(BaseModel, frozen=True):
+    """Presentation-ready source citation row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: Annotated[str, Field(description="User-facing citation label")]
+    html: Annotated[str, Field(description="Rendered HTML citation snippet")]
+
+
+def temperature_source_citation_rows(
+    live_citation: SourceCitation | None,
+    historic_citation: SourceCitation | None,
+) -> list[SourceCitationRow]:
+    """Build de-duplicated temperature citation rows."""
+    if live_citation and historic_citation:
+        if live_citation.key == historic_citation.key:
+            return [SourceCitationRow(label="Temperature", html=live_citation.html)]
+        return [
+            SourceCitationRow(
+                label="Live temperature",
+                html=f"Live temperature: {live_citation.html}",
+            ),
+            SourceCitationRow(
+                label="Historical temperature",
+                html=f"Historical temperature: {historic_citation.html}",
+            ),
+        ]
+
+    if live_citation:
+        return [
+            SourceCitationRow(
+                label="Live temperature",
+                html=f"Live temperature: {live_citation.html}",
+            )
+        ]
+    if historic_citation:
+        return [
+            SourceCitationRow(
+                label="Historical temperature",
+                html=f"Historical temperature: {historic_citation.html}",
+            )
+        ]
+    return []
 
 
 class BaseFeedConfig(BaseModel, abc.ABC, frozen=True):
@@ -59,6 +118,16 @@ class BaseFeedConfig(BaseModel, abc.ABC, frozen=True):
     def citation(self) -> str:
         """Return an HTML snippet with source citation information."""
         pass
+
+    @property
+    def citation_key(self) -> str:
+        """Return a stable source identity for citation de-duplication."""
+        return self.citation
+
+    @property
+    def source_citation(self) -> SourceCitation:
+        """Return the rendered citation and stable identity together."""
+        return SourceCitation(key=self.citation_key, html=self.citation)
 
 
 class TempFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
@@ -110,6 +179,19 @@ class TempFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
         pass
 
 
+class _SharedTempSources(TypedDict):
+    live_temp_source: TempFeedConfig
+    historic_temp_source: TempFeedConfig
+
+
+def _shared_temp_sources(source: TempFeedConfig) -> _SharedTempSources:
+    """Use one immutable temperature source for live and historical feeds."""
+    return {
+        "live_temp_source": source,
+        "historic_temp_source": source,
+    }
+
+
 class CoopsTempFeedConfig(TempFeedConfig, frozen=True):
     """NOAA CO-OPS specific temperature data source configuration.
 
@@ -138,6 +220,11 @@ class CoopsTempFeedConfig(TempFeedConfig, frozen=True):
             f"https://tidesandcurrents.noaa.gov/stationhome.html?id={self.station}"
         )
         return f'Water temperature data provided by <a href="{station_url}" {EXTERNAL_LINK_HTML_ATTRS}>NOAA CO-OPS Station {self.station}</a> ({self.name or "Unknown"})'
+
+    @property
+    def citation_key(self) -> str:
+        """Return a stable NOAA CO-OPS temperature station identity."""
+        return f"coops:temperature:{self.station}"
 
 
 class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
@@ -168,6 +255,11 @@ class CoopsTideFeedConfig(BaseFeedConfig, frozen=True):
             f"https://tidesandcurrents.noaa.gov/stationhome.html?id={self.station}"
         )
         return f'Tide data provided by <a href="{station_url}" {EXTERNAL_LINK_HTML_ATTRS}>NOAA CO-OPS Station {self.station}</a> ({self.name or "Unknown"})'
+
+    @property
+    def citation_key(self) -> str:
+        """Return a stable NOAA CO-OPS tide station identity."""
+        return f"coops:tide:{self.station}"
 
 
 class CurrentsFeedConfig(BaseFeedConfig, abc.ABC, frozen=True):
@@ -248,6 +340,11 @@ class CoopsCurrentsFeedConfig(CurrentsFeedConfig, frozen=True):
 
             return f"Current data provided by NOAA CO-OPS Stations: {', '.join(station_links)}"
 
+    @property
+    def citation_key(self) -> str:
+        """Return a stable NOAA CO-OPS current station identity."""
+        return f"coops:currents:{','.join(sorted(self.stations))}"
+
 
 class NwisCurrentFeedConfig(CurrentsFeedConfig, frozen=True):
     """USGS NWIS specific currents data source configuration.
@@ -294,6 +391,11 @@ class NwisCurrentFeedConfig(CurrentsFeedConfig, frozen=True):
         source_name = self.name or f"USGS Site {self.site_no}"
         return f'Currents data provided by <a href="{site_url}" {EXTERNAL_LINK_HTML_ATTRS}>{source_name}</a> via USGS NWIS.'
 
+    @property
+    def citation_key(self) -> str:
+        """Return a stable USGS NWIS current site identity."""
+        return f"nwis:currents:{self.site_no}:{self.parameter_cd}"
+
 
 class NdbcTempFeedConfig(TempFeedConfig, frozen=True):
     """NDBC specific temperature data source configuration.
@@ -324,6 +426,11 @@ class NdbcTempFeedConfig(TempFeedConfig, frozen=True):
             f"https://www.ndbc.noaa.gov/station_page.php?station={self.station}"
         )
         return f'Water temperature data provided by <a href="{station_url}" {EXTERNAL_LINK_HTML_ATTRS}>NDBC Station {self.station}</a> ({self.name or "Unknown"})'
+
+    @property
+    def citation_key(self) -> str:
+        """Return a stable NDBC station identity."""
+        return f"ndbc:temperature:{self.station.lower()}"
 
 
 class NwisTempFeedConfig(TempFeedConfig, frozen=True):
@@ -361,6 +468,11 @@ class NwisTempFeedConfig(TempFeedConfig, frozen=True):
         """
         site_url = f"https://waterdata.usgs.gov/monitoring-location/{self.site_no}/"
         return f'Water temperature data provided by <a href="{site_url}" {EXTERNAL_LINK_HTML_ATTRS}>USGS NWIS Site {self.site_no}</a> ({self.name or "Unknown"})'
+
+    @property
+    def citation_key(self) -> str:
+        """Return a stable USGS NWIS temperature site identity."""
+        return f"nwis:temperature:{self.site_no}:{self.parameter_cd}"
 
 
 class PresentationLinkConfig(BaseModel, frozen=True):
@@ -597,10 +709,17 @@ class LocationConfig(BaseModel, frozen=True):
         Field(description="Default temperature display unit for this location"),
     ]
 
-    # Data source configurations
-    temp_source: Annotated[
+    # Data source configurations. Live and historical temperature sources are
+    # explicit because some locations use separate acquisition paths for the
+    # same physical measurement site.
+    live_temp_source: Annotated[
         TempFeedConfig | None,
-        Field(description="Configuration for temperature data source"),
+        Field(description="Configuration for live temperature data source"),
+    ] = None
+
+    historic_temp_source: Annotated[
+        TempFeedConfig | None,
+        Field(description="Configuration for historical temperature data source"),
     ] = None
 
     tide_source: Annotated[
@@ -679,6 +798,19 @@ class LocationConfig(BaseModel, frozen=True):
         # Return naive datetime in local time
         return local_now.replace(tzinfo=None)
 
+    @property
+    def temperature_source_citations(self) -> list[SourceCitationRow]:
+        """Return de-duplicated temperature source citations for presentation."""
+        live_citation = (
+            self.live_temp_source.source_citation if self.live_temp_source else None
+        )
+        historic_citation = (
+            self.historic_temp_source.source_citation
+            if self.historic_temp_source
+            else None
+        )
+        return temperature_source_citation_rows(live_citation, historic_citation)
+
 
 _CONFIG_LIST = [
     LocationConfig(
@@ -691,9 +823,11 @@ _CONFIG_LIST = [
         timezone=pytz.timezone("US/Eastern"),
         default_temperature_unit="F",
         test_required=True,
-        temp_source=CoopsTempFeedConfig(
-            station=8518750,
-            name="The Battery, NY",
+        **_shared_temp_sources(
+            CoopsTempFeedConfig(
+                station=8518750,
+                name="The Battery, NY",
+            )
         ),
         tide_source=CoopsTideFeedConfig(
             station=8517741,
@@ -764,9 +898,11 @@ _CONFIG_LIST = [
         longitude=-117.272,
         timezone=pytz.timezone("US/Pacific"),
         default_temperature_unit="F",
-        temp_source=CoopsTempFeedConfig(
-            station=9410230,
-            name="La Jolla, CA",
+        **_shared_temp_sources(
+            CoopsTempFeedConfig(
+                station=9410230,
+                name="La Jolla, CA",
+            )
         ),
         tide_source=CoopsTideFeedConfig(
             station=9410230,
@@ -783,18 +919,20 @@ _CONFIG_LIST = [
         longitude=-87.613,
         timezone=pytz.timezone("US/Central"),
         default_temperature_unit="F",
-        temp_source=NdbcTempFeedConfig(
-            station="45198",
-            name="Chicago Buoy",
-            # Currently the only data is available for this range.
-            start_year=2021,
+        **_shared_temp_sources(
+            NdbcTempFeedConfig(
+                station="45198",
+                name="Chicago Buoy",
+                # Currently the only data is available for this range.
+                start_year=2021,
+            )
         ),
-        # temp_source=NdbcTempFeedConfig(
+        # live_temp_source=NdbcTempFeedConfig(
         #    station="45198",
         #    name="Ohio Street Beach",
         #    live_enabled=False,
         # ),
-        # temp_source=NdbcTempFeedConfig(
+        # live_temp_source=NdbcTempFeedConfig(
         #     station="45007",
         #     name="South Michigan",
         # ),
@@ -832,16 +970,18 @@ _CONFIG_LIST = [
         default_temperature_unit="F",
         # The San Francisco, CA - Station ID: 9414290 is not currently available.
         # Disabled - 2025-01-17 02:01:00, Suspect Data - Data failed to meet QC standards - under review.
-        # temp_source=CoopsTempFeedConfig(
+        # live_temp_source=CoopsTempFeedConfig(
         #     station=9414290,
         #     name="San Francisco, CA",
         #     live_enabled=False,
         # ),
         # Alternative buoy that's further away. Note that this could be as much
         # as 5 degrees off the Bay location!
-        temp_source=NdbcTempFeedConfig(
-            station="46237",
-            name="San Francisco Bar Buoy",
+        **_shared_temp_sources(
+            NdbcTempFeedConfig(
+                station="46237",
+                name="San Francisco Bar Buoy",
+            )
         ),
         tide_source=CoopsTideFeedConfig(
             station=9414305,
@@ -861,14 +1001,10 @@ _CONFIG_LIST = [
         default_temperature_unit="F",
         # Ohio River Water Tower
         # https://waterdata.usgs.gov/monitoring-location/03292494/#dataTypeId=continuous-00011-0&period=P365D
-        temp_source=NwisTempFeedConfig(
+        live_temp_source=NwisTempFeedConfig(
             site_no="03292494",
             parameter_cd="00011",  # Water temperature
             name="Ohio River at Water Tower",
-            # This time series appears to start in 2025, so it is useful for
-            # live temperature but not enough for multi-year historical plots.
-            historic_enabled=False,
-            start_year=2025,
         ),
         currents_source=NwisCurrentFeedConfig(
             site_no="03292494",
@@ -909,10 +1045,12 @@ _CONFIG_LIST = [
         longitude=-97.77,
         timezone=pytz.timezone("US/Central"),
         default_temperature_unit="F",
-        temp_source=NwisTempFeedConfig(
-            site_no="08155500",
-            parameter_cd="00010",
-            name="Barton Springs",
+        **_shared_temp_sources(
+            NwisTempFeedConfig(
+                site_no="08155500",
+                parameter_cd="00010",
+                name="Barton Springs",
+            )
         ),
         presentation=LocationPresentationConfig(
             windy=WindyForecastConfig(overlay="wind", product="ecmwf"),
@@ -928,9 +1066,11 @@ _CONFIG_LIST = [
         longitude=-71.036,
         timezone=pytz.timezone("US/Eastern"),
         default_temperature_unit="F",
-        temp_source=NdbcTempFeedConfig(
-            station="44013",
-            name="Boston Approach Lighted Buoy (16 NM East)",
+        **_shared_temp_sources(
+            NdbcTempFeedConfig(
+                station="44013",
+                name="Boston Approach Lighted Buoy (16 NM East)",
+            )
         ),
         tide_source=CoopsTideFeedConfig(
             station=8443970,
@@ -947,9 +1087,11 @@ _CONFIG_LIST = [
         longitude=-122.410,
         timezone=pytz.timezone("US/Pacific"),
         default_temperature_unit="F",
-        temp_source=CoopsTempFeedConfig(
-            station=9446484,
-            name="Station TCNW1 - Tacoma, WA",
+        **_shared_temp_sources(
+            CoopsTempFeedConfig(
+                station=9446484,
+                name="Station TCNW1 - Tacoma, WA",
+            )
         ),
         tide_source=CoopsTideFeedConfig(
             station=9447130,
@@ -966,10 +1108,9 @@ _CONFIG_LIST = [
         longitude=1.316194,
         timezone=pytz.timezone("Europe/London"),
         default_temperature_unit="C",
-        temp_source=NdbcTempFeedConfig(
+        live_temp_source=NdbcTempFeedConfig(
             station="62304",
             name="Sandettie Lightship",
-            historic_enabled=False,
         ),
         presentation=LocationPresentationConfig(
             windy=WindyForecastConfig(metric_temp="°C"),
@@ -987,9 +1128,11 @@ _CONFIG_LIST = [
         timezone=pytz.timezone("US/Central"),
         default_temperature_unit="F",
         # https://www.ndbc.noaa.gov/station_page.php?station=42001
-        temp_source=NdbcTempFeedConfig(
-            station="42001",  # 44025",
-            name="180 nm South of Southwest Pass, LA",
+        **_shared_temp_sources(
+            NdbcTempFeedConfig(
+                station="42001",  # 44025",
+                name="180 nm South of Southwest Pass, LA",
+            )
         ),
         description="Test location. MID GULF",
     ),

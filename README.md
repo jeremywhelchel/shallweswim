@@ -349,7 +349,8 @@ uv run python -m shallweswim.scripts.inspect_historic_temp_plot_artifacts bos \
   --output-dir tmp/historic-temp-plot-artifacts/bos
 ```
 
-The command fetches live historical data from the configured temperature source,
+The command fetches live historical data from the configured historical
+temperature source,
 prints counts by visual artifact stage and year, and writes:
 
 - `plot_suppressed_points.csv`: one row per plot-suppressed point with stage, year,

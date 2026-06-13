@@ -316,6 +316,30 @@
             "description": "Trusted HTML citation for current data",
             "title": "Currents"
           },
+          "historical_temperature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Trusted HTML citation for historical temperature data",
+            "title": "Historical Temperature"
+          },
+          "live_temperature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Trusted HTML citation for live temperature data",
+            "title": "Live Temperature"
+          },
           "temperature": {
             "anyOf": [
               {
@@ -325,7 +349,7 @@
                 "type": "null"
               }
             ],
-            "description": "Trusted HTML citation for temperature data",
+            "description": "Trusted HTML citation when live and historical temperature data share a source",
             "title": "Temperature"
           },
           "tides": {

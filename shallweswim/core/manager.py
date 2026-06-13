@@ -146,10 +146,10 @@ class LocationDataManager:
         Raises:
             TypeError: If an unsupported temperature source type is provided
         """
-        if not self.config.temp_source:
+        if not self.config.live_temp_source:
             return None
 
-        temp_config = self.config.temp_source
+        temp_config = self.config.live_temp_source
         if not temp_config.live_enabled:
             self.log(
                 f"Live temperature data disabled for {self.config.code}", logging.INFO
@@ -184,10 +184,10 @@ class LocationDataManager:
         Raises:
             TypeError: If an unsupported temperature source type is provided
         """
-        if not self.config.temp_source:
+        if not self.config.historic_temp_source:
             return None
 
-        temp_config = self.config.temp_source
+        temp_config = self.config.historic_temp_source
 
         # Check if historical temperature data is enabled for this source
         if not temp_config.historic_enabled:
@@ -646,8 +646,13 @@ class LocationDataManager:
         if not need_live and not need_historic:
             return
 
-        temp_source_name = (
-            self.config.temp_source.name if self.config.temp_source else None
+        live_temp_source_name = (
+            self.config.live_temp_source.name if self.config.live_temp_source else None
+        )
+        historic_temp_source_name = (
+            self.config.historic_temp_source.name
+            if self.config.historic_temp_source
+            else None
         )
         now = utc_now()
 
@@ -660,7 +665,7 @@ class LocationDataManager:
                     _generate_live_temp_plot,
                     data,
                     self.config.code,
-                    temp_source_name,
+                    live_temp_source_name,
                 )
                 self._pending_plot_futures[feeds.FEED_LIVE_TEMPS] = (future, now)
 
@@ -673,7 +678,7 @@ class LocationDataManager:
                     _generate_historic_temp_plots,
                     data,
                     self.config.code,
-                    temp_source_name,
+                    historic_temp_source_name,
                 )
                 self._pending_plot_futures[feeds.FEED_HISTORIC_TEMPS] = (future, now)
 

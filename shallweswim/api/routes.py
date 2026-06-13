@@ -253,8 +253,8 @@ def api_temperature_info(
 ) -> TemperatureInfo | None:
     """Build observed temperature data for the conditions endpoint."""
     if not (
-        cfg.temp_source is not None
-        and cfg.temp_source.live_enabled
+        cfg.live_temp_source is not None
+        and cfg.live_temp_source.live_enabled
         and data_manager.has_feed_data(FEED_LIVE_TEMPS)
     ):
         return None
@@ -266,7 +266,29 @@ def api_temperature_info(
         timestamp=temp_reading.timestamp,
         water_temp_f=water_temp_f,
         water_temp_c=water_temp_c,
-        station_name=cfg.temp_source.name,
+        station_name=cfg.live_temp_source.name,
+    )
+
+
+def app_source_citations(cfg: config_lib.LocationConfig) -> AppSourceCitations:
+    """Build presentation citations, de-duplicating equivalent temp sources."""
+    temperature: str | None = None
+    live_temperature: str | None = None
+    historical_temperature: str | None = None
+    for row in cfg.temperature_source_citations:
+        if row.label == "Temperature":
+            temperature = row.html
+        elif row.label == "Live temperature":
+            live_temperature = row.html
+        elif row.label == "Historical temperature":
+            historical_temperature = row.html
+
+    return AppSourceCitations(
+        temperature=temperature,
+        live_temperature=live_temperature,
+        historical_temperature=historical_temperature,
+        tides=cfg.tide_source.citation if cfg.tide_source else None,
+        currents=cfg.currents_source.citation if cfg.currents_source else None,
     )
 
 
@@ -433,7 +455,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
         cfg: config_lib.LocationConfig,
     ) -> AppBootstrapLocation:
         """Build presentation bootstrap metadata for a location."""
-        temp_enabled = cfg.temp_source is not None and cfg.temp_source.live_enabled
+        temp_enabled = (
+            cfg.live_temp_source is not None and cfg.live_temp_source.live_enabled
+        )
+        historic_temp_enabled = (
+            cfg.historic_temp_source is not None
+            and cfg.historic_temp_source.historic_enabled
+        )
         tides_enabled = cfg.tide_source is not None
         currents_enabled = cfg.currents_source is not None
         prediction_currents_enabled = (
@@ -484,17 +512,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 ),
                 temperature_plots=AppTemperaturePlotConfig(
                     live=temp_enabled,
-                    historic=(
-                        cfg.temp_source is not None and cfg.temp_source.historic_enabled
-                    ),
+                    historic=historic_temp_enabled,
                 ),
-                citations=AppSourceCitations(
-                    temperature=cfg.temp_source.citation if cfg.temp_source else None,
-                    tides=cfg.tide_source.citation if cfg.tide_source else None,
-                    currents=(
-                        cfg.currents_source.citation if cfg.currents_source else None
-                    ),
-                ),
+                citations=app_source_citations(cfg),
             ),
             integrations=AppExternalIntegrations(
                 webcam=webcam,

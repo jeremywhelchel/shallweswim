@@ -42,11 +42,7 @@ pytestmark = pytest.mark.performance
 
 PERFORMANCE_CONFIG = TEST_CONFIG_FULL.model_copy(
     update={
-        "temp_source": TEST_CONFIG_FULL.temp_source.model_copy(
-            update={"historic_enabled": False}
-        )
-        if TEST_CONFIG_FULL.temp_source is not None
-        else None
+        "historic_temp_source": None,
     }
 )
 ENDPOINT_P95_LIMIT_MS = float(os.getenv("PERF_MAX_ENDPOINT_P95_MS", "25"))

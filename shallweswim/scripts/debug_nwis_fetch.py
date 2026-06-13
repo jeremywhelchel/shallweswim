@@ -177,7 +177,11 @@ def _target_for_location(
     startup_workload: bool,
 ) -> FetchTarget | None:
     if feed in {"live-temp", "historical-temp"}:
-        temp_source = location_config.temp_source
+        temp_source = (
+            location_config.live_temp_source
+            if feed == "live-temp"
+            else location_config.historic_temp_source
+        )
         if not isinstance(temp_source, NwisTempFeedConfig):
             return None
         if startup_workload and feed == "live-temp" and not temp_source.live_enabled:

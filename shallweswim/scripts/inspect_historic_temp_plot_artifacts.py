@@ -67,8 +67,9 @@ async def _fetch_historic_temps(
     start_year: int,
     end_year: int,
 ) -> tuple[pd.DataFrame, list[tuple[int, str]]]:
-    if location_config.temp_source is None:
-        raise ValueError(f"{location_config.code} has no temperature source")
+    temp_source = location_config.historic_temp_source
+    if temp_source is None:
+        raise ValueError(f"{location_config.code} has no historical temperature source")
 
     unavailable_years: list[tuple[int, str]] = []
     dataframes: list[pd.DataFrame] = []
@@ -84,7 +85,7 @@ async def _fetch_historic_temps(
 
             temp_feed = feeds.create_temp_feed(
                 location_config=location_config,
-                temp_config=location_config.temp_source,
+                temp_config=temp_source,
                 start=start,
                 end=end,
                 interval="h",
@@ -101,7 +102,7 @@ async def _fetch_historic_temps(
     combined = pd.concat(dataframes).sort_index().resample("h").first()
     historic_feed = feeds.HistoricalTempsFeed(
         location_config=location_config,
-        feed_config=location_config.temp_source,
+        feed_config=temp_source,
         start_year=start_year,
         end_year=end_year,
         expiration_interval=None,
@@ -217,17 +218,14 @@ def _build_visual_artifact_outputs(
 async def _async_main() -> None:
     args = _parse_args()
     location_config = config.get(args.location)
-    if location_config.temp_source is None:
-        raise ValueError(f"{location_config.code} has no temperature source")
+    temp_source = location_config.historic_temp_source
+    if temp_source is None:
+        raise ValueError(f"{location_config.code} has no historical temperature source")
 
     start_year = (
-        args.start_year
-        or location_config.temp_source.start_year
-        or DEFAULT_HISTORIC_TEMPS_START_YEAR
+        args.start_year or temp_source.start_year or DEFAULT_HISTORIC_TEMPS_START_YEAR
     )
-    end_year = (
-        args.end_year or location_config.temp_source.end_year or util.utc_now().year
-    )
+    end_year = args.end_year or temp_source.end_year or util.utc_now().year
     if start_year > end_year:
         raise ValueError("--start-year must be less than or equal to --end-year")
 

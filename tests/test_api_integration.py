@@ -334,8 +334,8 @@ async def test_conditions_api(test_app: fastapi.FastAPI, location_code: str) -> 
     skip_reasons: list[str] = []
 
     # --- Temperature ---
-    if location_config.temp_source is not None:
-        if location_config.temp_source.live_enabled:
+    if location_config.live_temp_source is not None:
+        if location_config.live_temp_source.live_enabled:
             assert "temperature" in data, (
                 f"Missing temperature field for {location_code} with live_enabled=True"
             )

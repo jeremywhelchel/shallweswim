@@ -2397,6 +2397,16 @@ function SourcesList({
           html={citations.temperature}
         />
         <SourceHtml
+          icon={<Thermometer aria-hidden="true" />}
+          label="Live temperature"
+          html={citations.live_temperature}
+        />
+        <SourceHtml
+          icon={<Thermometer aria-hidden="true" />}
+          label="Historical temperature"
+          html={citations.historical_temperature}
+        />
+        <SourceHtml
           icon={<Anchor aria-hidden="true" />}
           label="Tides"
           html={citations.tides}

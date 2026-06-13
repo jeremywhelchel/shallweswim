@@ -73,10 +73,14 @@ def create_test_location_config(
         currents_source=config_lib.CoopsCurrentsFeedConfig(
             stations=["NYH1905"],
         ),
-        temp_source=config_lib.CoopsTempFeedConfig(
+        live_temp_source=config_lib.CoopsTempFeedConfig(
             station=8518750,
             name="The Battery",
             live_enabled=live_temps_enabled,
+        ),
+        historic_temp_source=config_lib.CoopsTempFeedConfig(
+            station=8518750,
+            name="The Battery",
             historic_enabled=historic_temps_enabled,
         ),
     )
@@ -172,6 +176,81 @@ def mock_clients() -> Mapping[str, BaseApiClient]:
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }  # type: ignore[return-value]
+
+
+def test_temperature_feed_configuration_uses_split_sources(
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+    mocker: MockerFixture,
+) -> None:
+    """Live and historical temperature feeds use their distinct source configs."""
+    live_source = config_lib.CoopsTempFeedConfig(
+        station=8518750,
+        name="Live Temperature Station",
+    )
+    historic_source = config_lib.NdbcTempFeedConfig(
+        station="44013",
+        name="Historical Temperature Station",
+        start_year=2020,
+    )
+    cfg = create_test_location_config(code="mix").model_copy(
+        update={
+            "live_temp_source": live_source,
+            "historic_temp_source": historic_source,
+        }
+    )
+    live_feed = MagicMock(spec=Feed)
+    historic_feed = MagicMock(spec=feeds.HistoricalTempsFeed)
+    create_temp_feed = mocker.patch(
+        "shallweswim.core.manager.feeds.create_temp_feed",
+        return_value=live_feed,
+    )
+    historical_temps_feed = mocker.patch(
+        "shallweswim.core.manager.feeds.HistoricalTempsFeed",
+        return_value=historic_feed,
+    )
+
+    manager = LocationDataManager(
+        cfg,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+
+    assert manager._feeds[feeds.FEED_LIVE_TEMPS] is live_feed
+    assert manager._feeds[feeds.FEED_HISTORIC_TEMPS] is historic_feed
+    assert create_temp_feed.call_args.kwargs["temp_config"] is live_source
+    assert historical_temps_feed.call_args.kwargs["feed_config"] is historic_source
+    assert historical_temps_feed.call_args.kwargs["start_year"] == 2020
+
+
+def test_temperature_feed_configuration_skips_missing_historical_source(
+    process_pool: ProcessPoolExecutor,
+    mock_clients: Mapping[str, BaseApiClient],
+    mocker: MockerFixture,
+) -> None:
+    """A live-only location creates a live temp feed but no historical temp feed."""
+    cfg = create_test_location_config(code="lon").model_copy(
+        update={"historic_temp_source": None}
+    )
+    live_feed = MagicMock(spec=Feed)
+    create_temp_feed = mocker.patch(
+        "shallweswim.core.manager.feeds.create_temp_feed",
+        return_value=live_feed,
+    )
+    historical_temps_feed = mocker.patch(
+        "shallweswim.core.manager.feeds.HistoricalTempsFeed",
+    )
+
+    manager = LocationDataManager(
+        cfg,
+        clients=mock_clients,  # type: ignore[reportArgumentType]
+        process_pool=process_pool,
+    )
+
+    assert manager._feeds[feeds.FEED_LIVE_TEMPS] is live_feed
+    assert manager._feeds[feeds.FEED_HISTORIC_TEMPS] is None
+    assert create_temp_feed.call_count == 1
+    historical_temps_feed.assert_not_called()
 
 
 @pytest_asyncio.fixture

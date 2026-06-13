@@ -38,7 +38,8 @@ TEST_CONFIG_FULL = LocationConfig(
     longitude=-74.0,
     timezone=pytz.timezone("US/Eastern"),
     default_temperature_unit="F",
-    temp_source=CoopsTempFeedConfig(station=1234567, name="Test Temp Station"),
+    live_temp_source=CoopsTempFeedConfig(station=1234567, name="Test Temp Station"),
+    historic_temp_source=CoopsTempFeedConfig(station=1234567, name="Test Temp Station"),
     tide_source=CoopsTideFeedConfig(station=1234567, name="Test Tide Station"),
     currents_source=CoopsCurrentsFeedConfig(
         stations=["TEST001"], name="Test Current", has_static_charts=True
@@ -58,7 +59,8 @@ TEST_CONFIG_OBSERVATION_CURRENTS = LocationConfig(
     longitude=-80.0,
     timezone=pytz.timezone("US/Eastern"),
     default_temperature_unit="F",
-    temp_source=CoopsTempFeedConfig(station=2345678, name="Other Temp"),
+    live_temp_source=CoopsTempFeedConfig(station=2345678, name="Other Temp"),
+    historic_temp_source=CoopsTempFeedConfig(station=2345678, name="Other Temp"),
     tide_source=CoopsTideFeedConfig(station=2345678, name="Other Tide"),
     currents_source=NwisCurrentFeedConfig(
         site_no="12345678", parameter_cd="72255", name="River Current"
@@ -77,7 +79,8 @@ TEST_CONFIG_PREDICTION_NO_CHARTS = LocationConfig(
     longitude=-82.0,
     timezone=pytz.timezone("US/Eastern"),
     default_temperature_unit="F",
-    temp_source=CoopsTempFeedConfig(station=4567890, name="Chartless Temp"),
+    live_temp_source=CoopsTempFeedConfig(station=4567890, name="Chartless Temp"),
+    historic_temp_source=CoopsTempFeedConfig(station=4567890, name="Chartless Temp"),
     tide_source=CoopsTideFeedConfig(station=4567890, name="Chartless Tide"),
     currents_source=CoopsCurrentsFeedConfig(
         stations=["TEST002"], name="Chartless Current", has_static_charts=False
@@ -96,7 +99,8 @@ TEST_CONFIG_NO_CURRENTS = LocationConfig(
     longitude=-85.0,
     timezone=pytz.timezone("US/Eastern"),
     default_temperature_unit="F",
-    temp_source=CoopsTempFeedConfig(station=3456789, name="Calm Temp"),
+    live_temp_source=CoopsTempFeedConfig(station=3456789, name="Calm Temp"),
+    historic_temp_source=CoopsTempFeedConfig(station=3456789, name="Calm Temp"),
     tide_source=CoopsTideFeedConfig(station=3456789, name="Calm Tide"),
     currents_source=None,  # No currents
     enabled=True,

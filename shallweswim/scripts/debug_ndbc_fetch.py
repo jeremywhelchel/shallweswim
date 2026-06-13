@@ -65,7 +65,11 @@ def _date(value: str) -> datetime.date:
 def _target(args: argparse.Namespace) -> FetchTarget:
     if args.location:
         location_config = config.get(args.location)
-        temp_source = location_config.temp_source
+        temp_source = (
+            location_config.historic_temp_source
+            if args.yearly or args.start_year or args.end_year
+            else location_config.live_temp_source
+        )
         if not isinstance(temp_source, NdbcTempFeedConfig):
             raise ValueError(f"{args.location} does not use an NDBC temperature source")
         return FetchTarget(

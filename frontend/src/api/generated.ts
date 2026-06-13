@@ -851,8 +851,18 @@ export interface components {
              */
             currents?: string | null;
             /**
+             * Historical Temperature
+             * @description Trusted HTML citation for historical temperature data
+             */
+            historical_temperature?: string | null;
+            /**
+             * Live Temperature
+             * @description Trusted HTML citation for live temperature data
+             */
+            live_temperature?: string | null;
+            /**
              * Temperature
-             * @description Trusted HTML citation for temperature data
+             * @description Trusted HTML citation when live and historical temperature data share a source
              */
             temperature?: string | null;
             /**

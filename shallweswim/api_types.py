@@ -424,7 +424,14 @@ class AppSourceCitations(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     temperature: str | None = Field(
-        None, description="Trusted HTML citation for temperature data"
+        None,
+        description="Trusted HTML citation when live and historical temperature data share a source",
+    )
+    live_temperature: str | None = Field(
+        None, description="Trusted HTML citation for live temperature data"
+    )
+    historical_temperature: str | None = Field(
+        None, description="Trusted HTML citation for historical temperature data"
     )
     tides: str | None = Field(None, description="Trusted HTML citation for tide data")
     currents: str | None = Field(

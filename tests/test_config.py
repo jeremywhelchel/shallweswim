@@ -72,8 +72,8 @@ def test_presentation_integrations_are_typed() -> None:
 
     sdf = config.get("sdf")
     assert sdf is not None
-    assert sdf.temp_source is not None
-    assert sdf.temp_source.historic_enabled is False
+    assert sdf.live_temp_source is not None
+    assert sdf.historic_temp_source is None
     assert sdf.presentation.webcam is not None
     assert sdf.presentation.webcam.provider == sw_types.WebcamProvider.EARTHCAM_EMBED
     assert sdf.presentation.webcam.embed_url is not None
@@ -104,11 +104,11 @@ def configured_composite_feeds() -> list[CompositeFeed]:
                 )
             )
 
-        if cfg.temp_source is not None:
+        if cfg.historic_temp_source is not None:
             feeds.append(
                 HistoricalTempsFeed(
                     location_config=cfg,
-                    feed_config=cfg.temp_source,
+                    feed_config=cfg.historic_temp_source,
                     expiration_interval=datetime.timedelta(hours=1),
                     start_year=2024,
                     end_year=2025,

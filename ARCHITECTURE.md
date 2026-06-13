@@ -152,6 +152,14 @@ Temperature API contract:
   `water_temp_c` fields for public API consumers.
 - Default display unit is static location metadata exposed through
   `/api/app/bootstrap`, not dynamic condition data.
+- Live and historical temperature acquisition sources are configured
+  independently as `live_temp_source` and `historic_temp_source`. They may use
+  different upstream services, but should represent the same physical
+  measurement location unless a source-location mismatch is explicitly reviewed
+  and approved.
+- Temperature source citations are de-duplicated by stable source identity. If
+  live and historical temperature sources differ, `/api/app/bootstrap` exposes
+  separate live and historical citation fields for the frontend.
 
 ### Configuration
 
@@ -458,8 +466,8 @@ different layers.
 #### Historical Temperature Plot Processing
 
 Historical temperature plots are backend-rendered SVGs generated from the
-`historic_temps` feed. The feed fetches each configured year from the same
-temperature source used for the location, normalizes and validates each year
+`historic_temps` feed. The feed fetches each configured year from the
+location's `historic_temp_source`, normalizes and validates each year
 independently, and only publishes a new combined dataset when every required
 year succeeds. Successful years are cached in memory for the process lifetime:
 past years do not expire once fetched, while the current year refreshes on the

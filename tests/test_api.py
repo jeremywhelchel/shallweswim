@@ -21,6 +21,7 @@ from shallweswim import types as sw_types
 
 # Local imports
 from shallweswim.api import initialize_location_data, register_routes
+from shallweswim.api.routes import app_source_citations
 from shallweswim.api_types import (
     FeedStatus,
     HistoricalTempStatus,
@@ -32,6 +33,7 @@ from shallweswim.config import (
     CoopsTempFeedConfig,
     CoopsTideFeedConfig,
     LocationConfig,
+    NdbcTempFeedConfig,
 )
 from shallweswim.core.feeds import FEED_CURRENTS, FEED_TIDES
 from shallweswim.core.queries import DataUnavailableError
@@ -70,7 +72,10 @@ def mock_data_managers(
         longitude=-74.0060,
         timezone=pytz.timezone("US/Eastern"),
         default_temperature_unit="F",
-        temp_source=CoopsTempFeedConfig(
+        live_temp_source=CoopsTempFeedConfig(
+            station=8518750, name="The Battery", live_enabled=True
+        ),
+        historic_temp_source=CoopsTempFeedConfig(
             station=8518750, name="The Battery", live_enabled=True
         ),
         tide_source=CoopsTideFeedConfig(station=8518750, name="The Battery"),
@@ -316,6 +321,9 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert nyc["metadata"]["default_temperature_unit"] == "F"
     assert nyc["metadata"]["features"]["temperature"] is True
     assert nyc["metadata"]["temperature_plots"] == {"live": True, "historic": True}
+    assert nyc["metadata"]["citations"]["temperature"] is not None
+    assert nyc["metadata"]["citations"]["live_temperature"] is None
+    assert nyc["metadata"]["citations"]["historical_temperature"] is None
     assert nyc["metadata"]["features"]["webcam"] is True
     assert nyc["metadata"]["features"]["transit"] is True
     assert nyc["metadata"]["features"]["windy"] is True
@@ -358,6 +366,9 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
 
     sdf = data["locations"]["sdf"]
     assert sdf["metadata"]["temperature_plots"] == {"live": True, "historic": False}
+    assert sdf["metadata"]["citations"]["temperature"] is None
+    assert sdf["metadata"]["citations"]["live_temperature"] is not None
+    assert sdf["metadata"]["citations"]["historical_temperature"] is None
     assert sdf["metadata"]["features"]["webcam"] is True
     assert sdf["metadata"]["features"]["water_movement_planning"] is False
     assert sdf["metadata"]["features"]["water_movement_detail"] is False
@@ -368,6 +379,67 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert sdf["integrations"]["webcam"]["script_url"] is None
     assert sdf["integrations"]["windy"]["overlay"] == "wind"
     assert sdf["integrations"]["windy"]["product"] == "ecmwf"
+
+
+def test_app_source_citations_split_different_temperature_sources() -> None:
+    """Different live and historical temperature sources get scoped citations."""
+    cfg = LocationConfig(
+        code="mix",
+        name="Mixed",
+        swim_location="Mixed Beach",
+        swim_location_link="https://example.com/mixed",
+        description="Mixed-source location",
+        latitude=40.0,
+        longitude=-70.0,
+        timezone=pytz.timezone("UTC"),
+        default_temperature_unit="F",
+        live_temp_source=CoopsTempFeedConfig(station=8518750, name="Live Station"),
+        historic_temp_source=NdbcTempFeedConfig(
+            station="44013", name="Historic Station"
+        ),
+    )
+
+    citations = app_source_citations(cfg)
+
+    assert citations.temperature is None
+    assert citations.live_temperature is not None
+    assert citations.live_temperature.startswith("Live temperature: ")
+    assert "Live Station" in citations.live_temperature
+    assert citations.historical_temperature is not None
+    assert citations.historical_temperature.startswith("Historical temperature: ")
+    assert "Historic Station" in citations.historical_temperature
+
+    assert [row.label for row in cfg.temperature_source_citations] == [
+        "Live temperature",
+        "Historical temperature",
+    ]
+
+
+def test_app_source_citations_deduplicates_same_temperature_source() -> None:
+    """Equivalent live and historical temperature sources get one citation."""
+    temp_source = CoopsTempFeedConfig(station=8518750, name="Shared Station")
+    cfg = LocationConfig(
+        code="shr",
+        name="Shared",
+        swim_location="Shared Beach",
+        swim_location_link="https://example.com/shared",
+        description="Shared-source location",
+        latitude=40.0,
+        longitude=-70.0,
+        timezone=pytz.timezone("UTC"),
+        default_temperature_unit="F",
+        live_temp_source=temp_source,
+        historic_temp_source=temp_source,
+    )
+
+    citations = app_source_citations(cfg)
+
+    assert citations.temperature is not None
+    assert "Shared Station" in citations.temperature
+    assert citations.live_temperature is None
+    assert citations.historical_temperature is None
+
+    assert [row.label for row in cfg.temperature_source_citations] == ["Temperature"]
 
 
 def test_get_location_conditions(
@@ -470,9 +542,9 @@ def test_get_location_conditions(
         round((mock_temp_value - 32) * 5 / 9, 1)
     )
     nyc_config = mock_data_managers["nyc"]
-    assert nyc_config.temp_source is not None  # Help mypy
+    assert nyc_config.live_temp_source is not None  # Help mypy
     assert (
-        data["temperature"]["station_name"] == nyc_config.temp_source.name
+        data["temperature"]["station_name"] == nyc_config.live_temp_source.name
     )  # Check station name from config
 
     # Correct Assert Tides
@@ -919,7 +991,10 @@ def test_get_feed_data_configured_location_missing_manager_returns_500() -> None
         longitude=-74.0060,
         timezone=pytz.timezone("US/Eastern"),
         default_temperature_unit="F",
-        temp_source=CoopsTempFeedConfig(
+        live_temp_source=CoopsTempFeedConfig(
+            station=8518750, name="The Battery", live_enabled=True
+        ),
+        historic_temp_source=CoopsTempFeedConfig(
             station=8518750, name="The Battery", live_enabled=True
         ),
         tide_source=CoopsTideFeedConfig(station=8518750, name="The Battery"),
@@ -1210,7 +1285,10 @@ def test_currents_endpoint_returns_503_when_chart_data_unavailable(
         longitude=-74.0060,
         timezone=pytz.timezone("US/Eastern"),
         default_temperature_unit="F",
-        temp_source=CoopsTempFeedConfig(
+        live_temp_source=CoopsTempFeedConfig(
+            station=8518750, name="The Battery", live_enabled=True
+        ),
+        historic_temp_source=CoopsTempFeedConfig(
             station=8518750, name="The Battery", live_enabled=True
         ),
         tide_source=CoopsTideFeedConfig(station=8518750, name="The Battery"),

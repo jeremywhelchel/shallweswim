@@ -63,7 +63,7 @@
     {% block header %}{% endblock %} {% block tides_temperature %}
     <div class="infobox">
       <div class="note" id="conditions-status" hidden></div>
-      {% if config.temp_source and config.temp_source.live_enabled %}
+      {% if config.live_temp_source and config.live_temp_source.live_enabled %}
       <div class="current">
         The water is currently <strong id="water-temp">...</strong>
       </div>

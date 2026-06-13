@@ -78,9 +78,9 @@
       <div class="swim-widget-temp">
         Water temperature: <strong id="widget-water-temp">Loading...</strong>
       </div>
-      {% if config.temp_source %}
+      {% if config.live_temp_source %}
       <div class="swim-widget-note">
-        Data from {{ config.temp_source.name }}
+        Data from {{ config.live_temp_source.name }}
       </div>
       {% endif %}
       <div class="swim-widget-link">

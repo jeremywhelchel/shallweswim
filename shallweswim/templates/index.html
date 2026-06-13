@@ -77,15 +77,16 @@ config.code == 'nyc' %}
   >
   </iframe>
 </div>
-{% endif %} {% if config.temp_source %}
+{% endif %} {% if config.live_temp_source or config.historic_temp_source %}
 <h2>Temperature Trends</h2>
-{% if config.temp_source.live_enabled %}
+{% if config.live_temp_source and config.live_temp_source.live_enabled %}
 <img
   class="plot deferred-plot"
   data-src="/api/{{ config.code }}/plots/live_temps"
   alt="Live temperature plot"
 />
-{% endif %} {% if config.temp_source.historic_enabled %}
+{% endif %} {% if config.historic_temp_source and
+config.historic_temp_source.historic_enabled %}
 <img
   class="plot deferred-plot"
   data-src="/api/{{ config.code }}/plots/historic_temps?period=2mo"
@@ -165,12 +166,12 @@ config.code == 'nyc' %}
 <h2>Sources</h2>
 <table class="citation-table">
   <tbody>
-    {% if config.temp_source %}
+    {% for citation in config.temperature_source_citations %}
     <tr>
       <td><i data-feather="thermometer"></i></td>
-      <td>{{ config.temp_source.citation|safe }}</td>
+      <td>{{ citation.html|safe }}</td>
     </tr>
-    {% endif %} {% if config.tide_source %}
+    {% endfor %} {% if config.tide_source %}
     <tr>
       <td><i data-feather="anchor"></i></td>
       <td>{{ config.tide_source.citation|safe }}</td>

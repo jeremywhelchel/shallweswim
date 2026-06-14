@@ -30,6 +30,7 @@ const bootstrapPayload = {
           currents: true,
           water_movement_planning: true,
           water_movement_detail: true,
+          water_movement_detail_plot_type: "current_tide",
           webcam: true,
           transit: true,
           windy: true,
@@ -114,6 +115,7 @@ const bootstrapPayload = {
           currents: false,
           water_movement_planning: false,
           water_movement_detail: false,
+          water_movement_detail_plot_type: null,
           webcam: false,
           transit: false,
           windy: false,
@@ -570,7 +572,7 @@ test("opens mobile detail mode from the condition stack", async ({
     page.getByRole("region", { name: "Current and tide detail chart" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: /^Tide and current plot for / }),
+    page.getByRole("img", { name: /^Current and tide detail chart for / }),
   ).toBeVisible();
   await expect(page.getByText("61.4°F")).toBeVisible();
   await expect(page.getByText("TIDE", { exact: true })).toBeVisible();
@@ -615,7 +617,7 @@ test("planner mode shifts dashboard water movement from URL state @desktop", asy
   await expect(page.getByText("2.2 ft", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("img", {
-      name: "Tide and current plot for May 13, 2026, 8:30 AM",
+      name: "Current and tide detail chart for May 13, 2026, 8:30 AM",
     }),
   ).toHaveAttribute(
     "src",

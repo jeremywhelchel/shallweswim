@@ -206,9 +206,14 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
     next.delete("detail");
     setSearchParams(next, { replace: true });
   };
+  const detailPlotType =
+    location.metadata.features.water_movement_detail_plot_type;
+  const waterMovementPlotType =
+    detailPlotType ??
+    (location.metadata.features.currents ? "current_tide" : "tide");
   const detailPlotUrl =
-    detailOpen && supportsWaterMovementDetail
-      ? `/api/${locationCode}/plots/current_tide${
+    detailOpen && supportsWaterMovementDetail && detailPlotType
+      ? `/api/${locationCode}/plots/${detailPlotType}${
           plannerAt ? `?at=${encodeURIComponent(plannerAt)}` : ""
         }`
       : null;
@@ -263,6 +268,7 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
                 onSetAt: setPlannerAt,
                 plannerOpen,
                 plotUrl: detailPlotUrl,
+                plotType: waterMovementPlotType,
                 supportsDetail: supportsWaterMovementDetail,
                 supportsPlanning: supportsWaterMovementPlanning,
               }
@@ -547,6 +553,7 @@ type WaterMovementControls = {
   onSetAt: (at: string | null) => void;
   plannerOpen: boolean;
   plotUrl: string | null;
+  plotType: "current_tide" | "tide";
   supportsDetail: boolean;
   supportsPlanning: boolean;
 };
@@ -702,7 +709,9 @@ function WaterMovementSummary({
 }) {
   const pastTide = tides?.past?.at(-1);
   const nextTide = tides?.next?.[0];
-  const description = describeWaterMovement(tides?.state, current);
+  const movementCurrent =
+    waterMovementControls?.plotType === "tide" ? null : current;
+  const description = describeWaterMovement(tides?.state, movementCurrent);
   const plannedLabel = waterMovementControls?.at
     ? waterMovementControls.label
     : null;
@@ -713,8 +722,14 @@ function WaterMovementSummary({
     waterMovementControls?.location.metadata.code === "nyc" && detailOpen;
   const isNycWaterMovement =
     waterMovementControls?.location.metadata.code === "nyc";
+  const detailChartLabel =
+    waterMovementControls?.plotType === "current_tide"
+      ? "Current and tide detail chart"
+      : "Tide detail chart";
   const nycSwimmerSummary =
-    isNycWaterMovement && current ? nycCurrentSwimmerSummary(current) : null;
+    isNycWaterMovement && movementCurrent
+      ? nycCurrentSwimmerSummary(movementCurrent)
+      : null;
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
@@ -772,10 +787,10 @@ function WaterMovementSummary({
               previousTide={pastTide}
               state={tides?.state}
             />
-            <CurrentInstrument current={current} />
+            <CurrentInstrument current={movementCurrent} />
             {isNycDetail ? (
               <NycWaterMovementGuidance
-                current={current}
+                current={movementCurrent}
                 essentialsUrl={
                   waterMovementControls.location.metadata.swim_location_link
                 }
@@ -784,15 +799,15 @@ function WaterMovementSummary({
           </div>
 
           <section
-            aria-label="Current and tide detail chart"
+            aria-label={detailChartLabel}
             className="order-1 rounded border border-swim-line bg-[#f8fbfc] p-3 lg:order-2"
           >
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-medium text-sm text-swim-blue">
-                Current and tide detail chart
+                {detailChartLabel}
               </h3>
               <button
-                aria-label="Close current and tide detail chart"
+                aria-label={`Close ${detailChartLabel.toLowerCase()}`}
                 className="rounded border border-swim-line bg-white px-2 py-1 text-xs text-swim-ink"
                 onClick={waterMovementControls.onCloseDetail}
                 type="button"
@@ -801,11 +816,14 @@ function WaterMovementSummary({
               </button>
             </div>
             <PlannerPlotImage
-              alt={`Tide and current plot for ${waterMovementControls.label}`}
+              alt={`${detailChartLabel} for ${waterMovementControls.label}`}
               src={waterMovementControls.plotUrl}
             />
             {isNycDetail ? (
-              <NycWaterMovementVisuals current={current} tides={tides} />
+              <NycWaterMovementVisuals
+                current={movementCurrent}
+                tides={tides}
+              />
             ) : null}
           </section>
         </div>
@@ -816,7 +834,7 @@ function WaterMovementSummary({
             previousTide={pastTide}
             state={tides?.state}
           />
-          <CurrentInstrument current={current} />
+          <CurrentInstrument current={movementCurrent} />
         </>
       )}
     </div>
@@ -1117,7 +1135,7 @@ function WaterMovementActions({
           }
           type="button"
         >
-          Details
+          {controls.plotType === "current_tide" ? "Details" : "Tide details"}
         </button>
       ) : null}
       {controls.supportsPlanning ? (

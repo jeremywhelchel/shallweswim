@@ -279,6 +279,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/{location}/plots/tide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tide Plot
+         * @description Generate and serve a tide-only plot for the specified location.
+         */
+        get: operations["get_tide_plot_api__location__plots_tide_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/{location}/status": {
         parameters: {
             query?: never;
@@ -740,6 +760,11 @@ export interface components {
              * @description Whether to show water movement detail controls
              */
             water_movement_detail: boolean;
+            /**
+             * Water Movement Detail Plot Type
+             * @description Detail plot endpoint type to use when water movement detail is enabled
+             */
+            water_movement_detail_plot_type?: ("current_tide" | "tide") | null;
             /**
              * Water Movement Planning
              * @description Whether to show water movement planner controls
@@ -1809,6 +1834,40 @@ export interface operations {
     get_live_temps_plot_api__location__plots_live_temps_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                location: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tide_plot_api__location__plots_tide_get: {
+        parameters: {
+            query?: {
+                shift?: number;
+                at?: string | null;
+            };
             header?: never;
             path: {
                 location: string;

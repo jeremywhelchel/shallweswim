@@ -400,6 +400,78 @@ def test_current_tide_plot_handles_window_without_tide_extrema(
 
 
 # =============================================================================
+# /api/{location}/plots/tide endpoint tests
+# =============================================================================
+
+
+def test_tide_plot_missing_tides_returns_503(app_with_mock_manager: Any) -> None:
+    """Tide-only plot endpoint with missing tides data returns 503."""
+    app, mock_manager = app_with_mock_manager
+    mock_manager.has_data = True
+    mock_manager.has_feed_data.return_value = False
+
+    client = TestClient(app)
+    response = client.get("/api/nyc/plots/tide")
+
+    assert response.status_code == 503
+    assert "tide data temporarily unavailable" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "at",
+    [
+        "2026-05-18T15:30:00-04:00",
+        "2026-05-18T19:30:00Z",
+    ],
+)
+def test_tide_plot_rejects_at_with_timezone_offset(
+    app_with_mock_manager: Any, at: str
+) -> None:
+    """Tide-only plot endpoint validates local planner time before feed access."""
+    app, mock_manager = app_with_mock_manager
+    mock_manager.has_data = True
+
+    client = TestClient(app)
+    response = client.get("/api/nyc/plots/tide", params={"at": at})
+
+    assert response.status_code == 400
+    assert "must not include a timezone offset" in response.json()["detail"]
+    mock_manager.has_feed_data.assert_not_called()
+
+
+@freeze_time("2026-05-18T18:00:00Z")
+def test_tide_plot_rejects_at_outside_prediction_window(
+    app_with_mock_manager: Any,
+) -> None:
+    """Tide-only plot endpoint validates planner range before feed access."""
+    app, mock_manager = app_with_mock_manager
+    mock_manager.has_data = True
+
+    client = TestClient(app)
+    response = client.get("/api/nyc/plots/tide?at=2026-05-19T14:01:00")
+
+    assert response.status_code == 400
+    assert "within 24 hours" in response.json()["detail"]
+    mock_manager.has_feed_data.assert_not_called()
+
+
+def test_tide_plot_insufficient_rows_returns_503(
+    app_with_mock_manager: Any,
+) -> None:
+    """Tide-only plot endpoint with too few rows returns 503."""
+    app, mock_manager = app_with_mock_manager
+    mock_manager.has_data = True
+    mock_manager.has_feed_data.return_value = True
+    mock_manager.get_feed_values.return_value = pd.DataFrame({"value": [1]})
+
+    client = TestClient(app)
+    response = client.get("/api/nyc/plots/tide")
+
+    assert response.status_code == 503
+    assert "tide data temporarily unavailable" in response.json()["detail"]
+
+
+# =============================================================================
 # /api/{location}/plots/historic_temps endpoint tests
 # =============================================================================
 

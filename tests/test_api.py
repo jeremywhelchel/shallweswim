@@ -334,6 +334,9 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert nyc["metadata"]["features"]["windy"] is True
     assert nyc["metadata"]["features"]["water_movement_planning"] is True
     assert nyc["metadata"]["features"]["water_movement_detail"] is True
+    assert (
+        nyc["metadata"]["features"]["water_movement_detail_plot_type"] == "current_tide"
+    )
     assert data["source_code_link"]["url"].endswith("/shallweswim")
     assert nyc["integrations"]["webcam"]["provider"] == "youtube_live"
     assert nyc["integrations"]["webcam"]["channel_id"]
@@ -358,6 +361,13 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
         "metric_temp": "°F",
     }
 
+    sfo = data["locations"]["sfo"]
+    assert sfo["metadata"]["features"]["tides"] is True
+    assert sfo["metadata"]["features"]["currents"] is False
+    assert sfo["metadata"]["features"]["water_movement_planning"] is True
+    assert sfo["metadata"]["features"]["water_movement_detail"] is True
+    assert sfo["metadata"]["features"]["water_movement_detail_plot_type"] == "tide"
+
     chi = data["locations"]["chi"]
     assert chi["metadata"]["features"]["webcam"] is True
     assert chi["metadata"]["features"]["transit"] is False
@@ -377,6 +387,7 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert sdf["metadata"]["features"]["webcam"] is True
     assert sdf["metadata"]["features"]["water_movement_planning"] is False
     assert sdf["metadata"]["features"]["water_movement_detail"] is False
+    assert sdf["metadata"]["features"]["water_movement_detail_plot_type"] is None
     assert sdf["integrations"]["webcam"]["provider"] == "earthcam_embed"
     assert sdf["integrations"]["webcam"]["embed_url"].startswith(
         "https://share.earthcam.net/"
@@ -799,6 +810,50 @@ def test_planner_at_is_consistent_across_time_aware_endpoints(
         call(mock_dt),
         call(mock_dt),
     ]
+
+
+@freeze_time("2026-05-18T18:00:00Z")
+def test_tide_only_plot_endpoint_uses_tide_data(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Tide-only locations can render a detail plot without current data."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.data_managers["sfo"]
+    mock_dt = datetime.datetime(2026, 5, 18, 8, 30, 0)
+    mock_manager.has_feed_data.side_effect = lambda feed_name: feed_name == FEED_TIDES
+    mock_manager._feeds[FEED_TIDES] = MagicMock(
+        values=pd.DataFrame({"prediction": [0.2, 4.8], "type": ["low", "high"]})
+    )
+
+    class FakeFigure:
+        def savefig(self, output, **_kwargs) -> None:  # type: ignore[no-untyped-def]
+            output.write("<svg></svg>")
+
+    plot_call: dict[str, object] = {}
+
+    def fake_create_tide_plot(
+        _tides_data: pd.DataFrame,
+        timestamp: datetime.datetime,
+        _cfg: LocationConfig,
+    ) -> FakeFigure:
+        plot_call["timestamp"] = timestamp
+        return FakeFigure()
+
+    test_client.app.state.process_pool = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1
+    )
+    try:
+        with patch(
+            "shallweswim.api.routes._create_tide_plot",
+            side_effect=fake_create_tide_plot,
+        ):
+            response = test_client.get("/api/sfo/plots/tide?at=2026-05-18T08:30:00")
+    finally:
+        test_client.app.state.process_pool.shutdown(wait=False)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert plot_call["timestamp"] == mock_dt
 
 
 @pytest.mark.parametrize(

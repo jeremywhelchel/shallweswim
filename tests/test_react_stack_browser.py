@@ -312,7 +312,7 @@ def test_react_planner_uses_conditions_and_plot_with_same_at(
         ).to_be_visible()
 
         detail_chart = page.get_by_role(
-            "img", name=re.compile(r"^Tide and current plot")
+            "img", name=re.compile(r"^Current and tide detail chart")
         )
         expect(detail_chart).to_be_visible()
         expect(detail_chart).to_have_attribute(

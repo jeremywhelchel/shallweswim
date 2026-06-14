@@ -12,6 +12,7 @@ import io
 import logging
 import urllib.parse
 import warnings
+from typing import Literal
 
 # Third-party imports
 import aiohttp
@@ -86,6 +87,13 @@ def _create_tide_current_plot(*args, **kwargs):  # type: ignore[no-untyped-def]
     from shallweswim import plot
 
     return plot.create_tide_current_plot(*args, **kwargs)
+
+
+def _create_tide_plot(*args, **kwargs):  # type: ignore[no-untyped-def]
+    """Wrapper that lazily imports plot module for subprocess execution."""
+    from shallweswim import plot
+
+    return plot.create_tide_plot(*args, **kwargs)
 
 
 # Timeout for on-demand plot generation (seconds)
@@ -478,6 +486,11 @@ def register_routes(app: fastapi.FastAPI) -> None:
             cfg.currents_source is not None
             and cfg.currents_source.source_type == types.DataSourceType.PREDICTION
         )
+        water_movement_detail_plot_type: Literal["current_tide", "tide"] | None = None
+        if tides_enabled:
+            water_movement_detail_plot_type = (
+                "current_tide" if prediction_currents_enabled else "tide"
+            )
         webcam_enabled = cfg.presentation.webcam is not None
         transit_enabled = cfg.presentation.transit is not None
 
@@ -513,9 +526,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     water_movement_planning=(
                         tides_enabled or prediction_currents_enabled
                     ),
-                    water_movement_detail=(
-                        tides_enabled and prediction_currents_enabled
-                    ),
+                    water_movement_detail=tides_enabled,
+                    water_movement_detail_plot_type=water_movement_detail_plot_type,
                     webcam=webcam_enabled,
                     transit=transit_enabled,
                     windy=cfg.presentation.windy.enabled,
@@ -754,6 +766,70 @@ def register_routes(app: fastapi.FastAPI) -> None:
             ) from e
 
         # Convert figure to SVG in a StringIO buffer
+        svg_io = io.StringIO()
+        fig.savefig(svg_io, format="svg", bbox_inches="tight", transparent=False)
+        svg_io.seek(0)
+
+        return fastapi.responses.Response(
+            content=svg_io.getvalue(), media_type="image/svg+xml"
+        )
+
+    @app.get("/api/{location}/plots/tide")
+    async def get_tide_plot(
+        location: str, shift: int = 0, at: str | None = None
+    ) -> fastapi.responses.Response:
+        """Generate and serve a tide-only plot for the specified location."""
+        logging.info(
+            f"[{location}] Processing tide plot request with shift={shift}, at={at}"
+        )
+        ctx = resolve_location_time(app, location, shift=shift, at=at)
+
+        if not ctx.data_manager.has_feed_data(FEED_TIDES):
+            raise HTTPException(
+                status_code=503,
+                detail=f"{ctx.cfg.name} tide data temporarily unavailable",
+            )
+
+        try:
+            tides_data = ctx.data_manager.get_feed_values(FEED_TIDES)
+
+            if len(tides_data) < 2:
+                logging.warning(f"[{location}] Insufficient tide data for plot")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"{ctx.cfg.name} tide data temporarily unavailable",
+                )
+
+            pool = app.state.process_pool
+            loop = asyncio.get_running_loop()
+            fig = await asyncio.wait_for(
+                loop.run_in_executor(
+                    pool,
+                    _create_tide_plot,
+                    tides_data,
+                    ctx.timestamp,
+                    ctx.cfg,
+                ),
+                timeout=PLOT_TIMEOUT,
+            )
+        except TimeoutError as e:
+            logging.error(
+                f"[{location}] Tide plot generation timed out after {PLOT_TIMEOUT}s"
+            )
+            raise HTTPException(
+                status_code=503, detail="Plot generation timed out"
+            ) from e
+        except DataUnavailableError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"{ctx.cfg.name} tide data temporarily unavailable",
+            ) from e
+        except (RuntimeError, ValueError) as e:
+            logging.exception(f"[{location}] Internal tide plot generation error")
+            raise HTTPException(
+                status_code=500, detail="Internal server error generating plot"
+            ) from e
+
         svg_io = io.StringIO()
         fig.savefig(svg_io, format="svg", bbox_inches="tight", transparent=False)
         svg_io.seek(0)

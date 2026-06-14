@@ -29,6 +29,7 @@ from shallweswim.types import (
 #############################################################
 
 TemperatureUnit = Literal["F", "C"]
+WaterMovementDetailPlotType = Literal["current_tide", "tide"]
 
 
 class LocationInfo(BaseModel):
@@ -412,6 +413,12 @@ class AppFeatureFlags(BaseModel):
     )
     water_movement_detail: bool = Field(
         ..., description="Whether to show water movement detail controls"
+    )
+    water_movement_detail_plot_type: WaterMovementDetailPlotType | None = Field(
+        None,
+        description=(
+            "Detail plot endpoint type to use when water movement detail is enabled"
+        ),
     )
     webcam: bool = Field(..., description="Whether to show webcam UI")
     transit: bool = Field(..., description="Whether to show transit UI")

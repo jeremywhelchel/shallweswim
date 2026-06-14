@@ -904,6 +904,238 @@ def _is_high_tide_type(tide_type: object) -> bool:
     return tide_type in {types.TideCategory.HIGH, types.TideCategory.HIGH.value}
 
 
+def _prepare_tide_plot_data(
+    tides: pd.DataFrame,
+    start_time: datetime.datetime,
+    end_time: datetime.datetime,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+    """Return filtered tide events, interpolated curve, and finite plot values."""
+    # Interpolate only the numeric 'prediction' column for a smoother plot line.
+    # Do this before filtering so data outside the window can inform edges.
+    tide_predictions = tides[["prediction"]].resample("60s").mean()
+    if len(tides) >= 3:
+        tides_interpolated = tide_predictions.interpolate("polynomial", order=2)
+    else:
+        tides_interpolated = tide_predictions.interpolate("time")
+
+    filtered_tides = tides[(tides.index >= start_time) & (tides.index <= end_time)]  # type: ignore[operator] # pyright confused about index type
+    filtered_interpolated = tides_interpolated[
+        (tides_interpolated.index >= start_time)
+        & (tides_interpolated.index <= end_time)
+    ]
+    plot_values = _finite_plot_values(filtered_interpolated.prediction, "tide")
+    return filtered_tides, filtered_interpolated, plot_values
+
+
+def _style_time_axis(
+    ax: Axes,
+    start_time: datetime.datetime,
+    end_time: datetime.datetime,
+) -> np.ndarray:
+    """Apply shared time-axis styling and return major tick values."""
+    major_ticks = pd.date_range(
+        pd.Timestamp(start_time).ceil("3h"),
+        pd.Timestamp(end_time).floor("3h"),
+        freq="3h",
+    ).to_pydatetime()
+    major_tick_values = np.asarray(md.date2num(major_ticks), dtype=float)
+    ax.set_xticks(major_tick_values)
+    ax.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
+    ax.grid(
+        True,
+        which="major",
+        alpha=0.4,
+        color=PLOT_GRID_COLOR,
+        linestyle="-",
+        linewidth=0.7,
+    )
+    ax.tick_params(axis="x", labelsize=LABEL_FONT_SIZE - 5, pad=8)
+    for spine in ax.spines.values():
+        spine.set_color(PLOT_SPINE_COLOR)
+        spine.set_linewidth(0.8)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+    return major_tick_values
+
+
+def _plot_tide_curve(
+    ax: Axes,
+    tides: pd.DataFrame,
+    tides_interpolated: pd.DataFrame,
+    tide_plot_values: pd.Series,
+    *,
+    cap_ylim: bool,
+) -> None:
+    """Plot tide height curve and high/low annotations on an axis."""
+    ax.set_ylabel("Tide Height (ft)", fontsize=LABEL_FONT_SIZE, color=TIDE_COLOR)
+    ax.tick_params(axis="y", labelsize=LABEL_FONT_SIZE - 4, colors=TIDE_COLOR)
+    ax.spines["right"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+
+    ax.plot(
+        tides_interpolated.index,
+        tides_interpolated.prediction,
+        color=TIDE_COLOR,
+        label="Tide height",
+        linewidth=2.15,
+    )
+    ax.axhline(0, color=TIDE_COLOR, linestyle=":", alpha=0.55)
+
+    extreme_tides = tides[tides["type"].isin(types.TIDE_TYPE_CATEGORIES)].copy()
+    ax.scatter(
+        extreme_tides.index,
+        extreme_tides.prediction,
+        marker="o",  # type: ignore[arg-type]
+        color=TIDE_COLOR,
+        s=40,
+    )
+
+    for _, row in extreme_tides.iterrows():
+        is_high_tide = _is_high_tide_type(row.type)
+        ax.annotate(
+            f"{row.prediction:.1f} ft {row.type}",
+            xy=(row.name, row.prediction),  # type: ignore[arg-type] # pyright expects Sequence[float] but row.name is a pandas timestamp
+            xytext=(0, 14 if is_high_tide else -14),
+            textcoords="offset points",
+            ha="center",
+            va="bottom" if is_high_tide else "top",
+            fontsize=ANNOTATION_FONT_SIZE - 3,
+            fontweight="semibold",
+            color=TIDE_COLOR,
+            bbox=_plot_annotation_box(),
+        )
+
+    lower = tide_plot_values.min() - 1
+    upper = tide_plot_values.max() + 1
+    if cap_ylim:
+        lower = max(lower, -8)
+        upper = min(upper, 8)
+    ax.set_ylim(lower, upper)
+
+
+def _mark_plot_times(
+    ax: Axes,
+    *,
+    now: datetime.datetime,
+    marker_time: datetime.datetime,
+    start_time: datetime.datetime,
+    end_time: datetime.datetime,
+) -> None:
+    """Mark now and optional planner timestamp on a time-series plot."""
+    now_float = md.date2num(now)
+    ax.axvline(
+        x=now_float,
+        color=NOW_MARKER_COLOR,
+        linestyle="-",
+        alpha=0.7,
+        linewidth=1.8,
+    )
+    marker_gap_seconds = abs((marker_time - now).total_seconds())
+    labels_would_overlap = 60 < marker_gap_seconds <= 2 * 60 * 60
+    ax.annotate(
+        "now",
+        xy=(now_float, 1.0),
+        xycoords=ax.get_xaxis_transform(),
+        xytext=(0, 7),
+        textcoords="offset points",
+        color=NOW_MARKER_COLOR,
+        fontsize=ANNOTATION_FONT_SIZE - 2,
+        fontweight="bold",
+        ha="center",
+        va="bottom",
+        bbox={
+            "boxstyle": "round,pad=0.22",
+            "facecolor": "white",
+            "edgecolor": PLOT_GRID_COLOR,
+            "linewidth": 0.5,
+            "alpha": 0.9,
+        },
+    )
+
+    marker_float = md.date2num(marker_time)
+    if marker_gap_seconds > 60:
+        ax.axvline(
+            x=marker_float,
+            color=PLANNED_MARKER_COLOR,
+            linestyle="--",
+            alpha=0.85,
+            linewidth=2.2,
+        )
+        ax.annotate(
+            "planned",
+            xy=(marker_float, 1.0),
+            xycoords=ax.get_xaxis_transform(),
+            xytext=(0, 22 if labels_would_overlap else 7),
+            textcoords="offset points",
+            color=PLANNED_MARKER_COLOR,
+            fontsize=ANNOTATION_FONT_SIZE - 2,
+            fontweight="bold",
+            ha="center",
+            va="bottom",
+            bbox={
+                "boxstyle": "round,pad=0.22",
+                "facecolor": "white",
+                "edgecolor": PLOT_GRID_COLOR,
+                "linewidth": 0.5,
+                "alpha": 0.9,
+            },
+        )
+
+    ax.set_xlim(md.date2num(start_time), md.date2num(end_time))
+
+
+def create_tide_plot(
+    tides: pd.DataFrame,
+    t: datetime.datetime,
+    location_config: config_lib.LocationConfig,
+) -> Figure:
+    """Create a tide-only prediction plot for locations without current data."""
+    if len(tides) < 2:
+        raise ValueError("Insufficient tide data for plotting")
+
+    now = location_config.local_now()
+    start_time, end_time = _tide_current_plot_window(now, t)
+    tides, tides_interpolated, tide_plot_values = _prepare_tide_plot_data(
+        tides,
+        start_time,
+        end_time,
+    )
+
+    fig = Figure(figsize=(15, 6.5))
+    fig.subplots_adjust(left=0.08, right=0.94, top=0.93, bottom=0.16)
+    fig.set_facecolor("white")
+
+    ax = fig.subplots()
+    ax.set_facecolor(PLOT_BACKGROUND_COLOR)
+    _style_time_axis(ax, start_time, end_time)
+    _plot_tide_curve(
+        ax,
+        tides,
+        tides_interpolated,
+        tide_plot_values,
+        cap_ylim=False,
+    )
+    _mark_plot_times(
+        ax, now=now, marker_time=t, start_time=start_time, end_time=end_time
+    )
+
+    ax.legend(
+        fontsize=LABEL_FONT_SIZE - 2,
+        loc="upper right",
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor=PLOT_GRID_COLOR,
+    )
+    ax.tick_params(which="major", length=8, width=2)
+    ax.tick_params(which="minor", length=4, width=1)
+
+    return fig
+
+
 def create_tide_current_plot(
     tides: pd.DataFrame,
     currents: pd.DataFrame,
@@ -934,27 +1166,14 @@ def create_tide_current_plot(
     # marker visible at the far end of the next-day planning range.
     now = location_config.local_now()
     start_time, end_time = _tide_current_plot_window(now, t)
-
-    # Interpolate only the numeric 'prediction' column for a smoother plot line.
-    # Do this *before* filtering to the window to allow interpolation to use
-    # data outside the window edges for better accuracy.
-    tide_predictions = tides[["prediction"]].resample("60s").mean()
-    if len(tides) >= 3:
-        tides_interpolated = tide_predictions.interpolate("polynomial", order=2)
-    else:
-        tides_interpolated = tide_predictions.interpolate("time")
+    tides, tides_interpolated_filtered, tide_plot_values = _prepare_tide_plot_data(
+        tides,
+        start_time,
+        end_time,
+    )
 
     # Filter all relevant DataFrames to the desired plot window
-    tides = tides[(tides.index >= start_time) & (tides.index <= end_time)]  # type: ignore[operator] # pyright confused about index type
     currents = currents[(currents.index >= start_time) & (currents.index <= end_time)]  # type: ignore[operator] # pyright confused about index type
-    tides_interpolated_filtered = tides_interpolated[
-        (tides_interpolated.index >= start_time)
-        & (tides_interpolated.index <= end_time)
-    ]
-    tide_plot_values = _finite_plot_values(
-        tides_interpolated_filtered.prediction,
-        "tide",
-    )
 
     fig = Figure(figsize=(15, 6.5))
     fig.subplots_adjust(left=0.08, right=0.92, top=0.93, bottom=0.16)
@@ -962,34 +1181,11 @@ def create_tide_current_plot(
 
     ax = fig.subplots()
     ax.set_facecolor(PLOT_BACKGROUND_COLOR)
-    major_ticks = pd.date_range(
-        pd.Timestamp(start_time).ceil("3h"),
-        pd.Timestamp(end_time).floor("3h"),
-        freq="3h",
-    ).to_pydatetime()
-    major_tick_values = md.date2num(major_ticks)
-    ax.set_xticks(major_tick_values)
-    ax.xaxis.set_major_formatter(md.DateFormatter("%a %-I %p"))
+    major_tick_values = _style_time_axis(ax, start_time, end_time)
     ax.set_ylabel(
         "Current Speed (kts)", fontsize=LABEL_FONT_SIZE, color=CURRENT_FLOOD_COLOR
     )
-    ax.grid(
-        True,
-        which="major",
-        alpha=0.4,
-        color=PLOT_GRID_COLOR,
-        linestyle="-",
-        linewidth=0.7,
-    )
-    ax.tick_params(axis="x", labelsize=LABEL_FONT_SIZE - 5, pad=8)
     ax.tick_params(axis="y", labelsize=LABEL_FONT_SIZE - 4, colors=CURRENT_FLOOD_COLOR)
-    for spine in ax.spines.values():
-        spine.set_color(PLOT_SPINE_COLOR)
-        spine.set_linewidth(0.8)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_visible(False)
-    ax.spines["bottom"].set_visible(False)
 
     # Plot the current on the first Y axis (left)
     # Find transitions between flood and ebb by checking consecutive values
@@ -1103,125 +1299,20 @@ def create_tide_current_plot(
     # Add a second Y axis for the tide (right)
     ax2 = ax.twinx()
     ax2.set_xticks(major_tick_values)
-    ax2.set_ylabel("Tide Height (ft)", fontsize=LABEL_FONT_SIZE, color=TIDE_COLOR)
     ax2.grid(False)
-    ax2.tick_params(axis="y", labelsize=LABEL_FONT_SIZE - 4, colors=TIDE_COLOR)
-    ax2.spines["right"].set_visible(False)
-    ax2.spines["top"].set_visible(False)
-    ax2.spines["left"].set_visible(False)
-    ax2.spines["bottom"].set_visible(False)
-
-    # Plot the tide
-    ax2.plot(
-        tides_interpolated_filtered.index,  # Use interpolated index
-        tides_interpolated_filtered.prediction,  # Use interpolated prediction values
-        color=TIDE_COLOR,
-        label="Tide height",
-        linewidth=2.15,
-    )
-
-    # Draw a line at tide 0
-    ax2.axhline(0, color=TIDE_COLOR, linestyle=":", alpha=0.55)
-
-    # Add markers for extreme tides (smaller size)
-    extreme_tides = tides[
-        tides["type"].isin(types.TIDE_TYPE_CATEGORIES)
-    ].copy()  # Use original filtered tides DF
-    ax2.scatter(
-        extreme_tides.index,
-        extreme_tides.prediction,
-        marker="o",  # type: ignore[arg-type]
-        color=TIDE_COLOR,
-        s=40,  # Smaller marker size
-    )
-
-    for _, row in extreme_tides.iterrows():
-        is_high_tide = _is_high_tide_type(row.type)
-        ax2.annotate(
-            f"{row.prediction:.1f} ft {row.type}",
-            xy=(row.name, row.prediction),  # type: ignore[arg-type] # pyright expects Sequence[float] but row.name is a pandas timestamp
-            xytext=(
-                0,
-                14 if is_high_tide else -14,
-            ),  # Reduced offset
-            textcoords="offset points",
-            ha="center",
-            va="bottom" if is_high_tide else "top",
-            fontsize=ANNOTATION_FONT_SIZE - 3,  # Smaller font size
-            fontweight="semibold",
-            color=TIDE_COLOR,
-            bbox=_plot_annotation_box(),
-        )
-
-    # Optimize Y-limits so the plots don't get squished by outliers
-    # Keep the tide range sensible
-    ax2.set_ylim(
-        max(tide_plot_values.min() - 1, -8),
-        min(tide_plot_values.max() + 1, 8),
+    _plot_tide_curve(
+        ax2,
+        tides,
+        tides_interpolated_filtered,
+        tide_plot_values,
+        cap_ylim=True,
     )
 
     # Mark now and planner time. When they are effectively the same timestamp,
     # use one marker so the chart does not imply a difference.
-    now_float = md.date2num(now)
-    ax.axvline(
-        x=now_float,
-        color=NOW_MARKER_COLOR,
-        linestyle="-",
-        alpha=0.7,
-        linewidth=1.8,
+    _mark_plot_times(
+        ax, now=now, marker_time=t, start_time=start_time, end_time=end_time
     )
-    marker_gap_seconds = abs((t - now).total_seconds())
-    labels_would_overlap = 60 < marker_gap_seconds <= 2 * 60 * 60
-    ax.annotate(
-        "now",
-        xy=(now_float, 1.0),
-        xycoords=ax.get_xaxis_transform(),
-        xytext=(0, 7),
-        textcoords="offset points",
-        color=NOW_MARKER_COLOR,
-        fontsize=ANNOTATION_FONT_SIZE - 2,
-        fontweight="bold",
-        ha="center",
-        va="bottom",
-        bbox={
-            "boxstyle": "round,pad=0.22",
-            "facecolor": "white",
-            "edgecolor": PLOT_GRID_COLOR,
-            "linewidth": 0.5,
-            "alpha": 0.9,
-        },
-    )
-
-    t_float = md.date2num(t)
-    if marker_gap_seconds > 60:
-        ax.axvline(
-            x=t_float,
-            color=PLANNED_MARKER_COLOR,
-            linestyle="--",
-            alpha=0.85,
-            linewidth=2.2,
-        )
-        ax.annotate(
-            "planned",
-            xy=(t_float, 1.0),
-            xycoords=ax.get_xaxis_transform(),
-            xytext=(0, 22 if labels_would_overlap else 7),
-            textcoords="offset points",
-            color=PLANNED_MARKER_COLOR,
-            fontsize=ANNOTATION_FONT_SIZE - 2,
-            fontweight="bold",
-            ha="center",
-            va="bottom",
-            bbox={
-                "boxstyle": "round,pad=0.22",
-                "facecolor": "white",
-                "edgecolor": PLOT_GRID_COLOR,
-                "linewidth": 0.5,
-                "alpha": 0.9,
-            },
-        )
-
-    ax.set_xlim(md.date2num(start_time), md.date2num(end_time))
 
     # No titles for the tide/current plot as per original implementation
 

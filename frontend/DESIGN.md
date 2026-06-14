@@ -1138,8 +1138,9 @@ not a product requirement for this milestone.
   `?planner=open` and `?at=`.
 - Shift-aware backend endpoints accept `?at=` directly:
   `/api/{loc}/currents?at=…` and
-  `/api/{loc}/plots/current_tide?at=…`. `?shift=` remains available for
-  simple relative controls and legacy callers; `at` wins if both are present.
+  `/api/{loc}/plots/current_tide?at=…` or `/api/{loc}/plots/tide?at=…`.
+  `?shift=` remains available for simple relative controls and legacy callers;
+  `at` wins if both are present.
 
 History semantics:
 
@@ -1164,7 +1165,7 @@ session. The same rule applies to `?detail=open&at=…`.
 | ------------------------------------------ | ------------------ | ---------------- | ------------------------------------------------------------------------ |
 | Tidal · current prediction · NYC           | enabled            | enabled          | full — projection plot + map + commentary + legacy charts                |
 | Tidal · current prediction · other         | enabled            | enabled          | generic — projection plot                                                |
-| Tidal · tide prediction only (SAN/SFO/BOS/SEA) | enabled            | disabled until a tide-only detail plot exists | tide state and tide planner only                              |
+| Tidal · tide prediction only (SAN/SFO/BOS/SEA) | enabled            | enabled          | tide-only projection plot                                               |
 | River · current observation (SDF)          | disabled           | disabled         | observed-current Water Movement card, no planner/detail controls         |
 | Lake (CHI)                                 | disabled           | disabled         | n/a — no Water Movement card                                             |
 | Spring · temperature-only (AUS)            | disabled           | disabled         | n/a — minimal home layout                                                |
@@ -1172,10 +1173,11 @@ session. The same rule applies to `?detail=open&at=…`.
 Planner availability and detail availability are separate capabilities. Tide
 prediction alone is enough to enable the in-card planner scrubber because
 `/api/{loc}/conditions?at=...` can shift tide state. The current/tide detail
-panel requires a supported detail product; today that means a current prediction
-location with `/api/{loc}/plots/current_tide?at=...`. Tide-only locations should
-not open a detail panel until a tide-only detail plot or structured chart product
-exists.
+panel requires a supported detail product. The bootstrap payload exposes
+`water_movement_detail_plot_type`, which is `current_tide` for tide locations
+with prediction-current support and `tide` for tide-only detail. The frontend
+must use that explicit plot type rather than inferring from generic current
+availability, because current data can also mean observation-only river flow.
 
 The frontend should consume explicit bootstrap capabilities for planner and
 detail availability. NYC-specific guidance, maps, methodology, and legacy charts
@@ -1212,8 +1214,10 @@ time jumps and broader location support.
 - **3.A · In-card planner and detail foundation:** Water Movement gets
   URL-backed `planner=open`, `detail=open`, and `at=...` state. The compact
   scrubber shifts `/api/{loc}/conditions?at=...`; the detail panel uses
-  `/api/{loc}/plots/current_tide?at=...` plus NYC local-current map selection,
-  direction guidance, timing note, legacy harbor chart, and methodology copy.
+  the bootstrap `water_movement_detail_plot_type` to select
+  `/api/{loc}/plots/current_tide?at=...` or `/api/{loc}/plots/tide?at=...`;
+  NYC adds local-current map selection, direction guidance, timing note, legacy
+  harbor chart, and methodology copy.
   Result: feature parity with the useful parts of the existing Jinja currents
   page while keeping the interaction in the dashboard.
 - **3.B · Planner control polish:** refine the sticky Water Movement control
@@ -1642,6 +1646,7 @@ For feature parity, keep using the existing FastAPI plot image endpoints.
 /api/{location}/plots/historic_temps?period=2mo
 /api/{location}/plots/historic_temps?period=12mo
 /api/{location}/plots/current_tide?at=2026-05-18T15:30:00
+/api/{location}/plots/tide?at=2026-05-18T15:30:00
 ```
 
 Reasons to keep plots as backend images for the first frontend milestone:

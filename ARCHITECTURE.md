@@ -77,10 +77,11 @@ perform cheap point-in-time lookups and response serialization, but should not
 loop across full feed DataFrames for high-traffic or above-the-fold endpoints
 such as `/api/{location}/conditions` and `/api/{location}/currents`.
 
-Known tech debt: `/api/{location}/plots/current_tide` still renders a Matplotlib
-SVG per request in the process pool. It should eventually cache or precompute
-common hourly `at` / `shift` values, while preserving on-demand fallback
-behavior for less common planning times.
+Known tech debt: water-movement detail plots
+(`/api/{location}/plots/current_tide` and `/api/{location}/plots/tide`) still
+render Matplotlib SVGs per request in the process pool. They should eventually
+cache or precompute common hourly `at` / `shift` values, while preserving
+on-demand fallback behavior for less common planning times.
 
 ### Frontend App Serving And Durable HTML
 

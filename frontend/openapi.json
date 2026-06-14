@@ -148,6 +148,22 @@
             "title": "Water Movement Detail",
             "type": "boolean"
           },
+          "water_movement_detail_plot_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "current_tide",
+                  "tide"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Detail plot endpoint type to use when water movement detail is enabled",
+            "title": "Water Movement Detail Plot Type"
+          },
           "water_movement_planning": {
             "description": "Whether to show water movement planner controls",
             "title": "Water Movement Planning",
@@ -2033,6 +2049,70 @@
           }
         },
         "summary": "Get Live Temps Plot"
+      }
+    },
+    "/api/{location}/plots/tide": {
+      "get": {
+        "description": "Generate and serve a tide-only plot for the specified location.",
+        "operationId": "get_tide_plot_api__location__plots_tide_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location",
+            "required": true,
+            "schema": {
+              "title": "Location",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "shift",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Shift",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tide Plot"
       }
     },
     "/api/{location}/status": {

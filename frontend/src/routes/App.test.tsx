@@ -53,6 +53,7 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
           currents: true,
           water_movement_planning: true,
           water_movement_detail: true,
+          water_movement_detail_plot_type: "current_tide",
           webcam: false,
           transit: false,
           windy: false,
@@ -400,6 +401,7 @@ function syntheticLocation({
         currents: false,
         water_movement_planning: false,
         water_movement_detail: false,
+        water_movement_detail_plot_type: null,
         webcam: false,
         transit: false,
         windy: false,
@@ -609,6 +611,7 @@ test("renders all configured locations from bootstrap metadata", () => {
             currents: true,
             water_movement_planning: false,
             water_movement_detail: false,
+            water_movement_detail_plot_type: null,
             transit: false,
           },
         },
@@ -866,7 +869,8 @@ test.each([
       tides: true,
       currents: false,
       water_movement_planning: true,
-      water_movement_detail: false,
+      water_movement_detail: true,
+      water_movement_detail_plot_type: "tide",
     },
     planVisible: true,
     sourceBadge: "Predicted",
@@ -893,12 +897,13 @@ test.each([
       currents: true,
       water_movement_planning: false,
       water_movement_detail: false,
+      water_movement_detail_plot_type: null,
     },
     planVisible: false,
     sourceBadge: "Observed",
     waterMovementVisible: true,
   },
-])("renders water movement controls from synthetic $code capabilities", ({
+] as const)("renders water movement controls from synthetic $code capabilities", ({
   code,
   conditions,
   features,
@@ -1064,6 +1069,7 @@ test("renders an iframe webcam provider for non-NYC locations", async () => {
             ...bootstrapPayload.locations.nyc.metadata.features,
             currents: false,
             water_movement_detail: false,
+            water_movement_detail_plot_type: null,
             webcam: true,
           },
         },
@@ -1126,6 +1132,7 @@ test("renders a named EarthCam provider as a contained iframe", async () => {
             ...bootstrapPayload.locations.nyc.metadata.features,
             currents: false,
             water_movement_detail: false,
+            water_movement_detail_plot_type: null,
             webcam: true,
           },
         },
@@ -1221,7 +1228,7 @@ test("detail mode shows the current and tide plot independently", async () => {
   expect(screen.getByText("2.2 ft")).toBeVisible();
   expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
   const shiftedPlot = screen.getByRole("img", {
-    name: "Tide and current plot for May 13, 2026, 8:30 AM",
+    name: "Current and tide detail chart for May 13, 2026, 8:30 AM",
   });
   expect(shiftedPlot).toHaveAttribute(
     "src",
@@ -1275,6 +1282,7 @@ test("detail mode is enabled by capability for non-NYC prediction-current locati
       currents: true,
       water_movement_planning: true,
       water_movement_detail: true,
+      water_movement_detail_plot_type: "current_tide",
     },
   });
 
@@ -1287,7 +1295,7 @@ test("detail mode is enabled by capability for non-NYC prediction-current locati
   expect(screen.getByRole("button", { name: "Details" })).toBeVisible();
   expect(
     screen.getByRole("img", {
-      name: "Tide and current plot for May 13, 2026, 8:30 AM",
+      name: "Current and tide detail chart for May 13, 2026, 8:30 AM",
     }),
   ).toHaveAttribute(
     "src",
@@ -1298,6 +1306,72 @@ test("detail mode is enabled by capability for non-NYC prediction-current locati
       name: "Grimaldo's Chair current guidance",
     }),
   ).not.toBeInTheDocument();
+});
+
+test("detail mode supports tide-only locations", () => {
+  const location = syntheticLocation({
+    code: "tde",
+    features: {
+      tides: true,
+      currents: false,
+      water_movement_planning: true,
+      water_movement_detail: true,
+      water_movement_detail_plot_type: "tide",
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    conditions: syntheticConditions({
+      code: "tde",
+      current: null,
+      tides: conditionsPayload.tides,
+    }),
+    initialEntry: "/tde?detail=open&at=2026-05-13T08:30:00",
+    locationCode: "tde",
+  });
+
+  expect(screen.getByRole("button", { name: "Tide details" })).toBeVisible();
+  expect(screen.getByText("Tide detail chart")).toBeVisible();
+  expect(
+    screen.getByRole("img", {
+      name: "Tide detail chart for May 13, 2026, 8:30 AM",
+    }),
+  ).toHaveAttribute("src", "/api/tde/plots/tide?at=2026-05-13T08%3A30%3A00");
+  expect(screen.getByText("2.2 ft")).toBeVisible();
+  expect(screen.queryByText("1.4 kt")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", {
+      name: "Grimaldo's Chair current guidance",
+    }),
+  ).not.toBeInTheDocument();
+});
+
+test("detail mode uses tide-only plot when currents are observation-only", () => {
+  const location = syntheticLocation({
+    code: "obs",
+    features: {
+      tides: true,
+      currents: true,
+      water_movement_planning: true,
+      water_movement_detail: true,
+      water_movement_detail_plot_type: "tide",
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    initialEntry: "/obs?detail=open&at=2026-05-13T08:30:00",
+    locationCode: "obs",
+  });
+
+  expect(screen.getByRole("button", { name: "Tide details" })).toBeVisible();
+  expect(
+    screen.getByRole("img", {
+      name: "Tide detail chart for May 13, 2026, 8:30 AM",
+    }),
+  ).toHaveAttribute("src", "/api/obs/plots/tide?at=2026-05-13T08%3A30%3A00");
+  expect(screen.queryByText("1.4 kt")).not.toBeInTheDocument();
 });
 
 test("NYC local map and harbor chart derive from selected time state", () => {
@@ -1391,6 +1465,7 @@ test("omits water movement for locations without tide or current data", () => {
             tides: false,
             water_movement_planning: false,
             water_movement_detail: false,
+            water_movement_detail_plot_type: null,
           },
         },
       },
@@ -1411,7 +1486,7 @@ test("omits water movement for locations without tide or current data", () => {
   ).not.toBeInTheDocument();
 });
 
-test("supports planner mode for tide-only locations without detail controls", () => {
+test("supports planner and detail mode for tide-only locations", () => {
   const tideOnlyConditions: components["schemas"]["LocationConditions"] = {
     ...conditionsPayload,
     current: null,
@@ -1438,7 +1513,8 @@ test("supports planner mode for tide-only locations without detail controls", ()
             ...bootstrapPayload.locations.nyc.metadata.features,
             currents: false,
             tides: true,
-            water_movement_detail: false,
+            water_movement_detail: true,
+            water_movement_detail_plot_type: "tide",
           },
         },
       },
@@ -1458,13 +1534,15 @@ test("supports planner mode for tide-only locations without detail controls", ()
     screen.getByText("The tide is rising toward high tide."),
   ).toBeVisible();
   expect(screen.getByRole("button", { name: "Plan" })).toBeVisible();
-  expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Tide details" })).toBeVisible();
   expect(screen.getByRole("region", { name: "Planner mode" })).toBeVisible();
   expect(screen.getByText("2.2 ft")).toBeVisible();
   expect(screen.queryByText("1.6 ft")).not.toBeInTheDocument();
   expect(
-    screen.queryByRole("img", { name: /^Tide and current plot/ }),
-  ).not.toBeInTheDocument();
+    screen.getByRole("img", {
+      name: "Tide detail chart for May 13, 2026, 8:30 AM",
+    }),
+  ).toHaveAttribute("src", "/api/sfo/plots/tide?at=2026-05-13T08%3A30%3A00");
 });
 
 test("renders observed flow without tidal water movement for river-current locations", () => {
@@ -1503,6 +1581,7 @@ test("renders observed flow without tidal water movement for river-current locat
             tides: false,
             water_movement_planning: false,
             water_movement_detail: false,
+            water_movement_detail_plot_type: null,
           },
         },
       },

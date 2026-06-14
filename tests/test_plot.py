@@ -372,6 +372,53 @@ def _test_location_config() -> config_lib.LocationConfig:
     )
 
 
+def test_create_tide_plot_requires_enough_tides() -> None:
+    location_config = _test_location_config()
+    tides = pd.DataFrame(
+        {"prediction": [4.2]},
+        index=pd.DatetimeIndex([datetime.datetime(2025, 4, 22, 10, 0, 0)]),
+    )
+
+    with pytest.raises(ValueError, match="Insufficient tide data"):
+        plot.create_tide_plot(
+            tides,
+            datetime.datetime(2025, 4, 22, 10, 0, 0),
+            location_config,
+        )
+
+
+@freeze_time("2026-05-24T12:00:00Z")
+def test_create_tide_plot_uses_uncapped_height_range() -> None:
+    location_config = _test_location_config()
+    tides = pd.DataFrame(
+        {
+            "prediction": [-2.0, 9.5, -1.5],
+            "type": [
+                types.TideCategory.LOW.value,
+                types.TideCategory.HIGH.value,
+                types.TideCategory.LOW.value,
+            ],
+        },
+        index=pd.DatetimeIndex(
+            [
+                datetime.datetime(2026, 5, 24, 6, 0, 0),
+                datetime.datetime(2026, 5, 24, 15, 0, 0),
+                datetime.datetime(2026, 5, 24, 21, 0, 0),
+            ]
+        ),
+    )
+
+    fig = plot.create_tide_plot(
+        tides,
+        datetime.datetime(2026, 5, 24, 12, 0, 0),
+        location_config,
+    )
+
+    lower, upper = fig.axes[0].get_ylim()
+    assert lower < -2.0
+    assert upper > 9.5
+
+
 @freeze_time("2026-05-24T12:00:00Z")
 def test_create_tide_current_plot_handles_window_without_tide_extrema() -> None:
     location_config = _test_location_config()

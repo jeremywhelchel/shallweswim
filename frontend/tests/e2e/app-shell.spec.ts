@@ -566,16 +566,62 @@ test("opens mobile detail mode from the condition stack", async ({
   await gotoApp(page, "/nyc");
 
   await expect(page.getByText("61.4°F")).toBeVisible();
+  const unitToggle = page.getByRole("group", { name: "Temperature unit" });
+  const unitToggleBoxBefore = await unitToggle.boundingBox();
+  expect(unitToggleBoxBefore).not.toBeNull();
+
   await page.getByRole("button", { name: "Details" }).click();
 
   await expect(
     page.getByRole("region", { name: "Current and tide detail chart" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: /^Current and tide detail chart for / }),
+    page.getByRole("img", {
+      name: /^(Current and tide detail chart|Tide and current plot) for /,
+    }),
   ).toBeVisible();
   await expect(page.getByText("61.4°F")).toBeVisible();
   await expect(page.getByText("TIDE", { exact: true })).toBeVisible();
+  const unitToggleBoxAfter = await unitToggle.boundingBox();
+  expect(unitToggleBoxAfter).not.toBeNull();
+  expect(
+    Math.abs((unitToggleBoxAfter?.x ?? 0) - (unitToggleBoxBefore?.x ?? 0)),
+  ).toBeLessThanOrEqual(2);
+});
+
+test("keeps the temperature unit control fixed when desktop details open @desktop", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "Desktop detail layout stability is covered once in desktop Chromium.",
+  );
+
+  await gotoApp(page, "/nyc");
+
+  const unitToggle = page.getByRole("group", { name: "Temperature unit" });
+  await expect(unitToggle).toBeVisible();
+  const unitToggleBoxBefore = await unitToggle.boundingBox();
+  expect(unitToggleBoxBefore).not.toBeNull();
+
+  await page.getByRole("button", { name: "Details" }).click();
+  const waterMovementControls = page.getByRole("region", {
+    name: "Water movement controls",
+  });
+  await expect(waterMovementControls).toBeVisible();
+  const detailChart = page.getByRole("region", {
+    name: "Current and tide detail chart",
+  });
+  await expect(detailChart).toBeVisible();
+
+  const unitToggleBoxAfter = await unitToggle.boundingBox();
+  expect(unitToggleBoxAfter).not.toBeNull();
+  expect(
+    Math.abs((unitToggleBoxAfter?.x ?? 0) - (unitToggleBoxBefore?.x ?? 0)),
+  ).toBeLessThanOrEqual(2);
+  const waterMovementControlsBox = await waterMovementControls.boundingBox();
+  expect(waterMovementControlsBox).not.toBeNull();
+  expect(waterMovementControlsBox?.width ?? 0).toBeGreaterThan(900);
 });
 
 test("planner mode shifts dashboard water movement from URL state @desktop", async ({

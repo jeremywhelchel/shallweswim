@@ -340,16 +340,14 @@ export function ConditionsSummary({
 }) {
   const detailMode = Boolean(waterMovementControls?.detailOpen);
   const showMovementPanel = showWaterMovement || showObservedFlow;
-  const summaryClassName = detailMode
-    ? "grid gap-0 rounded border border-swim-line bg-white md:gap-4 md:border-0 md:bg-transparent"
-    : showMovementPanel
-      ? "grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent"
-      : "grid gap-0 rounded border border-swim-line bg-white md:border-0 md:bg-transparent";
+  const summaryClassName = showMovementPanel
+    ? "grid gap-0 rounded border border-swim-line bg-white md:grid-cols-[1fr_2fr] md:items-start md:gap-4 md:border-0 md:bg-transparent"
+    : "grid gap-0 rounded border border-swim-line bg-white md:border-0 md:bg-transparent";
 
   if (isLoading) {
     return (
       <section aria-busy="true" className={summaryClassName}>
-        <LoadingTemperatureSummary compact={detailMode} />
+        <LoadingTemperatureSummary />
         {showMovementPanel ? (
           <LoadingWaterMovementSummary
             observed={showObservedFlow && !showWaterMovement}
@@ -362,18 +360,21 @@ export function ConditionsSummary({
   return (
     <section className={summaryClassName}>
       <TemperatureSummary
-        compact={detailMode}
         conditions={conditions}
         hasError={hasError}
         onSetTemperatureUnit={onSetTemperatureUnit}
         temperatureUnit={temperatureUnit}
       />
       {showWaterMovement ? (
-        <WaterMovementSummary
-          current={hasError ? undefined : conditions?.current}
-          tides={hasError ? undefined : conditions?.tides}
-          waterMovementControls={waterMovementControls}
-        />
+        <div
+          className={detailMode ? "md:col-span-2 md:col-start-1" : undefined}
+        >
+          <WaterMovementSummary
+            current={hasError ? undefined : conditions?.current}
+            tides={hasError ? undefined : conditions?.tides}
+            waterMovementControls={waterMovementControls}
+          />
+        </div>
       ) : showObservedFlow ? (
         <ObservedFlowSummary
           current={hasError ? undefined : conditions?.current}
@@ -384,28 +385,7 @@ export function ConditionsSummary({
   );
 }
 
-function LoadingTemperatureSummary({ compact = false }: { compact?: boolean }) {
-  if (compact) {
-    return (
-      <div className="border-swim-line border-b p-3 md:flex md:items-center md:justify-between md:gap-4 md:rounded md:border md:bg-white">
-        <div className="min-w-0 md:flex md:flex-wrap md:items-baseline md:gap-x-3 md:gap-y-1">
-          <h2 className="font-semibold text-base md:text-lg">
-            Water Temperature
-          </h2>
-          <div className="mt-1 flex items-baseline gap-2 md:mt-0">
-            <p className="text-sm text-slate-700">The water is currently</p>
-            <p className="font-mono font-semibold text-2xl text-swim-blue">
-              Loading
-            </p>
-          </div>
-        </div>
-        <p className="mt-1 min-w-0 text-xs text-slate-600 md:mt-0 md:text-right md:text-sm">
-          Loading the latest station reading.
-        </p>
-      </div>
-    );
-  }
-
+function LoadingTemperatureSummary() {
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
       <h2 className="font-semibold text-base md:text-lg">Water Temperature</h2>
@@ -559,13 +539,11 @@ type WaterMovementControls = {
 };
 
 function TemperatureSummary({
-  compact = false,
   conditions,
   hasError,
   onSetTemperatureUnit,
   temperatureUnit,
 }: {
-  compact?: boolean;
   conditions?: LocationConditions;
   hasError: boolean;
   onSetTemperatureUnit: (unit: TemperatureUnit) => void;
@@ -585,47 +563,6 @@ function TemperatureSummary({
     conditions?.temperature && !hasError
       ? formatStationTimestamp(conditions.temperature.timestamp)
       : null;
-
-  if (compact) {
-    return (
-      <div className="border-swim-line border-b p-3 md:flex md:items-center md:justify-between md:gap-4 md:rounded md:border md:bg-white">
-        <div className="min-w-0 md:flex md:flex-wrap md:items-center md:gap-x-3 md:gap-y-1">
-          <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-base md:text-lg">
-              Water Temperature
-            </h2>
-            <TemperatureUnitToggle
-              onChange={onSetTemperatureUnit}
-              unit={temperatureUnit}
-            />
-          </div>
-          <div className="mt-1 flex items-baseline gap-2 md:mt-0">
-            <p className="text-sm text-slate-700">The water is currently</p>
-            <p className="font-mono font-semibold text-2xl text-swim-blue">
-              {temperatureValue}
-            </p>
-          </div>
-        </div>
-        <p className="mt-1 min-w-0 text-xs text-slate-600 md:mt-0 md:text-right md:text-sm">
-          {stationName ? (
-            <>
-              at <span>{stationName}</span>
-              {stationTimestamp ? (
-                <>
-                  {" as of "}
-                  <span className="font-mono">{stationTimestamp}</span>.
-                </>
-              ) : (
-                "."
-              )}
-            </>
-          ) : (
-            "Current water temperature is unavailable."
-          )}
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">

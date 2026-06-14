@@ -1336,6 +1336,25 @@ _CONFIG_LIST = [
         ),
     ),
     LocationConfig(
+        code="cor",
+        name="Cork",
+        nav_label="Cork, Ireland",
+        swim_location="Sandycove",
+        swim_location_link="https://sandycoveswimmers.com/about/",
+        location_info_source="Sandycove Swimmers, about Sandycove Island",
+        latitude=51.676848,
+        longitude=-8.523565,
+        timezone=pytz.timezone("Europe/Dublin"),
+        default_temperature_unit="C",
+        presentation=LocationPresentationConfig(
+            windy=WindyForecastConfig(metric_temp="°C"),
+        ),
+        description=(
+            "A cold-water marathon swimming spot near Kinsale where swimmers "
+            "enter at Sandycove and often swim around Sandycove Island."
+        ),
+    ),
+    LocationConfig(
         enabled=False,
         code="tst",
         name="Test",

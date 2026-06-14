@@ -28,6 +28,7 @@ import pandas as pd
 import seaborn as sns  # type: ignore[import]
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from scipy.interpolate import PchipInterpolator
 from scipy.signal import find_peaks
 
 # Local imports
@@ -910,13 +911,7 @@ def _prepare_tide_plot_data(
     end_time: datetime.datetime,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
     """Return filtered tide events, interpolated curve, and finite plot values."""
-    # Interpolate only the numeric 'prediction' column for a smoother plot line.
-    # Do this before filtering so data outside the window can inform edges.
-    tide_predictions = tides[["prediction"]].resample("60s").mean()
-    if len(tides) >= 3:
-        tides_interpolated = tide_predictions.interpolate("polynomial", order=2)
-    else:
-        tides_interpolated = tide_predictions.interpolate("time")
+    tides_interpolated = _interpolate_tide_predictions(tides)
 
     filtered_tides = tides[(tides.index >= start_time) & (tides.index <= end_time)]  # type: ignore[operator] # pyright confused about index type
     filtered_interpolated = tides_interpolated[
@@ -925,6 +920,47 @@ def _prepare_tide_plot_data(
     ]
     plot_values = _finite_plot_values(filtered_interpolated.prediction, "tide")
     return filtered_tides, filtered_interpolated, plot_values
+
+
+def _interpolate_tide_predictions(tides: pd.DataFrame) -> pd.DataFrame:
+    """Return a minute-scale, shape-preserving tide curve.
+
+    Tide feed rows are official high/low prediction events. The visual curve
+    should pass through those events without inventing extra extrema between
+    adjacent events; otherwise dots and labels appear away from the plotted
+    peaks. PCHIP preserves monotonic segments while still producing a smooth
+    curve for display.
+    """
+    source = (
+        tides[["prediction"]]
+        .replace([np.inf, -np.inf], np.nan)
+        .dropna()
+        .sort_index()
+        .groupby(level=0)
+        .mean()
+    )
+    if len(source) < 2:
+        raise ValueError("Insufficient tide data for plotting")
+
+    minute_index = pd.date_range(
+        pd.Timestamp(source.index.min()).ceil("60s"),
+        pd.Timestamp(source.index.max()).floor("60s"),
+        freq="60s",
+    )
+    target_index = source.index.union(minute_index).sort_values()
+    origin = source.index[0]
+    source_x = np.asarray((source.index - origin).total_seconds(), dtype=float)
+    target_x = np.asarray((target_index - origin).total_seconds(), dtype=float)
+    interpolator = PchipInterpolator(
+        source_x,
+        source["prediction"].to_numpy(dtype=float),
+        extrapolate=False,
+    )
+
+    return pd.DataFrame(
+        {"prediction": interpolator(target_x)},
+        index=target_index,
+    )
 
 
 def _style_time_axis(

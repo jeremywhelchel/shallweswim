@@ -419,6 +419,54 @@ def test_create_tide_plot_uses_uncapped_height_range() -> None:
     assert upper > 9.5
 
 
+def test_tide_plot_interpolation_does_not_create_false_extrema() -> None:
+    tides = pd.DataFrame(
+        {
+            "prediction": [11.2, 8.0, 11.6, -3.9, 10.0],
+            "type": [
+                types.TideCategory.HIGH.value,
+                types.TideCategory.LOW.value,
+                types.TideCategory.HIGH.value,
+                types.TideCategory.LOW.value,
+                types.TideCategory.HIGH.value,
+            ],
+        },
+        index=pd.DatetimeIndex(
+            [
+                datetime.datetime(2026, 6, 13, 17, 45, 0),
+                datetime.datetime(2026, 6, 13, 22, 30, 0),
+                datetime.datetime(2026, 6, 14, 3, 15, 0),
+                datetime.datetime(2026, 6, 14, 10, 45, 0),
+                datetime.datetime(2026, 6, 14, 16, 30, 0),
+            ]
+        ),
+    )
+
+    _, interpolated, _ = plot._prepare_tide_plot_data(
+        tides,
+        datetime.datetime(2026, 6, 13, 16, 0, 0),
+        datetime.datetime(2026, 6, 14, 16, 0, 0),
+    )
+
+    visible_tides = tides[tides.index.isin(interpolated.index)]
+    assert not visible_tides.empty
+    for timestamp, row in visible_tides.iterrows():
+        assert timestamp in interpolated.index
+        assert interpolated.loc[timestamp, "prediction"] == pytest.approx(
+            row.prediction
+        )
+
+    for start, end in zip(tides.index[:-1], tides.index[1:], strict=True):
+        segment = interpolated.loc[
+            (interpolated.index >= start) & (interpolated.index <= end),
+            "prediction",
+        ]
+        lower = min(tides.loc[start, "prediction"], tides.loc[end, "prediction"])
+        upper = max(tides.loc[start, "prediction"], tides.loc[end, "prediction"])
+        assert segment.min() >= lower - 1e-9
+        assert segment.max() <= upper + 1e-9
+
+
 @freeze_time("2026-05-24T12:00:00Z")
 def test_create_tide_current_plot_handles_window_without_tide_extrema() -> None:
     location_config = _test_location_config()

@@ -1,6 +1,6 @@
 """Configuration for pytest.
 
-This file contains setup for integration tests that hit real NOAA CO-OPS API endpoints,
+This file contains setup for integration tests that hit live external API endpoints,
 as well as shared test fixtures including fake location configs for deterministic testing.
 """
 
@@ -118,7 +118,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--run-integration",
         action="store_true",
         default=False,
-        help="Run integration tests that hit live NOAA CO-OPS APIs",
+        help="Run integration tests that hit live external APIs",
     )
     parser.addoption(
         "--run-browser",
@@ -137,7 +137,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     """Configure custom pytest markers."""
     config.addinivalue_line(
-        "markers", "integration: mark test as hitting live NOAA CO-OPS API service"
+        "markers", "integration: mark test as hitting live external API services"
     )
     config.addinivalue_line(
         "markers", "browser: mark test as requiring a real browser via Playwright"

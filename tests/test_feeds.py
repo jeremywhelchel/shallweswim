@@ -29,6 +29,7 @@ from shallweswim.clients.base import (
 )
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.cspf import CspfApi
+from shallweswim.clients.marine_institute import MarineInstituteApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.core import queries
@@ -47,6 +48,7 @@ from shallweswim.feeds import (
     HistoricalTempsFeed,
     HistoricalTempsIncompleteError,
     LocalHarmonicTidesFeed,
+    MarineInstituteTidesFeed,
     MultiStationCurrentsFeed,
     create_temp_feed,
     create_tide_feed,
@@ -171,6 +173,7 @@ def mock_clients() -> dict[str, BaseApiClient]:
     return {
         "coops": MagicMock(spec=CoopsApi),
         "cspf": MagicMock(spec=CspfApi),
+        "marine_institute": MagicMock(spec=MarineInstituteApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
     }
@@ -992,6 +995,70 @@ class TestLocalHarmonicTidesFeed:
         )
 
         assert isinstance(feed, LocalHarmonicTidesFeed)
+
+
+class TestMarineInstituteTidesFeed:
+    """Tests for Marine Institute tide prediction feeds."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_calls_marine_institute_client(
+        self,
+        location_config: config_lib.LocationConfig,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """Marine Institute tide feeds call the configured station."""
+        tide_config = config_lib.MarineInstituteTideFeedConfig(
+            station_id="Kinsale",
+            height_offset_m=2.01,
+            name="Kinsale",
+        )
+        mock_client = cast(MarineInstituteApi, mock_clients["marine_institute"])
+        cast(MagicMock, mock_client.tides).return_value = pd.DataFrame(
+            {
+                "prediction": [9.5, 1.2, 9.8],
+                "type": pd.Categorical(
+                    ["high", "low", "high"],
+                    categories=["low", "high"],
+                ),
+            },
+            index=pd.date_range(
+                start=datetime.datetime(2026, 6, 14, 4, 0, 0),
+                periods=3,
+                freq="6h",
+            ),
+        )
+        feed = MarineInstituteTidesFeed(
+            location_config=location_config,
+            feed_config=tide_config,
+            expiration_interval=datetime.timedelta(hours=24),
+        )
+
+        result = await feed._fetch(clients=mock_clients)
+
+        cast(MagicMock, mock_client.tides).assert_called_once_with(
+            station_id="Kinsale",
+            timezone=location_config.timezone,
+            height_offset_m=2.01,
+            location_code=location_config.code,
+        )
+        assert list(result.columns) == ["prediction", "type"]
+
+    def test_create_tide_feed_supports_marine_institute_config(
+        self,
+        location_config: config_lib.LocationConfig,
+    ) -> None:
+        """The tide factory dispatches Marine Institute configs to their feed."""
+        feed = create_tide_feed(
+            location_config=location_config,
+            tide_config=config_lib.MarineInstituteTideFeedConfig(
+                station_id="Kinsale",
+                height_offset_m=2.01,
+                name="Kinsale",
+            ),
+            expiration_interval=datetime.timedelta(hours=24),
+        )
+
+        assert isinstance(feed, MarineInstituteTidesFeed)
 
 
 class TestCoopsCurrentsFeed:

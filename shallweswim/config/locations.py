@@ -327,6 +327,50 @@ class CoopsTideFeedConfig(TideFeedConfig, frozen=True):
         return f"coops:tide:{self.station}"
 
 
+class MarineInstituteTideFeedConfig(TideFeedConfig, frozen=True):
+    """Configuration for Marine Institute Ireland tide predictions."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    station_id: Annotated[
+        str,
+        Field(
+            min_length=1,
+            description="Marine Institute tide prediction station ID.",
+        ),
+    ]
+    height_offset_m: Annotated[
+        float,
+        Field(
+            description=(
+                "Offset added to source metre heights before conversion to feet."
+            ),
+        ),
+    ] = 0.0
+
+    @property
+    def source_type(self) -> types.DataSourceType:
+        """Marine Institute tide feeds provide predictions."""
+        return types.DataSourceType.PREDICTION
+
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with Marine Institute tide citation information."""
+        station_url = (
+            "https://erddap.marine.ie/erddap/tabledap/IMI_TidePrediction_HighLow.html"
+        )
+        return (
+            f'Tide predictions provided by <a href="{station_url}" '
+            f"{EXTERNAL_LINK_HTML_ATTRS}>Marine Institute Ireland</a>"
+            f" ({self.name or self.station_id})"
+        )
+
+    @property
+    def citation_key(self) -> str:
+        """Return a stable Marine Institute tide station identity."""
+        return f"marine-institute:tide:{self.station_id}"
+
+
 class LocalHarmonicTideFeedConfig(TideFeedConfig, frozen=True):
     """Configuration for local harmonic tide predictions.
 
@@ -1346,6 +1390,14 @@ _CONFIG_LIST = [
         longitude=-8.523565,
         timezone=pytz.timezone("Europe/Dublin"),
         default_temperature_unit="C",
+        tide_source=MarineInstituteTideFeedConfig(
+            station_id="Kinsale",
+            # Marine Institute high/low summaries are relative to OD Malin.
+            # Kinsale dense LAT heights are 2.01 m above same-time OD Malin
+            # summary heights, so apply that offset for swimmer-facing charts.
+            height_offset_m=2.01,
+            name="Kinsale",
+        ),
         presentation=LocationPresentationConfig(
             windy=WindyForecastConfig(metric_temp="°C"),
         ),

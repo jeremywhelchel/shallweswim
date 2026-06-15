@@ -256,7 +256,7 @@ uv run pytest --cov=shallweswim
 uv run pytest --cov=shallweswim --cov-report=html
 ```
 
-Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser tests are also opt-in; they use Playwright to run a real Chromium browser and are skipped unless `--run-browser` is passed.
+Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute Ireland) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser tests are also opt-in; they use Playwright to run a real Chromium browser and are skipped unless `--run-browser` is passed.
 
 #### Optional Browser Tests
 
@@ -459,7 +459,7 @@ The test suite uses a tiered strategy:
 |------|-------|---------------|--------|----------------|
 | **Unit** | `test_*.py` (most) | Mocked | Fake test configs | Yes |
 | **E2E Stack** | `test_mocked_stack.py` | Mocked | Fake test configs | Yes |
-| **Integration** | `test_*_integration.py` | Real NOAA/USGS | Real configs | No (`--run-integration`) |
+| **Integration** | `test_*_integration.py` | Real external APIs | Real configs | No (`--run-integration`) |
 | **Browser Jinja** | `test_frontend_browser.py` | Mocked | Real templates/static assets | No (`--run-browser`) |
 | **React Browser Stack** | `test_react_stack_browser.py` | Mocked | Real FastAPI routes + built React app | No (`--run-browser`) |
 
@@ -471,7 +471,7 @@ The test suite uses a tiered strategy:
 
 ## Monitoring & Station Outages
 
-External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF) occasionally experience outages. The application handles these gracefully:
+External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute Ireland) occasionally experience outages. The application handles these gracefully:
 
 - **Health check (`/api/healthy`, alias `/api/health`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
 - **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, `age_seconds`, `consecutive_failures`, and the next scheduled fetch time. Historical temperature feeds also include year-level diagnostics for required, cached, missing, fetched, and failed years. Use this for granular monitoring and alerting.
@@ -501,6 +501,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [NOAA NDBC API](https://www.ndbc.noaa.gov/) (National Data Buoy Center) for buoy-based water temperature data
 - [USGS Water Data APIs](https://api.waterdata.usgs.gov/) (National Water Information System) for water temperature and river current data
 - [Channel Swimming and Piloting Federation](https://cspf.co.uk/sandettie-data) for Sandettie historical water temperature data sourced from the Met Office
+- [Marine Institute Ireland ERDDAP](https://erddap.marine.ie/erddap/index.html) for Irish tide prediction data
 - [FastAPI](https://fastapi.tiangolo.com/) for the web framework
 - [Matplotlib](https://matplotlib.org/) for data visualization
 - [Feather Icons](https://feathericons.com/) for UI icons

@@ -103,6 +103,18 @@ def test_historic_temp_plot_policy_defaults_and_sparse_overrides() -> None:
     )
 
 
+def test_cork_uses_marine_institute_kinsale_tides_without_temp_sources() -> None:
+    """Cork starts with approved tide source only; temp sources are still unset."""
+    cork = config.get("cor")
+
+    assert cork is not None
+    assert isinstance(cork.tide_source, config.MarineInstituteTideFeedConfig)
+    assert cork.tide_source.station_id == "Kinsale"
+    assert cork.tide_source.height_offset_m == pytest.approx(2.01)
+    assert cork.live_temp_source is None
+    assert cork.historic_temp_source is None
+
+
 def configured_composite_feeds() -> list[CompositeFeed]:
     """Build configured composite feeds whose combine output owns schema shape."""
     feeds: list[CompositeFeed] = []

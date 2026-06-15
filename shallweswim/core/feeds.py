@@ -22,10 +22,11 @@ from shallweswim import config as config_lib
 from shallweswim import dataframe_models as df_models
 from shallweswim import harmonic_tides
 from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempStatus
-from shallweswim.clients import coops, cspf, ndbc, nwis
+from shallweswim.clients import coops, cspf, marine_institute, ndbc, nwis
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.cspf import CspfApi
+from shallweswim.clients.marine_institute import MarineInstituteApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
 
@@ -784,6 +785,31 @@ class LocalHarmonicTidesFeed(Feed):
         return _convert_tide_predictions_to_feet(df, model.height_units)
 
 
+class MarineInstituteTidesFeed(Feed):
+    """Feed for Marine Institute Ireland tide predictions."""
+
+    feed_config: config_lib.MarineInstituteTideFeedConfig  # type: ignore[assignment]
+
+    @property
+    def data_model(self) -> type[DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return df_models.TidePredictionDataModel  # type: ignore[return-value]
+
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+        """Fetch tide predictions from Marine Institute Ireland ERDDAP."""
+        try:
+            marine_client: MarineInstituteApi = clients["marine_institute"]  # type: ignore
+            return await marine_client.tides(
+                station_id=self.feed_config.station_id,
+                timezone=self.location_config.timezone,
+                height_offset_m=self.feed_config.height_offset_m,
+                location_code=self.location_config.code,
+            )
+        except marine_institute.MarineInstituteApiError as e:
+            self.log(f"Marine Institute tide fetch error: {e}", logging.WARNING)
+            raise
+
+
 def _convert_tide_predictions_to_feet(
     tides: pd.DataFrame, source_units: str
 ) -> pd.DataFrame:
@@ -1169,6 +1195,12 @@ def create_tide_feed(
         )
     if isinstance(tide_config, config_lib.LocalHarmonicTideFeedConfig):
         return LocalHarmonicTidesFeed(
+            location_config=location_config,
+            feed_config=tide_config,
+            expiration_interval=expiration_interval,
+        )
+    if isinstance(tide_config, config_lib.MarineInstituteTideFeedConfig):
+        return MarineInstituteTidesFeed(
             location_config=location_config,
             feed_config=tide_config,
             expiration_interval=expiration_interval,

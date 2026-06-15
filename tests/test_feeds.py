@@ -29,6 +29,7 @@ from shallweswim.clients.base import (
 )
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.cspf import CspfApi
+from shallweswim.clients.irish_lights import IrishLightsApi
 from shallweswim.clients.marine_institute import MarineInstituteApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
@@ -47,6 +48,7 @@ from shallweswim.feeds import (
     Feed,
     HistoricalTempsFeed,
     HistoricalTempsIncompleteError,
+    IrishLightsTempFeed,
     LocalHarmonicTidesFeed,
     MarineInstituteTidesFeed,
     MultiStationCurrentsFeed,
@@ -173,6 +175,7 @@ def mock_clients() -> dict[str, BaseApiClient]:
     return {
         "coops": MagicMock(spec=CoopsApi),
         "cspf": MagicMock(spec=CspfApi),
+        "irish_lights": MagicMock(spec=IrishLightsApi),
         "marine_institute": MagicMock(spec=MarineInstituteApi),
         "ndbc": MagicMock(spec=NdbcApi),
         "nwis": MagicMock(spec=NwisApi),
@@ -1401,6 +1404,88 @@ def test_create_temp_feed_requires_cspf_client(
         create_temp_feed(
             location_config=location_config,
             temp_config=config_lib.CspfTempFeedConfig(name="Sandettie Lightship"),
+            clients={},
+        )
+
+
+class TestIrishLightsTempFeed:
+    """Tests for the Irish Lights temperature feed."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_calls_irish_lights_client(
+        self,
+        location_config: config_lib.LocationConfig,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """Irish Lights temp feed calls the configured MetOcean buoy."""
+        temp_config = config_lib.IrishLightsTempFeedConfig(
+            mmsi="992501100",
+            name="Irish Lights Cork Buoy",
+            min_valid_temp_c=1.0,
+            max_valid_temp_c=20.0,
+        )
+        start = datetime.datetime(2026, 6, 15)
+        end = datetime.datetime(2026, 6, 16)
+        expected = pd.DataFrame(
+            {"water_temp": [55.4]},
+            index=pd.DatetimeIndex([datetime.datetime(2026, 6, 15, 1)], name="time"),
+        )
+        mock_client = cast(IrishLightsApi, mock_clients["irish_lights"])
+        cast(MagicMock, mock_client.water_temperature).return_value = expected
+
+        feed = IrishLightsTempFeed(
+            location_config=location_config,
+            feed_config=temp_config,
+            start=start,
+            end=end,
+            expiration_interval=None,
+        )
+
+        result = await feed._fetch(clients=mock_clients)
+
+        assert result is expected
+        cast(MagicMock, mock_client.water_temperature).assert_called_once_with(
+            mmsi="992501100",
+            begin_date=start,
+            end_date=end,
+            timezone=location_config.timezone,
+            location_code=location_config.code,
+            min_valid_temp_c=1.0,
+            max_valid_temp_c=20.0,
+        )
+
+
+def test_create_temp_feed_supports_irish_lights_source(
+    location_config: config_lib.LocationConfig,
+    mock_clients: dict[str, BaseApiClient],
+) -> None:
+    """Temperature feed factory supports Irish Lights source configs."""
+    temp_config = config_lib.IrishLightsTempFeedConfig(
+        mmsi="992501100",
+        name="Irish Lights Cork Buoy",
+    )
+
+    feed = create_temp_feed(
+        location_config=location_config,
+        temp_config=temp_config,
+        clients=mock_clients,
+    )
+
+    assert isinstance(feed, IrishLightsTempFeed)
+    assert feed.feed_config is temp_config
+
+
+def test_create_temp_feed_requires_irish_lights_client(
+    location_config: config_lib.LocationConfig,
+) -> None:
+    """Irish Lights source configs require the Irish Lights client."""
+    with pytest.raises(TypeError, match="Irish Lights client not found"):
+        create_temp_feed(
+            location_config=location_config,
+            temp_config=config_lib.IrishLightsTempFeedConfig(
+                mmsi="992501100",
+                name="Irish Lights Cork Buoy",
+            ),
             clients={},
         )
 

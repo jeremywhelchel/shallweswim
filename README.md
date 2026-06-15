@@ -6,7 +6,7 @@
 
 **A web application that helps open water swimmers make informed decisions about swim conditions.**
 
-[shallweswim.today](https://shallweswim.today) aggregates real-time tide, current, and temperature data from government APIs (NOAA, USGS) for popular open water swimming locations:
+[shallweswim.today](https://shallweswim.today) aggregates tide, current, and temperature data from public coastal and inland-water sources for popular open water swimming locations:
 
 - **New York** - Coney Island / Brighton Beach
 - **San Diego** - La Jolla Cove
@@ -16,11 +16,13 @@
 - **Austin** - Barton Springs
 - **Boston** - L Street Beach
 - **Seattle** - Alki Beach
+- **Dover** - Swimmer’s Beach
+- **Cork** - Sandycove
 
 ## Features
 
-- **Real-time conditions** from NOAA CO-OPS, NOAA NDBC, and USGS NWIS APIs,
-  with CSPF Sandettie pages used for Dover historical water temperature
+- **Current conditions and historical trends** from NOAA CO-OPS, NOAA NDBC,
+  USGS NWIS, Marine Institute Ireland, Irish Lights, and CSPF sources
 - **Tide predictions** with high/low tide times, heights, and estimated tide state
 - **Current velocity** data with flood/ebb/slack phase, strength, trend, and absolute speed
 - **Water temperature trends** (48-hour, 2-month, and multi-year)
@@ -256,7 +258,7 @@ uv run pytest --cov=shallweswim
 uv run pytest --cov=shallweswim --cov-report=html
 ```
 
-Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute Ireland) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser tests are also opt-in; they use Playwright to run a real Chromium browser and are skipped unless `--run-browser` is passed.
+Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute Ireland, Irish Lights) and may occasionally fail if services are experiencing issues or data is temporarily unavailable. Browser tests are also opt-in; they use Playwright to run a real Chromium browser and are skipped unless `--run-browser` is passed.
 
 #### Optional Browser Tests
 
@@ -363,8 +365,8 @@ chart generation, prints counts by visual artifact stage and year, and writes:
   historical plot
 
 Use `--start-year` and `--end-year` to narrow a tuning run. Because this command
-hits NOAA/USGS/CSPF directly, results can change as upstream station data
-changes.
+hits configured external temperature sources directly, results can change as
+upstream station data changes.
 
 #### Debugging NDBC Temperature Fetches
 
@@ -426,6 +428,23 @@ reports per-year row counts, date bounds, failures, and elapsed time. The client
 uses monthly CSPF pages first because they are denser than annual summaries, and
 falls back to an annual page only when monthly pages have no data.
 
+#### Debugging Irish Lights Temperature Fetches
+
+Use the Irish Lights debug script to exercise Cork/Sandycove buoy temperature
+fetches without starting the full service:
+
+```bash
+uv run python -m shallweswim.scripts.debug_irish_lights_fetch --location cor
+uv run python -m shallweswim.scripts.debug_irish_lights_fetch --location cor \
+  --start-year 2024 --end-year 2026
+```
+
+The command fetches the same Irish Lights MetOcean endpoint as the runtime
+client and reports row counts, date bounds, Fahrenheit min/max values, failures,
+and elapsed time. Cork uses the Irish Lights Cork Buoy as a shared live and
+historical temperature source, with source-specific filtering for implausible
+water-temperature outliers.
+
 #### Deriving Local Harmonic Tide Models
 
 For locations where a suitable tide prediction API is unavailable, local
@@ -471,7 +490,7 @@ The test suite uses a tiered strategy:
 
 ## Monitoring & Station Outages
 
-External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute Ireland) occasionally experience outages. The application handles these gracefully:
+External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute Ireland, Irish Lights) occasionally experience outages. The application handles these gracefully:
 
 - **Health check (`/api/healthy`, alias `/api/health`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
 - **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, `age_seconds`, `consecutive_failures`, and the next scheduled fetch time. Historical temperature feeds also include year-level diagnostics for required, cached, missing, fetched, and failed years. Use this for granular monitoring and alerting.
@@ -502,6 +521,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [USGS Water Data APIs](https://api.waterdata.usgs.gov/) (National Water Information System) for water temperature and river current data
 - [Channel Swimming and Piloting Federation](https://cspf.co.uk/sandettie-data) for Sandettie historical water temperature data sourced from the Met Office
 - [Marine Institute Ireland ERDDAP](https://erddap.marine.ie/erddap/index.html) for Irish tide prediction data
+- [Irish Lights MetOcean](https://www.irishlights.ie/technology-data-services/metocean-charts.aspx) for Irish buoy water temperature data
 - [FastAPI](https://fastapi.tiangolo.com/) for the web framework
 - [Matplotlib](https://matplotlib.org/) for data visualization
 - [Feather Icons](https://feathericons.com/) for UI icons

@@ -103,16 +103,20 @@ def test_historic_temp_plot_policy_defaults_and_sparse_overrides() -> None:
     )
 
 
-def test_cork_uses_marine_institute_kinsale_tides_without_temp_sources() -> None:
-    """Cork starts with approved tide source only; temp sources are still unset."""
+def test_cork_uses_approved_irish_sources() -> None:
+    """Cork uses approved tide and temperature source configs."""
     cork = config.get("cor")
 
     assert cork is not None
     assert isinstance(cork.tide_source, config.MarineInstituteTideFeedConfig)
     assert cork.tide_source.station_id == "Kinsale"
     assert cork.tide_source.height_offset_m == pytest.approx(2.01)
-    assert cork.live_temp_source is None
-    assert cork.historic_temp_source is None
+    assert isinstance(cork.live_temp_source, config.IrishLightsTempFeedConfig)
+    assert cork.live_temp_source is cork.historic_temp_source
+    assert cork.live_temp_source.mmsi == "992501100"
+    assert cork.live_temp_source.start_year == 2024
+    assert "about 19 km east of Sandycove" in cork.live_temp_source.citation
+    assert [row.label for row in cork.temperature_source_citations] == ["Temperature"]
 
 
 def configured_composite_feeds() -> list[CompositeFeed]:

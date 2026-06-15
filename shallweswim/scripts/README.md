@@ -3,6 +3,26 @@
 One-off operational and data-investigation scripts live here. Run them from the
 repository root with `uv run python -m shallweswim.scripts.<module>`.
 
+## Irish Lights Temperature Fetches
+
+`debug_irish_lights_fetch.py` exercises the Irish Lights MetOcean client used by
+Cork/Sandycove temperature feeds.
+
+```bash
+# Recent Cork buoy observations.
+uv run python -m shallweswim.scripts.debug_irish_lights_fetch --location cor
+
+# Year-by-year historical fetch checks.
+uv run python -m shallweswim.scripts.debug_irish_lights_fetch \
+  --location cor \
+  --start-year 2024 \
+  --end-year 2026
+```
+
+The script reports row counts, local timestamp bounds, Fahrenheit min/max
+values, failures, and elapsed time. It uses the same configured MMSI and
+source-specific plausible Celsius bounds as the runtime feeds.
+
 ## Dover Harmonic Tide Fitting
 
 `derive_harmonic_tide_model.py` is an offline investigation/build script for

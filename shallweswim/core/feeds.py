@@ -22,10 +22,11 @@ from shallweswim import config as config_lib
 from shallweswim import dataframe_models as df_models
 from shallweswim import harmonic_tides
 from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempStatus
-from shallweswim.clients import coops, cspf, marine_institute, ndbc, nwis
+from shallweswim.clients import coops, cspf, irish_lights, marine_institute, ndbc, nwis
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.cspf import CspfApi
+from shallweswim.clients.irish_lights import IrishLightsApi
 from shallweswim.clients.marine_institute import MarineInstituteApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
@@ -702,6 +703,46 @@ class CspfTempFeed(TempFeed):
             raise
 
 
+class IrishLightsTempFeed(TempFeed):
+    """Irish Lights MetOcean buoy temperature feed."""
+
+    feed_config: config_lib.IrishLightsTempFeedConfig  # type: ignore[assignment]
+    interval: Literal["h", "6-min"] = "h"
+
+    @property
+    def data_model(self) -> type[DataFrameModel]:
+        """The Pandera data model class used to validate the fetched data."""
+        return df_models.WaterTempDataModel  # type: ignore[return-value]
+
+    async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+        """Fetch Irish Lights buoy water-temperature observations."""
+        begin_date = self.start or (
+            datetime.datetime.today() - datetime.timedelta(days=8)
+        )
+        end_date = self.end or datetime.datetime.today()
+
+        try:
+            irish_lights_client: IrishLightsApi = clients["irish_lights"]  # type: ignore
+            temp_df = await irish_lights_client.water_temperature(
+                mmsi=self.feed_config.mmsi,
+                begin_date=begin_date,
+                end_date=end_date,
+                timezone=self.location_config.timezone,
+                location_code=self.location_config.code,
+                min_valid_temp_c=self.feed_config.min_valid_temp_c,
+                max_valid_temp_c=self.feed_config.max_valid_temp_c,
+            )
+
+            self.log(
+                f"Successfully fetched {len(temp_df)} temperature readings from Irish Lights MMSI {self.feed_config.mmsi}",
+                logging.INFO,
+            )
+            return temp_df
+        except irish_lights.IrishLightsApiError as e:
+            self.log(f"Error fetching Irish Lights data: {e}", logging.WARNING)
+            raise
+
+
 class CoopsTidesFeed(Feed):
     """Feed for NOAA CO-OPS tide predictions.
 
@@ -1094,6 +1135,20 @@ def create_temp_feed(
             )
 
         return CspfTempFeed(
+            location_config=location_config,
+            feed_config=temp_config,
+            start=start,
+            end=end,
+            expiration_interval=expiration_interval,
+        )
+    elif isinstance(temp_config, config_lib.IrishLightsTempFeedConfig):
+        irish_lights_client = clients.get("irish_lights")
+        if not isinstance(irish_lights_client, irish_lights.IrishLightsApi):
+            raise TypeError(
+                "Irish Lights client not found or incorrect type in provided clients dict"
+            )
+
+        return IrishLightsTempFeed(
             location_config=location_config,
             feed_config=temp_config,
             start=start,

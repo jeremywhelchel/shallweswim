@@ -666,6 +666,53 @@ class CspfTempFeedConfig(TempFeedConfig, frozen=True):
         return f"cspf:temperature:{self.station_slug}"
 
 
+class IrishLightsTempFeedConfig(TempFeedConfig, frozen=True):
+    """Irish Lights MetOcean temperature source configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mmsi: Annotated[
+        str,
+        Field(
+            pattern=r"^\d+$",
+            description="Irish Lights buoy MMSI identifier.",
+        ),
+    ]
+    source_url: Annotated[
+        str,
+        Field(description="Human-facing Irish Lights MetOcean source URL."),
+    ] = "https://www.irishlights.ie/technology-data-services/metocean-charts.aspx"
+    distance_description: Annotated[
+        str | None,
+        Field(description="Short note describing source distance from swim location."),
+    ] = None
+    min_valid_temp_c: Annotated[
+        float,
+        Field(description="Minimum plausible water temperature in Celsius."),
+    ] = 0.0
+    max_valid_temp_c: Annotated[
+        float,
+        Field(description="Maximum plausible water temperature in Celsius."),
+    ] = 25.0
+
+    @property
+    def citation(self) -> str:
+        """Return an HTML snippet with Irish Lights citation information."""
+        source_name = self.name or f"Irish Lights buoy {self.mmsi}"
+        distance_note = (
+            f", {self.distance_description}" if self.distance_description else ""
+        )
+        return (
+            f'Water temperature data provided by <a href="{self.source_url}" '
+            f"{EXTERNAL_LINK_HTML_ATTRS}>{source_name}</a>{distance_note}."
+        )
+
+    @property
+    def citation_key(self) -> str:
+        """Return a stable Irish Lights buoy identity."""
+        return f"irish-lights:temperature:{self.mmsi}"
+
+
 class PresentationLinkConfig(BaseModel, frozen=True):
     """Stable presentation link configured for the frontend app."""
 
@@ -1390,6 +1437,14 @@ _CONFIG_LIST = [
         longitude=-8.523565,
         timezone=pytz.timezone("Europe/Dublin"),
         default_temperature_unit="C",
+        **_shared_temp_sources(
+            IrishLightsTempFeedConfig(
+                mmsi="992501100",
+                name="Irish Lights Cork Buoy",
+                distance_description="about 19 km east of Sandycove",
+                start_year=2024,
+            )
+        ),
         tide_source=MarineInstituteTideFeedConfig(
             station_id="Kinsale",
             # Marine Institute high/low summaries are relative to OD Malin.

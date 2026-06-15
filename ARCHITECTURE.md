@@ -27,6 +27,7 @@ shallweswim/
 │   ├── base.py          # BaseApiClient with retry logic, error hierarchy
 │   ├── coops.py         # NOAA CO-OPS (tides, currents, coastal temps)
 │   ├── cspf.py          # CSPF Sandettie historical temperatures
+│   ├── irish_lights.py  # Irish Lights MetOcean buoy temperatures
 │   ├── marine_institute.py # Marine Institute Ireland ERDDAP
 │   ├── ndbc.py          # NOAA NDBC (buoy temperatures)
 │   └── nwis.py          # USGS NWIS (river temps, discharge)
@@ -263,7 +264,7 @@ Two error types for data availability, at different layers:
 
 ## 5. Station Outage Handling
 
-External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute Ireland) may have temporary outages. The application handles these gracefully through principled error handling.
+External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute Ireland, Irish Lights) may have temporary outages. The application handles these gracefully through principled error handling.
 
 ### Feed Scheduling
 
@@ -370,6 +371,12 @@ blocking async fanout at higher layers:
   Fahrenheit `water_temp` column, uses monthly pages as the primary source
   because they are denser than annual summaries, and falls back to annual pages
   only when monthly pages have no data.
+- The Irish Lights client fetches MetOcean buoy observations for configured
+  Irish temperature sources. It uses the public MetOcean endpoint constants in
+  `shallweswim/clients/irish_lights.py`, normalizes UTC hourly observations to
+  the location-local naive index, converts Celsius source values to the internal
+  Fahrenheit `water_temp` column, and applies source-configured plausible
+  Celsius bounds before publishing rows.
 - The Marine Institute client is currently tide-only. It keeps ERDDAP tabledap
   endpoint constants in `shallweswim/clients/marine_institute.py`, fetches the
   `IMI_TidePrediction_HighLow` summary series for configured stations such as
@@ -462,15 +469,20 @@ All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIM
   links and maps empty FeatureCollections to `StationUnavailableError`. If
   `USGS_WATERDATA_API_KEY` is set, the client sends it as an `X-Api-Key` header
   on every page request; otherwise requests remain unauthenticated.
-- **Marine Institute**: Uses direct aiohttp ERDDAP requests with a process-local
-  request gate capped by `MARINE_INSTITUTE_MAX_CONCURRENT_REQUESTS`. The tide
-  high/low summary endpoint is a constant in
-  `shallweswim/clients/marine_institute.py`.
   `shallweswim.scripts.debug_nwis_fetch` is the operational validation tool for
   configured NWIS request counts, response statuses, retry behavior, and
   rate-limit headers. Current configured sources did not produce live pagination
   during migration validation, so pagination remains unit-tested rather than
   live-proven against production station configs.
+- **Marine Institute**: Uses direct aiohttp ERDDAP requests with a process-local
+  request gate capped by `MARINE_INSTITUTE_MAX_CONCURRENT_REQUESTS`. The tide
+  high/low summary endpoint is a constant in
+  `shallweswim/clients/marine_institute.py`.
+- **Irish Lights**: Uses direct aiohttp MetOcean JSON requests with a
+  process-local request gate capped by `IRISH_LIGHTS_MAX_CONCURRENT_REQUESTS`.
+  The MetOcean endpoint URL, public access token, default plausible Celsius
+  bounds, and concurrency limit are named constants in
+  `shallweswim/clients/irish_lights.py`.
 
 Timeouts raise `RetryableClientError` and are automatically retried by `request_with_retry()`.
 

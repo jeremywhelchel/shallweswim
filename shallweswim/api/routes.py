@@ -11,7 +11,6 @@ import html
 import io
 import logging
 import urllib.parse
-import warnings
 from typing import Literal
 
 # Third-party imports
@@ -107,16 +106,6 @@ APP_THEME_COLOR = "#000099"
 APP_BACKGROUND_COLOR = "#000099"
 
 GITHUB_SOURCE_URL = "https://github.com/jeremywhelchel/shallweswim"
-
-# Filter the specific Pydantic serialization warning globally for production
-# Note: Tests might handle this separately (e.g., via pytest markers/config)
-warnings.filterwarnings(
-    "ignore",
-    message=r"Pydantic serializer warnings:.*",
-    category=UserWarning,
-    # Optionally target the specific module if needed, but keeping broad for now
-    # module="pydantic.type_adapter"
-)
 
 
 def api_current_range(current_range: types.CurrentRange | None) -> CurrentRange | None:

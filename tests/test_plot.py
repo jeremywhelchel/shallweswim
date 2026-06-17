@@ -3,6 +3,7 @@
 import datetime
 import io
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -130,6 +131,25 @@ def test_historic_temperature_plot_frame_preserves_long_gaps() -> None:
     plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
 
     assert plot_frame.loc[long_gap, 2025].isna().all()
+
+
+def test_historic_temperature_plot_frame_ignores_empty_cross_year_rows() -> None:
+    index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
+    water_temp_by_year = pd.DataFrame(
+        {
+            2024: [np.nan] * len(index),
+            2025: [60.0] * len(index),
+        },
+        index=index,
+    )
+    empty_rows = pd.date_range("2020-01-15", periods=96, freq="h")
+    water_temp_by_year.loc[empty_rows, 2025] = np.nan
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
+
+    assert plot_frame.loc[empty_rows].isna().all().all()
 
 
 def test_historic_temperature_plot_frame_suppresses_isolated_spike_artifacts() -> None:

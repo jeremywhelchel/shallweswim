@@ -358,7 +358,11 @@ def _historic_temperature_plot_cross_year_artifact_mask(
     smoothed_frame: pd.DataFrame,
     policy: HistoricTempPlotPolicy = DEFAULT_HISTORIC_TEMP_PLOT_POLICY,
 ) -> pd.DataFrame:
-    seasonal_median = smoothed_frame.median(axis=1, skipna=True)
+    row_has_data = smoothed_frame.notna().any(axis=1)
+    seasonal_median = pd.Series(np.nan, index=smoothed_frame.index, dtype=float)
+    seasonal_median.loc[row_has_data] = smoothed_frame.loc[row_has_data].median(
+        axis=1, skipna=True
+    )
     mask = (
         smoothed_frame.sub(seasonal_median, axis=0).abs()
         > policy.max_cross_year_residual_f

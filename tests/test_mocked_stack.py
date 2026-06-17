@@ -16,7 +16,7 @@ import asyncio
 import datetime
 import math
 from collections.abc import AsyncGenerator
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest.mock import patch
 
@@ -240,7 +240,7 @@ async def mock_api_client() -> AsyncGenerator[TestClient]:
     with patch("shallweswim.config.get", _mock_config_get):
         app = create_test_app()
         app.state.data_managers = {}
-        app.state.process_pool = ProcessPoolExecutor()
+        app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
             app.state.http_session = session
@@ -265,7 +265,7 @@ async def mock_api_client() -> AsyncGenerator[TestClient]:
             await manager.wait_until_ready(timeout=10.0)
 
             # Wait for fire-and-forget plot generation to complete.
-            # Plots are submitted to the process pool after feeds load
+            # Plots are submitted to the configured executor after feeds load
             # and collected on subsequent loop iterations.
             for _ in range(60):
                 has_live = manager.get_plot(feeds.PLOT_LIVE_TEMPS) is not None
@@ -298,7 +298,7 @@ async def mock_api_client_with_controls() -> AsyncGenerator[
     with patch("shallweswim.config.get", _mock_config_get):
         app = create_test_app()
         app.state.data_managers = {}
-        app.state.process_pool = ProcessPoolExecutor()
+        app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
             app.state.http_session = session
@@ -344,7 +344,7 @@ async def mock_api_client_no_wait() -> AsyncGenerator[
     with patch("shallweswim.config.get", _mock_config_get):
         app = create_test_app()
         app.state.data_managers = {}
-        app.state.process_pool = ProcessPoolExecutor()
+        app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
             app.state.http_session = session
@@ -696,7 +696,7 @@ async def test_recovery_after_failure() -> None:
     with patch("shallweswim.config.get", _mock_config_get):
         app = create_test_app()
         app.state.data_managers = {}
-        app.state.process_pool = ProcessPoolExecutor()
+        app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
             app.state.http_session = session
@@ -857,7 +857,7 @@ async def test_currents_endpoint_observation_source_returns_404() -> None:
     with patch("shallweswim.config.get", _mock_config_get):
         app = create_test_app()
         app.state.data_managers = {}
-        app.state.process_pool = ProcessPoolExecutor()
+        app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
             app.state.http_session = session
@@ -898,7 +898,7 @@ async def test_currents_endpoint_prediction_no_charts_returns_null_charts() -> N
     with patch("shallweswim.config.get", _mock_config_get):
         app = create_test_app()
         app.state.data_managers = {}
-        app.state.process_pool = ProcessPoolExecutor()
+        app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
             app.state.http_session = session

@@ -8,7 +8,7 @@ and provides the necessary data for plotting and presentation.
 import asyncio
 import datetime
 import logging
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Executor
 from typing import Any
 
 # Third-party imports
@@ -50,10 +50,10 @@ def _generate_historic_temp_plots(*args, **kwargs):  # type: ignore[no-untyped-d
 # Default year to start historical temperature data collection
 DEFAULT_HISTORIC_TEMPS_START_YEAR = 2011
 
-# Hard timeout for plot generation in ProcessPoolExecutor (seconds).
+# Hard timeout for plot generation in the configured executor (seconds).
 # If a worker hasn't finished after this long, we assume it's hung and
-# drop tracking so the location can retry. The orphaned worker process
-# cannot be killed (Python limitation) but the pool continues working.
+# drop tracking so the location can retry. The underlying task may keep
+# running, but the executor continues working.
 PLOT_HARD_TIMEOUT = 300.0
 
 # Data expiration periods
@@ -83,14 +83,16 @@ class LocationDataManager:
         self,
         config: config_lib.LocationConfig,
         clients: dict[str, BaseApiClient],
-        process_pool: ProcessPoolExecutor,  # For CPU-bound tasks like plotting
+        process_pool: Executor,
     ):
         """Initialize the Data manager for a specific location.
 
         Args:
             config: Location configuration object.
             clients: Dictionary of initialized API client instances.
-            process_pool: A ProcessPoolExecutor for offloading CPU-bound work.
+            process_pool: Executor for offloading plot generation. Production uses
+                a ProcessPoolExecutor for CPU-bound work; tests may use another
+                executor implementation.
         """
         self.config = config
         self.clients = clients
@@ -113,7 +115,7 @@ class LocationDataManager:
         self._plots: dict[feeds.PlotName, bytes] = {}
 
         # Track in-flight plot futures to avoid submitting duplicate tasks
-        # to the process pool while previous ones are still running.
+        # to the executor while previous ones are still running.
         # Stores (future, submitted_at) so we can detect hung workers.
         self._pending_plot_futures: dict[
             feeds.FeedName, tuple[asyncio.Future[Any], datetime.datetime]
@@ -546,7 +548,7 @@ class LocationDataManager:
         """Check if a plot needs (re)generation.
 
         A plot needs generation if:
-        - It's not already in-flight in the process pool
+        - It's not already in-flight in the executor
         - AND either: any plot key is missing, OR feed data is newer than the plot
 
         Existing plots continue to be served while regenerating.
@@ -573,10 +575,10 @@ class LocationDataManager:
         when missing (first run or previous failure) or when feed data is newer
         than the current plot. Existing plots continue to be served while stale.
 
-        This method never awaits process pool results. It checks for completed
+        This method never awaits executor results. It checks for completed
         futures from previous iterations and submits new work if needed.
-        ProcessPoolExecutor futures cannot be cancelled (Python limitation),
-        so we never use asyncio.wait_for/gather on them — instead we poll
+        Running executor futures may not be cancellable, so we never use
+        asyncio.wait_for/gather on them — instead we poll
         future.done() each loop tick.
         """
         self._collect_completed_plots()
@@ -589,7 +591,7 @@ class LocationDataManager:
         - Done with result: store plot bytes, update timestamp, remove from tracking
         - Done with exception: log error, remove from tracking
         - Still running past PLOT_HARD_TIMEOUT: log error, remove from tracking
-          (orphaned worker cannot be killed but location can retry)
+          (the underlying task may keep running, but the location can retry)
         - Still running within timeout: leave in tracking (blocks resubmission)
         """
         now = utc_now()
@@ -629,7 +631,7 @@ class LocationDataManager:
             del self._pending_plot_futures[feed_name]
 
     def _submit_plot_tasks(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Submit new plot generation tasks to the process pool if needed.
+        """Submit new plot generation tasks to the executor if needed.
 
         Checks each plot type and submits work for any that need regeneration.
         Returns immediately — results are collected by _collect_completed_plots()

@@ -20,13 +20,19 @@
     "test:e2e": "playwright test --grep-invert @smoke --project=mobile-chromium && playwright test --grep @desktop --project=desktop-chromium",
     "check:api": "corepack pnpm@10.18.3 export-openapi && corepack pnpm@10.18.3 generate-api && git diff --exit-code openapi.json src/api/generated.ts"
   },
+  "pnpm": {
+    "overrides": {
+      "js-yaml": "4.2.0",
+      "ws": "8.21.0"
+    }
+  },
   "dependencies": {
     "@tanstack/react-query": "^5.90.0",
     "openapi-fetch": "^0.15.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-feather": "^2.0.10",
-    "react-router-dom": "^7.9.0"
+    "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.6",
@@ -39,8 +45,8 @@
     "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.4.21",
     "esbuild": "0.28.1",
-    "jsdom": "^27.2.0",
-    "openapi-typescript": "^7.10.1",
+    "jsdom": "^27.4.0",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.9.3",

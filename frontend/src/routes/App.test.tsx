@@ -625,7 +625,7 @@ test("omits temperature difference caveat when station and swim spot match", asy
     locationCode: "loc",
   });
 
-  expect(await screen.findByText("68°F")).toBeVisible();
+  expect(await screen.findByText("68.0°F")).toBeVisible();
   expect(
     screen.queryByText(/Water temperature at Barton Springs may differ/),
   ).toBeNull();

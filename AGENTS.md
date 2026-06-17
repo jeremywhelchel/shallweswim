@@ -133,5 +133,5 @@ Required `.env` variables: `CLOUDSDK_CORE_PROJECT`, `GOOGLE_APPLICATION_CREDENTI
 ## Before Implementing
 
 - Check existing patterns in similar code before writing new code
-- New locations: config/locations.py → core/manager.py → api/routes.py → main.py → tests
+- New locations: start with `NEW_LOCATION.md`. If existing source clients are enough, keep the change config-focused in `config/locations.py`; do not edit route/main/feed code or add tests that duplicate ordinary config values. If a new upstream client/feed is needed, follow `NEW_DATA_FEED.md` first.
 - CPU-bound work (plotting): Must use process pool, not async

@@ -199,6 +199,8 @@ Tide source contract:
 - Use Pydantic models for configuration schemas (e.g., `LocationConfig`, `BaseFeedConfig`).
 - Avoid hardcoding constants in logic files; move them to `config/` or module-level constants if they are "magic numbers".
 - Every `LocationConfig` must explicitly set `default_temperature_unit`; do not infer it from geography or rely on hidden defaults.
+- New location work should start with `NEW_LOCATION.md`. If the location needs
+  a new upstream source client or feed type, use `NEW_DATA_FEED.md` first.
 
 ## 2. Coding Standards
 

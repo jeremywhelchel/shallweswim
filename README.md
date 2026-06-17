@@ -19,6 +19,10 @@
 - **Dover** - Swimmer’s Beach
 - **Cork** - Sandycove
 
+Want to see another swim spot here? Contributions are welcome. Start with
+[Adding a New Location](NEW_LOCATION.md), which explains what local knowledge
+and data sources make a location useful.
+
 ## Features
 
 - **Current conditions and historical trends** from NOAA CO-OPS, NOAA NDBC,
@@ -67,6 +71,10 @@ Background Task → Derived Data Precompute → Update Derived Cache
 Failed fetches leave data stale until the next successful refresh.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component documentation, coding standards, and error handling patterns.
+
+To add a new swim spot, start with [NEW_LOCATION.md](NEW_LOCATION.md). If the
+spot needs an unsupported upstream API or parser, use
+[NEW_DATA_FEED.md](NEW_DATA_FEED.md) before wiring it into production config.
 
 ## Getting Started
 

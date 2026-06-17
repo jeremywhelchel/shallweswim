@@ -477,6 +477,23 @@ class AppLocationMetadata(BaseModel):
     default_temperature_unit: TemperatureUnit = Field(
         ..., description="Default temperature unit for this location's display"
     )
+    temperature_note: str | None = Field(
+        None,
+        description="Optional short note about local temperature source context.",
+    )
+    temperature_source_at_swim_location: bool = Field(
+        ...,
+        description=(
+            "Whether the temperature source should be treated as measuring the "
+            "swim location directly for presentation caveats."
+        ),
+    )
+    water_movement_note: str | None = Field(
+        None,
+        description=(
+            "Optional short note about local tide or current prediction context."
+        ),
+    )
     features: AppFeatureFlags = Field(..., description="Enabled presentation features")
     temperature_plots: AppTemperaturePlotConfig = Field(
         ..., description="Enabled temperature plot capabilities"

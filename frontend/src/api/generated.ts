@@ -836,13 +836,28 @@ export interface components {
              * @description URL for the swimming spot
              */
             swim_location_link: string;
+            /**
+             * Temperature Note
+             * @description Optional short note about local temperature source context.
+             */
+            temperature_note?: string | null;
             /** @description Enabled temperature plot capabilities */
             temperature_plots: components["schemas"]["AppTemperaturePlotConfig"];
+            /**
+             * Temperature Source At Swim Location
+             * @description Whether the temperature source should be treated as measuring the swim location directly for presentation caveats.
+             */
+            temperature_source_at_swim_location: boolean;
             /**
              * Timezone
              * @description IANA timezone name
              */
             timezone: string;
+            /**
+             * Water Movement Note
+             * @description Optional short note about local tide or current prediction context.
+             */
+            water_movement_note?: string | null;
         };
         /**
          * AppPresentationLink

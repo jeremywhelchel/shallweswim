@@ -523,6 +523,11 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 longitude=cfg.longitude,
                 timezone=timezone_name(cfg),
                 default_temperature_unit=cfg.default_temperature_unit,
+                temperature_note=cfg.presentation.temperature_note,
+                temperature_source_at_swim_location=(
+                    cfg.presentation.temperature_source_at_swim_location
+                ),
+                water_movement_note=cfg.presentation.water_movement_note,
                 features=AppFeatureFlags(
                     temperature=temp_enabled,
                     tides=tides_enabled,

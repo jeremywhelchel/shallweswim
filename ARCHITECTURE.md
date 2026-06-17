@@ -144,9 +144,10 @@ API/config ownership:
   static location metadata also exposed by `/api/locations` and compose it with
   app presentation configuration to avoid extra startup requests. It may include
   display labels, feature flags, water-movement planner/detail capabilities,
-  trusted citation HTML, and external embed configuration, but should not include
-  dynamic condition data, manifest metadata, station IDs, or feed internals
-  unless there is an explicit frontend need and approval.
+  trusted citation HTML, source caveats used for presentation, and external
+  embed configuration, but should not include dynamic condition data, manifest
+  metadata, station IDs, or feed internals unless there is an explicit frontend
+  need and approval.
 
 Temperature API contract:
 

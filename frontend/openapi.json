@@ -254,14 +254,43 @@
             "title": "Swim Location Link",
             "type": "string"
           },
+          "temperature_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional short note about local temperature source context.",
+            "title": "Temperature Note"
+          },
           "temperature_plots": {
             "$ref": "#/components/schemas/AppTemperaturePlotConfig",
             "description": "Enabled temperature plot capabilities"
+          },
+          "temperature_source_at_swim_location": {
+            "description": "Whether the temperature source should be treated as measuring the swim location directly for presentation caveats.",
+            "title": "Temperature Source At Swim Location",
+            "type": "boolean"
           },
           "timezone": {
             "description": "IANA timezone name",
             "title": "Timezone",
             "type": "string"
+          },
+          "water_movement_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional short note about local tide or current prediction context.",
+            "title": "Water Movement Note"
           }
         },
         "required": [
@@ -275,6 +304,7 @@
           "longitude",
           "timezone",
           "default_temperature_unit",
+          "temperature_source_at_swim_location",
           "features",
           "temperature_plots",
           "citations"

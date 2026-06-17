@@ -16,7 +16,7 @@ const bootstrapPayload = {
         code: "nyc",
         name: "New York",
         nav_label: "New York",
-        swim_location: "Grimaldo's Chair",
+        swim_location: "Grimaldo's Chair, Brighton Beach",
         swim_location_link: "https://example.com",
         description:
           "Coney Island Brighton Beach open water swimming conditions",
@@ -24,6 +24,11 @@ const bootstrapPayload = {
         longitude: -73.954,
         timezone: "US/Eastern",
         default_temperature_unit: "F",
+        temperature_note:
+          "The Battery is a station located at the southern tip of Manhattan, not at Brighton Beach.",
+        temperature_source_at_swim_location: false,
+        water_movement_note:
+          "Current predictions combine nearby channel stations rather than a sensor at the swim spot.",
         features: {
           temperature: true,
           tides: true,
@@ -144,7 +149,7 @@ const conditionsPayload = {
   location: {
     code: "nyc",
     name: "New York",
-    swim_location: "Grimaldo's Chair",
+    swim_location: "Grimaldo's Chair, Brighton Beach",
   },
   temperature: {
     timestamp: "2026-05-13T07:30:00-04:00",
@@ -402,7 +407,9 @@ test("restores the last selected location from local preferences", async ({
   });
   await gotoApp(page, "/");
 
-  await expect(page.getByText("Grimaldo's Chair")).toBeVisible();
+  await expect(
+    page.getByText("Grimaldo's Chair, Brighton Beach"),
+  ).toBeVisible();
   await expect(page.getByText("61.4°F")).toBeVisible();
   await expect
     .poll(async () =>

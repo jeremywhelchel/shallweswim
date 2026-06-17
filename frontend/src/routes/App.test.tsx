@@ -39,7 +39,7 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
         code: "nyc",
         name: "New York",
         nav_label: "New York, NY",
-        swim_location: "Grimaldo's Chair",
+        swim_location: "Grimaldo's Chair, Brighton Beach",
         swim_location_link: "https://example.com",
         description:
           "A mid-beach swimming spot at NYC's Brighton Beach, near Coney Island, used by local swimmers year-round.",
@@ -47,6 +47,11 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
         longitude: -73.954,
         timezone: "US/Eastern",
         default_temperature_unit: "F",
+        temperature_note:
+          "The Battery is a station located at the southern tip of Manhattan, not at Brighton Beach.",
+        temperature_source_at_swim_location: false,
+        water_movement_note:
+          "Current predictions combine nearby channel stations rather than a sensor at the swim spot.",
         features: {
           temperature: true,
           tides: true,
@@ -84,7 +89,7 @@ const conditionsPayload: components["schemas"]["LocationConditions"] = {
   location: {
     code: "nyc",
     name: "New York",
-    swim_location: "Grimaldo's Chair",
+    swim_location: "Grimaldo's Chair, Brighton Beach",
   },
   temperature: {
     timestamp: "2026-05-13T07:30:00-04:00",
@@ -267,6 +272,7 @@ function renderConditions(
         }}
         hasError={false}
         isLoading={false}
+        location={bootstrapPayload.locations.nyc}
         onSetTemperatureUnit={() => {}}
         temperatureUnit="F"
       />
@@ -306,7 +312,9 @@ test("updates the document title for the selected location", async () => {
   );
 
   await waitFor(() =>
-    expect(document.title).toBe(locationPageTitle("Grimaldo's Chair")),
+    expect(document.title).toBe(
+      locationPageTitle("Grimaldo's Chair, Brighton Beach"),
+    ),
   );
 
   view.rerender(
@@ -376,11 +384,13 @@ function syntheticLocation({
   code,
   features = {},
   integrations = {},
+  metadata = {},
   temperaturePlots = {},
 }: {
   code: string;
   features?: Partial<components["schemas"]["AppFeatureFlags"]>;
   integrations?: Partial<components["schemas"]["AppExternalIntegrations"]>;
+  metadata?: Partial<components["schemas"]["AppLocationMetadata"]>;
   temperaturePlots?: Partial<components["schemas"]["AppTemperaturePlotConfig"]>;
 }): components["schemas"]["AppBootstrapLocation"] {
   return {
@@ -423,6 +433,7 @@ function syntheticLocation({
           ? '<a href="https://example.com/currents">Current source</a>'
           : null,
       },
+      ...metadata,
     },
     integrations: {
       webcam: null,
@@ -450,10 +461,12 @@ function syntheticBootstrap(
 function syntheticConditions({
   code,
   current = null,
+  temperature = conditionsPayload.temperature,
   tides = null,
 }: {
   code: string;
   current?: components["schemas"]["CurrentInfo"] | null;
+  temperature?: components["schemas"]["TemperatureInfo"] | null;
   tides?: components["schemas"]["TideInfo"] | null;
 }): components["schemas"]["LocationConditions"] {
   return {
@@ -464,6 +477,7 @@ function syntheticConditions({
       swim_location: "Test Beach",
     },
     current,
+    temperature,
     tides,
   };
 }
@@ -474,10 +488,20 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   expect(
     await screen.findByRole("heading", { name: "shall we swim today?" }),
   ).toBeVisible();
-  expect(screen.getByText("Grimaldo's Chair")).toBeVisible();
+  expect(screen.getByText("Grimaldo's Chair, Brighton Beach")).toBeVisible();
   expect(
     screen.getByText(/A mid-beach swimming spot at NYC's Brighton Beach/),
   ).toBeVisible();
+  expect(
+    screen.getByText(
+      /Water temperature at Grimaldo's Chair, Brighton Beach may differ/,
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      /Temperature readings are best used directionally for recent trends/,
+    ),
+  ).toBeInTheDocument();
   expect(screen.getByText("61.4°F")).toBeVisible();
   expect(screen.getByRole("heading", { name: "Water Movement" })).toBeVisible();
   expect(screen.getByText("Predicted")).toBeVisible();
@@ -514,6 +538,11 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
     "rel",
     "noopener noreferrer",
   );
+  expect(
+    screen.getByText(
+      /The Battery is a station located at the southern tip of Manhattan/,
+    ),
+  ).toBeVisible();
   expect(
     screen.getByRole("link", { name: "NOAA CO-OPS Station NYH1905_12" }),
   ).toHaveAttribute("target", "_blank");
@@ -567,6 +596,126 @@ test("toggles water temperature units and persists the preference", async () => 
       window.localStorage.getItem("shallweswim.appPreferences") ?? "{}",
     ).temperatureUnit,
   ).toBe("C");
+});
+
+test("omits temperature difference caveat when station and swim spot match", async () => {
+  const location = syntheticLocation({
+    code: "loc",
+    features: {
+      temperature: true,
+    },
+    metadata: {
+      swim_location: "Barton Springs",
+      temperature_note: null,
+      temperature_source_at_swim_location: false,
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    conditions: syntheticConditions({
+      code: "loc",
+      temperature: {
+        timestamp: "2026-05-13T07:30:00-04:00",
+        water_temp_f: 68,
+        water_temp_c: 20,
+        station_name: "Barton Springs",
+      },
+    }),
+    locationCode: "loc",
+  });
+
+  expect(await screen.findByText("68°F")).toBeVisible();
+  expect(
+    screen.queryByText(/Water temperature at Barton Springs may differ/),
+  ).toBeNull();
+});
+
+test("omits temperature difference caveat for sources marked as local", async () => {
+  const location = syntheticLocation({
+    code: "loc",
+    features: {
+      temperature: true,
+    },
+    metadata: {
+      swim_location: "La Jolla Cove",
+      temperature_source_at_swim_location: true,
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    conditions: syntheticConditions({
+      code: "loc",
+      temperature: {
+        timestamp: "2026-05-13T07:30:00-07:00",
+        water_temp_f: 64,
+        water_temp_c: 17.8,
+        station_name: "La Jolla, CA",
+      },
+    }),
+    locationCode: "loc",
+  });
+
+  expect(await screen.findByText("64.0°F")).toBeVisible();
+  expect(
+    screen.queryByText(/Water temperature at La Jolla Cove may differ/),
+  ).toBeNull();
+});
+
+test("does not label observed current sources as predictions", async () => {
+  const location = syntheticLocation({
+    code: "riv",
+    features: {
+      currents: true,
+      temperature: true,
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    conditions: syntheticConditions({
+      code: "riv",
+      current: currentState({ source_type: "observation" }),
+      temperature: null,
+      tides: null,
+    }),
+    locationCode: "riv",
+  });
+
+  expect(await screen.findByRole("heading", { name: "Sources" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "Current source" })).toBeVisible();
+  expect(screen.queryByText(/Predictions are model guidance/)).toBeNull();
+});
+
+test("uses tide-only wording in tide detail data note", async () => {
+  const location = syntheticLocation({
+    code: "tid",
+    features: {
+      tides: true,
+      water_movement_planning: true,
+      water_movement_detail: true,
+      water_movement_detail_plot_type: "tide",
+    },
+  });
+
+  renderLocation({
+    bootstrap: syntheticBootstrap(location),
+    conditions: syntheticConditions({
+      code: "tid",
+      current: null,
+      tides: conditionsPayload.tides,
+    }),
+    initialEntry: "/tid?detail=open",
+    locationCode: "tid",
+  });
+
+  expect(
+    await screen.findByRole("region", { name: "Water movement data note" }),
+  ).toHaveTextContent("Tide predictions are estimates.");
+  expect(
+    screen.queryByText(/Tide and current predictions are estimates/),
+  ).toBeNull();
 });
 
 test("renders all configured locations from bootstrap metadata", () => {
@@ -654,7 +803,7 @@ test("renders all configured locations from bootstrap metadata", () => {
     "/sdf",
   );
   expect(screen.getAllByText("New York, NY")).toHaveLength(1);
-  expect(screen.getByText("Grimaldo's Chair")).toBeVisible();
+  expect(screen.getByText("Grimaldo's Chair, Brighton Beach")).toBeVisible();
   expect(
     screen.getByText(/A mid-beach swimming spot at NYC's Brighton Beach/),
   ).toBeVisible();
@@ -1609,6 +1758,7 @@ test("renders unavailable condition states on first-load failure", () => {
       <ConditionsSummary
         hasError
         isLoading={false}
+        location={bootstrapPayload.locations.nyc}
         onSetTemperatureUnit={() => {}}
         temperatureUnit="F"
       />
@@ -1638,6 +1788,7 @@ test("keeps water movement summary when tide state is unavailable", () => {
         }}
         hasError={false}
         isLoading={false}
+        location={bootstrapPayload.locations.nyc}
         onSetTemperatureUnit={() => {}}
         temperatureUnit="F"
       />

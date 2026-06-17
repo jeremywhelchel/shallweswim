@@ -57,6 +57,9 @@ Then gather condition-source ideas:
 - Is there a webcam people use?
 - Are the sources official/public, community-maintained, paid, or scraped from a
   web page?
+- Is there a local caveat swimmers should know, such as an offshore buoy,
+  temperature swings around an island, or tide/current timing that gets fuzzy
+  near slack water?
 
 Do not worry if you do not know all of this. A partial proposal with good local
 context is still useful.
@@ -127,9 +130,11 @@ The work is usually:
 
 1. Add a `LocationConfig` in `shallweswim/config/locations.py`.
 2. Use the approved source IDs and source config types.
-3. Check that source citations render clearly.
-4. Run the relevant debug script or live integration test for the source.
-5. Run pre-commit before committing.
+3. Add short `temperature_note` or `water_movement_note` text only if swimmers
+   need local context that is not obvious from the source citation.
+4. Check that source citations render clearly.
+5. Run the relevant debug script or live integration test for the source.
+6. Run pre-commit before committing.
 
 Tests are not required just because a new config value was added. Add or update
 tests only when the change introduces new behavior, a new invariant, or a

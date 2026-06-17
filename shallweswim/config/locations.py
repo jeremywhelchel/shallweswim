@@ -858,6 +858,29 @@ class LocationPresentationConfig(BaseModel, frozen=True):
 
     model_config = ConfigDict(extra="forbid")
 
+    temperature_note: Annotated[
+        str | None,
+        Field(
+            description="Optional short note about local temperature source context.",
+        ),
+    ] = None
+    temperature_source_at_swim_location: Annotated[
+        bool,
+        Field(
+            description=(
+                "Whether the temperature source should be treated as measuring "
+                "the swim location directly for presentation caveats."
+            ),
+        ),
+    ] = False
+    water_movement_note: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional short note about local tide or current prediction context."
+            ),
+        ),
+    ] = None
     webcam: Annotated[
         WebcamConfig | None,
         Field(description="Optional webcam integration"),
@@ -1067,7 +1090,7 @@ _CONFIG_LIST = [
         code="nyc",
         name="New York",
         nav_label="New York, NY",
-        swim_location="Grimaldo's Chair",
+        swim_location="Grimaldo's Chair, Brighton Beach",
         swim_location_link="https://cibbows.org/about/essentials/",
         location_info_source="CIBBOWS, essentials",
         latitude=40.573,
@@ -1093,6 +1116,14 @@ _CONFIG_LIST = [
             has_static_charts=True,  # NYC has static chart assets
         ),
         presentation=LocationPresentationConfig(
+            temperature_note=(
+                "The Battery is a station located at the southern tip of Manhattan, "
+                "not at Brighton Beach."
+            ),
+            water_movement_note=(
+                "Current predictions combine nearby channel stations rather than "
+                "a sensor at the swim spot."
+            ),
             webcam=WebcamConfig(
                 provider=types.WebcamProvider.YOUTUBE_LIVE,
                 channel_id="UChh9yX1PSFFreQFmnnIPGuQ",
@@ -1164,6 +1195,9 @@ _CONFIG_LIST = [
         tide_source=CoopsTideFeedConfig(
             station=9410230,
             name="La Jolla, CA",
+        ),
+        presentation=LocationPresentationConfig(
+            temperature_source_at_swim_location=True,
         ),
         description=(
             "A protected cove in La Jolla with clear-water coastal swimming "
@@ -1454,6 +1488,10 @@ _CONFIG_LIST = [
             name="Kinsale",
         ),
         presentation=LocationPresentationConfig(
+            temperature_note=(
+                "The Cork Buoy is about 19 km east of Sandycove, and temperature "
+                "can vary around Sandycove Island."
+            ),
             windy=WindyForecastConfig(metric_temp="°C"),
         ),
         description=(

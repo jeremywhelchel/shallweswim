@@ -320,6 +320,8 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert nyc["metadata"]["code"] == "nyc"
     assert nyc["metadata"]["nav_label"] == "New York, NY"
     assert nyc["metadata"]["default_temperature_unit"] == "F"
+    assert nyc["metadata"]["temperature_note"] is not None
+    assert nyc["metadata"]["water_movement_note"] is not None
     assert nyc["metadata"]["features"]["temperature"] is True
     assert nyc["metadata"]["temperature_plots"] == {"live": True, "historic": True}
     assert nyc["metadata"]["citations"]["location_info"] == (

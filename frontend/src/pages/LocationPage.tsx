@@ -247,6 +247,7 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
         conditions={conditions.data}
         hasError={conditions.isError && !conditions.data}
         isLoading={conditions.isPending}
+        location={location}
         onSetTemperatureUnit={setTemperatureUnit}
         showObservedFlow={showsObservedFlow}
         showWaterMovement={showsWaterMovement}
@@ -323,6 +324,7 @@ export function ConditionsSummary({
   conditions,
   hasError,
   isLoading,
+  location,
   onSetTemperatureUnit,
   showObservedFlow = false,
   showWaterMovement = true,
@@ -332,6 +334,7 @@ export function ConditionsSummary({
   conditions?: LocationConditions;
   hasError: boolean;
   isLoading: boolean;
+  location: AppBootstrapLocation;
   onSetTemperatureUnit: (unit: TemperatureUnit) => void;
   showObservedFlow?: boolean;
   showWaterMovement?: boolean;
@@ -362,6 +365,7 @@ export function ConditionsSummary({
       <TemperatureSummary
         conditions={conditions}
         hasError={hasError}
+        location={location}
         onSetTemperatureUnit={onSetTemperatureUnit}
         temperatureUnit={temperatureUnit}
       />
@@ -541,11 +545,13 @@ type WaterMovementControls = {
 function TemperatureSummary({
   conditions,
   hasError,
+  location,
   onSetTemperatureUnit,
   temperatureUnit,
 }: {
   conditions?: LocationConditions;
   hasError: boolean;
+  location: AppBootstrapLocation;
   onSetTemperatureUnit: (unit: TemperatureUnit) => void;
   temperatureUnit: TemperatureUnit;
 }) {
@@ -563,6 +569,10 @@ function TemperatureSummary({
     conditions?.temperature && !hasError
       ? formatStationTimestamp(conditions.temperature.timestamp)
       : null;
+  const temperatureMayDiffer = shouldShowTemperatureMayDifferNote({
+    location,
+    stationName,
+  });
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
@@ -595,6 +605,13 @@ function TemperatureSummary({
             ) : (
               "."
             )}
+            {temperatureMayDiffer ? (
+              <>
+                {" "}
+                Water temperature at {location.metadata.swim_location} may
+                differ.
+              </>
+            ) : null}
           </>
         ) : (
           "Current water temperature is unavailable."
@@ -602,6 +619,31 @@ function TemperatureSummary({
       </p>
     </div>
   );
+}
+
+function shouldShowTemperatureMayDifferNote({
+  location,
+  stationName,
+}: {
+  location: AppBootstrapLocation;
+  stationName: string | null;
+}) {
+  if (!stationName || location.metadata.temperature_source_at_swim_location) {
+    return false;
+  }
+
+  return (
+    normalizeTemperatureLocationLabel(stationName) !==
+    normalizeTemperatureLocationLabel(location.metadata.swim_location)
+  );
+}
+
+function normalizeTemperatureLocationLabel(label: string) {
+  return label
+    .toLowerCase()
+    .replaceAll("&", "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function TemperatureUnitToggle({
@@ -719,6 +761,10 @@ function WaterMovementSummary({
       {detailOpen && waterMovementControls?.plotUrl ? (
         <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.35fr)] lg:items-start">
           <div className="order-2 space-y-3 lg:order-1">
+            <WaterMovementDataNote
+              note={waterMovementControls.location.metadata.water_movement_note}
+              plotType={waterMovementControls.plotType}
+            />
             <TideInstrument
               nextTide={nextTide}
               previousTide={pastTide}
@@ -775,6 +821,32 @@ function WaterMovementSummary({
         </>
       )}
     </div>
+  );
+}
+
+function WaterMovementDataNote({
+  note,
+  plotType,
+}: {
+  note?: string | null;
+  plotType: "current_tide" | "tide";
+}) {
+  const predictionSubject =
+    plotType === "current_tide"
+      ? "Tide and current predictions"
+      : "Tide predictions";
+
+  return (
+    <section
+      aria-label="Water movement data note"
+      className="rounded border border-swim-line bg-[#f8fbfc] p-3 text-sm leading-relaxed text-slate-700"
+    >
+      <p>
+        {predictionSubject} are estimates. They are usually most useful away
+        from slack or switch periods, when timing uncertainty matters less.
+      </p>
+      {note ? <p className="mt-1">{note}</p> : null}
+    </section>
   );
 }
 
@@ -2353,6 +2425,7 @@ function SourcesList({
   location: AppBootstrapLocation;
 }) {
   const citations = location.metadata.citations;
+  const hasTidePrediction = location.metadata.features.tides;
 
   return (
     <Section title="Sources">
@@ -2366,21 +2439,32 @@ function SourcesList({
           icon={<Thermometer aria-hidden="true" />}
           label="Temperature"
           html={citations.temperature}
+          note={location.metadata.temperature_note}
+          temperatureGuidance
         />
         <SourceHtml
           icon={<Thermometer aria-hidden="true" />}
           label="Live temperature"
           html={citations.live_temperature}
+          note={location.metadata.temperature_note}
+          temperatureGuidance
         />
         <SourceHtml
           icon={<Thermometer aria-hidden="true" />}
           label="Historical temperature"
           html={citations.historical_temperature}
+          note={location.metadata.temperature_note}
+          temperatureGuidance
         />
         <SourceHtml
           icon={<Anchor aria-hidden="true" />}
           label="Tides"
           html={citations.tides}
+          note={
+            hasTidePrediction
+              ? "Predictions are model guidance for the listed station and may not capture short-term weather effects."
+              : null
+          }
         />
         {location.metadata.code === "nyc" ? (
           <>
@@ -2390,6 +2474,7 @@ function SourcesList({
               html={
                 'Current predictions combine <a href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=NYH1905_12">NOAA CO-OPS Station NYH1905_12</a> (Rockaway Inlet Entrance) and <a href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=ACT3876">NOAA CO-OPS Station ACT3876</a> (Coney Island Channel west end).'
               }
+              note={currentSourceNote({ location, nyc: true })}
             />
             <SourceLink
               icon={<MapIcon aria-hidden="true" />}
@@ -2420,6 +2505,7 @@ function SourcesList({
             icon={<Shuffle aria-hidden="true" />}
             label="Currents"
             html={citations.currents}
+            note={currentSourceNote({ location, nyc: false })}
           />
         )}
         <SourceLink
@@ -2449,14 +2535,37 @@ function SourcesList({
   );
 }
 
+function currentSourceNote({
+  location,
+  nyc,
+}: {
+  location: AppBootstrapLocation;
+  nyc: boolean;
+}) {
+  if (
+    location.metadata.features.water_movement_detail_plot_type !==
+    "current_tide"
+  ) {
+    return null;
+  }
+
+  return nyc
+    ? "Predictions are model guidance for nearby channel stations; timing is least certain near slack or current switches."
+    : "Predictions are model guidance for the listed station and may not capture short-term weather effects.";
+}
+
 function SourceHtml({
   icon,
   label,
   html,
+  note,
+  temperatureGuidance = false,
 }: {
   icon: ReactNode;
   label: string;
   html?: string | null;
+  note?: string | null;
+  temperatureGuidance?: boolean;
 }) {
   const externalizedHtml = useExternalizedTrustedHtml(html);
 
@@ -2478,6 +2587,17 @@ function SourceHtml({
         // biome-ignore lint/security/noDangerouslySetInnerHtml: Citation HTML is trusted repository-controlled bootstrap content.
         dangerouslySetInnerHTML={{ __html: externalizedHtml }}
       />
+      {note || temperatureGuidance ? (
+        <div className="col-start-2 -mt-2 space-y-1 text-xs leading-relaxed text-slate-600">
+          {note ? <p>{note}</p> : null}
+          {temperatureGuidance ? (
+            <p>
+              Temperature readings are best used directionally for recent
+              trends, seasonality, and year-over-year comparison.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

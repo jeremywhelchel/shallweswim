@@ -103,6 +103,46 @@ def test_historic_temp_plot_policy_defaults_and_sparse_overrides() -> None:
     )
 
 
+def test_display_notes_resolve_from_source_configs() -> None:
+    """Condition display notes are owned by the relevant source config."""
+    cork = config.get("cor")
+    nyc = config.get("nyc")
+
+    assert cork is not None
+    assert cork.temperature_note == cork.live_temp_source.display_note
+    assert cork.water_movement_note == cork.tide_source.display_note
+    assert "Sandycove Island" in (cork.temperature_note or "")
+
+    assert nyc is not None
+    assert nyc.temperature_note == nyc.live_temp_source.display_note
+    assert nyc.water_movement_note == nyc.currents_source.display_note
+
+
+def test_historical_temperature_display_note_must_match_live_source() -> None:
+    """Temperature card notes describe the live temperature source only."""
+    with pytest.raises(ValueError, match=r"historic_temp_source\.display_note"):
+        config.LocationConfig(
+            code="bad",
+            name="Bad",
+            swim_location="Bad Beach",
+            swim_location_link="https://example.com",
+            description="Bad config",
+            latitude=0,
+            longitude=0,
+            timezone=pytz.UTC,
+            default_temperature_unit="F",
+            live_temp_source=config.CoopsTempFeedConfig(
+                station=8518750,
+                name="Live",
+            ),
+            historic_temp_source=config.CoopsTempFeedConfig(
+                station=8518750,
+                name="Historic",
+                display_note="Historic-only context",
+            ),
+        )
+
+
 def test_cork_uses_approved_irish_sources() -> None:
     """Cork uses approved tide and temperature source configs."""
     cork = config.get("cor")

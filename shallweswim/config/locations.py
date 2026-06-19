@@ -149,6 +149,15 @@ class BaseFeedConfig(BaseModel, abc.ABC, frozen=True):
         ),
     ] = None
 
+    display_note: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional short note shown near condition values that use this source."
+            ),
+        ),
+    ] = None
+
     outliers: Annotated[
         list[str],
         Field(
@@ -858,12 +867,6 @@ class LocationPresentationConfig(BaseModel, frozen=True):
 
     model_config = ConfigDict(extra="forbid")
 
-    temperature_note: Annotated[
-        str | None,
-        Field(
-            description="Optional short note about local temperature source context.",
-        ),
-    ] = None
     temperature_source_at_swim_location: Annotated[
         bool,
         Field(
@@ -873,14 +876,6 @@ class LocationPresentationConfig(BaseModel, frozen=True):
             ),
         ),
     ] = False
-    water_movement_note: Annotated[
-        str | None,
-        Field(
-            description=(
-                "Optional short note about local tide or current prediction context."
-            ),
-        ),
-    ] = None
     webcam: Annotated[
         WebcamConfig | None,
         Field(description="Optional webcam integration"),
@@ -1027,6 +1022,40 @@ class LocationConfig(BaseModel, frozen=True):
         ),
     ] = False
 
+    @model_validator(mode="after")
+    def validate_temperature_display_notes(self) -> "LocationConfig":
+        """Keep temperature display notes scoped to the live source."""
+        live_note = (
+            self.live_temp_source.display_note if self.live_temp_source else None
+        )
+        historic_note = (
+            self.historic_temp_source.display_note
+            if self.historic_temp_source
+            else None
+        )
+        if historic_note and historic_note != live_note:
+            raise ValueError(
+                "historic_temp_source.display_note must match "
+                "live_temp_source.display_note or be omitted"
+            )
+        return self
+
+    @property
+    def temperature_note(self) -> str | None:
+        """Return display context for the live temperature source."""
+        return self.live_temp_source.display_note if self.live_temp_source else None
+
+    @property
+    def water_movement_note(self) -> str | None:
+        """Return display context for the water-movement source shown in details."""
+        if self.currents_source and (
+            self.currents_source.source_type == types.DataSourceType.PREDICTION
+        ):
+            return self.currents_source.display_note
+        if self.tide_source:
+            return self.tide_source.display_note
+        return None
+
     @property
     def coordinates(self) -> tuple[float, float]:
         """Return the location's coordinates as a (latitude, longitude) tuple.
@@ -1102,6 +1131,10 @@ _CONFIG_LIST = [
             CoopsTempFeedConfig(
                 station=8518750,
                 name="The Battery, NY",
+                display_note=(
+                    "The Battery is at the southern tip of Manhattan, not "
+                    "Brighton Beach."
+                ),
             )
         ),
         tide_source=CoopsTideFeedConfig(
@@ -1114,16 +1147,12 @@ _CONFIG_LIST = [
                 "NYH1905",  # Rockaway Inslet
             ],
             has_static_charts=True,  # NYC has static chart assets
-        ),
-        presentation=LocationPresentationConfig(
-            temperature_note=(
-                "The Battery is a station located at the southern tip of Manhattan, "
-                "not at Brighton Beach."
-            ),
-            water_movement_note=(
+            display_note=(
                 "Current predictions combine nearby channel stations rather than "
                 "a sensor at the swim spot."
             ),
+        ),
+        presentation=LocationPresentationConfig(
             webcam=WebcamConfig(
                 provider=types.WebcamProvider.YOUTUBE_LIVE,
                 channel_id="UChh9yX1PSFFreQFmnnIPGuQ",
@@ -1195,6 +1224,10 @@ _CONFIG_LIST = [
         tide_source=CoopsTideFeedConfig(
             station=9410230,
             name="La Jolla, CA",
+            display_note=(
+                "Tide predictions use the La Jolla station; conditions inside "
+                "the Cove can still vary with swell and wind."
+            ),
         ),
         presentation=LocationPresentationConfig(
             temperature_source_at_swim_location=True,
@@ -1282,11 +1315,19 @@ _CONFIG_LIST = [
             NdbcTempFeedConfig(
                 station="46237",
                 name="San Francisco Bar Buoy",
+                display_note=(
+                    "San Francisco Bar Buoy is outside the Golden Gate; "
+                    "Aquatic Park is sheltered inside the bay."
+                ),
             )
         ),
         tide_source=CoopsTideFeedConfig(
             station=9414305,
             name="North Point Pier",
+            display_note=(
+                "North Point Pier is inside San Francisco Bay near Aquatic Park; "
+                "wind and harbor traffic can still change swimmer-facing conditions."
+            ),
         ),
         description=(
             "A sheltered San Francisco Bay swim area beside the historic "
@@ -1386,11 +1427,18 @@ _CONFIG_LIST = [
             NdbcTempFeedConfig(
                 station="44013",
                 name="Boston Approach Lighted Buoy (16 NM East)",
+                display_note=(
+                    "Boston Approach Lighted Buoy is about 16 nautical miles offshore."
+                ),
             )
         ),
         tide_source=CoopsTideFeedConfig(
             station=8443970,
             name="Boston, MA",
+            display_note=(
+                "Boston tide predictions use the harbor station, not a sensor "
+                "at L Street Beach."
+            ),
         ),
         description=(
             "A South Boston beach and bathhouse area used by local open water swimmers."
@@ -1411,11 +1459,18 @@ _CONFIG_LIST = [
             CoopsTempFeedConfig(
                 station=9446484,
                 name="Station TCNW1 - Tacoma, WA",
+                display_note=(
+                    "Temperature uses Tacoma station data, not an Alki Beach sensor."
+                ),
             )
         ),
         tide_source=CoopsTideFeedConfig(
             station=9447130,
             name="Seattle, WA",
+            display_note=(
+                "Seattle tide predictions use the Elliott Bay station, not a "
+                "sensor at Alki Beach."
+            ),
         ),
         description=(
             "A Puget Sound beach in West Seattle with mountain views and "
@@ -1436,6 +1491,10 @@ _CONFIG_LIST = [
         live_temp_source=NdbcTempFeedConfig(
             station="62304",
             name="Sandettie Lightship",
+            display_note=(
+                "Sandettie Lightship is offshore in the Channel, not inside "
+                "Dover Harbour."
+            ),
         ),
         historic_temp_source=CspfTempFeedConfig(
             name="Sandettie Lightship",
@@ -1451,6 +1510,10 @@ _CONFIG_LIST = [
             model_path="data/tides/dov_harmonics.json",
             source_url="https://environment.data.gov.uk/flood-monitoring/id/stations/E71624.html",
             attribution="Environment Agency Dover tide gauge",
+            display_note=(
+                "Tide timing is generated from a local harmonic model fitted "
+                "to Environment Agency Dover gauge observations."
+            ),
         ),
         presentation=LocationPresentationConfig(
             windy=WindyForecastConfig(metric_temp="°C"),
@@ -1477,6 +1540,10 @@ _CONFIG_LIST = [
                 name="Irish Lights Cork Buoy",
                 distance_description="about 19 km east of Sandycove",
                 start_year=2024,
+                display_note=(
+                    "The Cork Buoy is about 19 km east of Sandycove; temperature "
+                    "can vary a lot around Sandycove Island."
+                ),
             )
         ),
         tide_source=MarineInstituteTideFeedConfig(
@@ -1486,12 +1553,12 @@ _CONFIG_LIST = [
             # summary heights, so apply that offset for swimmer-facing charts.
             height_offset_m=2.01,
             name="Kinsale",
+            display_note=(
+                "Tide predictions use Marine Institute Kinsale high/low guidance, "
+                "not a gauge at Sandycove Island."
+            ),
         ),
         presentation=LocationPresentationConfig(
-            temperature_note=(
-                "The Cork Buoy is about 19 km east of Sandycove, and temperature "
-                "can vary around Sandycove Island."
-            ),
             windy=WindyForecastConfig(metric_temp="°C"),
         ),
         description=(

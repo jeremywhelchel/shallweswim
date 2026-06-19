@@ -130,8 +130,11 @@ The work is usually:
 
 1. Add a `LocationConfig` in `shallweswim/config/locations.py`.
 2. Use the approved source IDs and source config types.
-3. Add short `temperature_note` or `water_movement_note` text only if swimmers
-   need local context that is not obvious from the source citation.
+3. Use `temperature_source_at_swim_location` only when the temperature source
+   should be treated as measuring the swim spot directly. Add short
+   `display_note` text on the relevant temperature, tide, or current source
+   only if swimmers need local context that is not obvious from the source
+   citation.
 4. Check that source citations render clearly.
 5. Run the relevant debug script or live integration test for the source.
 6. Run pre-commit before committing.

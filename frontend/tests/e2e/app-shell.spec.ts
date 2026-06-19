@@ -25,7 +25,7 @@ const bootstrapPayload = {
         timezone: "US/Eastern",
         default_temperature_unit: "F",
         temperature_note:
-          "The Battery is a station located at the southern tip of Manhattan, not at Brighton Beach.",
+          "The Battery is at the southern tip of Manhattan, not Brighton Beach.",
         temperature_source_at_swim_location: false,
         water_movement_note:
           "Current predictions combine nearby channel stations rather than a sensor at the swim spot.",

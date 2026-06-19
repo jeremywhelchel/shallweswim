@@ -48,7 +48,7 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
         timezone: "US/Eastern",
         default_temperature_unit: "F",
         temperature_note:
-          "The Battery is a station located at the southern tip of Manhattan, not at Brighton Beach.",
+          "The Battery is at the southern tip of Manhattan, not Brighton Beach.",
         temperature_source_at_swim_location: false,
         water_movement_note:
           "Current predictions combine nearby channel stations rather than a sensor at the swim spot.",
@@ -405,6 +405,7 @@ function syntheticLocation({
       latitude: 38,
       longitude: -85,
       timezone: "US/Eastern",
+      temperature_note: null,
       features: {
         temperature: false,
         tides: false,
@@ -498,10 +499,14 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
     ),
   ).toBeVisible();
   expect(
-    screen.getByText(
-      /Temperature readings are best used directionally for recent trends/,
-    ),
-  ).toBeInTheDocument();
+    screen.queryByRole("region", { name: "Temperature data note" }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Info" }));
+  expect(
+    screen.getByRole("region", { name: "Temperature data note" }),
+  ).toHaveTextContent(
+    "The Battery is at the southern tip of Manhattan, not Brighton Beach.",
+  );
   expect(screen.getByText("61.4°F")).toBeVisible();
   expect(screen.getByRole("heading", { name: "Water Movement" })).toBeVisible();
   expect(screen.getByText("Predicted")).toBeVisible();
@@ -538,11 +543,6 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
     "rel",
     "noopener noreferrer",
   );
-  expect(
-    screen.getByText(
-      /The Battery is a station located at the southern tip of Manhattan/,
-    ),
-  ).toBeVisible();
   expect(
     screen.getByRole("link", { name: "NOAA CO-OPS Station NYH1905_12" }),
   ).toHaveAttribute("target", "_blank");
@@ -606,7 +606,6 @@ test("omits temperature difference caveat when station and swim spot match", asy
     },
     metadata: {
       swim_location: "Barton Springs",
-      temperature_note: null,
       temperature_source_at_swim_location: false,
     },
   });

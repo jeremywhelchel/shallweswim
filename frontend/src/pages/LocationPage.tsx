@@ -573,17 +573,36 @@ function TemperatureSummary({
     location,
     stationName,
   });
+  const temperatureNote = location.metadata.temperature_note;
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold text-base md:text-lg">
           Water Temperature
         </h2>
-        <TemperatureUnitToggle
-          onChange={onSetTemperatureUnit}
-          unit={temperatureUnit}
-        />
+        <div className="flex items-center gap-2">
+          {temperatureNote ? (
+            <button
+              aria-expanded={detailsOpen}
+              className={[
+                "rounded border px-2 py-1 text-xs",
+                detailsOpen
+                  ? "border-swim-blue bg-swim-blue text-white"
+                  : "border-swim-line bg-white text-swim-blue",
+              ].join(" ")}
+              onClick={() => setDetailsOpen((open) => !open)}
+              type="button"
+            >
+              Info
+            </button>
+          ) : null}
+          <TemperatureUnitToggle
+            onChange={onSetTemperatureUnit}
+            unit={temperatureUnit}
+          />
+        </div>
       </div>
       <div className="mt-1 flex items-baseline gap-2 md:block">
         <p className="text-sm text-slate-700 md:mt-2 md:text-base">
@@ -617,6 +636,17 @@ function TemperatureSummary({
           "Current water temperature is unavailable."
         )}
       </p>
+      {detailsOpen && temperatureNote ? (
+        <section
+          aria-label="Temperature data note"
+          className="mt-3 rounded border border-swim-line bg-[#f8fbfc] p-3 text-sm leading-relaxed text-slate-700"
+        >
+          <h3 className="font-semibold text-sm text-swim-blue">
+            About this temperature
+          </h3>
+          <p className="mt-1">{temperatureNote}</p>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -841,6 +871,9 @@ function WaterMovementDataNote({
       aria-label="Water movement data note"
       className="rounded border border-swim-line bg-[#f8fbfc] p-3 text-sm leading-relaxed text-slate-700"
     >
+      <h4 className="font-semibold text-sm text-swim-blue">
+        About this prediction
+      </h4>
       <p>
         {predictionSubject} are estimates. They are usually most useful away
         from slack or switch periods, when timing uncertainty matters less.
@@ -2425,8 +2458,6 @@ function SourcesList({
   location: AppBootstrapLocation;
 }) {
   const citations = location.metadata.citations;
-  const hasTidePrediction = location.metadata.features.tides;
-
   return (
     <Section title="Sources">
       <div className="overflow-hidden rounded border border-swim-line bg-white">
@@ -2439,32 +2470,21 @@ function SourcesList({
           icon={<Thermometer aria-hidden="true" />}
           label="Temperature"
           html={citations.temperature}
-          note={location.metadata.temperature_note}
-          temperatureGuidance
         />
         <SourceHtml
           icon={<Thermometer aria-hidden="true" />}
           label="Live temperature"
           html={citations.live_temperature}
-          note={location.metadata.temperature_note}
-          temperatureGuidance
         />
         <SourceHtml
           icon={<Thermometer aria-hidden="true" />}
           label="Historical temperature"
           html={citations.historical_temperature}
-          note={location.metadata.temperature_note}
-          temperatureGuidance
         />
         <SourceHtml
           icon={<Anchor aria-hidden="true" />}
           label="Tides"
           html={citations.tides}
-          note={
-            hasTidePrediction
-              ? "Predictions are model guidance for the listed station and may not capture short-term weather effects."
-              : null
-          }
         />
         {location.metadata.code === "nyc" ? (
           <>
@@ -2474,7 +2494,6 @@ function SourcesList({
               html={
                 'Current predictions combine <a href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=NYH1905_12">NOAA CO-OPS Station NYH1905_12</a> (Rockaway Inlet Entrance) and <a href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=ACT3876">NOAA CO-OPS Station ACT3876</a> (Coney Island Channel west end).'
               }
-              note={currentSourceNote({ location, nyc: true })}
             />
             <SourceLink
               icon={<MapIcon aria-hidden="true" />}
@@ -2505,7 +2524,6 @@ function SourcesList({
             icon={<Shuffle aria-hidden="true" />}
             label="Currents"
             html={citations.currents}
-            note={currentSourceNote({ location, nyc: false })}
           />
         )}
         <SourceLink
@@ -2535,37 +2553,14 @@ function SourcesList({
   );
 }
 
-function currentSourceNote({
-  location,
-  nyc,
-}: {
-  location: AppBootstrapLocation;
-  nyc: boolean;
-}) {
-  if (
-    location.metadata.features.water_movement_detail_plot_type !==
-    "current_tide"
-  ) {
-    return null;
-  }
-
-  return nyc
-    ? "Predictions are model guidance for nearby channel stations; timing is least certain near slack or current switches."
-    : "Predictions are model guidance for the listed station and may not capture short-term weather effects.";
-}
-
 function SourceHtml({
   icon,
   label,
   html,
-  note,
-  temperatureGuidance = false,
 }: {
   icon: ReactNode;
   label: string;
   html?: string | null;
-  note?: string | null;
-  temperatureGuidance?: boolean;
 }) {
   const externalizedHtml = useExternalizedTrustedHtml(html);
 
@@ -2587,17 +2582,6 @@ function SourceHtml({
         // biome-ignore lint/security/noDangerouslySetInnerHtml: Citation HTML is trusted repository-controlled bootstrap content.
         dangerouslySetInnerHTML={{ __html: externalizedHtml }}
       />
-      {note || temperatureGuidance ? (
-        <div className="col-start-2 -mt-2 space-y-1 text-xs leading-relaxed text-slate-600">
-          {note ? <p>{note}</p> : null}
-          {temperatureGuidance ? (
-            <p>
-              Temperature readings are best used directionally for recent
-              trends, seasonality, and year-over-year comparison.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }

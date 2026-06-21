@@ -1302,8 +1302,13 @@ _CONFIG_LIST = [
         longitude=-122.426,
         timezone=pytz.timezone("US/Pacific"),
         default_temperature_unit="F",
-        # The San Francisco, CA - Station ID: 9414290 is not currently available.
-        # Disabled - 2025-01-17 02:01:00, Suspect Data - Data failed to meet QC standards - under review.
+        # The San Francisco, CA - Station ID: 9414290 water temperature sensor
+        # remains disabled. Originally flagged 2025-01-17; NOAA re-reviewed and
+        # re-flagged it on 2025-12-10 22:23:00 ("Suspect Data - Data failed to
+        # meet QC standards - under review"). Tide predictions and water level
+        # observations at 9414290 are live, but its water temperature sensor
+        # (E1) is status=0/no data. NDBC 46237 below remains the live temp
+        # source for SFO.
         # live_temp_source=CoopsTempFeedConfig(
         #     station=9414290,
         #     name="San Francisco, CA",

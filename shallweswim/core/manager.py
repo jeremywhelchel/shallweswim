@@ -256,7 +256,7 @@ class LocationDataManager:
         Returns:
             Configured feed or None if configuration is not available
         """
-        if not self.config.currents_source or not self.config.currents_source:
+        if not self.config.currents_source:
             return None
 
         currents_config = self.config.currents_source

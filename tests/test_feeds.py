@@ -195,6 +195,10 @@ def concrete_feed(location_config: config_lib.LocationConfig) -> Feed:
             """Return a citation for the test feed."""
             return "Test Feed Citation"
 
+        @property
+        def citation_key(self) -> str:
+            return "test-feed"
+
     class ConcreteFeed(Feed):
         feed_config: TestConfig = TestConfig()  # type: ignore[assignment]
 
@@ -237,6 +241,10 @@ def simple_composite_feed(location_config: config_lib.LocationConfig) -> Composi
         def citation(self) -> str:
             """Return a citation for the test feed."""
             return "Test Composite Feed Citation"
+
+        @property
+        def citation_key(self) -> str:
+            return "test-feed"
 
     class SimpleCompositeFeed(CompositeFeed):
         # Configuration for the feed
@@ -1558,6 +1566,10 @@ class TestCompositeFeed:
             def citation(self) -> str:
                 return "Test Feed Citation"
 
+            @property
+            def citation_key(self) -> str:
+                return "test-feed"
+
         # Create test feeds that return the valid_temp_dataframe
         class TestFeed(Feed):
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
@@ -1763,6 +1775,10 @@ class TestMultiStationCurrentsFeed:
             def citation(self) -> str:
                 return "Test Feed Citation"
 
+            @property
+            def citation_key(self) -> str:
+                return "test-feed"
+
         # Create a test feed that raises an exception
         class ErrorFeed(Feed):
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
@@ -1959,6 +1975,10 @@ class TestHistoricalTempsFeed:
             def citation(self) -> str:
                 return "Test Feed Citation"
 
+            @property
+            def citation_key(self) -> str:
+                return "test-feed"
+
         class TestFeed(Feed):
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
             year: int
@@ -2041,6 +2061,10 @@ class TestHistoricalTempsFeed:
             def citation(self) -> str:
                 return "Test Feed Citation"
 
+            @property
+            def citation_key(self) -> str:
+                return "test-feed"
+
         class DuplicateTimestampFeed(Feed):
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
             year: int
@@ -2094,6 +2118,10 @@ class TestHistoricalTempsFeed:
             @property
             def citation(self) -> str:
                 return "Test Feed Citation"
+
+            @property
+            def citation_key(self) -> str:
+                return "test-feed"
 
         # Create a test feed that raises an exception
         class ErrorFeed(Feed):
@@ -2177,6 +2205,10 @@ class TestHistoricalTempsFeed:
             @property
             def citation(self) -> str:
                 return "Test Feed Citation"
+
+            @property
+            def citation_key(self) -> str:
+                return "test-feed"
 
         class UnexpectedFetchFeed(Feed):
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
@@ -2262,6 +2294,10 @@ class TestHistoricalTempsFeed:
             def citation(self) -> str:
                 return "Test Feed Citation"
 
+            @property
+            def citation_key(self) -> str:
+                return "test-feed"
+
         class CachedPastYearFeed(Feed):
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
 
@@ -2331,6 +2367,10 @@ class TestHistoricalTempsFeed:
             @property
             def citation(self) -> str:
                 return "Test Feed Citation"
+
+            @property
+            def citation_key(self) -> str:
+                return "test-feed"
 
         class CachedYearFeed(Feed):
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]
@@ -2426,6 +2466,10 @@ class TestHistoricalTempsFeed:
             @property
             def citation(self) -> str:
                 return "Test Feed Citation"
+
+            @property
+            def citation_key(self) -> str:
+                return "test-feed"
 
         class UnavailableFeed(Feed):
             feed_config: TestFeedConfig = TestFeedConfig()  # type: ignore[assignment]

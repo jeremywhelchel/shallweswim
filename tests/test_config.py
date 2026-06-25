@@ -118,6 +118,22 @@ def test_display_notes_resolve_from_source_configs() -> None:
     assert nyc.water_movement_note == nyc.currents_source.display_note
 
 
+def test_base_feed_config_requires_citation_key_override() -> None:
+    """A feed config that implements citation but not citation_key cannot be built.
+
+    citation_key is the stable, non-HTML identity used to de-duplicate citations.
+    The base default must not silently fall back to the rendered HTML citation.
+    """
+    with pytest.raises(TypeError, match="citation_key"):
+
+        class _IncompleteConfig(config.BaseFeedConfig, frozen=True):
+            @property
+            def citation(self) -> str:
+                return "Incomplete Citation"
+
+        _IncompleteConfig()  # type: ignore[bad-instantiation]
+
+
 def test_historical_temperature_display_note_must_match_live_source() -> None:
     """Temperature card notes describe the live temperature source only."""
     with pytest.raises(ValueError, match=r"historic_temp_source\.display_note"):

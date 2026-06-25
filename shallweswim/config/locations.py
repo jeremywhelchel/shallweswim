@@ -172,9 +172,15 @@ class BaseFeedConfig(BaseModel, abc.ABC, frozen=True):
         pass
 
     @property
+    @abc.abstractmethod
     def citation_key(self) -> str:
-        """Return a stable source identity for citation de-duplication."""
-        return self.citation
+        """Return a stable source identity for citation de-duplication.
+
+        Unlike :attr:`citation`, this must be a stable, non-HTML key (e.g.
+        ``"coops:temperature:8518750"``) so that equivalent sources de-duplicate
+        correctly regardless of how the rendered citation text changes.
+        """
+        pass
 
     @property
     def source_citation(self) -> SourceCitation:

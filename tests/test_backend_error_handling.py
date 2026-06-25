@@ -511,6 +511,10 @@ def create_test_feed(expiration_minutes: int = 10) -> Any:
         def citation(self) -> str:
             return "Test Feed Citation"
 
+        @property
+        def citation_key(self) -> str:
+            return "test-feed"
+
     class TestFeed(Feed):
         """Concrete Feed for testing retry behavior."""
 

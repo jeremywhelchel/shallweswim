@@ -98,17 +98,23 @@ def get_latest_row(df: pd.DataFrame) -> pd.Series:
 
 
 def get_row_at_time(df: pd.DataFrame, t: datetime.datetime) -> pd.Series:
-    """Get the row closest to the specified time.
+    """Get the latest row at or before the specified time.
 
     Args:
         df: DataFrame with a DatetimeIndex
-        t: Time to find the closest row for
+        t: Time to find the latest row for
 
     Returns:
-        The row closest to the specified time as a pandas Series
+        The latest row at or before the specified time as a pandas Series
     """
     # All times should be assumed to be naive
-    return cast(pd.Series, df.loc[df.index.asof(t)])
+    _require_naive_datetime_index(df, "Point-in-time lookup")
+
+    row_time = df.index.asof(t)
+    if pd.isna(row_time):
+        raise DataUnavailableError(f"No data available at or before {t.isoformat()}")
+
+    return cast(pd.Series, df.loc[row_time])
 
 
 def _require_naive_datetime_index(df: pd.DataFrame, context: str) -> None:
@@ -829,6 +835,10 @@ def predict_flow_from_precomputed_frame(
     # materializing a full mixed-type pandas row on every request is measurably
     # slower.
     row_time = df.index.asof(t)
+    if pd.isna(row_time):
+        raise DataUnavailableError(
+            f"No current prediction available at or before {t.isoformat()}"
+        )
     if not isinstance(row_time, datetime.datetime):
         raise DataUnavailableError(
             "Current prediction row index must contain datetimes"

@@ -522,6 +522,24 @@ def test_prepare_current_prediction_frame_handles_all_slack_data() -> None:
     assert result.range is None
 
 
+def test_predict_flow_from_precomputed_frame_reports_time_before_data_unavailable(
+    mock_config: config_lib.LocationConfig,
+    mock_current_data: pd.DataFrame,
+) -> None:
+    """Requests before the first current prediction do not leak pandas KeyError: NaT."""
+    frame = queries.prepare_current_prediction_frame(mock_current_data)
+
+    with pytest.raises(
+        DataUnavailableError,
+        match="No current prediction available at or before",
+    ):
+        queries.predict_flow_from_precomputed_frame(
+            frame,
+            mock_config,
+            datetime.datetime(2025, 4, 21, 23, 59, 0),
+        )
+
+
 def test_prepare_tide_prediction_frame_derives_minute_curve(
     mock_tide_data: pd.DataFrame,
 ) -> None:
@@ -617,6 +635,44 @@ def test_predict_tide_from_precomputed_frame_returns_estimated_state(
     assert result.units == "ft"
     assert result.trend == TideTrend.RISING
     assert 0.0 <= cast(float, result.height_pct) <= 1.0
+
+
+def test_predict_tide_from_precomputed_frame_reports_time_before_data_unavailable(
+    mock_config: config_lib.LocationConfig,
+    mock_tide_data: pd.DataFrame,
+) -> None:
+    """Requests before the first tide curve row do not leak pandas KeyError: NaT."""
+    frame = queries.prepare_tide_prediction_frame(mock_tide_data)
+
+    with pytest.raises(
+        DataUnavailableError,
+        match="No data available at or before",
+    ):
+        queries.predict_tide_from_precomputed_frame(
+            frame,
+            mock_config,
+            datetime.datetime(2025, 4, 21, 23, 59, 0),
+        )
+
+
+def test_get_chart_info_reports_time_before_tide_data_unavailable(
+    mock_config: config_lib.LocationConfig,
+    mock_tide_data: pd.DataFrame,
+) -> None:
+    """Legacy chart lookup reports missing prior tide data instead of KeyError: NaT."""
+    tide_feed = MagicMock()
+    tide_feed._data = mock_tide_data
+    tide_feed.values = mock_tide_data
+
+    with pytest.raises(
+        DataUnavailableError,
+        match="No data available at or before",
+    ):
+        queries.get_chart_info(
+            {feeds.FEED_TIDES: tide_feed},
+            mock_config,
+            datetime.datetime(2025, 4, 21, 23, 59, 0),
+        )
 
 
 def test_predict_tide_from_precomputed_frame_rejects_timezone_aware_input(

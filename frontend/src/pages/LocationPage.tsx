@@ -2492,7 +2492,7 @@ function SourcesList({
               icon={<Shuffle aria-hidden="true" />}
               label="Currents"
               html={
-                'Current predictions combine <a href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=NYH1905_12">NOAA CO-OPS Station NYH1905_12</a> (Rockaway Inlet Entrance) and <a href="https://tidesandcurrents.noaa.gov/noaacurrents/Predictions?id=ACT3876">NOAA CO-OPS Station ACT3876</a> (Coney Island Channel west end).'
+                'Current predictions combine <a href="https://tidesandcurrents.noaa.gov/noaacurrents/predictions?id=NYH1905_12">NOAA CO-OPS Station NYH1905_12</a> (Rockaway Inlet Entrance) and <a href="https://tidesandcurrents.noaa.gov/noaacurrents/predictions?id=ACT3876_1">NOAA CO-OPS Station ACT3876</a> (Coney Island Channel west end).'
               }
             />
             <SourceLink

@@ -547,8 +547,20 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
     screen.getByRole("link", { name: "NOAA CO-OPS Station NYH1905_12" }),
   ).toHaveAttribute("target", "_blank");
   expect(
+    screen.getByRole("link", { name: "NOAA CO-OPS Station NYH1905_12" }),
+  ).toHaveAttribute(
+    "href",
+    "https://tidesandcurrents.noaa.gov/noaacurrents/predictions?id=NYH1905_12",
+  );
+  expect(
     screen.getByRole("link", { name: "NOAA CO-OPS Station ACT3876" }),
   ).toHaveAttribute("target", "_blank");
+  expect(
+    screen.getByRole("link", { name: "NOAA CO-OPS Station ACT3876" }),
+  ).toHaveAttribute(
+    "href",
+    "https://tidesandcurrents.noaa.gov/noaacurrents/predictions?id=ACT3876_1",
+  );
   expect(screen.queryByRole("link", { name: "Current source" })).toBeNull();
   expect(
     screen.getByRole("link", {

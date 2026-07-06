@@ -107,6 +107,22 @@ HEAD_CLOSE_RE = re.compile(r"\s*</head>", re.IGNORECASE)
 SOCIAL_IMAGE_PATH = "/static/android-chrome-512x512.png"
 
 
+def duplicate_app_trailing_slash_redirect_url(path: str, query: str) -> str | None:
+    """Return the canonical URL for duplicate trailing-slash app paths."""
+    if path == "/" or not path.endswith("/"):
+        return None
+
+    canonical_path = path.rstrip("/")
+    if (
+        canonical_path == "/locations"
+        or canonical_path.removeprefix("/") in config.CONFIGS
+    ):
+        query_string = f"?{query}" if query else ""
+        return f"{canonical.CANONICAL_BASE_URL}{canonical_path}{query_string}"
+
+    return None
+
+
 @app.middleware("http")
 async def redirect_duplicate_hosts(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -114,6 +130,21 @@ async def redirect_duplicate_hosts(
     """Redirect duplicate production hostnames to the canonical apex host."""
     redirect_url = canonical.canonical_redirect_url(
         hostname=request.url.hostname,
+        path=request.url.path,
+        query=request.url.query,
+    )
+    if redirect_url:
+        return responses.RedirectResponse(redirect_url, status_code=301)
+
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def redirect_trailing_slash_canonical_app_routes(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Collapse duplicate app paths before Starlette emits http slash redirects."""
+    redirect_url = duplicate_app_trailing_slash_redirect_url(
         path=request.url.path,
         query=request.url.query,
     )

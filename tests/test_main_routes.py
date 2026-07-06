@@ -67,6 +67,62 @@ def test_www_host_redirects_to_canonical_apex() -> None:
     assert response.headers["location"] == f"{canonical.CANONICAL_BASE_URL}/nyc?foo=bar"
 
 
+def test_duplicate_trailing_slash_location_redirects_to_canonical_url() -> None:
+    """Duplicate trailing-slash location paths collapse to the canonical URL."""
+    client = TestClient(app)
+
+    response = client.get("/nyc/?at=2026-07-06T12%3A00", follow_redirects=False)
+
+    assert response.status_code == 301
+    assert (
+        response.headers["location"]
+        == f"{canonical.CANONICAL_BASE_URL}/nyc?at=2026-07-06T12%3A00"
+    )
+
+
+def test_www_trailing_slash_location_redirects_to_one_canonical_url() -> None:
+    """Combined duplicate host and slash paths collapse in one redirect."""
+    client = TestClient(app)
+
+    response = client.get(
+        "/nyc/?foo=bar",
+        headers={"host": "www.shallweswim.today"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 301
+    assert response.headers["location"] == f"{canonical.CANONICAL_BASE_URL}/nyc?foo=bar"
+
+
+def test_duplicate_trailing_slash_locations_redirects_to_canonical_url() -> None:
+    """The duplicate trailing-slash locations path collapses canonically."""
+    client = TestClient(app)
+
+    response = client.get("/locations/?foo=bar", follow_redirects=False)
+
+    assert response.status_code == 301
+    assert response.headers["location"] == (
+        f"{canonical.CANONICAL_BASE_URL}/locations?foo=bar"
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/all/",
+        "/legacy/",
+        "/embed/",
+    ],
+)
+def test_non_app_trailing_slash_paths_are_not_collapsed_by_app_canonicalizer(
+    path: str,
+) -> None:
+    """Only duplicate root app page paths get the app canonicalizer."""
+    from shallweswim.main import duplicate_app_trailing_slash_redirect_url
+
+    assert duplicate_app_trailing_slash_redirect_url(path, query="") is None
+
+
 def test_historical_all_url_redirects_to_canonical_locations() -> None:
     """The old /all location-list URL redirects to the canonical React route."""
     client = TestClient(app)

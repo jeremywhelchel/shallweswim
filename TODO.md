@@ -4,14 +4,26 @@
 
 ### Location Page Experience
 
+- Support multiple swim spots per city/region. Today the app mostly behaves as
+  if one location is one city, but swimmers often choose between multiple spots
+  in the same region. For example, NYC should be able to show Grimaldo's Chair
+  at Brighton Beach by default while also supporting a Hudson River swim spot.
+  - Decide how to model the relationship between regions and swim spots. The
+    likely direction is that condition pages represent swim spots, while regions
+    group those spots for navigation and display.
+  - Decide how default region URLs and aliases should work. `/nyc` and
+    `/api/nyc/...` should continue to work for the default NYC spot, but the
+    alias/default behavior should be defined in the backend, not only in React.
+  - Update the all-locations page and bottom location selector so multiple spots
+    in one region are easy to browse without making the UI feel like a flat list
+    of internal codes.
+  - Consider whether nearby spots should share source/feed data or stay fully
+    independent. Start from the product model first, then choose the simplest
+    implementation that preserves correct spot-specific conditions and caveats.
 - Review whether the remaining legacy Jinja pages should stay, move behind a
   narrower compatibility surface, or be removed. Keep `/legacy/...` and legacy
   embed routes as long as they serve a real compatibility need, but make that an
   explicit decision rather than permanent drift.
-- Add an explicit location-code alias mechanism if friendly alternate URLs are
-  useful. Model aliases in typed `LocationConfig`, keep bootstrap/location order
-  canonical, and redirect alias routes to the canonical location URL rather than
-  rendering duplicate canonical pages.
 
 ### External Embed Consumers
 

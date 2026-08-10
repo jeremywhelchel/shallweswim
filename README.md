@@ -36,6 +36,25 @@ and data sources make a location useful.
 - **Durable canonical HTML** with route-specific metadata, API discovery links,
   compact no-JavaScript fallback content, and conservative JSON-LD
 
+## Frequently Asked Questions (FAQ)
+
+### Why Doesn't the App Show Water Quality?
+
+Available recreational-water samples are generally intermittent and delayed.
+Traditional bacterial culture results take about a day after collection, and
+public datasets may be updated later still. By then, rain, discharges, tides,
+currents, and mixing may have changed the water at the swim location. A dated
+sample is useful evidence about longer-term water quality, but it is not a
+reliable measurement of what a swimmer will encounter now.
+
+Official beach statuses do not solve that mismatch consistently. For example,
+New York City's status combines water-quality information with environmental,
+public-health, safety, and operational reasons for advisories or closures. The
+app therefore does not currently turn laboratory samples or a municipal
+open/closed status into a swimmer-facing water-quality rating. This decision
+should be revisited if a location has a validated, timely, swimmer-relevant
+source such as same-day rapid testing or a transparent local nowcast.
+
 ## Architecture
 
 Shall We Swim is a FastAPI application with a modular architecture. FastAPI

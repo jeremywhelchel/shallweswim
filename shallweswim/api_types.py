@@ -589,6 +589,9 @@ class AppExternalIntegrations(BaseModel):
     transit_source: AppPresentationLink | None = Field(
         None, description="Transit source or citation link"
     )
+    water_quality_info: AppPresentationLink | None = Field(
+        None, description="External water-quality information link"
+    )
     windy: AppWindyConfig | None = Field(
         None, description="Windy forecast iframe configuration"
     )

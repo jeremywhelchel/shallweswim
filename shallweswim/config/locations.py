@@ -890,6 +890,10 @@ class LocationPresentationConfig(BaseModel, frozen=True):
         TransitPresentationConfig | None,
         Field(description="Optional transit integration"),
     ] = None
+    water_quality_info: Annotated[
+        PresentationLinkConfig | None,
+        Field(description="Optional external water-quality information link"),
+    ] = None
     windy: Annotated[
         WindyForecastConfig,
         Field(description="Windy forecast integration settings"),
@@ -1159,6 +1163,14 @@ _CONFIG_LIST = [
             ),
         ),
         presentation=LocationPresentationConfig(
+            water_quality_info=PresentationLinkConfig(
+                label="NYC Health beach information",
+                url=(
+                    "https://www.nyc.gov/site/doh/health/health-topics/"
+                    "beach-homepage.page"
+                ),
+                description="Periodic samples and official beach status:",
+            ),
             webcam=WebcamConfig(
                 provider=types.WebcamProvider.YOUTUBE_LIVE,
                 channel_id="UChh9yX1PSFFreQFmnnIPGuQ",

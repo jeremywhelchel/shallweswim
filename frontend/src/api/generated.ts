@@ -725,6 +725,8 @@ export interface components {
             transit_routes?: components["schemas"]["TransitRouteConfig"][];
             /** @description Transit source or citation link */
             transit_source?: components["schemas"]["AppPresentationLink"] | null;
+            /** @description External water-quality information link */
+            water_quality_info?: components["schemas"]["AppPresentationLink"] | null;
             /** @description Provider-aware webcam configuration */
             webcam?: components["schemas"]["AppWebcamConfig"] | null;
             /** @description Windy forecast iframe configuration */

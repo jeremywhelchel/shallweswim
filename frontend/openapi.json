@@ -93,6 +93,17 @@
             ],
             "description": "Transit source or citation link"
           },
+          "water_quality_info": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppPresentationLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "External water-quality information link"
+          },
           "webcam": {
             "anyOf": [
               {

@@ -352,6 +352,13 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert "webcam_alternative" not in nyc["integrations"]
     assert "webcam_source" not in nyc["integrations"]
     assert nyc["integrations"]["transit_source"]["url"] == "https://goodservice.io"
+    assert nyc["integrations"]["water_quality_info"] == {
+        "label": "NYC Health beach information",
+        "url": (
+            "https://www.nyc.gov/site/doh/health/health-topics/beach-homepage.page"
+        ),
+        "description": "Periodic samples and official beach status:",
+    }
     assert nyc["integrations"]["transit_routes"][0]["goodservice_route_id"] == "B"
     assert nyc["integrations"]["transit_routes"][0]["goodservice_direction"] == "south"
     assert nyc["integrations"]["windy"] == {

@@ -79,6 +79,11 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
         webcam: null,
         transit_routes: [],
         transit_source: null,
+        water_quality_info: {
+          label: "NYC Health beach information",
+          url: "https://www.nyc.gov/site/doh/health/health-topics/beach-homepage.page",
+          description: "Periodic samples and official beach status:",
+        },
         windy: null,
       },
     },
@@ -576,6 +581,13 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
     }).length,
   ).toBeGreaterThan(0);
   expect(screen.getByRole("img", { name: "Map credit" })).toBeVisible();
+  expect(screen.getByRole("img", { name: "Water quality" })).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: "NYC Health beach information" }),
+  ).toHaveAttribute(
+    "href",
+    "https://www.nyc.gov/site/doh/health/health-topics/beach-homepage.page",
+  );
   expect(screen.getByRole("link", { name: "Liam Hartigan" })).toBeVisible();
   expect(
     screen.getAllByText((_, element) => {

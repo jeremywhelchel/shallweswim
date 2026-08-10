@@ -54,6 +54,8 @@ app therefore does not currently turn laboratory samples or a municipal
 open/closed status into a swimmer-facing water-quality rating. This decision
 should be revisited if a location has a validated, timely, swimmer-relevant
 source such as same-day rapid testing or a transparent local nowcast.
+Where available, the app may link to official local water-quality information
+without interpreting it as a current condition or swimming recommendation.
 
 ## Architecture
 

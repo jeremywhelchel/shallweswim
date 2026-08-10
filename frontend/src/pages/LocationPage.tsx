@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Anchor,
+  Droplet,
   GitHub,
   Map as MapIcon,
   Shuffle,
@@ -2540,6 +2541,11 @@ function SourcesList({
           includeLabel={false}
           label="Transit"
           link={location.integrations.transit_source}
+        />
+        <SourceLink
+          icon={<Droplet aria-hidden="true" />}
+          label="Water quality"
+          link={location.integrations.water_quality_info}
         />
         <SourceLink
           icon={<GitHub aria-hidden="true" />}

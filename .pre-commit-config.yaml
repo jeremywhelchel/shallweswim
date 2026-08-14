@@ -21,7 +21,7 @@ repos:
 
   # Biome for frontend linting and formatting
   - repo: https://github.com/biomejs/pre-commit
-    rev: v2.3.6
+    rev: v2.5.8
     hooks:
       - id: biome-check
         files: ^(shallweswim/static|frontend)/.*\.(jsx?|tsx?|cjs|mjs|jsonc?|css|graphql|gql|vue|svelte|astro)$

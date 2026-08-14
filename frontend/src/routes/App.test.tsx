@@ -1075,45 +1075,50 @@ test.each([
     sourceBadge: "Observed",
     waterMovementVisible: true,
   },
-] as const)("renders water movement controls from synthetic $code capabilities", ({
-  code,
-  conditions,
-  features,
-  planVisible,
-  sourceBadge,
-  waterMovementVisible,
-}) => {
-  const location = syntheticLocation({ code, features });
-
-  renderLocation({
-    bootstrap: syntheticBootstrap(location),
+] as const)(
+  "renders water movement controls from synthetic $code capabilities",
+  ({
+    code,
     conditions,
-    initialEntry: `/${code}?planner=open`,
-    locationCode: code,
-  });
+    features,
+    planVisible,
+    sourceBadge,
+    waterMovementVisible,
+  }) => {
+    const location = syntheticLocation({ code, features });
 
-  const heading = screen.queryByRole("heading", { name: "Water Movement" });
-  if (waterMovementVisible) {
-    expect(heading).toBeVisible();
-  } else {
-    expect(heading).not.toBeInTheDocument();
-  }
+    renderLocation({
+      bootstrap: syntheticBootstrap(location),
+      conditions,
+      initialEntry: `/${code}?planner=open`,
+      locationCode: code,
+    });
 
-  const planButton = screen.queryByRole("button", { name: "Plan" });
-  if (planVisible) {
-    expect(planButton).toBeVisible();
-    expect(screen.getByRole("region", { name: "Planner mode" })).toBeVisible();
-  } else {
-    expect(planButton).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("region", { name: "Planner mode" }),
-    ).not.toBeInTheDocument();
-  }
+    const heading = screen.queryByRole("heading", { name: "Water Movement" });
+    if (waterMovementVisible) {
+      expect(heading).toBeVisible();
+    } else {
+      expect(heading).not.toBeInTheDocument();
+    }
 
-  if (sourceBadge) {
-    expect(screen.getByText(sourceBadge)).toBeVisible();
-  }
-});
+    const planButton = screen.queryByRole("button", { name: "Plan" });
+    if (planVisible) {
+      expect(planButton).toBeVisible();
+      expect(
+        screen.getByRole("region", { name: "Planner mode" }),
+      ).toBeVisible();
+    } else {
+      expect(planButton).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: "Planner mode" }),
+      ).not.toBeInTheDocument();
+    }
+
+    if (sourceBadge) {
+      expect(screen.getByText(sourceBadge)).toBeVisible();
+    }
+  },
+);
 
 test("renders not-scheduled transit without an unavailable destination", async () => {
   const bootstrap: components["schemas"]["AppBootstrapResponse"] = {

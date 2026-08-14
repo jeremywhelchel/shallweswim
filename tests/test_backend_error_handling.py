@@ -266,7 +266,7 @@ class TestHasData:
         manager = create_manager_with_feeds(
             {
                 FEED_TIDES: mock_feed_with_data,
-                "currents": mock_feed_without_data,
+                FeedName.CURRENTS: mock_feed_without_data,
             }
         )
 
@@ -283,7 +283,7 @@ class TestHasData:
         manager = create_manager_with_feeds(
             {
                 FEED_TIDES: mock_feed1,
-                "currents": mock_feed2,
+                FeedName.CURRENTS: mock_feed2,
             }
         )
 
@@ -300,7 +300,7 @@ class TestHasData:
         manager = create_manager_with_feeds(
             {
                 FEED_TIDES: None,
-                "currents": None,
+                FeedName.CURRENTS: None,
             }
         )
 
@@ -314,7 +314,7 @@ class TestHasData:
         manager = create_manager_with_feeds(
             {
                 FEED_TIDES: mock_feed_with_data,
-                "currents": None,  # Not configured
+                FeedName.CURRENTS: None,  # Not configured
             }
         )
 
@@ -408,7 +408,7 @@ class TestReady:
         manager = create_manager_with_feeds(
             {
                 FEED_TIDES: mock_feed1,
-                "currents": mock_feed2,
+                FeedName.CURRENTS: mock_feed2,
             }
         )
 
@@ -429,7 +429,7 @@ class TestReady:
         manager = create_manager_with_feeds(
             {
                 FEED_TIDES: mock_fresh_feed,
-                "currents": mock_expired_feed,
+                FeedName.CURRENTS: mock_expired_feed,
             }
         )
 
@@ -446,7 +446,7 @@ class TestReady:
         manager = create_manager_with_feeds(
             {
                 FEED_TIDES: mock_feed1,
-                "currents": mock_feed2,
+                FeedName.CURRENTS: mock_feed2,
             }
         )
 
@@ -469,7 +469,7 @@ class TestReady:
         manager = create_manager_with_feeds(
             {
                 FEED_TIDES: mock_fresh_feed,
-                "currents": None,  # Not configured for this location
+                FeedName.CURRENTS: None,  # Not configured for this location
             }
         )
 
@@ -480,7 +480,7 @@ class TestReady:
         manager = create_manager_with_feeds(
             {
                 FEED_TIDES: None,
-                "currents": None,
+                FeedName.CURRENTS: None,
             }
         )
 

@@ -45,13 +45,13 @@ sns.axes_style("darkgrid")
 # Constants for plot sizes
 STANDARD_FIGURE_SIZE = (16, 8)  # Standard plot size in inches
 CURRENT_CHART_SIZE = (16, 6)  # Size for current charts (2596 x 967 pixels)
-MAX_HISTORIC_TEMP_PLOT_GAP = pd.Timedelta(hours=48)
-HISTORIC_TEMP_PLOT_ARTIFACT_WINDOW = pd.Timedelta(days=7)
+MAX_HISTORIC_TEMP_PLOT_GAP = datetime.timedelta(hours=48)
+HISTORIC_TEMP_PLOT_ARTIFACT_WINDOW = datetime.timedelta(days=7)
 MAX_HISTORIC_TEMP_PLOT_SPIKE_RESIDUAL_F = 12.0
 MAX_HISTORIC_TEMP_PLOT_CROSS_YEAR_RESIDUAL_F = 10.0
-HISTORIC_TEMP_PLOT_VOLATILITY_WINDOW = pd.Timedelta(hours=48)
+HISTORIC_TEMP_PLOT_VOLATILITY_WINDOW = datetime.timedelta(hours=48)
 MAX_HISTORIC_TEMP_PLOT_SMOOTHED_RANGE_F = 6.0
-MIN_HISTORIC_TEMP_PLOT_SEGMENT = pd.Timedelta(hours=48)
+MIN_HISTORIC_TEMP_PLOT_SEGMENT = datetime.timedelta(hours=48)
 HISTORIC_TEMP_LINE_STYLES = ["--", ":", "-."]
 HISTORIC_TEMP_COLOR_PALETTE = sns.color_palette(n_colors=20)
 
@@ -60,15 +60,15 @@ HISTORIC_TEMP_COLOR_PALETTE = sns.color_palette(n_colors=20)
 class HistoricTempPlotPolicy:
     """Tuning policy for historical temperature trend rendering."""
 
-    max_gap: pd.Timedelta = MAX_HISTORIC_TEMP_PLOT_GAP
+    max_gap: datetime.timedelta = MAX_HISTORIC_TEMP_PLOT_GAP
     smoothing_window_rows: int = 24
     smoothing_min_periods: int | None = None
-    artifact_window: pd.Timedelta = HISTORIC_TEMP_PLOT_ARTIFACT_WINDOW
+    artifact_window: datetime.timedelta = HISTORIC_TEMP_PLOT_ARTIFACT_WINDOW
     max_spike_residual_f: float = MAX_HISTORIC_TEMP_PLOT_SPIKE_RESIDUAL_F
     max_cross_year_residual_f: float = MAX_HISTORIC_TEMP_PLOT_CROSS_YEAR_RESIDUAL_F
-    volatility_window: pd.Timedelta = HISTORIC_TEMP_PLOT_VOLATILITY_WINDOW
+    volatility_window: datetime.timedelta = HISTORIC_TEMP_PLOT_VOLATILITY_WINDOW
     max_smoothed_range_f: float = MAX_HISTORIC_TEMP_PLOT_SMOOTHED_RANGE_F
-    min_segment: pd.Timedelta = MIN_HISTORIC_TEMP_PLOT_SEGMENT
+    min_segment: datetime.timedelta = MIN_HISTORIC_TEMP_PLOT_SEGMENT
 
 
 DEFAULT_HISTORIC_TEMP_PLOT_POLICY = HistoricTempPlotPolicy()
@@ -569,8 +569,8 @@ def _log_historic_temperature_plot_artifact_counts(
     )
 
 
-def _gap_limit_rows(index: pd.Index, gap_limit: pd.Timedelta) -> int:
-    fallback_rows = int(gap_limit / pd.Timedelta(hours=1))
+def _gap_limit_rows(index: pd.Index, gap_limit: datetime.timedelta) -> int:
+    fallback_rows = int(gap_limit / datetime.timedelta(hours=1))
     if not isinstance(index, pd.DatetimeIndex) or len(index) < 2:
         return fallback_rows
 
@@ -579,7 +579,7 @@ def _gap_limit_rows(index: pd.Index, gap_limit: pd.Timedelta) -> int:
         return fallback_rows
 
     step = diffs.median()
-    if step <= pd.Timedelta(0):
+    if step <= datetime.timedelta(0):
         return fallback_rows
     return max(1, math.floor(gap_limit / step))
 

@@ -288,15 +288,12 @@ def prepare_current_prediction_frame(currents_data: pd.DataFrame) -> pd.DataFram
     local_mag_pct = np.zeros(len(df), dtype=float)
     segment_ids = np.full(len(df), np.nan)
     segment_phases = np.full(len(df), None, dtype=object)
-    segment_peak_times = np.full(len(df), np.datetime64("NaT"), dtype="datetime64[ns]")
+    nat_ns = np.datetime64("NaT", "ns")
+    segment_peak_times = np.full(len(df), nat_ns, dtype="datetime64[ns]")
     segment_peak_magnitudes = np.full(len(df), np.nan)
-    segment_start_slack_times = np.full(
-        len(df), np.datetime64("NaT"), dtype="datetime64[ns]"
-    )
+    segment_start_slack_times = np.full(len(df), nat_ns, dtype="datetime64[ns]")
     segment_start_slack_magnitudes = np.full(len(df), np.nan)
-    segment_end_slack_times = np.full(
-        len(df), np.datetime64("NaT"), dtype="datetime64[ns]"
-    )
+    segment_end_slack_times = np.full(len(df), nat_ns, dtype="datetime64[ns]")
     segment_end_slack_magnitudes = np.full(len(df), np.nan)
 
     def interpolated_slack_time(

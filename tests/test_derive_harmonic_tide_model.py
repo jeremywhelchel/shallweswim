@@ -66,7 +66,7 @@ def write_synthetic_cache(
     model = synthetic_model()
     times = pd.date_range(
         "2026-01-01T00:00:00Z",
-        end=pd.Timestamp("2026-01-01T00:00:00Z") + pd.Timedelta(days=days),
+        end=pd.Timestamp("2026-01-01T00:00:00Z") + datetime.timedelta(days=days),
         inclusive="left",
         freq=freq,
     )

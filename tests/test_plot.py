@@ -289,8 +289,8 @@ def test_historic_temperature_plot_frame_removes_short_orphan_segments() -> None
     index = pd.date_range("2020-01-01", periods=30 * 24, freq="h")
     water_temp_by_year = pd.DataFrame({2025: [60.0] * len(index)}, index=index)
     orphan = pd.date_range("2020-01-15", periods=4, freq="h")
-    water_temp_by_year.loc[: orphan[0] - pd.Timedelta(hours=1), 2025] = np.nan
-    water_temp_by_year.loc[orphan[-1] + pd.Timedelta(hours=1) :, 2025] = np.nan
+    water_temp_by_year.loc[: orphan[0] - datetime.timedelta(hours=1), 2025] = np.nan
+    water_temp_by_year.loc[orphan[-1] + datetime.timedelta(hours=1) :, 2025] = np.nan
 
     plot_frame = plot._historic_temperature_plot_frame(water_temp_by_year)
 
@@ -312,7 +312,7 @@ def test_historic_temperature_plot_policy_preserves_sparse_recent_segment() -> N
         water_temp_by_year,
         plot.HistoricTempPlotPolicy(
             smoothing_min_periods=3,
-            min_segment=pd.Timedelta(hours=6),
+            min_segment=datetime.timedelta(hours=6),
         ),
     )
 

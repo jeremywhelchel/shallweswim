@@ -103,8 +103,8 @@ async def test_integration_sdf_temperature_fetch_with_parameter_cd() -> None:
         f"Water temperature too high: {df['water_temp'].max()}°F"
     )
 
-    buffer_begin = pd.Timestamp(begin_date) - pd.Timedelta(days=1)
-    buffer_end = pd.Timestamp(end_date) + pd.Timedelta(days=1)
+    buffer_begin = pd.Timestamp(begin_date) - datetime.timedelta(days=1)
+    buffer_end = pd.Timestamp(end_date) + datetime.timedelta(days=1)
 
     min_ts_str = str(df.index.min())
     max_ts_str = str(df.index.max())

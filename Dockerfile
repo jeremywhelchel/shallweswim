@@ -3,7 +3,7 @@ FROM node:24-slim AS frontend-builder
 WORKDIR /frontend
 
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-COPY frontend/tsconfig.json frontend/vite.config.ts frontend/tailwind.config.ts ./
+COPY frontend/tsconfig.json frontend/vite.config.ts ./
 COPY frontend/postcss.config.js frontend/playwright.config.ts ./
 RUN corepack enable && corepack pnpm install --frozen-lockfile
 

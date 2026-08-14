@@ -339,6 +339,10 @@ The current expectation is that Tailwind helps implement the app layout and
 component styling quickly while still leaving room to change colors, typography,
 spacing, and visual treatment as the product design evolves.
 
+The frontend uses Tailwind CSS 4's CSS-first configuration. Project design tokens
+live in the `@theme` block in `src/styles/app.css`; PostCSS loads Tailwind through
+`@tailwindcss/postcss`.
+
 ### TanStack Query
 
 Manages frontend server-state concerns:

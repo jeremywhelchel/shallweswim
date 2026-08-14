@@ -1,6 +1,17 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-swim-blue: #000099;
+  --color-swim-ink: #172033;
+  --color-swim-mist: #fcffff;
+  --color-swim-line: #d6e4e8;
+  --color-swim-current: #006b8f;
+  --color-swim-tide: #5b7f2a;
+  --color-swim-alert: #a64b00;
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
 
 :root {
   color-scheme: light;

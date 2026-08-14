@@ -42,7 +42,7 @@ dev = [
     "types-requests",
     # Keep pinned to frontend/package.json @playwright/test so Python and
     # frontend browser tests use the same shared Chromium revision.
-    "playwright==1.59.0",
+    "playwright==1.62.0",
     "requests>=2.33,<3",
     "httpx2>=2.4.0",
 ]

@@ -58,7 +58,8 @@ jobs:
     name: Run frontend browser tests
     needs: frontend
     container:
-      image: mcr.microsoft.com/playwright:v1.59.0-noble
+      # Keep aligned with pyproject.toml playwright and frontend @playwright/test.
+      image: mcr.microsoft.com/playwright:v1.62.0-noble
       options: --ipc=host
     steps:
       - name: Checkout repository

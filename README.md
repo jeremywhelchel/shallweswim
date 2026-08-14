@@ -292,9 +292,11 @@ Note: Integration tests connect to live external APIs (NOAA CO-OPS, NOAA NDBC, U
 #### Optional Browser Tests
 
 Browser tests exercise the frontend JavaScript in a real Chromium browser.
-They are not part of the default test run. Python Playwright and frontend
-Playwright are pinned to the same version and use the default shared Playwright
-browser cache, so either install command below prepares Chromium for both.
+They are not part of the default test run. Python Playwright, frontend
+`@playwright/test`, and the official Playwright image in the frontend CI
+workflow are pinned to the same version. Update all three together. The local
+Python and frontend packages use the default shared Playwright browser cache,
+so either install command below prepares Chromium for both.
 Frontend Playwright tests run against the production Vite build via
 `vite preview`, so run `corepack pnpm@10.18.3 --dir frontend build` before
 `test:e2e:smoke` or `test:e2e`.

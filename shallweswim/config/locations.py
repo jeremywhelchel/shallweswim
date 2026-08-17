@@ -1256,6 +1256,51 @@ _CONFIG_LIST = [
         ),
     ),
     LocationConfig(
+        code="pbi",
+        name="Palm Beach",
+        nav_label="Palm Beach, FL",
+        swim_location="Northern Palm Beach County beaches",
+        swim_location_link=(
+            "https://www.visitflorida.com/travel-ideas/articles/beach-guide-juno-beach/"
+        ),
+        location_info_source="VISIT FLORIDA, Juno Beach guide",
+        latitude=26.8836,
+        longitude=-80.0553,
+        timezone=pytz.timezone("US/Eastern"),
+        default_temperature_unit="F",
+        **_shared_temp_sources(
+            CoopsTempFeedConfig(
+                station=8722670,
+                name="Lake Worth Pier, Atlantic Ocean",
+                display_note=(
+                    "Temperature is measured at Lake Worth Pier, about 19 miles "
+                    "south of Loggerhead Park; actual temperature may vary at your "
+                    "entry point along the coast."
+                ),
+            )
+        ),
+        tide_source=CoopsTideFeedConfig(
+            station=8722670,
+            name="Lake Worth Pier, Atlantic Ocean",
+            display_note=(
+                "Tide predictions use Lake Worth Pier; currents at Loggerhead Park "
+                "and along this coast are often driven more by the Gulf Stream than "
+                "tides."
+            ),
+        ),
+        presentation=LocationPresentationConfig(
+            water_quality_info=PresentationLinkConfig(
+                label="Palm Beach County beach conditions",
+                url=("https://discover.pbc.gov/parks/Locations/Beach-Conditions.aspx"),
+                description="Daily swimming conditions and beach hazards:",
+            ),
+        ),
+        description=(
+            "Atlantic open-water swimming along the northern Palm Beach County "
+            "coast, with Loggerhead Park as a reference access point."
+        ),
+    ),
+    LocationConfig(
         code="chi",
         name="Chicago",
         nav_label="Chicago, IL",

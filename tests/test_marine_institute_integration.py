@@ -37,4 +37,6 @@ async def test_kinsale_tide_high_low_fetch_matches_cork_config() -> None:
     assert df.index.tz is None
     assert set(df["type"].astype(str)) == {"high", "low"}
     assert df["prediction"].between(0.0, 20.0).all()
-    assert df["prediction"].max() - df["prediction"].min() > 5.0
+    high_tides = df.loc[df["type"] == "high", "prediction"]
+    low_tides = df.loc[df["type"] == "low", "prediction"]
+    assert high_tides.min() > low_tides.max()

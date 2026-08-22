@@ -117,7 +117,7 @@ cd shallweswim
 uv sync
 
 # Run the development server
-uv run python -m shallweswim.main --port=12345
+uv run python -m shallweswim.main --port=12345 --reload
 ```
 
 Then visit <http://localhost:12345> in your browser.

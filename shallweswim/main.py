@@ -912,6 +912,11 @@ parser.add_argument(
     default=int(os.environ.get("PORT", 8080)),
     help="Port to bind the server to",
 )
+parser.add_argument(
+    "--reload",
+    action="store_true",
+    help="Reload the server when source files change (local development only)",
+)
 
 
 _parsed_args, _unknown_args = parser.parse_known_args()
@@ -955,6 +960,6 @@ if __name__ == "__main__":
         host=_parsed_args.host,
         port=_parsed_args.port,
         log_level="info",
-        reload=True,
+        reload=_parsed_args.reload,
         factory=True,
     )

@@ -110,23 +110,24 @@ gcloud logging read \
 gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND timestamp>="2026-02-18T20:00:00Z" AND timestamp<="2026-02-18T21:00:00Z"' \
   --limit=100 \
-  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestUrl,textPayload)'
+  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestUrl,jsonPayload.message,textPayload)'
 
 # Full JSON details for errors
 gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND severity>=ERROR' \
   --limit=20 --format=json
 
-# Filter by text content
+# Filter structured application logs by message content
 gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND textPayload:"san"' \
-  --limit=30 --format='table(timestamp,textPayload)'
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND jsonPayload.message:"san"' \
+  --limit=30 --format='table(timestamp,severity,jsonPayload.message)'
 ```
 
-Cloud Run request logs store status, URL, latency, and user agent under `httpRequest`; `textPayload`
-is often empty for those entries. Cloud Run also reports many `4xx` responses as `WARNING`, so
-`severity>=WARNING` alone is noisy and commonly includes bot scans for paths such as `/wp`,
-`/wordpress`, and `/api/health`.
+Cloud Run request logs store status, URL, latency, and user agent under `httpRequest`; application
+logs store their message and approved structured fields under `jsonPayload`. `textPayload` is often
+empty for both request logs and structured application logs. Cloud Run also reports many `4xx`
+responses as `WARNING`, so `severity>=WARNING` alone is noisy and commonly includes bot scans for
+paths such as `/wp`, `/wordpress`, and `/api/health`.
 
 Required `.env` variables: `CLOUDSDK_CORE_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`
 

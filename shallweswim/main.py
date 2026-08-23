@@ -926,11 +926,15 @@ def create_app() -> fastapi.FastAPI:
     """Factory function for creating the FastAPI application.
 
     This function is used by uvicorn to create the application instance.
-    It reads the asset manifest path from parsed arguments if available.
+    It configures logging in the server process (including reload children) and
+    reads the asset manifest path from parsed arguments if available.
 
     Returns:
         FastAPI application instance
     """
+    # Reload starts a fresh server child that does not execute the __main__ block.
+    setup_logging()
+
     # Get the asset manifest path from parsed arguments if available
     if _parsed_args is None:
         raise RuntimeError("Application arguments have not been parsed")
@@ -949,7 +953,7 @@ if __name__ == "__main__":
     _parsed_args = parser.parse_args()
 
     # Set up logging first, before any logging calls
-    setup_logging()
+    log_format = setup_logging()
     logging.info("***********************************************")
     logging.info("Running uvicorn app")
     logging.info(f"Command line arguments: {_parsed_args}")
@@ -960,6 +964,7 @@ if __name__ == "__main__":
         host=_parsed_args.host,
         port=_parsed_args.port,
         log_level="info",
+        access_log=log_format == "console",
         reload=_parsed_args.reload,
         factory=True,
     )

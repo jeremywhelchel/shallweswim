@@ -1,14 +1,26 @@
-"""Logging utilities for the ShallWeSwim application.
+"""Provider-neutral logging configuration for ShallWeSwim."""
 
-This module provides logging configuration and utilities for the application,
-including custom filters and handlers for different environments.
-"""
-
+import json
 import logging
 import os
+import sys
+from typing import Any, TextIO
 
 # Determine project root for relative log paths (directory containing this file)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_FORMAT_ENV_VAR = "SHALLWESWIM_LOG_FORMAT"
+STRUCTURED_FIELDS = (
+    "component",
+    "operation",
+    "location",
+    "feed",
+    "provider",
+    "outcome",
+    "run_id",
+    "generation_id",
+    "duration_ms",
+    "record_count",
+)
 
 
 class RelativePathFilter(logging.Filter):
@@ -33,47 +45,64 @@ class RelativePathFilter(logging.Filter):
         return True  # Always process the record
 
 
-def _configure_local_handler(root_logger: logging.Logger) -> None:
-    """Configure a stream handler for local execution using relative path.
-
-    Args:
-        root_logger: The root logger to configure
-    """
-    # Clear existing handlers to ensure clean setup
-    if root_logger.hasHandlers():
-        root_logger.handlers.clear()
-
-    log_format = "%(levelname)s:%(relativepath)s:%(lineno)d: %(message)s"
-    formatter = logging.Formatter(log_format)  # Standard formatter
-    handler = logging.StreamHandler()  # Defaults to sys.stderr
-    handler.setFormatter(formatter)
-    root_logger.addHandler(handler)
+def _json_safe(value: Any) -> Any:
+    """Return a JSON-compatible value without failing application logging."""
+    try:
+        json.dumps(value, allow_nan=False)
+    except (TypeError, ValueError):
+        return str(value)
+    return value
 
 
-def setup_logging() -> None:
-    """Configures logging based on the environment (Cloud Run or local)."""
-    root_logger = logging.getLogger()
+class JsonLogFormatter(logging.Formatter):
+    """Format each log event as one JSON object for container platforms."""
 
-    # Add the filter to inject 'relativepath' into all records
-    # Ensure only one instance is added
-    if not any(isinstance(f, RelativePathFilter) for f in root_logger.filters):
-        root_logger.addFilter(RelativePathFilter())
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "severity": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name,
+            "source": {
+                "file": getattr(record, "relativepath", record.pathname),
+                "line": record.lineno,
+                "function": record.funcName,
+            },
+        }
+        for field in STRUCTURED_FIELDS:
+            if hasattr(record, field):
+                payload[field] = _json_safe(getattr(record, field))
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(
+            payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
 
-    # Set root logger level unconditionally
-    root_logger.setLevel(logging.INFO)
 
-    # If running in Google Cloud Run, use cloud logging
-    if "K_SERVICE" in os.environ:
-        # Lazy import - only load when actually on Cloud Run
-        import google.cloud.logging  # type: ignore[import]
-
-        # Setup Google Cloud logging
-        # By default this captures all logs at INFO level and higher
-        log_client = google.cloud.logging.Client()  # type: ignore[no-untyped-call]
-        log_client.get_default_handler()  # type: ignore[no-untyped-call]
-        log_client.setup_logging()  # type: ignore[no-untyped-call]
-        logging.info("Using google cloud logging")
+def _create_handler(log_format: str, stream: TextIO | None = None) -> logging.Handler:
+    """Create the requested stream handler."""
+    if log_format == "console":
+        handler = logging.StreamHandler(stream or sys.stderr)
+        handler.setFormatter(
+            logging.Formatter("%(levelname)s:%(relativepath)s:%(lineno)d: %(message)s")
+        )
+    elif log_format == "json":
+        handler = logging.StreamHandler(stream or sys.stdout)
+        handler.setFormatter(JsonLogFormatter())
     else:
-        # Use the helper function to configure local logging
-        _configure_local_handler(root_logger)
-        logging.info("Using standard stream handler with relative path format")
+        raise ValueError(
+            f"Invalid {LOG_FORMAT_ENV_VAR} value {log_format!r}; expected 'console' or 'json'"
+        )
+    handler.addFilter(RelativePathFilter())
+    return handler
+
+
+def setup_logging(log_format: str | None = None) -> str:
+    """Configure logging and return the validated selected format."""
+    selected_format = log_format or os.environ.get(LOG_FORMAT_ENV_VAR, "console")
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.filters.clear()
+    root_logger.addHandler(_create_handler(selected_format))
+    root_logger.setLevel(logging.INFO)
+    logging.info("Logging configured with %s format", selected_format)
+    return selected_format

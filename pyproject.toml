@@ -6,7 +6,6 @@ authors = [{name = "Jeremy Whelchel", email = "jeremy@whelchel.me"}]
 readme = "README.md"
 requires-python = "~=3.13.0"
 dependencies = [
-    "google-cloud-logging>=3,<4",
     "numpy>=2,<3",
     "pandas>=3,<4",
     "seaborn>=0.13,<1",

@@ -20,6 +20,9 @@ spec:
       serviceAccountName: shallweswim@shallweswim.iam.gserviceaccount.com
       containers:
         - image: us-east4-docker.pkg.dev/shallweswim/gcr/shallweswim:${IMAGE_TAG}
+          env:
+            - name: SHALLWESWIM_LOG_FORMAT
+              value: json
           ports:
             - containerPort: 8080
               name: http1

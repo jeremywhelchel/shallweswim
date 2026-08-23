@@ -237,6 +237,17 @@ Two error types for data availability, at different layers:
 
 - Use the standard `logging` module.
 - Format: `logging.info(f"[{context}] Message")` where context is often the location code or component name.
+- Local runs default to human-readable logs on stderr. Hosted deployments set
+  `SHALLWESWIM_LOG_FORMAT=json` to emit one structured JSON object per line on
+  stdout; the container platform captures and routes that stream.
+- The Uvicorn application factory configures logging in the server process so
+  reload child processes use the same application format. Uvicorn access logs
+  retain their own human-readable development format in console mode. JSON
+  deployments disable Uvicorn access logs because the hosting platform emits
+  richer native request logs; this avoids duplicate production request events.
+- Application code must not use a provider logging SDK. Only approved,
+  bounded-cardinality fields from `logging_utils.py` may be supplied through
+  `extra`; arbitrary fields could leak secrets or create unbounded log labels.
 
 ## 3. Testing
 

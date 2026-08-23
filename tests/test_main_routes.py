@@ -5,12 +5,28 @@ from fastapi.testclient import TestClient
 from markupsafe import escape
 
 from shallweswim import canonical, config
+from shallweswim import main as main_module
 from shallweswim.main import app, start_app
 
 
 def _escaped(value: str) -> str:
     """Return the source form produced by Jinja autoescaping."""
     return str(escape(value))
+
+
+def test_create_app_configures_logging_in_uvicorn_server_process(monkeypatch) -> None:
+    events: list[str] = []
+    monkeypatch.setattr(main_module, "setup_logging", lambda: events.append("logging"))
+    monkeypatch.setattr(
+        main_module,
+        "start_app",
+        lambda **_kwargs: events.append("start") or main_module.app,
+    )
+
+    result = main_module.create_app()
+
+    assert result is main_module.app
+    assert events == ["logging", "start"]
 
 
 def _assert_tag_with_attrs(html: str, tag: str, attrs: list[str]) -> None:

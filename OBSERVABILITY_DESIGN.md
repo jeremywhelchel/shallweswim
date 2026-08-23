@@ -337,9 +337,15 @@ logging.
 The migration should emit JSON lines through a standard stream handler so the
 deployment platform captures stdout/stderr directly. Logs should include stable
 fields such as component, operation, location, feed, provider, bounded outcome,
-run ID, and generation ID where applicable. After production equivalence is
-verified, remove the `google-cloud-logging` runtime dependency and Cloud Run
-branch from `logging_utils.py`.
+run ID, and generation ID where applicable. For the reference Cloud Run
+deployment, the stream-handler cutover and removal of the
+`google-cloud-logging` dependency happen in one revision. Validate severity and
+field parsing immediately after deployment; revision rollback retains the old
+SDK-based implementation if equivalence fails. Other deployment platforms may
+stage those steps when rollback does not preserve the prior runtime image.
+Uvicorn access logs remain enabled for human-readable local development but are
+disabled with JSON logging because Cloud Run already emits richer structured
+request logs under `run.googleapis.com/requests`.
 
 Structured event schemas should be designed so important counters and states can
 be converted into deployment-configured log-based metrics. This supplies the
@@ -495,8 +501,9 @@ capture.
 
 ### Phase 2: Web Instrumentation
 
-- Replace the provider logging handler with structured JSON stdout after
-  validating Cloud Logging severity and field parsing.
+- Replace the provider logging handler with structured JSON stdout, remove the
+  provider dependency in the same rollback-safe Cloud Run revision, and then
+  validate Cloud Logging severity and field parsing immediately after deploy.
 - Prototype direct OpenTelemetry export in the web entry point, retaining
   log-based metrics as the fallback.
 - Add snapshot metrics when snapshot serving exists.

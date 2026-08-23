@@ -3,6 +3,36 @@
 One-off operational and data-investigation scripts live here. Run them from the
 repository root with `uv run python -m shallweswim.scripts.<module>`.
 
+## Request Log Reports
+
+`request_log_report.py` reads Cloud Run's automatic request logs through
+`gcloud` and prints privacy-conscious aggregate traffic counts. It does not
+write analytics events or retain raw IP addresses. Managed uptime checks are
+excluded by default, and the report warns when the configured row limit makes
+the requested window incomplete. It also estimates visits by grouping
+meaningful browser requests under an ephemeral per-run hash of IP address and
+user agent, with a configurable 30-minute inactivity gap. These are directional
+estimates rather than durable user identities.
+
+Operation counts distinguish location APIs and pages from static `asset`
+requests, non-location `site-api` requests, `site-metadata`, and unrecognized
+`unknown/probe` paths. The latter commonly contains scanners that claim a
+browser user agent.
+
+```bash
+# Last seven days, all non-uptime traffic.
+uv run python -m shallweswim.scripts.request_log_report
+
+# Browser traffic for one location and explicit window.
+uv run python -m shallweswim.scripts.request_log_report \
+  --start 2026-08-01 --end 2026-08-24 \
+  --traffic browser --location nyc
+
+# Machine-readable output for the production hostname.
+uv run python -m shallweswim.scripts.request_log_report \
+  --host shallweswim.today --json
+```
+
 ## Irish Lights Temperature Fetches
 
 `debug_irish_lights_fetch.py` exercises the Irish Lights MetOcean client used by

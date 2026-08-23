@@ -599,9 +599,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Raises:
             HTTPException: If the location is not configured
         """
-        logging.info(
-            f"[{location}] Processing conditions request with shift={shift}, at={at}"
-        )
         ctx = resolve_location_time(app, location, shift=shift, at=at)
 
         # Check if location has data before attempting to serve
@@ -632,7 +629,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Returns:
             SVG image response with live temperature visualization
         """
-        logging.info(f"[{location}] Processing live temps plot request")
         validate_location(location)
 
         data_manager = app.state.data_managers[location]
@@ -661,9 +657,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Returns:
             SVG image response with historic temperature visualization
         """
-        logging.info(
-            f"[{location}] Processing historic temps plot request, period={period}"
-        )
         validate_location(location)
 
         period_to_plot: dict[str, PlotName] = {
@@ -704,9 +697,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Returns:
             SVG image response with tide and current visualization
         """
-        logging.info(
-            f"[{location}] Processing current tide plot request with shift={shift}, at={at}"
-        )
         ctx = resolve_location_time(app, location, shift=shift, at=at)
 
         # Check both required feeds have data before attempting to generate plot
@@ -780,9 +770,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         location: str, shift: int = 0, at: str | None = None
     ) -> fastapi.responses.Response:
         """Generate and serve a tide-only plot for the specified location."""
-        logging.info(
-            f"[{location}] Processing tide plot request with shift={shift}, at={at}"
-        )
         ctx = resolve_location_time(app, location, shift=shift, at=at)
 
         if not ctx.data_manager.has_feed_data(FEED_TIDES):
@@ -854,8 +841,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
             True if service can serve at least one location
             Status code 200 if healthy, 503 if not healthy
         """
-        logging.info("[api] Processing health status request")
-
         # Check if data managers exist and are initialized
         if not app.state.data_managers:
             logging.warning("[api] No locations configured")
@@ -865,7 +850,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Check if at least one location has data
         locations_with_data = []
-        locations_without_data = []
 
         for loc_code, loc_data in app.state.data_managers.items():
             if not loc_data:
@@ -877,22 +861,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
             if loc_data.has_data:
                 locations_with_data.append(loc_code)
-            else:
-                locations_without_data.append(loc_code)
-
-        # Log status for visibility
-        if locations_without_data:
-            logging.info(
-                f"[/api/healthy] Locations without data: {locations_without_data}"
-            )
-        if locations_with_data:
-            logging.info(f"[/api/healthy] Locations with data: {locations_with_data}")
 
         # Healthy if at least one location can serve data
         if locations_with_data:
-            logging.info(
-                f"[api] Service healthy - {len(locations_with_data)} location(s) have data"
-            )
             return True
         else:
             logging.warning(
@@ -913,8 +884,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Raises:
             HTTPException: If no locations are configured
         """
-        logging.info("[api] Processing all locations status request")
-
         # Missing manager state means startup/config initialization failed.
         if not hasattr(app.state, "data_managers") or not app.state.data_managers:
             logging.error("[api] No location data managers initialized")
@@ -939,8 +908,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Returns:
             List of LocationSummary objects for all configured locations
         """
-        logging.info("[api] Processing locations list request")
-
         locations = []
         for code, cfg in config_lib.CONFIGS.items():
             # Check if location has data available
@@ -976,8 +943,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Raises:
             HTTPException: If the location is not configured
         """
-        logging.info(f"[{location}] Processing status request")
-
         # Validate location exists
         validate_location(location)
 
@@ -1013,9 +978,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Raises:
             HTTPException: If the location is not configured or doesn't support currents
         """
-        logging.info(
-            f"[{location}] Processing currents request with shift={shift}, at={at}"
-        )
         location_context = resolve_location_context(app, location)
 
         # Check if this location supports current predictions
@@ -1125,7 +1087,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
             HTTPException(503): If the feed is configured but data is unavailable.
             HTTPException(500): If app state is missing a manager for a configured location.
         """
-        logging.info(f"Received request for feed '{feed_name}' at location '{loc}'")
         try:
             # Check if the location is configured.
             if not config_lib.get(loc):
@@ -1166,9 +1127,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     detail=f"Feed '{feed_name}' data temporarily unavailable for location '{loc}'",
                 ) from e
 
-            logging.info(
-                f"Successfully retrieved and validated feed '{feed_name}' for location '{loc}'."
-            )
             return df.to_dict(
                 orient="index"
             )  # Return dict for consistent serialization

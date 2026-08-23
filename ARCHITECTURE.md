@@ -248,6 +248,9 @@ Two error types for data availability, at different layers:
 - Application code must not use a provider logging SDK. Only approved,
   bounded-cardinality fields from `logging_utils.py` may be supplied through
   `extra`; arbitrary fields could leak secrets or create unbounded log labels.
+- Successful route-entry and response events rely on platform-native request
+  logs rather than duplicate application INFO messages. Application logs record
+  domain work, state changes, degraded availability, and failures.
 
 ## 3. Testing
 
@@ -611,6 +614,9 @@ be tuned from production or local logs.
 - Single station outages do NOT trigger 503
 - Missing/empty location manager state returns **503** here because the
   health endpoint answers "can this instance serve traffic?"
+- Successful health and aggregate-status probes rely on platform-native request
+  logs and do not emit duplicate application INFO events. Unhealthy states and
+  internal status failures remain application WARNING or ERROR events.
 
 ### Canonical Routes
 

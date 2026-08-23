@@ -5,6 +5,7 @@
 # Standard library imports
 import concurrent.futures
 import datetime
+import logging
 from collections.abc import Generator
 from unittest.mock import MagicMock, call, patch
 
@@ -476,7 +477,9 @@ def test_app_source_citations_deduplicates_same_temperature_source() -> None:
 
 
 def test_get_location_conditions(
-    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+    test_client: TestClient,
+    mock_data_managers: dict[str, LocationConfig],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test the /api/{location}/conditions endpoint with all data types present."""
     assert isinstance(test_client.app, FastAPI)  # Help mypy
@@ -550,10 +553,15 @@ def test_get_location_conditions(
     mock_manager.predict_tide_at_time.return_value = mock_tide_state
 
     # --- 3. Call API Endpoint ---
-    response = test_client.get("/api/nyc/conditions")
+    with caplog.at_level(logging.INFO):
+        response = test_client.get("/api/nyc/conditions")
 
     # --- 4. Assert Response ---
     assert response.status_code == status.HTTP_200_OK
+    assert not any(
+        record.pathname.endswith("shallweswim/api/routes.py")
+        for record in caplog.records
+    )
     data = response.json()
     assert_json_serializable(data)  # Ensure it's valid JSON
 

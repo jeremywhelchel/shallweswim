@@ -565,7 +565,9 @@ def test_healthy_no_location_has_data_returns_503() -> None:
     assert "no location has data" in response.json()["detail"]
 
 
-def test_healthy_at_least_one_location_has_data_returns_200() -> None:
+def test_healthy_at_least_one_location_has_data_returns_200(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """At least one location has data → 200 (healthy).
 
     Service is healthy if at least one location can serve data.
@@ -587,10 +589,15 @@ def test_healthy_at_least_one_location_has_data_returns_200() -> None:
     app.state.data_managers["sfo"] = mock_manager_without_data
 
     client = TestClient(app)
-    response = client.get("/api/healthy")
+    with caplog.at_level(logging.INFO):
+        response = client.get("/api/healthy")
 
     assert response.status_code == 200
     assert response.json() is True
+    assert not any(
+        record.pathname.endswith("shallweswim/api/routes.py")
+        for record in caplog.records
+    )
 
 
 def test_health_alias_at_least_one_location_has_data_returns_200() -> None:

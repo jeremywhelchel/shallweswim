@@ -1,17 +1,18 @@
 import json
 import logging
 from io import StringIO
+from pathlib import Path
 
 import pytest
 
-from shallweswim.logging_utils import _create_handler, setup_logging
+from shallweswim.logging_utils import PROJECT_ROOT, _create_handler, setup_logging
 
 
 def _record(**kwargs: object) -> logging.LogRecord:
     record = logging.LogRecord(
         name="shallweswim.core.feeds",
         level=logging.INFO,
-        pathname="/workspace/shallweswim/core/feeds.py",
+        pathname=str(Path(PROJECT_ROOT) / "shallweswim/core/feeds.py"),
         lineno=123,
         msg="Temperature %s",
         args=("updated",),

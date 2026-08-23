@@ -98,6 +98,9 @@ observation storage, and request-serving is documented in
 [Persistent Data Pipeline Design](PERSISTENT_DATA_PIPELINE_DESIGN.md). It is a
 design proposal, not the current production architecture.
 
+The proposed provider-neutral telemetry contracts and managed GCP monitoring
+approach are documented in [Observability Design](OBSERVABILITY_DESIGN.md).
+
 To add a new swim spot, start with [NEW_LOCATION.md](NEW_LOCATION.md). If the
 spot needs an unsupported upstream API or parser, use
 [NEW_DATA_FEED.md](NEW_DATA_FEED.md) before wiring it into production config.

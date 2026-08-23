@@ -760,6 +760,10 @@ complete update-cycle duration before selecting production resources.
 
 The redesign should make alerts correspond to actionable boundaries.
 
+Metric contracts, dead-man switches, paging policy, and the GCP reference
+implementation are defined separately in
+[Observability Design](OBSERVABILITY_DESIGN.md).
+
 Page-worthy examples:
 
 - The updater crashes because of an application defect.
@@ -786,6 +790,9 @@ since job start" rule make publication safe if an overlap nevertheless occurs.
 ## Migration Strategy
 
 The migration should be incremental and reversible.
+The cross-design order—minimal instrumentation first, then instrumented archive
+and snapshot work, followed by monitored cutover—is maintained in
+[Observability Design](OBSERVABILITY_DESIGN.md#cross-design-implementation-order).
 
 ### Phase 1: Begin Durable Observation Capture
 

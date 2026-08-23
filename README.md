@@ -93,6 +93,11 @@ Failed fetches leave data stale until the next successful refresh.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component documentation, coding standards, and error handling patterns.
 
+A proposed future separation of scheduled data materialization, durable
+observation storage, and request-serving is documented in
+[Persistent Data Pipeline Design](PERSISTENT_DATA_PIPELINE_DESIGN.md). It is a
+design proposal, not the current production architecture.
+
 To add a new swim spot, start with [NEW_LOCATION.md](NEW_LOCATION.md). If the
 spot needs an unsupported upstream API or parser, use
 [NEW_DATA_FEED.md](NEW_DATA_FEED.md) before wiring it into production config.

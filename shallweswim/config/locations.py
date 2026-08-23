@@ -1414,13 +1414,9 @@ _CONFIG_LIST = [
         longitude=-85.732,
         timezone=pytz.timezone("US/Eastern"),
         default_temperature_unit="F",
-        # Ohio River Water Tower
-        # https://waterdata.usgs.gov/monitoring-location/03292494/#dataTypeId=continuous-00011-0&period=P365D
-        live_temp_source=NwisTempFeedConfig(
-            site_no="03292494",
-            parameter_cd="00011",  # Water temperature
-            name="Ohio River at Water Tower",
-        ),
+        # USGS no longer publishes temperature parameter 00011 for this site.
+        # Leave temperature disabled while USGS confirms whether it will return.
+        live_temp_source=None,
         currents_source=NwisCurrentFeedConfig(
             site_no="03292494",
             parameter_cd="72255",  # --612188643",

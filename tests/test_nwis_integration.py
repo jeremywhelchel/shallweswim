@@ -7,7 +7,6 @@ is down or changes. They are skipped by default and only run when the
 
 # Standard library imports
 import datetime
-import logging
 
 # Third-party imports
 import aiohttp
@@ -65,55 +64,6 @@ async def test_integration_missing_temp_column() -> None:
                 timezone="America/New_York",
                 location_code="sdf",
             )
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_integration_sdf_temperature_fetch_with_parameter_cd() -> None:
-    """Integration test for configured SDF Fahrenheit temperature data."""
-    begin_date = datetime.date(2026, 6, 1)
-    end_date = datetime.date(2026, 6, 2)
-
-    async with aiohttp.ClientSession() as session:
-        nwis_client = NwisApi(session)
-        df = await nwis_client.temperature(
-            site_no="03292494",  # Ohio River at Water Tower (used in sdf config)
-            parameter_cd="00011",
-            begin_date=begin_date,
-            end_date=end_date,
-            timezone="America/New_York",
-            location_code="sdf",
-        )
-
-    logging.info(f"Fetched {len(df)} temperature readings")
-    if not df.empty:
-        logging.info(
-            f"Temperature range: {df['water_temp'].min():.1f}°F - {df['water_temp'].max():.1f}°F"
-        )
-        logging.info(f"Date range: {df.index.min()} - {df.index.max()}")
-
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty, "No temperature data returned"
-    assert "water_temp" in df.columns
-    assert df.index.name == "time"
-    assert df["water_temp"].min() >= 32.0, (
-        f"Water temperature below freezing: {df['water_temp'].min()}°F"
-    )
-    assert df["water_temp"].max() <= 100.0, (
-        f"Water temperature too high: {df['water_temp'].max()}°F"
-    )
-
-    buffer_begin = pd.Timestamp(begin_date) - datetime.timedelta(days=1)
-    buffer_end = pd.Timestamp(end_date) + datetime.timedelta(days=1)
-
-    min_ts_str = str(df.index.min())
-    max_ts_str = str(df.index.max())
-    assert all(df.index >= buffer_begin), (
-        f"Earliest timestamp {min_ts_str} before requested begin date {begin_date}"
-    )
-    assert all(df.index <= buffer_end), (
-        f"Latest timestamp {max_ts_str} after requested end date {end_date}"
-    )
 
 
 @pytest.mark.integration

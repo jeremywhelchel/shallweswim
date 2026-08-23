@@ -440,9 +440,11 @@ Use this script before deploying NWIS client changes. During the modern USGS
 Water Data API migration, configured NWIS cold-start work measured about 19-21
 HTTP attempts per instance: Austin historical temperature years completed in
 one request per year with no live pagination observed, while two year requests
-timed out once and succeeded on retry. Louisville live temperature and currents
-each completed in one request. The modern API supports authenticated requests
-with an optional key, which increases quota and exposes rate-limit headers.
+timed out once and succeeded on retry. Louisville currents completed in one
+request. Louisville temperature polling is disabled because USGS no longer
+publishes parameter `00011` for that site; it can be restored if USGS resumes
+the series. The modern API supports authenticated requests with an optional
+key, which increases quota and exposes rate-limit headers.
 
 For local authenticated NWIS testing, create `.env` from `.env.example` and set
 `USGS_WATERDATA_API_KEY`. The client sends it as an `X-Api-Key` header when

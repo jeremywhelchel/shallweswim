@@ -389,9 +389,9 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert "youtube_live" not in chi["integrations"]
 
     sdf = data["locations"]["sdf"]
-    assert sdf["metadata"]["temperature_plots"] == {"live": True, "historic": False}
+    assert sdf["metadata"]["temperature_plots"] == {"live": False, "historic": False}
     assert sdf["metadata"]["citations"]["temperature"] is None
-    assert sdf["metadata"]["citations"]["live_temperature"] is not None
+    assert sdf["metadata"]["citations"]["live_temperature"] is None
     assert sdf["metadata"]["citations"]["historical_temperature"] is None
     assert sdf["metadata"]["features"]["webcam"] is True
     assert sdf["metadata"]["features"]["water_movement_planning"] is False

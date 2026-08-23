@@ -72,7 +72,7 @@ def test_presentation_integrations_are_typed() -> None:
 
     sdf = config.get("sdf")
     assert sdf is not None
-    assert sdf.live_temp_source is not None
+    assert sdf.live_temp_source is None
     assert sdf.historic_temp_source is None
     assert sdf.presentation.webcam is not None
     assert sdf.presentation.webcam.provider == sw_types.WebcamProvider.EARTHCAM_EMBED

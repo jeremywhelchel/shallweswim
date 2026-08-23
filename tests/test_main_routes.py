@@ -698,16 +698,15 @@ def test_legacy_location_page_defers_temperature_plot_loading() -> None:
     assert ' src="/api/nyc/plots/historic_temps?period=12mo"' not in response.text
 
 
-def test_legacy_location_page_renders_live_only_temperature_citation() -> None:
-    """Legacy source table uses the shared temperature citation row policy."""
+def test_legacy_location_page_omits_disabled_temperature_citations() -> None:
+    """Legacy source table omits citations for disabled temperature feeds."""
     client = TestClient(app)
 
     response = client.get("/legacy/sdf")
 
     assert response.status_code == 200
-    assert "Live temperature:" in response.text
+    assert "Live temperature:" not in response.text
     assert "Historical temperature:" not in response.text
-    assert "USGS NWIS Site 03292494" in response.text
 
 
 def test_legacy_location_page_renders_windy_embed_with_layout_dimensions() -> None:

@@ -17,7 +17,7 @@ spec:
     spec:
       containerConcurrency: 80
       timeoutSeconds: 300
-      serviceAccountName: shallweswim@shallweswim.iam.gserviceaccount.com
+      serviceAccountName: shallweswim-runtime@shallweswim.iam.gserviceaccount.com
       containers:
         - image: us-east4-docker.pkg.dev/shallweswim/gcr/shallweswim:${IMAGE_TAG}
           env:

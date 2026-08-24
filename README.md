@@ -536,7 +536,11 @@ External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute
 - **Health check (`/api/healthy`, alias `/api/health`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
 - **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, `age_seconds`, `consecutive_failures`, and the next scheduled fetch time. Historical temperature feeds also include year-level diagnostics for required, cached, missing, fetched, and failed years. Use this for granular monitoring and alerting.
 
-For production deployments, set up external monitoring on `/api/status` to alert when critical feeds become unhealthy. See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed station outage handling strategy.
+The reference GCP deployment's log-based metrics and operations dashboard are
+managed by Terraform under [`infra/monitoring`](infra/monitoring/README.md).
+See [OBSERVABILITY_DESIGN.md](OBSERVABILITY_DESIGN.md) for the broader monitoring
+and alert migration and [ARCHITECTURE.md](ARCHITECTURE.md) for station-outage
+handling.
 
 ### HTTP Error Codes
 

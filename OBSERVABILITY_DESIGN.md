@@ -432,6 +432,14 @@ GCP dashboards and alert policies are deployment artifacts. Metric meanings,
 attribute contracts, durable statuses, and OpenTelemetry instrumentation remain
 provider-neutral.
 
+The initial reference implementation lives in `infra/monitoring`. Terraform
+owns only the user-defined log-based metrics and application operations
+dashboard in this first slice; it does not own Cloud Run, IAM, notification
+channels, uptime checks, or existing alert policies. Native mock-provider tests
+validate the plan locally, while a controlled GCP apply validates actual log
+ingestion and dashboard population because no faithful local Monitoring
+emulator exists.
+
 The current broad `Error Log` and immediate low-volume `5xx` policies should not
 be removed until replacement uptime, dead-man, freshness, and sustained-error
 alerts have operated successfully in shadow or parallel.

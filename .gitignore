@@ -156,5 +156,19 @@ frontend/dist/
 frontend/test-results/
 frontend/playwright-report/
 
+# Terraform local state and downloaded providers
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
 # Claude Code local settings
 .claude/settings.local.json

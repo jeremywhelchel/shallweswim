@@ -149,6 +149,7 @@ class CoopsApi(BaseApiClient):
         """
         self.log(
             f"Executing CO-OPS request: {url}",
+            level=logging.DEBUG,
             location_code=location_code,
         )
         csv_data: str
@@ -218,6 +219,7 @@ class CoopsApi(BaseApiClient):
 
         self.log(
             f"Successfully parsed {len(df)} records from {url}",
+            level=logging.DEBUG,
             location_code=location_code,
         )
         return df  # Return the raw DataFrame, no processing here
@@ -251,6 +253,7 @@ class CoopsApi(BaseApiClient):
 
         self.log(
             f"Fetching tide predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
+            level=logging.DEBUG,
             location_code=location_code,
         )
 
@@ -304,6 +307,7 @@ class CoopsApi(BaseApiClient):
 
         self.log(
             f"Fetching current predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
+            level=logging.DEBUG,
             location_code=location_code,
         )
 
@@ -381,6 +385,7 @@ class CoopsApi(BaseApiClient):
 
         self.log(
             f"Fetching temperature data for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
+            level=logging.DEBUG,
             location_code=location_code,
         )
 

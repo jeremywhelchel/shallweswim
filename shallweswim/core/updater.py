@@ -50,7 +50,7 @@ async def update_dataset(
     """
     feed = feeds_dict.get(dataset)
     if feed is not None:
-        await feed.update(clients=clients)
+        await feed.update(clients=clients, feed_name=dataset)
 
 
 def handle_task_exception(

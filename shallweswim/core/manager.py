@@ -381,15 +381,22 @@ class LocationDataManager:
 
         return api_types.LocationStatus(feeds=status_dict)
 
-    def log(self, message: str, level: int = logging.INFO) -> None:
+    def log(
+        self,
+        message: str,
+        level: int = logging.INFO,
+        *,
+        extra: dict[str, object] | None = None,
+    ) -> None:
         """Log a message with standardized formatting including location code.
 
         Args:
             message: The message to log
             level: The logging level (default: INFO)
+            extra: Approved structured fields to attach to the log record
         """
         log_message = f"[{self.config.code}] {message}"
-        logging.log(level, log_message)
+        logging.log(level, log_message, extra=extra)
 
     async def wait_until_ready(self, timeout: float | None = None) -> bool:
         """Wait until the initial data update is complete and the manager is ready.
@@ -598,6 +605,17 @@ class LocationDataManager:
         completed: list[feeds.FeedName] = []
 
         for feed_name, (future, submitted_at) in self._pending_plot_futures.items():
+            event_fields: dict[str, object] = {
+                "component": "plot",
+                "operation": "plot_generation",
+                "location": self.config.code,
+                "feed": feed_name.value,
+                # Submit-to-harvest availability latency intentionally includes
+                # delayed collection and CPU starvation, not only render time.
+                "duration_ms": max(
+                    0, round((now - submitted_at).total_seconds() * 1000)
+                ),
+            }
             if future.done():
                 completed.append(feed_name)
                 try:
@@ -606,6 +624,7 @@ class LocationDataManager:
                     self.log(
                         f"Plot generation failed for {feed_name}: {e}",
                         level=logging.ERROR,
+                        extra={**event_fields, "outcome": "failed"},
                     )
                     continue
 
@@ -617,7 +636,10 @@ class LocationDataManager:
                     self._plots[feeds.PLOT_HISTORIC_TEMPS_12MO] = result["12mo"]
 
                 self._plot_generated_at[feed_name] = now
-                self.log(f"Plot generation completed for {feed_name}.")
+                self.log(
+                    f"Plot generation succeeded for {feed_name}.",
+                    extra={**event_fields, "outcome": "success"},
+                )
 
             elif (now - submitted_at).total_seconds() > PLOT_HARD_TIMEOUT:
                 completed.append(feed_name)
@@ -625,6 +647,7 @@ class LocationDataManager:
                     f"Plot worker for {feed_name} stuck for "
                     f">{PLOT_HARD_TIMEOUT}s, abandoning",
                     level=logging.ERROR,
+                    extra={**event_fields, "outcome": "failed"},
                 )
 
         for feed_name in completed:
@@ -664,7 +687,7 @@ class LocationDataManager:
         if need_live:
             data = self._get_feed_data(feeds.FEED_LIVE_TEMPS, min_rows=2)
             if data is not None:
-                self.log("Submitting live temps plot generation.")
+                self.log("Submitting live temps plot generation.", logging.DEBUG)
                 future = loop.run_in_executor(
                     self.process_pool,
                     _generate_live_temp_plot,
@@ -677,7 +700,7 @@ class LocationDataManager:
         if need_historic:
             data = self._get_feed_data(feeds.FEED_HISTORIC_TEMPS, min_rows=10)
             if data is not None:
-                self.log("Submitting historic temps plot generation.")
+                self.log("Submitting historic temps plot generation.", logging.DEBUG)
                 future = loop.run_in_executor(
                     self.process_pool,
                     _generate_historic_temp_plots,

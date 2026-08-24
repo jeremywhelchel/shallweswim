@@ -83,6 +83,7 @@ class NdbcApi(BaseApiClient):
                 f"Executing NDBC request for station {station_id}, mode={mode}, "
                 f"start={start_time}, end={end_time}, urls={len(urls)}"
             ),
+            level=logging.DEBUG,
             location_code=location_code,
         )
 
@@ -418,6 +419,7 @@ class NdbcApi(BaseApiClient):
                     f"Successfully processed {len(temp_df)} temperature readings "
                     f"for NDBC station {station_id} from {begin_date_str} to {end_date_str}"
                 ),
+                level=logging.DEBUG,
                 location_code=location_code,
             )
             return temp_df

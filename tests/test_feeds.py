@@ -5,6 +5,7 @@
 # Standard library imports
 import asyncio
 import datetime
+import logging
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -46,6 +47,7 @@ from shallweswim.feeds import (
     CoopsTidesFeed,
     CspfTempFeed,
     Feed,
+    FeedName,
     HistoricalTempsFeed,
     HistoricalTempsIncompleteError,
     IrishLightsTempFeed,
@@ -433,6 +435,82 @@ class TestFeedBase:
             assert concrete_feed._next_fetch_after is not None
             assert concrete_feed._last_error is None
             assert concrete_feed._consecutive_failures == 0
+
+    @pytest.mark.asyncio
+    async def test_successful_update_emits_one_structured_completion_event(
+        self,
+        concrete_feed: Feed,
+        mock_clients: dict[str, BaseApiClient],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A successful attempt emits one metric-ready completion event."""
+        with caplog.at_level(logging.INFO):
+            await concrete_feed.update(
+                clients=mock_clients, feed_name=FeedName.LIVE_TEMPS
+            )
+
+        events = [
+            record
+            for record in caplog.records
+            if getattr(record, "operation", None) == "feed_update"
+        ]
+        assert len(events) == 1
+        event = events[0]
+        assert event.levelno == logging.INFO
+        assert event.component == "updater"
+        assert event.location == "nyc"
+        assert event.feed == "live_temps"
+        assert event.provider == "test-feed"
+        assert event.outcome == "success"
+        assert event.duration_ms >= 0
+        assert event.record_count == len(concrete_feed.values)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error", "outcome", "level"),
+        [
+            (StationUnavailableError("no data"), "unavailable", logging.WARNING),
+            (ValueError("bad response"), "failed", logging.ERROR),
+        ],
+    )
+    async def test_failed_update_emits_one_structured_completion_event(
+        self,
+        concrete_feed: Feed,
+        mock_clients: dict[str, BaseApiClient],
+        caplog: pytest.LogCaptureFixture,
+        error: Exception,
+        outcome: str,
+        level: int,
+    ) -> None:
+        """Handled and unexpected failures carry distinct bounded outcomes."""
+
+        async def fail_fetch(clients: dict[str, BaseApiClient]) -> pd.DataFrame:
+            raise error
+
+        with (
+            patch.object(concrete_feed, "_fetch", fail_fetch),
+            caplog.at_level(logging.INFO),
+        ):
+            if outcome == "failed":
+                with pytest.raises(ValueError):
+                    await concrete_feed.update(
+                        clients=mock_clients, feed_name=FeedName.LIVE_TEMPS
+                    )
+            else:
+                await concrete_feed.update(
+                    clients=mock_clients, feed_name=FeedName.LIVE_TEMPS
+                )
+
+        events = [
+            record
+            for record in caplog.records
+            if getattr(record, "operation", None) == "feed_update"
+        ]
+        assert len(events) == 1
+        assert events[0].levelno == level
+        assert events[0].outcome == outcome
+        assert events[0].duration_ms >= 0
+        assert not hasattr(events[0], "record_count")
 
     @pytest.mark.asyncio
     async def test_station_unavailable_schedules_first_retry_after_one_minute(

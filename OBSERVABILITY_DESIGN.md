@@ -286,7 +286,7 @@ implementation.
 | `shallweswim.archive.merge` | Counter | Merge outcomes/conflicts |
 | `shallweswim.snapshot.gc` | Counter | Published objects examined/deleted and GC outcomes |
 | `shallweswim.snapshot.gc.duration` | Histogram, seconds | Published-object mark-and-sweep cost |
-| `shallweswim.plot.generation.duration` | Histogram, seconds | Plot performance |
+| `shallweswim.plot.availability_latency` | Histogram, seconds | Submit-to-harvest latency, including scheduling or CPU starvation |
 | `shallweswim.snapshot.publish` | Counter | Changed/no-change/failure outcomes |
 | `shallweswim.snapshot.publish.duration` | Histogram, seconds | Publication cost |
 
@@ -327,25 +327,33 @@ not assume a single updater until the bounded-updater cutover.
 
 ## Logs and Traces
 
-Production logging is currently neither structured nor stdout-based. On Cloud
-Run, `logging_utils.py` installs the `google-cloud-logging` in-process handler,
-which pushes plain formatted messages through a background transport. Messages
-encode context in strings such as `[nyc] ...` instead of stable fields. That
-transport has idle-CPU flush exposure and embeds a provider SDK in application
-logging.
-
-The migration should emit JSON lines through a standard stream handler so the
-deployment platform captures stdout/stderr directly. Logs should include stable
-fields such as component, operation, location, feed, provider, bounded outcome,
-run ID, and generation ID where applicable. For the reference Cloud Run
-deployment, the stream-handler cutover and removal of the
-`google-cloud-logging` dependency happen in one revision. Validate severity and
-field parsing immediately after deployment; revision rollback retains the old
-SDK-based implementation if equivalence fails. Other deployment platforms may
-stage those steps when rollback does not preserve the prior runtime image.
+Production application logging uses a standard stream handler. Hosted
+deployments emit JSON lines on stdout for the deployment platform to capture;
+local development retains a human-readable console format. The application has
+no provider logging SDK or background log transport. Logs include only approved
+stable fields such as component, operation, location, feed, provider, bounded
+outcome, run ID, and generation ID where applicable.
 Uvicorn access logs remain enabled for human-readable local development but are
 disabled with JSON logging because Cloud Run already emits richer structured
 request logs under `run.googleapis.com/requests`.
+
+The continuous updater emits one completion event for each attempted expired
+feed update:
+
+- `component=updater`, `operation=feed_update`
+- bounded `location`, semantic `feed`, provider family, and `outcome`
+- elapsed `duration_ms`, plus `record_count` on success
+- `INFO` for `success`, `WARNING` for handled `unavailable`, and `ERROR` for
+  `failed`
+
+Plot harvesting uses the same completion-event pattern with `component=plot`,
+`operation=plot_generation`, the plotted feed, submit-to-harvest
+`duration_ms`, and a bounded `success` or `failed` outcome. This duration is
+plot availability latency, not subprocess render time: it deliberately includes
+delayed harvesting, scheduling, and CPU starvation so it detects the production
+failure mode that motivated the instrumentation. Fetch/request starts, provider
+URLs, station identifiers, and redundant lower-level success messages are DEBUG
+diagnostics, not metric dimensions or routine production INFO events.
 
 Structured event schemas should be designed so important counters and states can
 be converted into deployment-configured log-based metrics. This supplies the

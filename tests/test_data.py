@@ -3,6 +3,7 @@
 # Standard library imports
 import asyncio
 import datetime
+import logging
 from collections.abc import AsyncGenerator, Mapping
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any, cast
@@ -19,7 +20,7 @@ from pytest_mock import MockerFixture
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim import feeds
+from shallweswim import feeds, util
 from shallweswim.api_types import FeedStatus
 
 # Import API client classes
@@ -1634,6 +1635,36 @@ def mock_data_manager(
     data._ready_event = MagicMock(spec=asyncio.Event)
     data._update_task = MagicMock(spec=asyncio.Task)
     return data
+
+
+@pytest.mark.asyncio
+async def test_completed_plot_emits_structured_completion_event(
+    mock_data_manager: LocationDataManager,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Plot harvesting emits one bounded event with elapsed time."""
+    future: asyncio.Future[bytes] = asyncio.Future()
+    future.set_result(b"<svg></svg>")
+    mock_data_manager._pending_plot_futures[feeds.FEED_LIVE_TEMPS] = (
+        future,
+        util.utc_now() - datetime.timedelta(seconds=2),
+    )
+
+    with caplog.at_level(logging.INFO):
+        mock_data_manager._collect_completed_plots()
+
+    events = [
+        record
+        for record in caplog.records
+        if getattr(record, "operation", None) == "plot_generation"
+    ]
+    assert len(events) == 1
+    event = events[0]
+    assert event.component == "plot"
+    assert event.location == "tst"
+    assert event.feed == "live_temps"
+    assert event.outcome == "success"
+    assert event.duration_ms >= 2000
 
 
 @pytest.mark.asyncio

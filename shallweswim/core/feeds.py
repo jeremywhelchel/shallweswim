@@ -9,6 +9,7 @@ import abc
 import asyncio
 import datetime
 import logging
+import time
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -254,15 +255,38 @@ class Feed(BaseModel, abc.ABC):
             raise ValueError("Data not yet fetched")
         return self._data
 
-    def log(self, message: str, level: int = logging.INFO) -> None:
+    def log(
+        self,
+        message: str,
+        level: int = logging.INFO,
+        *,
+        extra: dict[str, object] | None = None,
+    ) -> None:
         """Log a message with standardized formatting including location code.
 
         Args:
             message: The message to log
             level: The logging level (default: INFO)
+            extra: Approved structured fields to attach to the log record
         """
         log_message = f"[{self.location_config.code}] {message}"
-        logging.log(level, log_message)
+        logging.log(level, log_message, extra=extra)
+
+    def _update_event_fields(
+        self, feed_name: FeedName | None, outcome: str, started_at: float
+    ) -> dict[str, object]:
+        """Return bounded fields for one completed feed update attempt."""
+        return {
+            "component": "updater",
+            "operation": "feed_update",
+            "location": self.location_config.code,
+            "feed": feed_name.value
+            if feed_name is not None
+            else self.__class__.__name__,
+            "provider": self.feed_config.citation_key.partition(":")[0],
+            "outcome": outcome,
+            "duration_ms": max(0, round((time.monotonic() - started_at) * 1000)),
+        }
 
     @property
     def status(self) -> FeedStatus:
@@ -333,7 +357,11 @@ class Feed(BaseModel, abc.ABC):
             )
             return False
 
-    async def update(self, clients: dict[str, BaseApiClient]) -> None:
+    async def update(
+        self,
+        clients: dict[str, BaseApiClient],
+        feed_name: FeedName | None = None,
+    ) -> None:
         """Update the data from this feed if it is expired.
 
         On success, publish the new data, reset failure state, update
@@ -343,6 +371,11 @@ class Feed(BaseModel, abc.ABC):
 
         StationUnavailableError is handled gracefully - the feed schedules its next
         attempt and doesn't propagate the error. Other errors are re-raised.
+
+        Args:
+            clients: Provider API clients keyed by provider name.
+            feed_name: Semantic feed key for structured events. Direct diagnostic
+                callers may omit it and receive the concrete class name instead.
         """
         if not self.is_expired:
             self.log(
@@ -351,8 +384,9 @@ class Feed(BaseModel, abc.ABC):
             )
             return
 
+        started_at = time.monotonic()
         try:
-            self.log(f"Fetching data for {self.__class__.__name__}")
+            self.log(f"Fetching data for {self.__class__.__name__}", logging.DEBUG)
             # Pass clients to _fetch
             df = await self._fetch(clients=clients)
 
@@ -367,7 +401,12 @@ class Feed(BaseModel, abc.ABC):
             # Set the ready event to signal that data is available
             self._ready_event.set()
             self._schedule_after_success(now)
-            self.log(f"Successfully updated {self.__class__.__name__}")
+            fields = self._update_event_fields(feed_name, "success", started_at)
+            fields["record_count"] = len(df)
+            self.log(
+                f"Feed update succeeded for {self.__class__.__name__}",
+                extra=fields,
+            )
 
         except StationUnavailableError as e:
             # Expected operational condition - station has no data
@@ -376,13 +415,18 @@ class Feed(BaseModel, abc.ABC):
             self.log(
                 f"Station unavailable for {self.__class__.__name__}: {e}",
                 logging.WARNING,
+                extra=self._update_event_fields(feed_name, "unavailable", started_at),
             )
             self._last_error = e
             self._schedule_after_failure(utc_now())
             # Don't raise - scheduled retry preserves existing data.
         except Exception as e:
             # Unexpected error - log at ERROR (triggers GCP alerts)
-            self.log(f"Error updating {self.__class__.__name__}: {e}", logging.ERROR)
+            self.log(
+                f"Feed update failed for {self.__class__.__name__}: {e}",
+                logging.ERROR,
+                extra=self._update_event_fields(feed_name, "failed", started_at),
+            )
             self._last_error = e
             self._schedule_after_failure(utc_now())
             raise
@@ -586,7 +630,7 @@ class NdbcTempFeed(TempFeed):
 
         try:
             # Fetch the data using the NDBC API client
-            self.log(f"Fetching NDBC data for station {station_id}", logging.INFO)
+            self.log(f"Fetching NDBC data for station {station_id}", logging.DEBUG)
 
             temp_df = await self.client.temperature(  # Corrected call
                 station_id=station_id,
@@ -599,7 +643,7 @@ class NdbcTempFeed(TempFeed):
 
             self.log(
                 f"Successfully fetched {len(temp_df)} temperature readings for NDBC station {station_id}",
-                logging.INFO,
+                logging.DEBUG,
             )
 
             return temp_df
@@ -655,7 +699,7 @@ class NwisTempFeed(TempFeed):
 
             self.log(
                 f"Successfully fetched {len(temp_df)} temperature readings for NWIS site {site_no}",
-                logging.INFO,
+                logging.DEBUG,
             )
 
             return temp_df
@@ -695,7 +739,7 @@ class CspfTempFeed(TempFeed):
 
             self.log(
                 f"Successfully fetched {len(temp_df)} temperature readings from CSPF Sandettie",
-                logging.INFO,
+                logging.DEBUG,
             )
             return temp_df
         except cspf.CspfApiError as e:
@@ -735,7 +779,7 @@ class IrishLightsTempFeed(TempFeed):
 
             self.log(
                 f"Successfully fetched {len(temp_df)} temperature readings from Irish Lights MMSI {self.feed_config.mmsi}",
-                logging.INFO,
+                logging.DEBUG,
             )
             return temp_df
         except irish_lights.IrishLightsApiError as e:
@@ -1288,7 +1332,7 @@ class NwisCurrentFeed(CurrentsFeed):
         Raises:
             Exception: If fetching fails
         """
-        self.log("Fetching NWIS current data")
+        self.log("Fetching NWIS current data", logging.DEBUG)
 
         nwis_client = clients.get("nwis")
         if not isinstance(nwis_client, nwis.NwisApi):  # Use correct class name NwisApi
@@ -1326,7 +1370,8 @@ class NwisCurrentFeed(CurrentsFeed):
         processed_df = df[["velocity"]]
 
         self.log(
-            f"Successfully processed {len(processed_df)} rows of NWIS current data."
+            f"Successfully processed {len(processed_df)} rows of NWIS current data.",
+            logging.DEBUG,
         )
         return processed_df  # type: ignore[return-value]
         # --- End Processing --- #

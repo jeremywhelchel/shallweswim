@@ -116,6 +116,7 @@ class NwisApi(BaseApiClient):
 
         self.log(
             f"Executing NWIS request for site {sites}, params={parameterCd}, start={start}, end={end}",
+            level=logging.DEBUG,
             location_code=location_code,
         )
 
@@ -445,6 +446,7 @@ class NwisApi(BaseApiClient):
 
             self.log(
                 f"Successfully processed {len(temp_df)} temperature readings for NWIS site {site_no} from {begin_date_str} to {end_date_str}",
+                level=logging.DEBUG,
                 location_code=location_code,
             )
 
@@ -557,6 +559,7 @@ class NwisApi(BaseApiClient):
 
             self.log(
                 f"Successfully processed {len(current_df)} current readings for NWIS site {site_no} (param {parameter_cd})",
+                level=logging.DEBUG,
                 location_code=location_code,
             )
             return current_df

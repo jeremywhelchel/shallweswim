@@ -89,6 +89,7 @@ class MarineInstituteApi(BaseApiClient):
         """Fetch and parse a Marine Institute ERDDAP CSV response."""
         self.log(
             f"Executing Marine Institute request: {url}",
+            level=logging.DEBUG,
             location_code=location_code,
         )
 
@@ -162,6 +163,7 @@ class MarineInstituteApi(BaseApiClient):
                 f"Fetching high/low tide predictions for station {station_id} from "
                 f"{_format_erddap_time(begin_utc)} to {_format_erddap_time(end_utc)}"
             ),
+            level=logging.DEBUG,
             location_code=location_code,
         )
 

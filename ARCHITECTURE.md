@@ -248,6 +248,10 @@ Two error types for data availability, at different layers:
 - Application code must not use a provider logging SDK. Only approved,
   bounded-cardinality fields from `logging_utils.py` may be supplied through
   `extra`; arbitrary fields could leak secrets or create unbounded log labels.
+- Feed updates and background plot generation emit one structured completion
+  event per attempt. Their stable fields and bounded outcomes support managed
+  log-based metrics; request starts and provider-specific details remain DEBUG
+  diagnostics rather than routine INFO events.
 - Successful route-entry and response events rely on platform-native request
   logs rather than duplicate application INFO messages. Application logs record
   domain work, state changes, degraded availability, and failures.

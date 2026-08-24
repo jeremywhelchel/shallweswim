@@ -433,12 +433,13 @@ attribute contracts, durable statuses, and OpenTelemetry instrumentation remain
 provider-neutral.
 
 The initial reference implementation lives in `infra/monitoring`. Terraform
-owns only the user-defined log-based metrics and application operations
-dashboard in this first slice; it does not own Cloud Run, IAM, notification
-channels, uptime checks, or existing alert policies. Native mock-provider tests
-validate the plan locally, while a controlled GCP apply validates actual log
-ingestion and dashboard population because no faithful local Monitoring
-emulator exists.
+owns the user-defined log-based metrics, application operations dashboard, and
+explicitly marked shadow alert policies; it does not own Cloud Run, IAM,
+notification channels, uptime checks, or pre-Terraform alert policies. Shadow
+policies are enabled for evaluation but have no notification channels. Native
+mock-provider tests validate the plan locally, while a controlled GCP apply
+validates actual log ingestion, dashboard population, and policy evaluation
+because no faithful local Monitoring emulator exists.
 
 The current broad `Error Log` and immediate low-volume `5xx` policies should not
 be removed until replacement uptime, dead-man, freshness, and sustained-error

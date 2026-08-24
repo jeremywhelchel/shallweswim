@@ -42,4 +42,20 @@ run "monitoring_plan" {
     condition     = jsondecode(google_monitoring_dashboard.operations.dashboard_json).displayName == "Shall We Swim Operations [Terraform]"
     error_message = "The managed dashboard must retain its visible Terraform ownership marker."
   }
+
+  assert {
+    condition = alltrue([
+      for policy in [
+        google_monitoring_alert_policy.live_feed_update_latency,
+        google_monitoring_alert_policy.live_plot_availability_latency,
+        google_monitoring_alert_policy.repeated_feed_failures,
+        google_monitoring_alert_policy.plot_generation_failure,
+        ] : (
+        startswith(policy.display_name, "[Terraform][Shadow]") &&
+        length(policy.notification_channels) == 0 &&
+        policy.user_labels.mode == "shadow"
+      )
+    ])
+    error_message = "Baseline alert policies must remain visibly marked as shadow policies without notification channels."
+  }
 }

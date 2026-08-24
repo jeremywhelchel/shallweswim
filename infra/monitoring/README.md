@@ -1,8 +1,9 @@
 # GCP Monitoring Infrastructure
 
-This directory owns only Shall We Swim's user-defined log-based metrics and
-application operations dashboard. It deliberately does not own Cloud Run, IAM,
-notification channels, existing uptime checks, or existing alert policies.
+This directory owns Shall We Swim's user-defined log-based metrics, application
+operations dashboard, and explicitly marked shadow alert policies. It
+deliberately does not own Cloud Run, IAM, notification channels, existing uptime
+checks, or pre-Terraform alert policies.
 Resources with `[Terraform]` in their display name or `Managed by Terraform` in
 their description must not be edited in the GCP console.
 
@@ -44,6 +45,7 @@ identity. Grant it only:
 - `roles/storage.objectAdmin` on the state bucket
 - `roles/logging.configWriter` on the project
 - `roles/monitoring.dashboardEditor` on the project
+- `roles/monitoring.alertPolicyEditor` on the project
 - `roles/serviceusage.serviceUsageConsumer` on the project
 
 Store its credential outside version control and set
@@ -84,8 +86,9 @@ terraform -chdir=infra/monitoring test
 This test pins service scoping, bounded label counts, numeric extractors, and
 the dashboard ownership marker. It cannot emulate Cloud Logging ingestion.
 
-Review the plan before every apply. A normal initial plan creates five
-log-based metrics and one dashboard, and changes no existing monitoring.
+Review the plan before every apply. The initial baseline creates five log-based
+metrics and one dashboard. The next slice adds only `[Terraform][Shadow]` alert
+policies with no notification channels; it does not change existing monitoring.
 
 ## Apply and integration-test
 
@@ -104,7 +107,12 @@ the proposed API operations. The GCP integration test is a controlled apply:
 3. Verify the five metrics appear with bounded labels and the dashboard charts
    populate after several minutes.
 4. Compare metric counts with a Cloud Logging query over the same interval.
-5. Keep this phase dashboard-only; it creates no alert or notification changes.
+5. Confirm shadow policies have no notification channels before applying them.
+
+Shadow policies are enabled for evaluation so incidents appear in Cloud
+Monitoring, but they cannot page. Promote a policy only after reviewing its
+production behavior, choosing notification channels explicitly, and removing
+the `[Shadow]` marker in a separately reviewed change.
 
 Use `terraform plan` afterward to verify an empty plan and detect drift. Remove
 test resources only with an explicitly reviewed `terraform destroy` plan.

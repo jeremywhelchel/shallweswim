@@ -454,6 +454,10 @@ For local authenticated NWIS testing, create `.env` from `.env.example` and set
 present and falls back to unauthenticated requests when it is omitted. Do not
 commit API keys.
 
+Production injects the same environment variable into Cloud Run from the
+`waterdata_usgs_gov_api_key` Secret Manager secret. The runtime service account
+has accessor permission scoped to that secret.
+
 #### Debugging CSPF Sandettie Historical Temperatures
 
 Use the CSPF debug script to exercise Dover's Sandettie historical temperature

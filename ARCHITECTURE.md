@@ -490,7 +490,10 @@ All API clients enforce a 30-second timeout on individual requests (`REQUEST_TIM
   do not duplicate endpoint paths elsewhere. The client follows USGS pagination
   links and maps empty FeatureCollections to `StationUnavailableError`. If
   `USGS_WATERDATA_API_KEY` is set, the client sends it as an `X-Api-Key` header
-  on every page request; otherwise requests remain unauthenticated.
+  on every page request; otherwise requests remain unauthenticated. Local runs
+  read the variable from `.env`; Cloud Run injects it from the
+  `waterdata_usgs_gov_api_key` Secret Manager secret, with runtime access scoped
+  to that secret.
   `shallweswim.scripts.debug_nwis_fetch` is the operational validation tool for
   configured NWIS request counts, response statuses, retry behavior, and
   rate-limit headers. Current configured sources did not produce live pagination

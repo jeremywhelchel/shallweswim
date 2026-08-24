@@ -23,6 +23,11 @@ spec:
           env:
             - name: SHALLWESWIM_LOG_FORMAT
               value: json
+            - name: USGS_WATERDATA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: waterdata_usgs_gov_api_key
+                  key: latest
           ports:
             - containerPort: 8080
               name: http1

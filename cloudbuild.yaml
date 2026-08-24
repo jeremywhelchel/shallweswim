@@ -7,6 +7,8 @@ substitutions:
   _SERVICE_NAME: "shallweswim"
   _IMAGE_NAME: "${_REGION}-docker.pkg.dev/${PROJECT_ID}/gcr/${_SERVICE_NAME}"
 
+serviceAccount: "projects/shallweswim/serviceAccounts/shallweswim-ci@shallweswim.iam.gserviceaccount.com"
+
 steps:
   - name: "gcr.io/cloud-builders/docker"
     id: build-and-push

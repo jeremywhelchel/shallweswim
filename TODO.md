@@ -228,10 +228,11 @@ Notes:
   the existing observed river-current feed. Parameter `72294` may support a more
   useful river-current presentation, but should be evaluated before changing the
   configured source.
-- Investigate a better Louisville/SDF historical water-temperature source. The
-  configured USGS Water Tower temperature series is useful for live conditions
-  but appears to start in 2025, so `historic_enabled` remains false until there
-  is a source with enough multi-year coverage for historical plots/baselines.
+- Evaluate ORSANCO as a Louisville/SDF seasonal temperature source. Its weekly
+  Ohio River Water Quality Report includes a Louisville reading, and its annual
+  May-October temperature workbooks provide multi-year history. A new client
+  would need to account for the weekly/seasonal cadence and clearly disclose
+  that readings are taken below the surface at a water-intake depth.
 - Investigate an alternative Chicago temperature source for year-round coverage,
   such as the daily NOAA/NWS marine observation text product, before changing
   configured data sources.

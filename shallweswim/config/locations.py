@@ -1414,8 +1414,8 @@ _CONFIG_LIST = [
         longitude=-85.732,
         timezone=pytz.timezone("US/Eastern"),
         default_temperature_unit="F",
-        # USGS no longer publishes temperature parameter 00011 for this site.
-        # Leave temperature disabled while USGS confirms whether it will return.
+        # USGS confirmed that this diagnostic sensor's temperature data was
+        # exposed publicly by mistake and will remain internal-only.
         live_temp_source=None,
         currents_source=NwisCurrentFeedConfig(
             site_no="03292494",

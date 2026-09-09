@@ -11,6 +11,7 @@ This document describes the architectural patterns, coding standards, and design
 ```text
 shallweswim/
 ├── main.py              # App entry point, web UI routes, templates
+├── archive/             # Durable observation schemas and normalized read boundary
 ├── api/                 # API layer
 │   ├── __init__.py      # Re-exports from routes
 │   └── routes.py        # JSON API routes (delegates to core/)
@@ -205,6 +206,12 @@ Tide source contract:
   a new upstream source client or feed type, use `NEW_DATA_FEED.md` first.
 
 ## 2. Coding Standards
+
+### Generalization
+
+- Generalize a shared mechanism through parameters only when a second use exists
+  in a committed plan and the change adds no new indirection; keep domain
+  bindings as named constants.
 
 ### Typing
 

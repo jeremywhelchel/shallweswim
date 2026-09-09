@@ -453,27 +453,99 @@ collection start, earliest observation, latest observation, expected cadence,
 known gaps, last successful archive merge, and whether records came from live
 collection or a later backfill.
 
-One possible partitioning scheme is:
+Phase 1 archives temperature observations only, end to end, and validates that
+capture in production before expanding scope. Observational currents are a
+follow-up slice that should reuse the same archive framework. Prediction feeds
+never enter the observation archive.
+
+### Temperature Archive Contract
+
+Temperature archive objects use this layout:
 
 ```text
 archive/
-  usgs/03292494/00011/2026.parquet
-  noaa-coops/8518750/water-temperature/2026.parquet
-  ndbc/46237/water-temperature/2026.parquet
+  temperature/
+    <provider>/
+      <station-or-station-param>/
+        <year>.parquet
 ```
 
-Normalized observations should retain:
+The provider and station path components are derived from the source's
+`citation_key` in a deterministic, path-safe form without colons. The path does
+not repeat `temperature` in the source component. It does not contain a location:
+stations are physical sources, while locations are application configuration.
+Two locations that use the same station share one archive partition, and the
+source-to-location mapping remains in `config/locations.py`.
 
-- Observation timestamp
-- Normalized value and unit
-- Provider, station, parameter, and source type
-- Retrieval timestamp
-- Available quality/provisional flags
-- Schema version and provenance needed to interpret the record
+`citation_key` is the permanent archive source identity. A golden-list contract
+test snapshots every configured source's `citation_key`. Any identity change
+must therefore fail CI and require an explicit archive-migration decision rather
+than silently creating, abandoning, or conflating archive partitions.
+
+Each temperature Parquet row has exactly these four columns initially:
+
+| Column | Type | Contract |
+| --- | --- | --- |
+| `observed_at` | timestamp | UTC observation time |
+| `value` | float64 | Normalized temperature value |
+| `unit` | string | Canonical value `F`; dictionary-encoded in Parquet |
+| `retrieved_at` | timestamp | UTC retrieval time for the fetch that supplied this row |
+
+The unit is stored per row because archive files must remain self-describing for
+export, while custom Parquet metadata is not reliably preserved by third-party
+rewrite tools. Dictionary encoding makes the repeated canonical value
+negligible in practice. Retrieval time is also per row because a partition
+contains observations from many fetches after its first merge.
+
+Feeds currently store naive location-local timestamps. The archive writer must
+convert `observed_at` to UTC at the write boundary using the location's
+configured timezone; `retrieved_at` must also be stored as UTC. Daylight-saving
+fall-back times require explicit handling: the conversion must never silently
+choose one occurrence of an ambiguous local time. If the correct fold cannot be
+inferred from the ordered observations, archive capture fails for that update
+rather than writing a potentially corrupt deduplication key. Tests must include
+a fall-back transition with the repeated 1 AM hour and cover both resolvable and
+unresolvable ambiguity. A nonexistent local time in the skipped spring-forward
+hour likewise fails archive capture rather than allowing the timezone library to
+guess or shift it.
+
+No quality column exists initially because no current client surfaces quality or
+provisional flags; an all-null column would preserve no information. When a
+client is changed to surface quality flags, add a nullable quality column in the
+same change. Old files read as null, which is the honest value.
+
+### Schema Evolution
+
+Archive paths have no version prefix. The archive uses additive schema evolution:
+
+- Archive objects are never rewritten solely for schema migration.
+- Every schema change must be additive: a nullable column or a new path prefix.
+- If a change cannot be represented that way, existing unmarked prefixes retain
+  their original schema, new data goes to an explicitly named new prefix, and
+  the archive reader learns to read both.
+- All archive reads go through one reader helper. It normalizes frames by adding
+  missing newer columns as null and validates the result against the Pandera
+  model. Application code must not scatter direct `read_parquet` calls.
+- A contract test pins column names, dtypes, and UTC timestamp semantics so every
+  schema evolution is a conscious, reviewed diff.
+
+### Merge Semantics
+
+The deduplication key is stable source identity plus `observed_at`. Location is
+not part of the key. Within a deduplication key, the row with the newest
+`retrieved_at` wins. This makes overlapping fetches, upstream corrections, and
+repeated merges deterministic and idempotent. Provider deletion or omission of
+an observation never deletes an archived row; preservation is the archive's
+purpose.
+
+Any archive-capture failure—including timestamp conversion, exhausted
+conditional-write retries, or storage unavailability—is isolated from the
+serving update: it emits a structured archive-merge event with `outcome=failed`
+but leaves feed publication, serving, and feed scheduling untouched, so a later
+overlapping fetch can recover the omitted rows.
 
 The updater should fetch incrementally with a small overlap window, then merge
-and deduplicate by stable source identity and observation timestamp. The overlap
-allows providers to revise recent provisional readings.
+using these rules. The overlap allows providers to revise recent readings.
 
 Archive partition updates require concurrency control. During the transitional
 phase, several existing web processes may fetch successfully and attempt to
@@ -491,9 +563,8 @@ append-only staging objects plus later compaction remain an alternative if
 contention or partition-rewrite cost proves material, but are not the initial
 choice.
 
-Optionally, compressed raw responses can be retained for provenance and future
-reprocessing. Raw-response retention may be finite; normalized observations are
-expected to be long-lived.
+Raw responses are not retained in Phase 1. Normalized observations are expected
+to be long-lived.
 
 Archived data must not disguise current source availability. The application
 should be able to say both "the last archived observation was at time X" and
@@ -796,15 +867,18 @@ and snapshot work, followed by monitored cutover—is maintained in
 
 ### Phase 1: Begin Durable Observation Capture
 
-- Define the versioned normalized observation schema and stable source identity.
+- Define the additive normalized temperature schema and formalize
+  `citation_key` as the permanent archive source identity.
 - Implement filesystem, memory, and initial production archive stores.
 - After each successful fetch, let the existing long-running updater merge new
   observations into partitioned Parquet using conditional read-merge-write
   retries, because several serving processes may write concurrently during this
   phase.
-- Begin with short-retention temperature sources if implementing every
-  observational feed would delay first capture.
-- Validate overlap, correction, provenance, and deduplication behavior.
+- Capture temperature observations only. Validate this end to end in production
+  before a follow-up slice adds observational currents. Never archive prediction
+  feeds.
+- Validate UTC conversion (including daylight-saving fall-back), overlap,
+  correction, source sharing, and deduplication behavior.
 
 The production web service still uses its current in-memory updater and does not
 read the archive. This independent workstream starts preserving time-sensitive
@@ -877,6 +951,15 @@ requires stronger migration and equivalence validation.
 - Upstream unavailability retains last-known-good observations and records
   current source status.
 - Incremental archive fetches merge revised overlap records without duplicates.
+- Temperature archive contract tests pin the four initial columns, dtypes,
+  canonical unit, and UTC timestamp semantics.
+- A golden-list contract test pins every configured `citation_key` used as an
+  archive source identity.
+- Every archive read uses the normalizing reader helper; older additive schemas
+  load missing newer nullable columns as null.
+- Daylight-saving fall-back tests prove that the repeated local 1 AM hour is
+  converted without silently conflating observations, and ambiguous input that
+  cannot be resolved fails archive capture.
 - Lifecycle rules preserve the active generation.
 - Local mode retains the current one-command development experience.
 - Live integration tests continue validating upstream contracts separately from
@@ -891,16 +974,12 @@ requires stronger migration and equivalence validation.
    finer partitioning than one object per feed?
 4. What refresh interval and due-time policy satisfy the explicit freshness and
    retry budget at acceptable job cost?
-5. How long should previous published generations and raw responses be retained?
-6. Which normalized observations are authoritative when an upstream provider
-   revises or deletes records?
-7. Should historical archival begin with temperature only or every observational
-   feed?
-8. What snapshot freshness threshold should page the operator?
-9. Can the updater reliably run with 1 vCPU, and what is its measured complete
+5. How long should previous published generations be retained?
+6. What snapshot freshness threshold should page the operator?
+7. Can the updater reliably run with 1 vCPU, and what is its measured complete
    execution time?
-10. How should schema migrations keep at least one previously published snapshot
-    readable during rolling deploys?
+8. How should schema migrations keep at least one previously published snapshot
+   readable during rolling deploys?
 
 ## Decision Checkpoints Before Implementation
 

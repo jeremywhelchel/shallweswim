@@ -1,0 +1,83 @@
+/* Self-hosted Latin Poppins subsets, licensed under the adjacent font OFL. */
+@font-face {
+  font-family: SwimEmbedPoppins;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/poppins-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: SwimEmbedPoppins;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../assets/fonts/poppins-latin-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: SwimEmbedPoppins;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../assets/fonts/poppins-latin-700.woff2") format("woff2");
+}
+
+/* Keep palette overrides and shared-component styling inside the embed. */
+.swim-embed {
+  --color-swim-blue: #226cac;
+  --color-swim-ink: #21272a;
+  --color-swim-line: #e3e5e7;
+  max-width: 950px;
+  margin-inline: auto;
+  padding: 12px;
+  background: #f3b03d;
+  color: var(--color-swim-ink);
+  font-family: SwimEmbedPoppins, Arial, Helvetica, sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.swim-embed > * + * {
+  margin-top: 12px;
+}
+
+.swim-embed h1,
+.swim-embed h2 {
+  font-weight: 700;
+}
+
+.swim-embed .font-mono {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.swim-embed .embed-card {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 6px rgb(0 0 0 / 5%);
+}
+
+.swim-embed .embed-tide {
+  min-width: 0;
+  padding: 12px 8px;
+  border-radius: 8px;
+  background: #f6f1e9;
+  text-align: center;
+  font-size: 12px;
+}
+
+.swim-embed a:focus-visible,
+.swim-embed button:focus-visible {
+  outline: 2px solid var(--color-swim-blue);
+  outline-offset: 3px;
+}
+
+@media (min-width: 640px) {
+  .swim-embed {
+    padding: 20px;
+  }
+}

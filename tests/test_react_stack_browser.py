@@ -425,11 +425,41 @@ def test_embed_in_cross_origin_iframe(
             "src", re.compile("detail=true")
         )
         frame = next(frame for frame in page.frames if frame.url.endswith("/nyc/embed"))
+        frame.evaluate("document.fonts.ready")
+        assert frame.evaluate("document.fonts.check('400 15px SwimEmbedPoppins')")
+        assert (
+            frame.locator("main").evaluate(
+                "element => getComputedStyle(element).backgroundColor"
+            )
+            == "rgb(243, 176, 61)"
+        )
+        assert (
+            frame.get_by_role("link", name="shallweswim.today").evaluate(
+                "element => getComputedStyle(element).color"
+            )
+            == "rgb(34, 108, 172)"
+        )
         assert frame.evaluate(
             "document.documentElement.scrollWidth <= window.innerWidth"
         )
         page.screenshot(path=f".cache/embed-{width}.png")
         assert frame.evaluate("document.documentElement.scrollHeight <= 1200")
+        page.goto(f"{react_stack_server.base_url}/nyc", wait_until="domcontentloaded")
+        expect(
+            page.get_by_role("heading", name="shall we swim today?", exact=True)
+        ).to_be_visible()
+        assert (
+            page.get_by_role(
+                "heading", name="shall we swim today?", exact=True
+            ).evaluate("element => getComputedStyle(element).color")
+            == "rgb(0, 0, 153)"
+        )
+        assert (
+            page.locator("main").evaluate(
+                "element => getComputedStyle(element).fontFamily.includes('SwimEmbedPoppins')"
+            )
+            is False
+        )
     finally:
         browser.close()
         playwright.stop()

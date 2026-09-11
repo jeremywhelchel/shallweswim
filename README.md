@@ -597,7 +597,10 @@ without app navigation or charts. `/embed` redirects to `/nyc/embed`.
 The former Jinja panel remains at `/legacy/{location}/embed` for comparison;
 `/legacy/embed` redirects to `/legacy/nyc/embed`.
 
-The panel uses warm yellow framing and rounded white cards. Temperature and
+The panel uses CIBBOWS yellow (`#f3b03d`), charcoal text, blue controls,
+and rounded white cards. Its isolated `frontend/src/styles/embed.css` uses
+self-hosted Poppins Latin fonts (SIL Open Font License), with system-font
+fallback for other characters. Temperature and
 water-movement cards sit side by side on wider screens and stack on mobile;
 the three tide events use compact tiles. Windy stays together as a full-width
 map/forecast below the swimming data. There is no separate air-temperature

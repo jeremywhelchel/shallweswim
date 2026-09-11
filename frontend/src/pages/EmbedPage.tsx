@@ -9,6 +9,7 @@ import { formatMagnitude, formatTime, formatTimestamp } from "../lib/format";
 import { locationPageTitle } from "../lib/pageTitle";
 import type { TemperatureUnit } from "../lib/preferences";
 import { TemperatureSummary, WindyEmbed } from "./LocationPage";
+import "../styles/embed.css";
 
 type Location = components["schemas"]["AppBootstrapLocation"];
 
@@ -23,7 +24,7 @@ export function EmbedPage() {
   );
 
   return (
-    <main className="mx-auto max-w-[950px] space-y-3 bg-[#f7bb50] p-3 text-swim-ink sm:p-5">
+    <main className="swim-embed">
       {location ? (
         <EmbedConditions key={locationCode} location={location} />
       ) : (
@@ -95,13 +96,13 @@ function EmbedConditions({ location }: { location: Location }) {
       >
         {features.temperature ? (
           conditions.isPending ? (
-            <section className="rounded-xl bg-white p-3" aria-busy="true">
+            <section className="embed-card" aria-busy="true">
               <h2 className="font-semibold">Water Temperature</h2>
               <p className="mt-2 text-sm">Loading water temperature…</p>
             </section>
           ) : (
             <TemperatureSummary
-              className="min-w-0 rounded-xl bg-white p-3"
+              className="embed-card"
               conditions={conditions.data}
               hasError={conditions.isError && !conditions.data}
               location={location}
@@ -113,12 +114,12 @@ function EmbedConditions({ location }: { location: Location }) {
         {features.tides || features.currents ? (
           <div className="min-w-0 space-y-3">
             {features.tides ? (
-              <section aria-label="Tides" className="rounded-xl bg-white p-3">
+              <section aria-label="Tides" className="embed-card">
                 <h2 className="mb-2 font-semibold">Tides</h2>
                 <div className="grid grid-cols-3 gap-2">
                   {events.map((event, index) => (
                     <div
-                      className="min-w-0 rounded-lg bg-[#f5f4ef] px-2 py-3 text-center text-xs"
+                      className="embed-tide"
                       key={["Last", "Next", "Following"][index]}
                     >
                       <h3 className="font-semibold capitalize">
@@ -149,10 +150,7 @@ function EmbedConditions({ location }: { location: Location }) {
               </section>
             ) : null}
             {features.currents ? (
-              <section
-                aria-label="Current estimate"
-                className="rounded-xl bg-white p-3"
-              >
+              <section aria-label="Current estimate" className="embed-card">
                 <h2 className="font-semibold">Current estimate</h2>
                 {current ? (
                   <>
@@ -188,10 +186,7 @@ function EmbedConditions({ location }: { location: Location }) {
           </div>
         ) : null}
       </div>
-      <section
-        aria-label="Windy map and forecast"
-        className="rounded-xl bg-white p-3"
-      >
+      <section aria-label="Windy map and forecast" className="embed-card">
         <h2 className="mb-2 font-semibold">Map and forecast</h2>
         <WindyEmbed
           config={location.integrations.windy}

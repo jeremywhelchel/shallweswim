@@ -686,3 +686,7 @@ and keeps the Windy map/forecast together below them. It never fetches upstream
 station data. Links to the dashboard/detail view open safely in a new tab.
 The original Jinja embed remains under `/legacy/{location}/embed` for comparison.
 Cross-origin framing is allowed by the app; no API CORS changes are required.
+Embed presentation is scoped under `.swim-embed` in `frontend/src/styles/embed.css`,
+including local palette overrides for shared components. Poppins Latin subsets
+are bundled as Vite assets with their SIL Open Font License; the main dashboard
+keeps its existing typography and palette.

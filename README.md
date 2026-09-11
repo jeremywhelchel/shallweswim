@@ -589,3 +589,49 @@ GitHub Actions workflows automatically verify the following on every push:
   frontend and the built React/FastAPI stack
 
 Additionally, a separate integration test workflow runs daily to ensure compatibility with external APIs.
+
+### Embedding swimming conditions
+
+`/{location}/embed` (for example `/nyc/embed`) serves a compact React panel
+without app navigation or charts. `/embed` redirects to `/nyc/embed`.
+The former Jinja panel remains at `/legacy/{location}/embed` for comparison;
+`/legacy/embed` redirects to `/legacy/nyc/embed`.
+
+The panel uses warm yellow framing and rounded white cards. Temperature and
+water-movement cards sit side by side on wider screens and stack on mobile;
+the three tide events use compact tiles. Windy stays together as a full-width
+map/forecast below the swimming data. There is no separate air-temperature
+card or custom weather forecast table.
+
+The panel shows configured live water temperature and station information,
+the last and next two tides, current state and magnitude in knots, a current
+details link where supported, availability messages, the Windy map/forecast,
+and a link to the full location page. Full-app links open in a new tab.
+It shares the app's cached conditions API, refresh hook, temperature UI and
+formatters, location presentation metadata, and responsive Windy component.
+
+Paste this into a WordPress Custom HTML block:
+
+```html
+<iframe
+  src="https://shallweswim.today/nyc/embed"
+  title="Brighton Beach swimming conditions"
+  width="100%"
+  height="1200"
+  style="border: 0; display: block;"
+  loading="lazy"
+></iframe>
+```
+
+Build with `corepack pnpm@10.18.3 --dir frontend build`, then run
+`uv run python -m shallweswim.main --port=12345` and open
+`http://localhost:12345/nyc/embed`. Other configured location codes work too.
+
+This baseline uses a fixed iframe height; leave scrolling enabled for larger
+text, longer location content, and small screens. It requires JavaScript and
+network access to Shall We Swim and Windy. Windy is a third-party interactive
+forecast with its own mobile layout and availability. Host WordPress policies
+must allow this iframe; no WordPress API calls, proxy, or CORS changes are needed.
+After previewing, evaluate panel height, readability, the usefulness of Windy
+on mobile, and whether the existing content meets the site's needs before
+agreeing on styling or additional products.

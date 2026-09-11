@@ -9,6 +9,7 @@ import {
   recordAppVisit,
   setLastLocationCode,
 } from "../lib/preferences";
+import { EmbedPage } from "../pages/EmbedPage";
 import { LocationPage } from "../pages/LocationPage";
 import { LocationPlaceholderPage } from "../pages/LocationPlaceholderPage";
 import { LocationsRoutePage } from "../pages/LocationsPage";
@@ -84,13 +85,16 @@ function LocationRoute() {
 
 export function App() {
   useEffect(() => {
-    recordAppVisit();
+    if (!/^\/[^/]+\/embed\/?$/.test(window.location.pathname)) {
+      recordAppVisit();
+    }
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          <Route path=":locationCode/embed" element={<EmbedPage />} />
           <Route element={<AppShell />}>
             <Route index element={<DefaultLocationPage />} />
             <Route path="locations" element={<LocationsRoutePage />} />

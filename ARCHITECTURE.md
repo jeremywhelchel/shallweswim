@@ -672,3 +672,17 @@ Each feed has an **expiration interval** that determines how often it refreshes:
 Background tasks continuously check feeds. Successful fetches schedule the next
 normal refresh; failed fetches leave the feed stale (serving old data) and
 schedule a bounded retry.
+
+### React condition embeds
+
+Public `/{location}/embed` routes use the same durable React HTML shell and
+location validation as the dashboard, with location-specific metadata and an
+embed canonical URL. The React route sits outside `AppShell` to omit navigation
+and installation UI. `EmbedPage` uses bootstrap presentation metadata and
+`useLocationConditions` (including its periodic refresh), the shared temperature
+summary (with an optional container class for embed styling) and Windy component,
+and shared formatters. The embed arranges swimming data in responsive cards
+and keeps the Windy map/forecast together below them. It never fetches upstream
+station data. Links to the dashboard/detail view open safely in a new tab.
+The original Jinja embed remains under `/legacy/{location}/embed` for comparison.
+Cross-origin framing is allowed by the app; no API CORS changes are required.

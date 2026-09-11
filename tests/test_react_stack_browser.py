@@ -14,6 +14,7 @@ import time
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -369,6 +370,66 @@ def test_react_planner_uses_conditions_and_plot_with_same_at(
         assert manager.current_calls == [manager.expected_at]
         assert manager.feed_value_calls.count(FEED_TIDES) >= 1
         assert manager.feed_value_calls.count(FEED_CURRENTS) >= 1
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+@pytest.mark.parametrize("width", [320, 950])
+def test_embed_in_cross_origin_iframe(
+    react_stack_server: ReactStackServer, width: int
+) -> None:
+    """The real served embed fits a foreign host without app chrome."""
+    playwright, browser = _launch_chromium()
+    try:
+        page = browser.new_page(viewport={"width": 1100, "height": 1300})
+        page.route(
+            "https://embed.windy.com/**",
+            lambda route: route.fulfill(body="Forecast fixture"),
+        )
+
+        class HostPage(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.end_headers()
+                self.wfile.write(
+                    f'<iframe title="Swim panel" width="{width}" height="1200" src="{react_stack_server.base_url}/nyc/embed"></iframe>'.encode()
+                )
+
+        host = ThreadingHTTPServer(("127.0.0.1", 0), HostPage)
+        host_thread = threading.Thread(target=host.serve_forever, daemon=True)
+        host_thread.start()
+        try:
+            page.goto(f"http://127.0.0.1:{host.server_port}/")
+        finally:
+            host.shutdown()
+            host.server_close()
+            host_thread.join(timeout=5)
+        panel = page.frame_locator('iframe[title="Swim panel"]')
+        expect(
+            panel.get_by_role("heading", name="Swimming conditions at", exact=False)
+        ).to_be_visible()
+        expect(panel.get_by_text("61.4", exact=False)).to_be_visible()
+        expect(panel.get_by_label("Tides")).to_contain_text("Following")
+        expect(panel.get_by_label("Current estimate")).to_contain_text("knots")
+        expect(panel.get_by_role("navigation")).to_have_count(0)
+        expect(panel.get_by_role("img")).to_have_count(0)
+        expect(panel.get_by_role("link", name="shallweswim.today")).to_have_attribute(
+            "target", "_blank"
+        )
+        expect(panel.get_by_role("link", name="Current details")).to_have_attribute(
+            "href", "/nyc?detail=open"
+        )
+        expect(panel.locator('iframe[title="Windy forecast"]')).to_have_attribute(
+            "src", re.compile("detail=true")
+        )
+        frame = next(frame for frame in page.frames if frame.url.endswith("/nyc/embed"))
+        assert frame.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth"
+        )
+        page.screenshot(path=f".cache/embed-{width}.png")
+        assert frame.evaluate("document.documentElement.scrollHeight <= 1200")
     finally:
         browser.close()
         playwright.stop()

@@ -662,23 +662,14 @@ async def legacy_location_embed(
 
 
 @app.get("/{location}/embed")
-async def location_embed(
-    request: fastapi.Request, location: str
-) -> responses.HTMLResponse:
-    """Serve the existing legacy embed view at its historical URL."""
+async def location_embed(location: str) -> responses.Response:
+    """Serve the React embed at its historical public location URL."""
     cfg = config.get(location)
     if not cfg:
         logging.warning("Bad location for embed: %s", location)
         raise HTTPException(status_code=404, detail=f"Bad location: {location}")
 
-    return templates.TemplateResponse(
-        request=request,
-        name="embed.html",
-        context={
-            "config": cfg,
-            "canonical_url": canonical.canonical_url(f"/{cfg.code}/embed"),
-        },
-    )
+    return frontend_app_shell_response(path=f"/{cfg.code}/embed", cfg=cfg)
 
 
 @app.get("/legacy/{location}/widget")

@@ -734,3 +734,75 @@ test("planner mode shifts dashboard water movement from URL state @desktop", asy
 async function gotoApp(page: Page, url: string) {
   await page.goto(url, { waitUntil: "domcontentloaded" });
 }
+
+test("embed preserves available data and omits disabled features @desktop", async ({
+  page,
+}) => {
+  await page.route("**/api/*/conditions**", (route) =>
+    route.fulfill({ json: { ...conditionsPayload, temperature: null } }),
+  );
+  await gotoApp(page, "/nyc/embed");
+  await expect(page.getByRole("status")).toContainText(
+    "Some conditions are currently unavailable",
+  );
+  await expect(page.getByLabel("Tides")).toContainText("Following");
+  await expect(page.getByLabel("Current estimate")).toContainText("knots");
+  await expect(page.getByRole("navigation")).toHaveCount(0);
+  await page.route("**/api/app/bootstrap", (route) =>
+    route.fulfill({
+      json: {
+        ...bootstrapPayload,
+        locations: {
+          sfo: {
+            ...bootstrapPayload.locations.sfo,
+            metadata: {
+              ...bootstrapPayload.locations.sfo.metadata,
+              features: {
+                ...bootstrapPayload.locations.sfo.metadata.features,
+                temperature: false,
+                tides: false,
+                currents: false,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+  await gotoApp(page, "/sfo/embed");
+  await expect(
+    page.getByRole("heading", { name: "Swimming conditions at Aquatic Park" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Water Temperature" }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Tides")).toHaveCount(0);
+  await expect(page.getByLabel("Current estimate")).toHaveCount(0);
+  await expect(page.locator('iframe[title="Windy forecast"]')).toHaveAttribute(
+    "src",
+    /detail=true/,
+  );
+});
+
+test("embed reports conditions and bootstrap failures without app chrome @desktop", async ({
+  page,
+}) => {
+  await page.route("**/api/*/conditions**", (route) =>
+    route.fulfill({ status: 503, json: { detail: "Unavailable" } }),
+  );
+  await gotoApp(page, "/nyc/embed");
+  await expect(page.getByRole("status")).toContainText(
+    "Unable to load latest conditions",
+  );
+  await expect(
+    page.getByRole("link", { name: "shallweswim.today" }),
+  ).toHaveAttribute("target", "_blank");
+  await page.route("**/api/app/bootstrap", (route) =>
+    route.fulfill({ status: 503, json: { detail: "Unavailable" } }),
+  );
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Unable to load swimming conditions" }),
+  ).toBeVisible();
+  await expect(page.getByRole("navigation")).toHaveCount(0);
+});

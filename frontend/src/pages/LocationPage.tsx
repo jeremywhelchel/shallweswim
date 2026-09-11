@@ -543,13 +543,15 @@ type WaterMovementControls = {
   supportsPlanning: boolean;
 };
 
-function TemperatureSummary({
+export function TemperatureSummary({
+  className = "border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4",
   conditions,
   hasError,
   location,
   onSetTemperatureUnit,
   temperatureUnit,
 }: {
+  className?: string;
   conditions?: LocationConditions;
   hasError: boolean;
   location: AppBootstrapLocation;
@@ -578,7 +580,7 @@ function TemperatureSummary({
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
-    <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
+    <div className={className}>
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-semibold text-base md:text-lg">
           Water Temperature
@@ -1853,7 +1855,7 @@ function trendIndicatorText(
   return trend;
 }
 
-function WindyEmbed({
+export function WindyEmbed({
   config,
   metadata,
   temperatureUnit,

@@ -753,16 +753,16 @@ def test_legacy_location_page_uses_location_windy_config() -> None:
     assert "product=ecmwfWaves" not in response.text
 
 
-def test_existing_embed_route_still_serves_legacy_embed_content() -> None:
-    """Existing external embed URLs keep serving the legacy embed page."""
+def test_legacy_embed_route_still_serves_legacy_embed_content() -> None:
+    """Legacy comparison URLs keep serving the Jinja embed page."""
     client = TestClient(app)
 
-    response = client.get("/nyc/embed")
+    response = client.get("/legacy/nyc/embed")
 
     assert response.status_code == 200
     assert 'class="embed-page"' in response.text
     assert (
-        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/nyc/embed"'
+        f'<link rel="canonical" href="{canonical.CANONICAL_BASE_URL}/legacy/nyc/embed"'
         in response.text
     )
     assert "https://embed.windy.com/embed2.html" in response.text
@@ -825,3 +825,24 @@ def test_widget_page_renders_standalone_widget() -> None:
     assert 'data-location="nyc"' in response.text
     assert 'id="widget-water-temp"' in response.text
     assert "/api/${locationCode}/conditions" in response.text
+
+
+@pytest.mark.parametrize("code", ["nyc", "sfo"])
+def test_public_embed_serves_react_shell(tmp_path, monkeypatch, code) -> None:
+    """Public embeds have location metadata and permit cross-origin framing."""
+    dist = tmp_path / "dist"
+    _write_fake_frontend_dist(dist)
+    monkeypatch.setattr(app.state, "frontend_dist", str(dist), raising=False)
+    client = TestClient(app)
+    response = client.get(f"/{code}/embed")
+    assert response.status_code == 200
+    assert '<div id="root"></div>' in response.text
+    assert f"{canonical.CANONICAL_BASE_URL}/{code}/embed" in response.text
+    assert config.get(code).swim_location in response.text
+    assert "x-frame-options" not in response.headers
+    assert "frame-ancestors" not in response.headers.get("content-security-policy", "")
+    assert client.get("/unknown/embed").status_code == 404
+    assert client.get("/legacy/unknown/embed").status_code == 404
+    redirect = client.get("/legacy/embed", follow_redirects=False)
+    assert redirect.status_code == 301
+    assert redirect.headers["location"] == "/legacy/nyc/embed"

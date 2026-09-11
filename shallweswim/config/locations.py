@@ -1431,9 +1431,9 @@ _CONFIG_LIST = [
                 # expected to render fully on localhost. Production
                 # shallweswim.today is allowed.
                 embed_url=(
-                    "https://share.earthcam.net/"
-                    "tJ90CoLmq7TzrY396Yd88MLlsVJ_gbpo-FtC9zSX1TI."
-                    "tJ90CoLmq7TzrY396Yd88Cwp1ulcCteQSnD-A42I2VI"
+                    "https://share.earthcam.net/public/"
+                    "tJ90CoLmq7TzrY396Yd88L72nO7sqpJKZjMlV9XLMlE/"
+                    "louisville,_ky/river_cam"
                 ),
                 watch_url="https://www.earthcam.com/usa/kentucky/louisville/?cam=ohioriver",
                 note="View overlooking Toehead Island swim channel",

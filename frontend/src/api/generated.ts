@@ -655,7 +655,7 @@ export interface paths {
         };
         /**
          * Location Embed
-         * @description Serve the existing legacy embed view at its historical URL.
+         * @description Serve the React embed at its historical public location URL.
          */
         get: operations["location_embed__location__embed_get"];
         put?: never;

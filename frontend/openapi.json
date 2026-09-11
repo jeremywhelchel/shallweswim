@@ -2527,7 +2527,7 @@
     },
     "/{location}/embed": {
       "get": {
-        "description": "Serve the existing legacy embed view at its historical URL.",
+        "description": "Serve the React embed at its historical public location URL.",
         "operationId": "location_embed__location__embed_get",
         "parameters": [
           {

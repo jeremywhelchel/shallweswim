@@ -53,6 +53,36 @@ The script reports row counts, local timestamp bounds, Fahrenheit min/max
 values, failures, and elapsed time. It uses the same configured MMSI and
 source-specific plausible Celsius bounds as the runtime feeds.
 
+## Feed and Plot Size Measurement
+
+`measure_feed_sizes.py` fetches every configured feed for one or more
+locations through the existing clients and feed classes, then reports row
+counts, in-memory DataFrame size, and serialized Parquet size (SVG size for
+live/historical temperature plots). It never writes any file to disk; all
+serialization happens in memory via `io.BytesIO`. This answers
+[PERSISTENT_DATA_PIPELINE_DESIGN.md](../../PERSISTENT_DATA_PIPELINE_DESIGN.md)
+open questions 2–3: the measured serialized size of every current feed/plot,
+and whether any combined per-location historical frame is large enough to
+justify finer serving partitions than one object per feed.
+
+For historical temperature feeds, the combined frame is also split by the
+feed's local-time calendar year and each year is measured separately, as an
+approximation of a per-year serving partition. This uses the feed's naive
+local index year rather than the archive's UTC year-boundary conversion (see
+`shallweswim/archive/capture.py`), which is a reasonable approximation for a
+sizing estimate but not the archive's exact partitioning contract.
+
+```bash
+# Measure every configured location.
+uv run python -m shallweswim.scripts.measure_feed_sizes
+
+# Measure one location.
+uv run python -m shallweswim.scripts.measure_feed_sizes --location nyc
+
+# Machine-readable output.
+uv run python -m shallweswim.scripts.measure_feed_sizes --json
+```
+
 ## Dover Harmonic Tide Fitting
 
 `derive_harmonic_tide_model.py` is an offline investigation/build script for

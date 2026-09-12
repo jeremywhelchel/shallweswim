@@ -211,6 +211,11 @@ The application is hosted on Google Cloud Run:
 ./build_and_deploy.sh
 ```
 
+The observation capture job is a separate bounded entry point
+(`python -m shallweswim.capture`) deployed from the same image as a Cloud Run
+Job and triggered by Cloud Scheduler instead of running inside the web
+service. See the [capture job runbook](infra/capture-job/README.md).
+
 ### Canonical URLs
 
 The canonical production host is `https://shallweswim.today`. The app redirects
@@ -468,10 +473,33 @@ scheduling. Only fresh historical years are captured, so cached years keep their
 original retrieval times. Prediction feeds, including tide and NOAA CO-OPS
 currents predictions, are excluded.
 
+Production capture runs from a scheduled one-shot job rather than the web
+service. The job fetches every archivable feed once and exits:
+
+```bash
+# Scheduled run: current historical year only
+SHALLWESWIM_ARCHIVE_BUCKET=my-archive-bucket \
+  uv run python -m shallweswim.capture
+
+# One-time backfill of every configured historical year
+SHALLWESWIM_ARCHIVE_BUCKET=my-archive-bucket \
+  uv run python -m shallweswim.capture --full-history
+```
+
+The job fetches only live temperatures, historical temperatures, and
+observational currents; it never fetches tide or current predictions, generates
+plots, or starts the web app. A missing bucket variable fails the run before any
+upstream request, because fetching without capturing has no purpose. Locations
+run concurrently and each location's feeds run in sequence. One failing feed
+leaves the run `partial` and still exits zero; a run that publishes nothing
+exits non-zero.
+
 See [archive setup](infra/monitoring/README.md#observation-archive-setup) for
-the one-time bucket and runtime IAM commands. The operations dashboard includes
-archive merges by outcome; bucket setup and setting the runtime environment
-variable are separate from applying monitoring Terraform.
+the one-time bucket commands and the
+[capture job runbook](infra/capture-job/README.md) for the job identity,
+deployment, scheduling, and validation steps. The operations dashboard includes
+archive merges by outcome; bucket setup and job deployment are separate from
+applying monitoring Terraform.
 
 #### Debugging CSPF Sandettie Historical Temperatures
 

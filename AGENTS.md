@@ -17,6 +17,7 @@ uv run ruff format --check .             # Formatting check
 uv run pyrefly check .                   # Type checking
 uv run pre-commit run --all-files        # Fast local hook subset
 uv run python -m shallweswim.main --port=12345  # Run locally
+uv run python -m shallweswim.capture     # One-shot archive capture job (needs SHALLWESWIM_ARCHIVE_BUCKET)
 uv run playwright install chromium       # Only if browser tests report missing Chromium
 ```
 

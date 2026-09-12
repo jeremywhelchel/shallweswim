@@ -11,6 +11,7 @@ This document describes the architectural patterns, coding standards, and design
 ```text
 shallweswim/
 ├── main.py              # App entry point, web UI routes, templates
+├── capture.py           # One-shot bounded observation capture job entry point
 ├── archive/             # Observation schemas, conditional stores, and merge writer
 ├── api/                 # API layer
 │   ├── __init__.py      # Re-exports from routes
@@ -25,6 +26,7 @@ shallweswim/
 │   ├── updater.py       # Background update helpers
 │   └── feeds.py         # Feed classes with caching/expiration
 ├── clients/             # External API clients
+│   ├── __init__.py      # create_api_clients() provider client-set factory
 │   ├── base.py          # BaseApiClient with retry logic, error hierarchy
 │   ├── coops.py         # NOAA CO-OPS (tides, currents, coastal temps)
 │   ├── cspf.py          # CSPF Sandettie historical temperatures
@@ -75,7 +77,11 @@ Background Task → Derived Data Precompute → Update Derived Cache
 
 When `SHALLWESWIM_ARCHIVE_BUCKET` is set, successful temperature updates and
 successful observational currents updates also merge observations into the
-private GCS archive. Live feeds publish and schedule before capture; historical
+private GCS archive. Production sets that variable only for the bounded capture
+job (`shallweswim/capture.py`), never for the web service, so the web runtime
+never writes to the archive. The job builds feeds through the same
+`core.manager.build_feeds()` builder the web manager uses, updates each
+archivable feed once, and exits. Live feeds publish and schedule before capture; historical
 feeds capture only freshly fetched years, including successful years in a
 partial fetch. Cached years retain their retrieval times.
 Archive failures emit failed merge events without changing serving or retry

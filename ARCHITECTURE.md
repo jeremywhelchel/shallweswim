@@ -689,4 +689,7 @@ Cross-origin framing is allowed by the app; no API CORS changes are required.
 Embed presentation is scoped under `.swim-embed` in `frontend/src/styles/embed.css`,
 including local palette overrides for shared components. Poppins Latin subsets
 are bundled as Vite assets with their SIL Open Font License; the main dashboard
-keeps its existing typography and palette.
+keeps its existing typography and palette. A root `:has(.swim-embed)` selector
+colors the full iframe canvas only while the embed is mounted. The host supplies
+the visible page heading; the embed retains a location-specific accessible main
+label and document title.

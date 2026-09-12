@@ -375,14 +375,14 @@ def test_react_planner_uses_conditions_and_plot_with_same_at(
         playwright.stop()
 
 
-@pytest.mark.parametrize("width", [320, 950])
+@pytest.mark.parametrize("width", [320, 950, 1200])
 def test_embed_in_cross_origin_iframe(
     react_stack_server: ReactStackServer, width: int
 ) -> None:
     """The real served embed fits a foreign host without app chrome."""
     playwright, browser = _launch_chromium()
     try:
-        page = browser.new_page(viewport={"width": 1100, "height": 1300})
+        page = browser.new_page(viewport={"width": 1300, "height": 1300})
         page.route(
             "https://embed.windy.com/**",
             lambda route: route.fulfill(body="Forecast fixture"),
@@ -408,9 +408,10 @@ def test_embed_in_cross_origin_iframe(
             host_thread.join(timeout=5)
         panel = page.frame_locator('iframe[title="Swim panel"]')
         expect(
-            panel.get_by_role("heading", name="Swimming conditions at", exact=False)
+            panel.get_by_role("main", name="Swimming conditions at", exact=False)
         ).to_be_visible()
         expect(panel.get_by_text("61.4", exact=False)).to_be_visible()
+        expect(panel.locator("h1")).to_have_count(0)
         expect(panel.get_by_label("Tides")).to_contain_text("Following")
         expect(panel.get_by_label("Current estimate")).to_contain_text("knots")
         expect(panel.get_by_role("navigation")).to_have_count(0)
@@ -426,6 +427,12 @@ def test_embed_in_cross_origin_iframe(
         )
         frame = next(frame for frame in page.frames if frame.url.endswith("/nyc/embed"))
         frame.evaluate("document.fonts.ready")
+        assert (
+            frame.locator("html").evaluate(
+                "element => getComputedStyle(element).backgroundColor"
+            )
+            == "rgb(243, 176, 61)"
+        )
         assert frame.evaluate("document.fonts.check('400 15px SwimEmbedPoppins')")
         assert (
             frame.locator("main").evaluate(
@@ -453,6 +460,12 @@ def test_embed_in_cross_origin_iframe(
                 "heading", name="shall we swim today?", exact=True
             ).evaluate("element => getComputedStyle(element).color")
             == "rgb(0, 0, 153)"
+        )
+        assert (
+            page.locator("html").evaluate(
+                "element => getComputedStyle(element).backgroundColor"
+            )
+            == "rgb(252, 255, 255)"
         )
         assert (
             page.locator("main").evaluate(

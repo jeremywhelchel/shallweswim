@@ -24,7 +24,14 @@ export function EmbedPage() {
   );
 
   return (
-    <main className="swim-embed">
+    <main
+      className="swim-embed"
+      aria-label={
+        location
+          ? `Swimming conditions at ${location.metadata.swim_location}`
+          : "Swimming conditions"
+      }
+    >
       {location ? (
         <EmbedConditions key={locationCode} location={location} />
       ) : (
@@ -80,11 +87,6 @@ function EmbedConditions({ location }: { location: Location }) {
 
   return (
     <>
-      <header>
-        <h1 className="font-semibold text-xl leading-tight">
-          Swimming conditions at {metadata.swim_location}
-        </h1>
-      </header>
       <div
         role="status"
         className={status ? "text-sm text-swim-ink" : "sr-only"}

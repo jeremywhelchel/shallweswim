@@ -23,6 +23,12 @@
   src: url("../assets/fonts/poppins-latin-700.woff2") format("woff2");
 }
 
+/* Paint the entire iframe, including unused space and wide side gutters.
+   The selector stops matching when navigation leaves the embed. */
+:root:has(.swim-embed) {
+  background: #f3b03d;
+}
+
 /* Keep palette overrides and shared-component styling inside the embed. */
 .swim-embed {
   --color-swim-blue: #226cac;

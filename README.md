@@ -598,7 +598,9 @@ The former Jinja panel remains at `/legacy/{location}/embed` for comparison;
 `/legacy/embed` redirects to `/legacy/nyc/embed`.
 
 The panel uses CIBBOWS yellow (`#f3b03d`), charcoal text, blue controls,
-and rounded white cards. Its isolated `frontend/src/styles/embed.css` uses
+and rounded white cards. Yellow fills the entire iframe, including unused space.
+The panel omits a visible page heading so the host site can provide its own;
+the location remains in the document title and accessible main label. Its isolated `frontend/src/styles/embed.css` uses
 self-hosted Poppins Latin fonts (SIL Open Font License), with system-font
 fallback for other characters. Temperature and
 water-movement cards sit side by side on wider screens and stack on mobile;

@@ -771,7 +771,7 @@ test("embed preserves available data and omits disabled features @desktop", asyn
   );
   await gotoApp(page, "/sfo/embed");
   await expect(
-    page.getByRole("heading", { name: "Swimming conditions at Aquatic Park" }),
+    page.getByRole("main", { name: "Swimming conditions at Aquatic Park" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Water Temperature" }),

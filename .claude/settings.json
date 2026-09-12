@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --extra dev pyrefly check .",
+            "command": "uv run pyrefly check .",
             "timeout": 120
           }
         ]

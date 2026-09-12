@@ -20,6 +20,9 @@ STRUCTURED_FIELDS = (
     "generation_id",
     "duration_ms",
     "record_count",
+    "attempt_count",
+    "source_identity",
+    "observed_at",
 )
 
 

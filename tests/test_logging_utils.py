@@ -56,6 +56,28 @@ def test_json_log_includes_only_approved_extra_fields() -> None:
     assert "api_token" not in payload
 
 
+def test_json_log_includes_archive_merge_fields() -> None:
+    stream = StringIO()
+    handler = _create_handler("json", stream)
+
+    handler.handle(
+        _record(
+            component="archive",
+            operation="merge",
+            source_identity="coops:temperature:8518750",
+            outcome="failed",
+            observed_at="2026-01-01T17:00:00+00:00",
+            attempt_count=5,
+        )
+    )
+
+    payload = json.loads(stream.getvalue())
+    assert payload["source_identity"] == "coops:temperature:8518750"
+    assert payload["source"]["file"] == "shallweswim/core/feeds.py"
+    assert payload["observed_at"] == "2026-01-01T17:00:00+00:00"
+    assert payload["attempt_count"] == 5
+
+
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
 def test_json_log_converts_non_finite_numbers_to_valid_json(value: float) -> None:
     stream = StringIO()

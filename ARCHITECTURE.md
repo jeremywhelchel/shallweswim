@@ -11,7 +11,7 @@ This document describes the architectural patterns, coding standards, and design
 ```text
 shallweswim/
 ├── main.py              # App entry point, web UI routes, templates
-├── archive/             # Durable observation schemas and normalized read boundary
+├── archive/             # Observation schemas, conditional stores, and merge writer
 ├── api/                 # API layer
 │   ├── __init__.py      # Re-exports from routes
 │   └── routes.py        # JSON API routes (delegates to core/)

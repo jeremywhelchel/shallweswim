@@ -16,6 +16,11 @@ locals {
     feed     = "EXTRACT(jsonPayload.feed)"
     outcome  = "EXTRACT(jsonPayload.outcome)"
   }
+
+  archive_labels = {
+    source  = "EXTRACT(jsonPayload.source_identity)"
+    outcome = "EXTRACT(jsonPayload.outcome)"
+  }
 }
 
 resource "google_logging_metric" "feed_updates" {
@@ -170,4 +175,29 @@ resource "google_logging_metric" "plot_availability_latency" {
       scale              = 1
     }
   }
+}
+
+resource "google_logging_metric" "archive_merges" {
+  name        = "shallweswim_archive_merges"
+  description = "Completed archive partition merges by bounded outcome. Managed by Terraform."
+  filter      = "${local.application_log_filter}\njsonPayload.component=\"archive\"\njsonPayload.operation=\"merge\""
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "source"
+      value_type  = "STRING"
+      description = "Permanent archive source identity."
+    }
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success, unchanged, or failed."
+    }
+  }
+
+  label_extractors = local.archive_labels
 }

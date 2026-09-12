@@ -424,6 +424,11 @@ started, and abort rather than moving the pointer backward if a newer publisher
 won. On GCS this maps to an `if-generation-match` precondition; other storage
 adapters must provide equivalent conditional replacement behavior.
 
+The initial GCS adapter uses the official synchronous `google-cloud-storage`
+client with every storage operation offloaded to a worker thread. This keeps
+blocking network I/O off the serving event loop during the transitional web
+writer phase without adding a separate asynchronous GCS client dependency.
+
 ## Durable Observation Archive
 
 The archive protects historical measurements from upstream removal and avoids
@@ -550,7 +555,9 @@ Any archive-capture failure—including timestamp conversion, exhausted
 conditional-write retries, or storage unavailability—is isolated from the
 serving update: it emits a structured archive-merge event with `outcome=failed`
 but leaves feed publication, serving, and feed scheduling untouched, so a later
-overlapping fetch can recover the omitted rows.
+overlapping fetch can recover the omitted rows. A conflicting equally recent
+claim is an expected, self-recovering anomaly and logs at WARNING; unexpected
+archive failures log at ERROR. The failed-outcome metric captures both.
 
 The updater should fetch incrementally with a small overlap window, then merge
 using these rules. The overlap allows providers to revise recent readings.

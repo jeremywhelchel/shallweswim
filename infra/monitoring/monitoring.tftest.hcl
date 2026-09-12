@@ -16,6 +16,7 @@ run "monitoring_plan" {
         google_logging_metric.feed_records,
         google_logging_metric.plot_generations,
         google_logging_metric.plot_availability_latency,
+        google_logging_metric.archive_merges,
       ] : strcontains(metric.filter, "resource.labels.service_name=\"shallweswim\"")
     ])
     error_message = "Every metric must be scoped to the configured Cloud Run service."
@@ -24,7 +25,8 @@ run "monitoring_plan" {
   assert {
     condition = (
       length(google_logging_metric.feed_updates.metric_descriptor[0].labels) == 4 &&
-      length(google_logging_metric.plot_generations.metric_descriptor[0].labels) == 3
+      length(google_logging_metric.plot_generations.metric_descriptor[0].labels) == 3 &&
+      length(google_logging_metric.archive_merges.metric_descriptor[0].labels) == 2
     )
     error_message = "Metric label sets must remain bounded by the reviewed contracts."
   }

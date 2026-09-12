@@ -8,10 +8,10 @@ Resources with `[Terraform]` in their display name or `Managed by Terraform` in
 their description must not be edited in the GCP console.
 
 The metrics consume the bounded structured events documented in
-`OBSERVABILITY_DESIGN.md`. Terraform defines the extraction rules; it does not
-read or process logs itself. Cloud Logging creates metric samples from new
-matching entries after the metrics are created. Existing log entries are not
-backfilled.
+`OBSERVABILITY_DESIGN.md` and `PERSISTENT_DATA_PIPELINE_DESIGN.md`. Terraform
+defines the extraction rules; it does not read or process logs itself. Cloud
+Logging creates metric samples from new matching entries after the metrics are
+created. Existing log entries are not backfilled.
 
 ## State bootstrap
 

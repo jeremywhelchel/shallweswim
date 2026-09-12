@@ -11,5 +11,6 @@ output "logging_metric_names" {
     google_logging_metric.feed_records.name,
     google_logging_metric.plot_generations.name,
     google_logging_metric.plot_availability_latency.name,
+    google_logging_metric.archive_merges.name,
   ]
 }

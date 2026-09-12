@@ -1,4 +1,4 @@
-"""Temperature capture for the transitional in-process feed updater."""
+"""Scalar-observation capture for the transitional in-process feed updater."""
 
 import asyncio
 import datetime
@@ -8,11 +8,7 @@ from urllib.parse import quote
 import pandas as pd
 
 from shallweswim.archive.merge import merge_observations
-from shallweswim.archive.observations import (
-    TEMPERATURE_UNIT,
-    TEMPERATURE_VALUE_COLUMN,
-    normalize_observations,
-)
+from shallweswim.archive.observations import normalize_observations
 from shallweswim.archive.store import GcsObjectStore
 
 
@@ -25,19 +21,24 @@ def _store_for(bucket: str) -> GcsObjectStore:
 def _partitions(
     frame: pd.DataFrame,
     source_identity: str,
+    measurement: str,
+    value_column: str,
+    unit: str,
     timezone: datetime.tzinfo,
     retrieved_at: datetime.datetime,
 ) -> list[tuple[str, pd.DataFrame]]:
     """Normalize and partition by UTC year, preserving source identity."""
-    provider, measurement, station = source_identity.split(":", 2)
-    if measurement != "temperature" or not provider or not station:
-        raise ValueError("Expected a temperature source identity")
+    provider, source_measurement, station = source_identity.split(":", 2)
+    if source_measurement != measurement or not provider or not station:
+        raise ValueError(f"Expected a {measurement} source identity")
     # Percent encoding is reversible, including USGS's station:parameter suffix.
-    prefix = f"archive/temperature/{quote(provider, safe='')}/{quote(station, safe='')}"
+    prefix = (
+        f"archive/{measurement}/{quote(provider, safe='')}/{quote(station, safe='')}"
+    )
     rows = normalize_observations(
         frame,
-        value_column=TEMPERATURE_VALUE_COLUMN,
-        unit=TEMPERATURE_UNIT,
+        value_column=value_column,
+        unit=unit,
         timezone=timezone,
         retrieved_at=retrieved_at,
     )
@@ -47,17 +48,27 @@ def _partitions(
     ]
 
 
-async def capture_temperature(
+async def capture_observations(
     bucket: str,
     *,
     frame: pd.DataFrame,
     source_identity: str,
+    measurement: str,
+    value_column: str,
+    unit: str,
     timezone: datetime.tzinfo,
     retrieved_at: datetime.datetime,
 ) -> None:
     """Merge each UTC year; the feed caller isolates preparation failures."""
     partitions = await asyncio.to_thread(
-        _partitions, frame, source_identity, timezone, retrieved_at
+        _partitions,
+        frame,
+        source_identity,
+        measurement,
+        value_column,
+        unit,
+        timezone,
+        retrieved_at,
     )
     if not partitions:
         return
@@ -69,7 +80,7 @@ async def capture_temperature(
                 key=key,
                 source_identity=source_identity,
                 incoming=incoming,
-                expected_unit=TEMPERATURE_UNIT,
+                expected_unit=unit,
             )
         except Exception:
             # The merge writer already emitted the failed event. Continue so a

@@ -15,9 +15,16 @@ OBSERVATION_COLUMNS = (
     "retrieved_at",
 )
 
-# Phase 1's named domain binding to the shared scalar-observation mechanism.
+# Named domain bindings to the shared scalar-observation mechanism. The
+# measurement is both the archive path prefix segment and the citation_key
+# segment that identifies what a source measures.
+TEMPERATURE_MEASUREMENT = "temperature"
 TEMPERATURE_VALUE_COLUMN = "water_temp"
 TEMPERATURE_UNIT = "F"
+
+CURRENTS_MEASUREMENT = "currents"
+CURRENTS_VALUE_COLUMN = "velocity"
+CURRENTS_UNIT = "kt"
 
 # Additive nullable fields belong here and in ObservationModel when the archive
 # contract grows. The reader fills fields absent from older Parquet objects before

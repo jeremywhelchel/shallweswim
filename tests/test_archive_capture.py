@@ -1,4 +1,4 @@
-"""Serving isolation and temperature capture through real feed updates."""
+"""Serving isolation and observation capture through real feed updates."""
 
 import datetime
 import logging
@@ -11,7 +11,15 @@ import pytest
 
 from shallweswim import config
 from shallweswim.archive import capture
-from shallweswim.archive.observations import read_observations
+from shallweswim.archive.observations import (
+    CURRENTS_MEASUREMENT,
+    CURRENTS_UNIT,
+    CURRENTS_VALUE_COLUMN,
+    TEMPERATURE_MEASUREMENT,
+    TEMPERATURE_UNIT,
+    TEMPERATURE_VALUE_COLUMN,
+    read_observations,
+)
 from shallweswim.archive.store import MemoryObjectStore
 from shallweswim.clients.base import StationUnavailableError
 from shallweswim.core import feeds
@@ -32,10 +40,13 @@ async def test_capture_reuses_store_per_bucket(monkeypatch) -> None:
     monkeypatch.setattr(capture, "GcsObjectStore", factory)
     feed = _feed()
     for bucket in ("first", "first", "second", "first"):
-        await capture.capture_temperature(
+        await capture.capture_observations(
             bucket,
             frame=_frame("2026-01-01"),
             source_identity=feed.feed_config.citation_key,
+            measurement=TEMPERATURE_MEASUREMENT,
+            value_column=TEMPERATURE_VALUE_COLUMN,
+            unit=TEMPERATURE_UNIT,
             timezone=feed.location_config.timezone,
             retrieved_at=datetime.datetime(2026, 1, 2),
         )
@@ -118,7 +129,7 @@ async def test_archive_failure_keeps_success_state(
 async def test_disabled_capture_does_not_construct_store(monkeypatch) -> None:
     monkeypatch.delenv("SHALLWESWIM_ARCHIVE_BUCKET", raising=False)
     archive = AsyncMock()
-    monkeypatch.setattr(feeds, "capture_temperature", archive)
+    monkeypatch.setattr(feeds, "capture_observations", archive)
     monkeypatch.setattr(
         feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=_frame("2026-01-01"))
     )
@@ -130,7 +141,7 @@ async def test_disabled_capture_does_not_construct_store(monkeypatch) -> None:
 async def test_failed_fetch_does_not_archive(monkeypatch) -> None:
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     archive = AsyncMock()
-    monkeypatch.setattr(feeds, "capture_temperature", archive)
+    monkeypatch.setattr(feeds, "capture_observations", archive)
     monkeypatch.setattr(
         feeds.CoopsTempFeed,
         "_fetch",
@@ -160,7 +171,7 @@ async def test_historical_capture_only_fresh_years_even_on_partial_failure(
     fetch = AsyncMock(side_effect=[fresh, StationUnavailableError("offline")])
     monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", fetch)
     archive = AsyncMock()
-    monkeypatch.setattr(feeds, "capture_temperature", archive)
+    monkeypatch.setattr(feeds, "capture_observations", archive)
     await history.update({})
     assert fetch.await_count == 2
     archive.assert_awaited_once()
@@ -177,6 +188,9 @@ def test_source_paths_preserve_station_parameter_identity() -> None:
     partitions = capture._partitions(
         _frame("2026-01-01"),
         "nwis:temperature:08155500:00010",
+        TEMPERATURE_MEASUREMENT,
+        TEMPERATURE_VALUE_COLUMN,
+        TEMPERATURE_UNIT,
         live.location_config.timezone,
         datetime.datetime(2026, 1, 2),
     )
@@ -187,7 +201,7 @@ def test_source_paths_preserve_station_parameter_identity() -> None:
 async def test_prediction_feed_does_not_capture(monkeypatch) -> None:
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     archive = AsyncMock()
-    monkeypatch.setattr(feeds, "capture_temperature", archive)
+    monkeypatch.setattr(feeds, "capture_observations", archive)
     frame = pd.DataFrame(
         {
             "prediction": [2.0],
@@ -204,3 +218,126 @@ async def test_prediction_feed_does_not_capture(monkeypatch) -> None:
     await tide.update({})
     archive.assert_not_awaited()
     assert tide._fetch_timestamp is not None
+
+
+def _currents_feed() -> feeds.NwisCurrentFeed:
+    location = next(item for item in config.get_all_configs() if item.code == "sdf")
+    assert isinstance(location.currents_source, config.NwisCurrentFeedConfig)
+    return feeds.NwisCurrentFeed(
+        location_config=location,
+        feed_config=location.currents_source,
+        expiration_interval=datetime.timedelta(minutes=10),
+    )
+
+
+def _currents_frame(*times: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        {"velocity": [1.5] * len(times)},
+        index=pd.DatetimeIndex(times, name="time"),
+    )
+
+
+def test_currents_bindings_match_archive_contract() -> None:
+    assert CURRENTS_MEASUREMENT == "currents"
+    assert CURRENTS_VALUE_COLUMN == "velocity"
+    assert CURRENTS_UNIT == "kt"
+
+
+def test_currents_source_paths_use_currents_prefix() -> None:
+    feed = _currents_feed()
+    partitions = capture._partitions(
+        _currents_frame("2026-01-01"),
+        feed.feed_config.citation_key,
+        CURRENTS_MEASUREMENT,
+        CURRENTS_VALUE_COLUMN,
+        CURRENTS_UNIT,
+        feed.location_config.timezone,
+        datetime.datetime(2026, 1, 2),
+    )
+    assert partitions[0][0] == "archive/currents/nwis/03292494%3A72255/2026.parquet"
+    assert partitions[0][1]["unit"].tolist() == ["kt"]
+    assert partitions[0][1]["value"].tolist() == [1.5]
+
+
+def test_currents_capture_rejects_mismatched_measurement() -> None:
+    feed = _currents_feed()
+    with pytest.raises(ValueError, match="Expected a temperature source identity"):
+        capture._partitions(
+            _currents_frame("2026-01-01"),
+            feed.feed_config.citation_key,
+            TEMPERATURE_MEASUREMENT,
+            TEMPERATURE_VALUE_COLUMN,
+            TEMPERATURE_UNIT,
+            feed.location_config.timezone,
+            datetime.datetime(2026, 1, 2),
+        )
+
+
+@pytest.mark.asyncio
+async def test_observational_currents_update_archives_by_utc_year(monkeypatch) -> None:
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    store = MemoryObjectStore()
+    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    frame = _currents_frame("2025-12-31 18:00", "2025-12-31 19:00")
+    monkeypatch.setattr(feeds.NwisCurrentFeed, "_fetch", AsyncMock(return_value=frame))
+    feed = _currents_feed()
+    await feed.update({})
+    pd.testing.assert_frame_equal(feed.values, frame)
+    assert feed._fetch_timestamp is not None
+    assert feed._next_fetch_after == feed._fetch_timestamp + feed.expiration_interval
+    for year in (2025, 2026):
+        stored = await store.read(
+            f"archive/currents/nwis/03292494%3A72255/{year}.parquet"
+        )
+        assert stored is not None
+        rows = read_observations(BytesIO(stored.data), expected_unit=CURRENTS_UNIT)
+        assert len(rows) == 1
+        assert rows["value"].iloc[0] == 1.5
+        assert rows["retrieved_at"].iloc[0] == pd.Timestamp(
+            feed._fetch_timestamp, tz="UTC"
+        )
+
+
+@pytest.mark.asyncio
+async def test_currents_archive_failure_keeps_success_state(
+    monkeypatch, caplog
+) -> None:
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    store = MemoryObjectStore()
+    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(store, "read", AsyncMock(side_effect=OSError("offline")))
+    frame = _currents_frame("2026-01-01 12:00")
+    monkeypatch.setattr(feeds.NwisCurrentFeed, "_fetch", AsyncMock(return_value=frame))
+    feed = _currents_feed()
+    with caplog.at_level(logging.INFO):
+        await feed.update({})
+    assert feed._last_error is None
+    assert feed._consecutive_failures == 0
+    assert feed._next_fetch_after == feed._fetch_timestamp + feed.expiration_interval
+    pd.testing.assert_frame_equal(feed.values, frame)
+    failures = [r for r in caplog.records if getattr(r, "operation", None) == "merge"]
+    assert len(failures) == 1
+    assert failures[0].outcome == "failed"
+    assert failures[0].source_identity == "nwis:currents:03292494:72255"
+
+
+@pytest.mark.asyncio
+async def test_prediction_currents_feed_does_not_capture(monkeypatch) -> None:
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    archive = AsyncMock()
+    monkeypatch.setattr(feeds, "capture_observations", archive)
+    location = _feed().location_config
+    assert isinstance(location.currents_source, config.CoopsCurrentsFeedConfig)
+    monkeypatch.setattr(
+        feeds.CoopsCurrentsFeed,
+        "_fetch",
+        AsyncMock(return_value=_currents_frame("2026-01-01 12:00")),
+    )
+    currents = feeds.CoopsCurrentsFeed(
+        location_config=location,
+        feed_config=location.currents_source,
+        expiration_interval=datetime.timedelta(hours=1),
+    )
+    await currents.update({})
+    archive.assert_not_awaited()
+    assert currents._fetch_timestamp is not None

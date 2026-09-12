@@ -458,11 +458,13 @@ collection start, earliest observation, latest observation, expected cadence,
 known gaps, last successful archive merge, and whether records came from live
 collection or a later backfill.
 
-Phase 1 archives temperature observations only, end to end, and validates that
-capture in production before expanding scope. Observational currents are a
-follow-up slice consisting of a new domain binding and a `currents/` path prefix;
-it reuses the same scalar-observation schema and reader code. Prediction feeds
-never enter the observation archive.
+Phase 1 capture is implemented for temperature observations end to end;
+production validation is still pending deployment of the archive bucket and
+runtime access. Observational currents capture is implemented as well: it binds
+the same scalar-observation schema, capture path, and
+reader code to `velocity` and `kt` under a `currents/` path prefix. Prediction
+feeds never enter the observation archive; capture fires only for currents
+sources whose configured `source_type` is `OBSERVATION`.
 
 ### Temperature Archive Contract
 
@@ -506,8 +508,9 @@ This row shape is the shared scalar-observation contract rather than a
 temperature-specific schema. Each supported measurement type declares its feed
 value column and canonical archive unit once as named production constants,
 pinned by a contract test. Temperature binds the shared mechanism to
-`water_temp` and `F`. Readers validate rows against the expected unit at the
-read/write boundary; the Pandera model itself does not hardcode `F`.
+`water_temp` and `F`; observational currents bind it to `velocity` and `kt`.
+Readers validate rows against the expected unit at the read/write boundary; the
+Pandera model itself does not hardcode `F`.
 
 The unit is stored per row because archive files must remain self-describing for
 export, while custom Parquet metadata is not reliably preserved by third-party

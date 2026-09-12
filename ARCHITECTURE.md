@@ -73,13 +73,14 @@ Background Task → Feed → ApiClient → External Service → Update Feed Cach
 Background Task → Derived Data Precompute → Update Derived Cache
 ```
 
-When `SHALLWESWIM_ARCHIVE_BUCKET` is set, successful temperature updates also
-merge observations into the private GCS archive. Live feeds publish and schedule
-before capture; historical feeds capture only freshly fetched years, including
-successful years in a partial fetch. Cached years retain their retrieval times.
+When `SHALLWESWIM_ARCHIVE_BUCKET` is set, successful temperature updates and
+successful observational currents updates also merge observations into the
+private GCS archive. Live feeds publish and schedule before capture; historical
+feeds capture only freshly fetched years, including successful years in a
+partial fetch. Cached years retain their retrieval times.
 Archive failures emit failed merge events without changing serving or retry
 state. Normalization, Parquet work, and synchronous GCS operations run in worker
-threads. Tide and current feeds do not enter this archive.
+threads. Tide feeds and prediction currents feeds do not enter this archive.
 
 Keep user-facing condition endpoints on the fast path. Expensive, repeatable
 work that depends only on cached feed data should run during background updates

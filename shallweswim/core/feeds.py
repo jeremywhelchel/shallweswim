@@ -24,7 +24,15 @@ from shallweswim import config as config_lib
 from shallweswim import dataframe_models as df_models
 from shallweswim import harmonic_tides
 from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempStatus
-from shallweswim.archive.capture import capture_temperature
+from shallweswim.archive.capture import capture_observations
+from shallweswim.archive.observations import (
+    CURRENTS_MEASUREMENT,
+    CURRENTS_UNIT,
+    CURRENTS_VALUE_COLUMN,
+    TEMPERATURE_MEASUREMENT,
+    TEMPERATURE_UNIT,
+    TEMPERATURE_VALUE_COLUMN,
+)
 from shallweswim.clients import coops, cspf, irish_lights, marine_institute, ndbc, nwis
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
@@ -32,6 +40,7 @@ from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.irish_lights import IrishLightsApi
 from shallweswim.clients.marine_institute import MarineInstituteApi
 from shallweswim.clients.nwis import NwisApi
+from shallweswim.types import DataSourceType
 from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
 
 METERS_TO_FEET = 3.280839895013123
@@ -410,7 +419,25 @@ class Feed(BaseModel, abc.ABC):
                 extra=fields,
             )
             if isinstance(self, TempFeed):
-                await self._capture_temperature(df, now)
+                await self._capture_observations(
+                    df,
+                    now,
+                    measurement=TEMPERATURE_MEASUREMENT,
+                    value_column=TEMPERATURE_VALUE_COLUMN,
+                    unit=TEMPERATURE_UNIT,
+                )
+            elif (
+                isinstance(self, CurrentsFeed)
+                and self.feed_config.source_type == DataSourceType.OBSERVATION
+            ):
+                # Prediction feeds never enter the observation archive.
+                await self._capture_observations(
+                    df,
+                    now,
+                    measurement=CURRENTS_MEASUREMENT,
+                    value_column=CURRENTS_VALUE_COLUMN,
+                    unit=CURRENTS_UNIT,
+                )
 
         except StationUnavailableError as e:
             # Expected operational condition - station has no data
@@ -435,8 +462,14 @@ class Feed(BaseModel, abc.ABC):
             self._schedule_after_failure(utc_now())
             raise
 
-    async def _capture_temperature(
-        self, frame: pd.DataFrame, retrieved_at: datetime.datetime
+    async def _capture_observations(
+        self,
+        frame: pd.DataFrame,
+        retrieved_at: datetime.datetime,
+        *,
+        measurement: str,
+        value_column: str,
+        unit: str,
     ) -> None:
         """Isolate all archive failures from feed publication and scheduling."""
         bucket = os.environ.get("SHALLWESWIM_ARCHIVE_BUCKET")
@@ -444,7 +477,7 @@ class Feed(BaseModel, abc.ABC):
             return
         started_at = time.monotonic()
         try:
-            await capture_temperature(
+            await capture_observations(
                 bucket,
                 frame=(
                     self._remove_outliers(frame)
@@ -452,6 +485,9 @@ class Feed(BaseModel, abc.ABC):
                     else frame
                 ),
                 source_identity=self.feed_config.citation_key,
+                measurement=measurement,
+                value_column=value_column,
+                unit=unit,
                 timezone=self.location_config.timezone,
                 retrieved_at=retrieved_at,
             )
@@ -1606,7 +1642,13 @@ class HistoricalTempsFeed(CompositeFeed):
         # Capture only fresh years, including successes in a partial fetch.
         # Reusing a cached year must never make its retrieval time newer.
         for dataframe in successful_dataframes.values():
-            await self._capture_temperature(dataframe, now)
+            await self._capture_observations(
+                dataframe,
+                now,
+                measurement=TEMPERATURE_MEASUREMENT,
+                value_column=TEMPERATURE_VALUE_COLUMN,
+                unit=TEMPERATURE_UNIT,
+            )
 
         missing_years = tuple(
             year for year in required_years if year not in self._year_cache

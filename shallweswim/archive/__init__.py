@@ -1,7 +1,11 @@
 """Durable observation archive contracts."""
 
 from shallweswim.archive.observations import (
+    CURRENTS_MEASUREMENT,
+    CURRENTS_UNIT,
+    CURRENTS_VALUE_COLUMN,
     OBSERVATION_COLUMNS,
+    TEMPERATURE_MEASUREMENT,
     TEMPERATURE_UNIT,
     TEMPERATURE_VALUE_COLUMN,
     ObservationModel,
@@ -19,7 +23,11 @@ from shallweswim.archive.store import (
 )
 
 __all__ = [
+    "CURRENTS_MEASUREMENT",
+    "CURRENTS_UNIT",
+    "CURRENTS_VALUE_COLUMN",
     "OBSERVATION_COLUMNS",
+    "TEMPERATURE_MEASUREMENT",
     "TEMPERATURE_UNIT",
     "TEMPERATURE_VALUE_COLUMN",
     "FilesystemObjectStore",

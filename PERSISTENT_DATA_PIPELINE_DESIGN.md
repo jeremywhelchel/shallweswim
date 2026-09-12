@@ -894,8 +894,8 @@ and snapshot work, followed by monitored cutover—is maintained in
 
 ### Phase 1: Begin Durable Observation Capture
 
-Status: archive implementation complete; capture job entry point and
-deployment definitions in progress; production deployment pending.
+Status: implementation complete, including the capture job entry point and
+deployment definitions; production deployment pending.
 
 Implemented (schema/stores/merge/capture commits through "Capture
 observational currents in the archive"; local commits, not yet pushed):
@@ -910,6 +910,9 @@ observational currents in the archive"; local commits, not yet pushed):
 - Temperature and observational-currents capture, UTC conversion with
   daylight-saving handling, overlap/correction/deduplication behavior — all
   covered by unit tests. Prediction feeds never archive.
+- The bounded `shallweswim.capture` entry point, the Cloud Run Job and Cloud
+  Build definitions, the operator runbook for the dedicated job identities and
+  schedule, and job-inclusive log-based metric filters, per the contract below.
 
 **Deployment sequencing revision (2026-09-12):** capture will NOT be enabled in
 the multi-instance web service. Instead, the first production writer is an

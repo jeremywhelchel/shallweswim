@@ -1,7 +1,10 @@
 locals {
+  # Both the web service and the capture job emit the structured events these
+  # metrics extract. Newline-separated terms are implicit AND in the Cloud
+  # Logging filter grammar, so the service/job alternation stays inside one
+  # parenthesized OR group that the appended jsonPayload terms AND against.
   application_log_filter = <<-EOT
-    resource.type="cloud_run_revision"
-    resource.labels.service_name="${var.service_name}"
+    ((resource.type="cloud_run_revision" AND resource.labels.service_name="${var.service_name}") OR (resource.type="cloud_run_job" AND resource.labels.job_name="${var.job_name}"))
   EOT
 
   feed_labels = {

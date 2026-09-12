@@ -23,6 +23,20 @@ run "monitoring_plan" {
   }
 
   assert {
+    condition = alltrue([
+      for metric in [
+        google_logging_metric.feed_updates,
+        google_logging_metric.feed_update_duration,
+        google_logging_metric.feed_records,
+        google_logging_metric.plot_generations,
+        google_logging_metric.plot_availability_latency,
+        google_logging_metric.archive_merges,
+      ] : strcontains(metric.filter, "resource.labels.job_name=\"shallweswim-capture\"")
+    ])
+    error_message = "Every metric must also match the capture job, which is the archive's only production writer."
+  }
+
+  assert {
     condition = (
       length(google_logging_metric.feed_updates.metric_descriptor[0].labels) == 4 &&
       length(google_logging_metric.plot_generations.metric_descriptor[0].labels) == 3 &&
@@ -51,6 +65,18 @@ run "monitoring_plan" {
       "${local.metric_prefix}/${google_logging_metric.archive_merges.name}"
     )
     error_message = "The operations dashboard must show the archive merge metric."
+  }
+
+  assert {
+    condition = alltrue([
+      for tile in jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles :
+      !strcontains(tile.widget.xyChart.dataSets[0].timeSeriesQuery.timeSeriesFilter.filter, "resource.type=")
+      if strcontains(
+        tile.widget.xyChart.dataSets[0].timeSeriesQuery.timeSeriesFilter.filter,
+        google_logging_metric.archive_merges.name
+      )
+    ])
+    error_message = "The archive merge chart must not pin resource.type, or capture job series are hidden."
   }
 
   assert {

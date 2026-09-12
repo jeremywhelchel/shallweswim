@@ -8,3 +8,9 @@ variable "service_name" {
   type        = string
   default     = "shallweswim"
 }
+
+variable "job_name" {
+  description = "Cloud Run Job whose structured events feed the metrics."
+  type        = string
+  default     = "shallweswim-capture"
+}

@@ -171,7 +171,7 @@ resource "google_monitoring_dashboard" "operations" {
                 legendTemplate = "$${metric.labels.outcome}"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merges.name}\" AND resource.type=\"cloud_run_revision\""
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merges.name}\""
                     aggregation = {
                       alignmentPeriod    = "300s"
                       perSeriesAligner   = "ALIGN_SUM"

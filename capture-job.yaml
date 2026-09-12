@@ -1,0 +1,41 @@
+# Cloud Run Job configuration for the observation capture job
+# Deploy with: gcloud run jobs replace capture-job.yaml --region=us-east4
+# NOTE: ${IMAGE_TAG} and ${SHALLWESWIM_ARCHIVE_BUCKET} are substituted by
+# Cloud Build (see cloudbuild.yaml) before the file is applied. The archive
+# bucket name differs per installation and is never hard-coded here.
+# This job is the only production writer to the archive bucket; the web
+# service (service.yaml) never sets SHALLWESWIM_ARCHIVE_BUCKET.
+# Operator runbook: infra/capture-job/README.md
+# Docs: https://cloud.google.com/run/docs/reference/yaml/v1
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: shallweswim-capture
+spec:
+  template:
+    spec:
+      taskCount: 1
+      parallelism: 1
+      template:
+        spec:
+          serviceAccountName: shallweswim-capture@shallweswim.iam.gserviceaccount.com
+          timeoutSeconds: 1200
+          maxRetries: 1
+          containers:
+            - image: us-east4-docker.pkg.dev/shallweswim/gcr/shallweswim:${IMAGE_TAG}
+              command: ["python"]
+              args: ["-m", "shallweswim.capture"]
+              env:
+                - name: SHALLWESWIM_LOG_FORMAT
+                  value: json
+                - name: SHALLWESWIM_ARCHIVE_BUCKET
+                  value: ${SHALLWESWIM_ARCHIVE_BUCKET}
+                - name: USGS_WATERDATA_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: waterdata_usgs_gov_api_key
+                      key: latest
+              resources:
+                limits:
+                  cpu: "2"
+                  memory: 2Gi

@@ -13,13 +13,20 @@ defines the extraction rules; it does not read or process logs itself. Cloud
 Logging creates metric samples from new matching entries after the metrics are
 created. Existing log entries are not backfilled.
 
+The metric filters match structured events from both the Cloud Run service and
+the `shallweswim-capture` Cloud Run Job, so the capture job's feed-update and
+`archive.merge` events feed the same metrics and dashboard as the web service.
+Alert policies remain scoped to the service resource type for now; a dead-man
+alert covering the job is a follow-up once it has run in production.
+
 ## Observation archive setup
 
-The temperature capture hook is enabled by `SHALLWESWIM_ARCHIVE_BUCKET` (a
-bucket name without `gs://`). Leave it empty to disable writes. The managed
-operations dashboard shows archive merges per five minutes by outcome.
+The observation archive is written by the scheduled Cloud Run capture job, not
+by the web service. `SHALLWESWIM_ARCHIVE_BUCKET` (a bucket name without
+`gs://`) names the bucket the job writes to; `service.yaml` never sets it. The
+managed operations dashboard shows archive merges per five minutes by outcome.
 
-Bucket and IAM setup is a one-time operator task, outside this Terraform module.
+Bucket creation is a one-time operator task, outside this Terraform module.
 Load the local-operator credential and project through repo-local environment
 variables (`GOOGLE_APPLICATION_CREDENTIALS`,
 `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`, `CLOUDSDK_CORE_PROJECT`). Do not use
@@ -32,29 +39,21 @@ gcloud storage buckets create "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
   --location=us-east4 \
   --uniform-bucket-level-access \
   --public-access-prevention
-
-ARCHIVE_RUNTIME_SERVICE_ACCOUNT=$(gcloud run services describe shallweswim \
-  --project="$CLOUDSDK_CORE_PROJECT" --region=us-east4 \
-  --format='value(spec.template.spec.serviceAccountName)')
-test -n "$ARCHIVE_RUNTIME_SERVICE_ACCOUNT"
-
-gcloud storage buckets add-iam-policy-binding \
-  "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
-  --member="serviceAccount:$ARCHIVE_RUNTIME_SERVICE_ACCOUNT" \
-  --role=roles/storage.objectUser
 ```
 
-Verify that the reported runtime service account is the intended identity before
-granting access. The bucket-scoped object role permits generation-conditional
-reads and replacements without granting bucket administration. Keep the archive
-separate from Terraform state. Do not add a lifecycle rule that deletes live
-observation objects; normalized observations are retained indefinitely.
+IAM for this bucket belongs to the job that uses it. Creating the
+`shallweswim-capture` and `shallweswim-capture-invoker` identities, binding
+`roles/storage.objectUser` on the bucket to `shallweswim-capture` alone,
+deploying the job, and scheduling it are documented in
+[`../capture-job/README.md`](../capture-job/README.md). The web runtime identity
+must not be bound to this bucket: the capture job is the only production writer,
+and granting the multi-instance web service write access would reintroduce
+concurrent writers.
 
-After applying the monitoring changes and deploying the hook, set
-`SHALLWESWIM_ARCHIVE_BUCKET` in the Cloud Run runtime configuration. Confirm
-successful merge events, archive objects, and dashboard samples. Unset the
-variable to stop capture without deleting archived data. Neither this hook nor
-the Terraform module enables the runtime variable automatically.
+Keep the archive separate from Terraform state. Do not add a lifecycle rule that
+deletes live observation objects; normalized observations are retained
+indefinitely. To stop capture, pause the scheduler job as described in the
+capture job runbook; archived data is unaffected.
 
 ## State bootstrap
 

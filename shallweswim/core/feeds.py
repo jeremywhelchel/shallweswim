@@ -253,6 +253,15 @@ class Feed(BaseModel, abc.ABC):
         return age_td <= (self.expiration_interval + HEALTH_CHECK_BUFFER)
 
     @property
+    def has_data(self) -> bool:
+        """Whether this feed currently holds data, fresh or stale.
+
+        Returns:
+            True if data has been published at least once, False otherwise
+        """
+        return self._data is not None
+
+    @property
     def values(self) -> pd.DataFrame:
         """Get the processed data from this feed.
 

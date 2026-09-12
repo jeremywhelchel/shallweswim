@@ -70,6 +70,141 @@ EXPIRATION_PERIODS: dict[feeds.FeedName, datetime.timedelta] = {
 }
 
 
+def build_feeds(
+    config: config_lib.LocationConfig,
+    clients: dict[str, BaseApiClient],
+    *,
+    historic_start_year: int | None = None,
+) -> dict[feeds.FeedName, feeds.Feed | None]:
+    """Build every feed for one location from its configuration.
+
+    The web manager and the capture job both construct feeds here so each host
+    process creates identical feeds from the same configuration.
+
+    Args:
+        config: Location configuration object.
+        clients: Provider API clients keyed by provider name.
+        historic_start_year: Earliest historical temperature year to fetch. When
+            given, it raises the configured (or default) start year; the
+            historical feed is omitted when no configured year remains in range.
+
+    Returns:
+        Feeds keyed by feed name, with None for unconfigured or disabled sources.
+
+    Raises:
+        TypeError: If an unsupported source configuration type is provided.
+    """
+    tides_feed: feeds.Feed | None = None
+    if config.tide_source:
+        try:
+            tides_feed = feeds.create_tide_feed(
+                location_config=config,
+                tide_config=config.tide_source,
+                expiration_interval=EXPIRATION_PERIODS[feeds.FEED_TIDES],
+            )
+        except TypeError as e:
+            # Re-raise with more context about what we were trying to do
+            raise TypeError(f"Error configuring tide feed: {e}") from e
+
+    currents_feed: feeds.Feed | None = None
+    if config.currents_source:
+        try:
+            currents_feed = feeds.create_current_feed(
+                location_config=config,
+                current_config=config.currents_source,
+                expiration_interval=EXPIRATION_PERIODS[feeds.FEED_CURRENTS],
+                clients=clients,
+            )
+        except TypeError as e:
+            # Re-raise with more context about what we were trying to do
+            raise TypeError(f"Error configuring currents feed: {e}") from e
+
+    live_temps_feed: feeds.Feed | None = None
+    live_temp_source = config.live_temp_source
+    if live_temp_source:
+        if not live_temp_source.live_enabled:
+            logging.info(
+                f"[{config.code}] Live temperature data disabled for {config.code}"
+            )
+        else:
+            # Use the factory function to create the appropriate feed
+            try:
+                live_temps_feed = feeds.create_temp_feed(
+                    location_config=config,
+                    temp_config=live_temp_source,
+                    clients=clients,  # Pass the clients dictionary explicitly
+                    # Start 24 hours ago to get a full day of data
+                    start=utc_now() - datetime.timedelta(hours=24),
+                    # End at current time
+                    end=utc_now(),
+                    # Use 6-minute interval for live temps
+                    interval="6-min",
+                    # Set expiration interval to match our existing settings
+                    expiration_interval=EXPIRATION_PERIODS[feeds.FEED_LIVE_TEMPS],
+                )
+            except TypeError as e:
+                # Re-raise with more context about what we were trying to do
+                raise TypeError(f"Error configuring live temperature feed: {e}") from e
+
+    historic_temps_feed: feeds.Feed | None = None
+    historic_temp_source = config.historic_temp_source
+    if historic_temp_source:
+        # Check if historical temperature data is enabled for this source
+        if not historic_temp_source.historic_enabled:
+            logging.info(
+                f"[{config.code}] Historical temperature data disabled for {config.code}"
+            )
+        else:
+            # Get the start year from config or use default
+            start_year = DEFAULT_HISTORIC_TEMPS_START_YEAR
+            if historic_temp_source.start_year:
+                start_year = historic_temp_source.start_year
+
+            # Get the end year from config or use current year
+            end_year = utc_now().year
+            if historic_temp_source.end_year:
+                end_year = historic_temp_source.end_year
+
+            # A caller-supplied floor narrows the range; a source that already
+            # stopped reporting can end up with no years left to fetch.
+            if historic_start_year is not None:
+                start_year = max(start_year, historic_start_year)
+
+            if start_year > end_year:
+                logging.info(
+                    f"[{config.code}] No historical temperature years in range "
+                    f"{start_year}-{end_year}; skipping historical temperature feed"
+                )
+            else:
+                try:
+                    # Use HistoricalTempsFeed which internally uses our factory function
+                    historic_temps_feed = feeds.HistoricalTempsFeed(
+                        location_config=config,
+                        feed_config=historic_temp_source,
+                        # Use the start year we determined
+                        start_year=start_year,
+                        # Use the end year we determined
+                        end_year=end_year,
+                        # Set expiration interval to match our existing settings
+                        expiration_interval=EXPIRATION_PERIODS[
+                            feeds.FEED_HISTORIC_TEMPS
+                        ],
+                        clients=clients,  # Pass the clients dict
+                    )
+                except TypeError as e:
+                    # Re-raise with more context about what we were trying to do
+                    raise TypeError(
+                        f"Error configuring historical temperature feed: {e}"
+                    ) from e
+
+    return {
+        feeds.FEED_TIDES: tides_feed,
+        feeds.FEED_CURRENTS: currents_feed,
+        feeds.FEED_LIVE_TEMPS: live_temps_feed,
+        feeds.FEED_HISTORIC_TEMPS: historic_temps_feed,
+    }
+
+
 class LocationDataManager:
     """LocationDataManager for ShallWeSwim application.
 
@@ -100,12 +235,9 @@ class LocationDataManager:
 
         # Dictionary mapping dataset names to their corresponding feeds
         # This is the single source of truth for all feed instances and data
-        self._feeds: dict[feeds.FeedName, feeds.Feed | None] = {
-            feeds.FEED_TIDES: self._configure_tides_feed(),
-            feeds.FEED_CURRENTS: self._configure_currents_feed(),
-            feeds.FEED_LIVE_TEMPS: self._configure_live_temps_feed(),
-            feeds.FEED_HISTORIC_TEMPS: self._configure_historic_temps_feed(),
-        }
+        self._feeds: dict[feeds.FeedName, feeds.Feed | None] = build_feeds(
+            config, clients
+        )
 
         # Background update task
         self._update_task: asyncio.Task[None] | None = None
@@ -139,139 +271,6 @@ class LocationDataManager:
         self._tide_prediction_source_timestamp: datetime.datetime | None = None
         self._tide_prediction_source_data_id: int | None = None
 
-    def _configure_live_temps_feed(self) -> feeds.Feed | None:
-        """Configure the live temperature feed.
-
-        Returns:
-            Configured feed or None if configuration is not available or disabled
-
-        Raises:
-            TypeError: If an unsupported temperature source type is provided
-        """
-        if not self.config.live_temp_source:
-            return None
-
-        temp_config = self.config.live_temp_source
-        if not temp_config.live_enabled:
-            self.log(
-                f"Live temperature data disabled for {self.config.code}", logging.INFO
-            )
-            return None
-
-        # Use the factory function to create the appropriate feed
-        try:
-            return feeds.create_temp_feed(
-                location_config=self.config,
-                temp_config=temp_config,
-                clients=self.clients,  # Pass the clients dictionary explicitly
-                # Start 24 hours ago to get a full day of data
-                start=utc_now() - datetime.timedelta(hours=24),
-                # End at current time
-                end=utc_now(),
-                # Use 6-minute interval for live temps
-                interval="6-min",
-                # Set expiration interval to match our existing settings
-                expiration_interval=EXPIRATION_PERIODS[feeds.FEED_LIVE_TEMPS],
-            )
-        except TypeError as e:
-            # Re-raise with more context about what we were trying to do
-            raise TypeError(f"Error configuring live temperature feed: {e}") from e
-
-    def _configure_historic_temps_feed(self) -> feeds.Feed | None:
-        """Configure the historical temperature feed.
-
-        Returns:
-            Configured feed or None if configuration is not available or disabled
-
-        Raises:
-            TypeError: If an unsupported temperature source type is provided
-        """
-        if not self.config.historic_temp_source:
-            return None
-
-        temp_config = self.config.historic_temp_source
-
-        # Check if historical temperature data is enabled for this source
-        if not temp_config.historic_enabled:
-            self.log(
-                f"Historical temperature data disabled for {self.config.code}",
-                logging.INFO,
-            )
-            return None
-
-        # Get the start year from config or use default
-        start_year = DEFAULT_HISTORIC_TEMPS_START_YEAR
-        if temp_config.start_year:
-            start_year = temp_config.start_year
-
-        # Get the end year from config or use current year
-        end_year = utc_now().year
-        if temp_config.end_year:
-            end_year = temp_config.end_year
-
-        try:
-            # Use HistoricalTempsFeed which internally uses our factory function
-            return feeds.HistoricalTempsFeed(
-                location_config=self.config,
-                feed_config=temp_config,
-                # Use the start year we determined
-                start_year=start_year,
-                # Use the end year we determined
-                end_year=end_year,
-                # Set expiration interval to match our existing settings
-                expiration_interval=EXPIRATION_PERIODS[feeds.FEED_HISTORIC_TEMPS],
-                clients=self.clients,  # Pass the clients dict
-            )
-        except TypeError as e:
-            # Re-raise with more context about what we were trying to do
-            raise TypeError(
-                f"Error configuring historical temperature feed: {e}"
-            ) from e
-
-    def _configure_tides_feed(self) -> feeds.Feed | None:
-        """Configure the tides feed.
-
-        Returns:
-            Configured feed or None if configuration is not available
-        """
-        if not self.config.tide_source:
-            return None
-
-        tide_config = self.config.tide_source
-
-        # Use the factory function to create the appropriate feed
-        try:
-            return feeds.create_tide_feed(
-                location_config=self.config,
-                tide_config=tide_config,
-                expiration_interval=EXPIRATION_PERIODS[feeds.FEED_TIDES],
-            )
-        except TypeError as e:
-            # Re-raise with more context about what we were trying to do
-            raise TypeError(f"Error configuring tide feed: {e}") from e
-
-    def _configure_currents_feed(self) -> feeds.Feed | None:
-        """Configure the currents feed.
-
-        Returns:
-            Configured feed or None if configuration is not available
-        """
-        if not self.config.currents_source:
-            return None
-
-        currents_config = self.config.currents_source
-
-        try:
-            return feeds.create_current_feed(
-                location_config=self.config,
-                current_config=currents_config,
-                expiration_interval=EXPIRATION_PERIODS[feeds.FEED_CURRENTS],
-                clients=self.clients,
-            )
-        except TypeError as e:
-            # Re-raise with more context about what we were trying to do
-            raise TypeError(f"Error configuring currents feed: {e}") from e
-
     @property
     def ready(self) -> bool:
         """Check if all configured datasets have been fetched and are not expired.
@@ -299,10 +298,7 @@ class LocationDataManager:
         Returns:
             True if at least one feed has data, False if no data available
         """
-        for feed in self._feeds.values():
-            if feed is not None and feed._data is not None:
-                return True
-        return False
+        return any(feed is not None and feed.has_data for feed in self._feeds.values())
 
     def has_feed_data(self, feed_name: feeds.FeedName) -> bool:
         """Check if a specific feed has data available.

@@ -1849,7 +1849,7 @@ def test_current_info_retrieval(mock_data_manager: LocationDataManager) -> None:
     mock_currents_feed.is_expired = False  # Ensure feed is considered valid
 
     # 2. Manually inject the mock feed into the fixture's manager
-    # The fixture should have already handled the _configure_currents_feed part.
+    # The fixture should have already handled the currents feed construction.
     mock_data_manager._feeds["currents"] = mock_currents_feed
 
     # 3. Call the method on the fixture's manager

@@ -49,13 +49,8 @@ from shallweswim.api_types import (
     TideState,
     TransitRouteConfig,
 )
+from shallweswim.clients import create_api_clients
 from shallweswim.clients.base import BaseApiClient
-from shallweswim.clients.coops import CoopsApi
-from shallweswim.clients.cspf import CspfApi
-from shallweswim.clients.irish_lights import IrishLightsApi
-from shallweswim.clients.marine_institute import MarineInstituteApi
-from shallweswim.clients.ndbc import NdbcApi
-from shallweswim.clients.nwis import NwisApi
 from shallweswim.core.feeds import (
     FEED_CURRENTS,
     FEED_LIVE_TEMPS,
@@ -371,14 +366,7 @@ async def initialize_location_data(
     process_pool = app.state.process_pool
 
     # Create API client instances using the shared session
-    api_clients: dict[str, BaseApiClient] = {
-        "coops": CoopsApi(session=session),
-        "cspf": CspfApi(session=session),
-        "irish_lights": IrishLightsApi(session=session),
-        "marine_institute": MarineInstituteApi(session=session),
-        "nwis": NwisApi(session=session),
-        "ndbc": NdbcApi(session=session),
-    }
+    api_clients: dict[str, BaseApiClient] = create_api_clients(session)
 
     # Initialize app.state.data_managers if it doesn't exist yet
     if not hasattr(app.state, "data_managers"):

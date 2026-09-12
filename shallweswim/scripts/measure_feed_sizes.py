@@ -25,7 +25,6 @@ Usage:
 
 import argparse
 import asyncio
-import datetime
 import io
 import json
 import os
@@ -37,20 +36,11 @@ import aiohttp
 import pandas as pd
 
 from shallweswim import config, plot
+from shallweswim.clients import create_api_clients
 from shallweswim.clients.base import BaseApiClient
-from shallweswim.clients.coops import CoopsApi
-from shallweswim.clients.cspf import CspfApi
-from shallweswim.clients.irish_lights import IrishLightsApi
-from shallweswim.clients.marine_institute import MarineInstituteApi
-from shallweswim.clients.ndbc import NdbcApi
-from shallweswim.clients.nwis import NwisApi
 from shallweswim.config.locations import LocationConfig
 from shallweswim.core import feeds
-from shallweswim.core.manager import (
-    DEFAULT_HISTORIC_TEMPS_START_YEAR,
-    EXPIRATION_PERIODS,
-)
-from shallweswim.util import utc_now
+from shallweswim.core.manager import build_feeds
 
 
 @dataclass(frozen=True)
@@ -317,84 +307,6 @@ def reports_to_dict(
     }
 
 
-def _api_clients(session: aiohttp.ClientSession) -> dict[str, BaseApiClient]:
-    """Build the same provider client set the application uses at startup."""
-    return {
-        "coops": CoopsApi(session=session),
-        "cspf": CspfApi(session=session),
-        "irish_lights": IrishLightsApi(session=session),
-        "marine_institute": MarineInstituteApi(session=session),
-        "nwis": NwisApi(session=session),
-        "ndbc": NdbcApi(session=session),
-    }
-
-
-def _build_feeds(
-    location_config: LocationConfig,
-    clients: dict[str, BaseApiClient],
-) -> dict[feeds.FeedName, feeds.Feed]:
-    """Configure one feed per enabled source, mirroring LocationDataManager.
-
-    This intentionally follows the same construction as
-    ``shallweswim.core.manager.LocationDataManager`` so measured feeds match
-    what the running application actually fetches, without depending on the
-    manager's background update loop.
-
-    Args:
-        location_config: Location configuration to build feeds for.
-        clients: Provider API clients keyed by provider name.
-
-    Returns:
-        Configured feeds keyed by feed name, omitting disabled/unconfigured
-        sources.
-    """
-    configured: dict[feeds.FeedName, feeds.Feed] = {}
-
-    if location_config.tide_source is not None:
-        configured[feeds.FEED_TIDES] = feeds.create_tide_feed(
-            location_config=location_config,
-            tide_config=location_config.tide_source,
-            expiration_interval=EXPIRATION_PERIODS[feeds.FEED_TIDES],
-        )
-
-    if location_config.currents_source is not None:
-        configured[feeds.FEED_CURRENTS] = feeds.create_current_feed(
-            location_config=location_config,
-            current_config=location_config.currents_source,
-            expiration_interval=EXPIRATION_PERIODS[feeds.FEED_CURRENTS],
-            clients=clients,
-        )
-
-    live_temp_source = location_config.live_temp_source
-    if live_temp_source is not None and live_temp_source.live_enabled:
-        configured[feeds.FEED_LIVE_TEMPS] = feeds.create_temp_feed(
-            location_config=location_config,
-            temp_config=live_temp_source,
-            start=utc_now() - datetime.timedelta(hours=24),
-            end=utc_now(),
-            interval="6-min",
-            expiration_interval=EXPIRATION_PERIODS[feeds.FEED_LIVE_TEMPS],
-            clients=clients,
-        )
-
-    historic_temp_source = location_config.historic_temp_source
-    if historic_temp_source is not None and historic_temp_source.historic_enabled:
-        start_year = (
-            historic_temp_source.start_year or DEFAULT_HISTORIC_TEMPS_START_YEAR
-        )
-        end_year = historic_temp_source.end_year or utc_now().year
-        configured[feeds.FEED_HISTORIC_TEMPS] = feeds.HistoricalTempsFeed(
-            location_config=location_config,
-            feed_config=historic_temp_source,
-            start_year=start_year,
-            end_year=end_year,
-            expiration_interval=EXPIRATION_PERIODS[feeds.FEED_HISTORIC_TEMPS],
-            clients=clients,
-        )
-
-    return configured
-
-
 def _feed_plots(
     location_config: LocationConfig,
     fetched_values: dict[feeds.FeedName, pd.DataFrame],
@@ -482,7 +394,11 @@ async def _measure_location(
         The completed measurement report for this location.
     """
     code = location_config.code
-    feed_instances = _build_feeds(location_config, clients)
+    feed_instances = {
+        feed_name: feed
+        for feed_name, feed in build_feeds(location_config, clients).items()
+        if feed is not None
+    }
     feed_measurements: list[FeedMeasurement] = []
     year_measurements: list[YearPartitionMeasurement] = []
     fetched_values: dict[feeds.FeedName, pd.DataFrame] = {}
@@ -568,7 +484,7 @@ async def _async_main() -> None:
     )
 
     async with aiohttp.ClientSession() as session:
-        clients = _api_clients(session)
+        clients = create_api_clients(session)
         reports = [
             await _measure_location(location_config, clients)
             for location_config in location_configs

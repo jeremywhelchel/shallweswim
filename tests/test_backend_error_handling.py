@@ -258,10 +258,10 @@ class TestHasData:
     def test_returns_true_when_any_feed_has_data(self) -> None:
         """At least one feed has data → True."""
         mock_feed_with_data = MagicMock()
-        mock_feed_with_data._data = "some_data"
+        mock_feed_with_data.has_data = True
 
         mock_feed_without_data = MagicMock()
-        mock_feed_without_data._data = None
+        mock_feed_without_data.has_data = False
 
         manager = create_manager_with_feeds(
             {
@@ -275,10 +275,10 @@ class TestHasData:
     def test_returns_false_when_no_feeds_have_data(self) -> None:
         """No feeds have data → False."""
         mock_feed1 = MagicMock()
-        mock_feed1._data = None
+        mock_feed1.has_data = False
 
         mock_feed2 = MagicMock()
-        mock_feed2._data = None
+        mock_feed2.has_data = False
 
         manager = create_manager_with_feeds(
             {
@@ -309,7 +309,7 @@ class TestHasData:
     def test_ignores_none_feeds_when_checking(self) -> None:
         """Mix of None and real feeds - only checks real feeds."""
         mock_feed_with_data = MagicMock()
-        mock_feed_with_data._data = "some_data"
+        mock_feed_with_data.has_data = True
 
         manager = create_manager_with_feeds(
             {

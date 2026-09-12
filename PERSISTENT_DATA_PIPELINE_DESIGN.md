@@ -894,22 +894,48 @@ and snapshot work, followed by monitored cutover—is maintained in
 
 ### Phase 1: Begin Durable Observation Capture
 
-- Define the additive normalized temperature schema and formalize
-  `citation_key` as the permanent archive source identity.
-- Implement filesystem, memory, and initial production archive stores.
-- After each successful fetch, let the existing long-running updater merge new
-  observations into partitioned Parquet using conditional read-merge-write
-  retries, because several serving processes may write concurrently during this
-  phase.
-- Capture temperature observations only. Validate this end to end in production
-  before a follow-up slice adds observational currents. Never archive prediction
-  feeds.
-- Validate UTC conversion (including daylight-saving fall-back), overlap,
-  correction, source sharing, and deduplication behavior.
+Status: implementation complete; production deployment pending.
 
-The production web service still uses its current in-memory updater and does not
-read the archive. This independent workstream starts preserving time-sensitive
-history without waiting for the serving split.
+Implemented (schema/stores/merge/capture commits through "Capture
+observational currents in the archive"; local commits, not yet pushed):
+
+- Additive normalized observation schema with `citation_key` formalized as the
+  permanent archive source identity (golden-list contract test).
+- Filesystem, memory, and GCS archive stores with conditional
+  read-merge-write retries.
+- Capture wired into `Feed.update()`'s success path behind
+  `SHALLWESWIM_ARCHIVE_BUCKET` (unset everywhere, so capture is dark), with
+  archive failures fully isolated from feed publication and scheduling.
+- Temperature and observational-currents capture, UTC conversion with
+  daylight-saving handling, overlap/correction/deduplication behavior — all
+  covered by unit tests. Prediction feeds never archive.
+
+**Deployment sequencing revision (2026-09-12):** capture will NOT be enabled in
+the multi-instance web service. Instead, the first production writer is an
+isolated bounded one-shot capture job — a miniature of the Phase 4 updater —
+running on a schedule (hourly suffices: live feeds carry a trailing 24-hour
+window, so overlap-merge preserves full fidelity) under a dedicated job
+identity with access to only the archive bucket. The web runtime identity gets
+no archive access, and the web service never sets `SHALLWESWIM_ARCHIVE_BUCKET`.
+The capture hook is host-process-agnostic, so the job reuses it unchanged; the
+transitional multi-writer CAS path remains as overlap-safety for job runs and
+for local/filesystem use. Validation: monitor `archive.merge` outcomes on the
+operations dashboard for at least a week and compare archived row counts with
+live feeds before anything reads the archive.
+
+The production web service keeps its current in-memory updater and does not
+read the archive.
+
+### Phase 1b: Local Development Reads the Archive
+
+Once the capture job has populated the bucket, local development of the web
+service may hydrate historical temperature feeds from the archive instead of
+performing the full multi-year cold-start refetch. This is Phase 5's restore
+path scoped to development first: it makes local startup fast and makes the
+developer machine the archive's first read consumer, validating archived data
+quality before production depends on it. Guardrails: reads use a separate
+`SHALLWESWIM_ARCHIVE_READ_BUCKET` variable so no local configuration can
+enable writes, and the local credential holds read-only bucket access.
 
 ### Phase 2: Define and Publish Snapshots
 
@@ -994,18 +1020,22 @@ requires stronger migration and equivalence validation.
 
 ## Open Questions
 
+Answered by measurement (`shallweswim.scripts.measure_feed_sizes`,
+2026-09-12): the largest serving object is a combined per-location historical
+temperature frame at roughly 1.3 MiB (NYC, 15 years hourly), with per-year
+slices of 60–90 KiB and a full location's feeds plus plots totaling under
+3 MiB. One object per feed per location is comfortably sufficient; no finer
+serving partitioning is justified by size.
+
 1. Is Cloud Storage alone sufficient, or does mutable metadata justify
    Firestore?
-2. What is the measured serialized size of every current feed and plot?
-3. Is any combined per-location historical serving frame large enough to need
-   finer partitioning than one object per feed?
-4. What refresh interval and due-time policy satisfy the explicit freshness and
+2. What refresh interval and due-time policy satisfy the explicit freshness and
    retry budget at acceptable job cost?
-5. How long should previous published generations be retained?
-6. What snapshot freshness threshold should page the operator?
-7. Can the updater reliably run with 1 vCPU, and what is its measured complete
+3. How long should previous published generations be retained?
+4. What snapshot freshness threshold should page the operator?
+5. Can the updater reliably run with 1 vCPU, and what is its measured complete
    execution time?
-8. How should schema migrations keep at least one previously published snapshot
+6. How should schema migrations keep at least one previously published snapshot
    readable during rolling deploys?
 
 ## Decision Checkpoints Before Implementation

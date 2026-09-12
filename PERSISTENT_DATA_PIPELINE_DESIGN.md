@@ -894,7 +894,8 @@ and snapshot work, followed by monitored cutover—is maintained in
 
 ### Phase 1: Begin Durable Observation Capture
 
-Status: implementation complete; production deployment pending.
+Status: archive implementation complete; capture job entry point and
+deployment definitions in progress; production deployment pending.
 
 Implemented (schema/stores/merge/capture commits through "Capture
 observational currents in the archive"; local commits, not yet pushed):
@@ -913,15 +914,88 @@ observational currents in the archive"; local commits, not yet pushed):
 **Deployment sequencing revision (2026-09-12):** capture will NOT be enabled in
 the multi-instance web service. Instead, the first production writer is an
 isolated bounded one-shot capture job — a miniature of the Phase 4 updater —
-running on a schedule (hourly suffices: live feeds carry a trailing 24-hour
-window, so overlap-merge preserves full fidelity) under a dedicated job
-identity with access to only the archive bucket. The web runtime identity gets
-no archive access, and the web service never sets `SHALLWESWIM_ARCHIVE_BUCKET`.
-The capture hook is host-process-agnostic, so the job reuses it unchanged; the
-transitional multi-writer CAS path remains as overlap-safety for job runs and
-for local/filesystem use. Validation: monitor `archive.merge` outcomes on the
+running on a schedule under a dedicated job identity with access to only the
+archive bucket. The web runtime identity gets no archive access, and the web
+service never sets `SHALLWESWIM_ARCHIVE_BUCKET`. The capture hook is
+host-process-agnostic, so the job reuses it unchanged; the transitional
+multi-writer CAS path remains as overlap-safety for job runs and for
+local/filesystem use. Validation: monitor `archive.merge` outcomes on the
 operations dashboard for at least a week and compare archived row counts with
 live feeds before anything reads the archive.
+
+#### Phase 1 Capture Job Contract
+
+The job is an ordinary bounded command with no dependency on a job-runner API:
+
+```bash
+uv run python -m shallweswim.capture              # scheduled run
+uv run python -m shallweswim.capture --full-history  # one-time backfill
+```
+
+It is a temporary entry point. The Phase 4 `shallweswim.update` command absorbs
+it once snapshot publication exists; `shallweswim.capture` then retires rather
+than becoming a second long-lived updater.
+
+Scope and behavior:
+
+- `SHALLWESWIM_ARCHIVE_BUCKET` is required. An unset variable is a
+  configuration error that fails the run before any upstream request, because
+  fetching without capturing is the job's only purpose.
+- The job fetches only archivable feeds: live temperatures, historical
+  temperatures, and currents whose configured source type is observation.
+  Tide feeds and prediction currents are never fetched by the job.
+- Feed construction is shared with the web manager through one module-level
+  builder so both hosts create identical feeds from the same configuration.
+  A fresh feed is always expired, so one `update()` per selected feed is the
+  whole cycle; expiration intervals stay authoritative only for the web host.
+- Historical temperatures default to the current UTC year only. A cold
+  process otherwise refetches every configured year (fifteen for NYC) on each
+  run, which is write-once data the archive already preserves after its first
+  capture. `--full-history` fetches the configured full range for the
+  migration backfill and for occasional re-sweeps; it is not scheduled hourly.
+- Locations run concurrently and each location's feeds run sequentially,
+  matching the web host's per-location tasks and the shared provider gates.
+- The job never generates plots, precomputes derived frames, or starts
+  FastAPI; it needs no process pool.
+
+Failure semantics:
+
+- Station unavailability is WARNING and unexpected feed errors are ERROR,
+  exactly as in the web host; either leaves the remaining feeds running.
+- Archive failures stay isolated inside the capture hook and surface only as
+  `archive.merge` events with `outcome=failed`.
+- The run emits one summary event, `component=updater operation=run`, with
+  bounded `outcome` values `success` (every selected feed published),
+  `partial` (some feeds published), or `failed` (none published or the run
+  crashed), plus `duration_ms` and `record_count`. `run_id` carries the
+  platform execution name when present.
+- The exit status is non-zero only for `failed`. A `partial` run exits zero so
+  a single bad station does not trigger platform retries that refetch every
+  other feed; those failures are visible through the feed-update metric and
+  the summary event instead. The platform retry bound is one.
+
+Reference deployment (GCP):
+
+- `capture-job.yaml` beside `service.yaml` defines a Cloud Run Job from the
+  same image with the command overridden, a single task, a twenty-minute task
+  timeout, one retry, `SHALLWESWIM_LOG_FORMAT=json`, the USGS API key secret,
+  and `SHALLWESWIM_ARCHIVE_BUCKET` substituted at deploy time from the
+  operator environment so the repository never hard-codes an installation's
+  bucket name.
+- Cloud Build replaces the job after every service deploy so the job never
+  runs a stale image. The build fails if the bucket substitution is empty.
+- Identities: `shallweswim-capture` runs the job and holds only
+  `roles/storage.objectUser` on the archive bucket plus accessor on the USGS
+  key secret; `shallweswim-capture-invoker` holds `roles/run.invoker` on the
+  job only and is the Cloud Scheduler OIDC identity; the build identity gains
+  `roles/iam.serviceAccountUser` on `shallweswim-capture`. The web runtime
+  identity receives no bucket binding.
+- Cloud Scheduler triggers the job hourly at a fixed minute offset. Overlap is
+  prevented by scheduler policy but correctness does not depend on it.
+- Log-based metric filters include the job resource type alongside the
+  service, and the archive dashboard chart is not restricted to the service,
+  so job events are visible. Alert policies remain service-scoped until the
+  job has run in production; a job dead-man alert is a follow-up.
 
 The production web service keeps its current in-memory updater and does not
 read the archive.

@@ -458,6 +458,20 @@ Production injects the same environment variable into Cloud Run from the
 `waterdata_usgs_gov_api_key` Secret Manager secret. The runtime service account
 has accessor permission scoped to that secret.
 
+#### Optional Temperature Archive
+
+Set `SHALLWESWIM_ARCHIVE_BUCKET` to a private GCS bucket name to preserve
+temperature observations after successful fetches. Leave it empty to disable
+capture. The service continues serving its in-memory data; archive failures
+are logged and do not change feed success or retry scheduling. Only fresh
+historical years are captured, so cached years keep their original retrieval
+times. Predictions and current feeds are excluded.
+
+See [archive setup](infra/monitoring/README.md#observation-archive-setup) for
+the one-time bucket and runtime IAM commands. The operations dashboard includes
+archive merges by outcome; bucket setup and setting the runtime environment
+variable are separate from applying monitoring Terraform.
+
 #### Debugging CSPF Sandettie Historical Temperatures
 
 Use the CSPF debug script to exercise Dover's Sandettie historical temperature

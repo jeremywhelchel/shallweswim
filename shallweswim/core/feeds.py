@@ -9,6 +9,7 @@ import abc
 import asyncio
 import datetime
 import logging
+import os
 import time
 from enum import StrEnum
 from typing import Any, Literal
@@ -23,6 +24,7 @@ from shallweswim import config as config_lib
 from shallweswim import dataframe_models as df_models
 from shallweswim import harmonic_tides
 from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempStatus
+from shallweswim.archive.capture import capture_temperature
 from shallweswim.clients import coops, cspf, irish_lights, marine_institute, ndbc, nwis
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
@@ -407,6 +409,8 @@ class Feed(BaseModel, abc.ABC):
                 f"Feed update succeeded for {self.__class__.__name__}",
                 extra=fields,
             )
+            if isinstance(self, TempFeed):
+                await self._capture_temperature(df, now)
 
         except StationUnavailableError as e:
             # Expected operational condition - station has no data
@@ -430,6 +434,43 @@ class Feed(BaseModel, abc.ABC):
             self._last_error = e
             self._schedule_after_failure(utc_now())
             raise
+
+    async def _capture_temperature(
+        self, frame: pd.DataFrame, retrieved_at: datetime.datetime
+    ) -> None:
+        """Isolate all archive failures from feed publication and scheduling."""
+        bucket = os.environ.get("SHALLWESWIM_ARCHIVE_BUCKET")
+        if not bucket:
+            return
+        started_at = time.monotonic()
+        try:
+            await capture_temperature(
+                bucket,
+                frame=(
+                    self._remove_outliers(frame)
+                    if isinstance(self, HistoricalTempsFeed)
+                    else frame
+                ),
+                source_identity=self.feed_config.citation_key,
+                timezone=self.location_config.timezone,
+                retrieved_at=retrieved_at,
+            )
+        except Exception as error:
+            self.log(
+                f"Archive capture failed: {error}",
+                logging.ERROR,
+                extra={
+                    "component": "archive",
+                    "operation": "merge",
+                    "source_identity": self.feed_config.citation_key,
+                    "outcome": "failed",
+                    "duration_ms": max(
+                        0, round((time.monotonic() - started_at) * 1000)
+                    ),
+                    "record_count": 0,
+                    "attempt_count": 0,
+                },
+            )
 
     @abc.abstractmethod
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
@@ -1561,6 +1602,11 @@ class HistoricalTempsFeed(CompositeFeed):
             year for year in required_years if year in self._year_cache
         )
         self._last_failed_years = failed_years
+
+        # Capture only fresh years, including successes in a partial fetch.
+        # Reusing a cached year must never make its retrieval time newer.
+        for dataframe in successful_dataframes.values():
+            await self._capture_temperature(dataframe, now)
 
         missing_years = tuple(
             year for year in required_years if year not in self._year_cache

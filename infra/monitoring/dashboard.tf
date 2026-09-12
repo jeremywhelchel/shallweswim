@@ -157,6 +157,36 @@ resource "google_monitoring_dashboard" "operations" {
               }
             }
           }
+        },
+        {
+          yPos   = 12
+          width  = 12
+          height = 4
+          widget = {
+            title = "Archive merges per 5 minutes by outcome"
+            xyChart = {
+              dataSets = [{
+                plotType       = "STACKED_BAR"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.outcome}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merges.name}\" AND resource.type=\"cloud_run_revision\""
+                    aggregation = {
+                      alignmentPeriod    = "300s"
+                      perSeriesAligner   = "ALIGN_SUM"
+                      crossSeriesReducer = "REDUCE_SUM"
+                      groupByFields      = ["metric.label.outcome"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "merges / 5 min"
+                scale = "LINEAR"
+              }
+            }
+          }
         }
       ]
     }

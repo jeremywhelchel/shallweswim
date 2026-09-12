@@ -13,6 +13,49 @@ defines the extraction rules; it does not read or process logs itself. Cloud
 Logging creates metric samples from new matching entries after the metrics are
 created. Existing log entries are not backfilled.
 
+## Observation archive setup
+
+The temperature capture hook is enabled by `SHALLWESWIM_ARCHIVE_BUCKET` (a
+bucket name without `gs://`). Leave it empty to disable writes. The managed
+operations dashboard shows archive merges per five minutes by outcome.
+
+Bucket and IAM setup is a one-time operator task, outside this Terraform module.
+Load the local-operator credential and project through repo-local environment
+variables (`GOOGLE_APPLICATION_CREDENTIALS`,
+`CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`, `CLOUDSDK_CORE_PROJECT`). Do not use
+`gcloud auth` or modify global configuration. Choose a globally unique archive
+bucket name and set `SHALLWESWIM_ARCHIVE_BUCKET` in the local environment first.
+
+```bash
+gcloud storage buckets create "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
+  --project="$CLOUDSDK_CORE_PROJECT" \
+  --location=us-east4 \
+  --uniform-bucket-level-access \
+  --public-access-prevention
+
+ARCHIVE_RUNTIME_SERVICE_ACCOUNT=$(gcloud run services describe shallweswim \
+  --project="$CLOUDSDK_CORE_PROJECT" --region=us-east4 \
+  --format='value(spec.template.spec.serviceAccountName)')
+test -n "$ARCHIVE_RUNTIME_SERVICE_ACCOUNT"
+
+gcloud storage buckets add-iam-policy-binding \
+  "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
+  --member="serviceAccount:$ARCHIVE_RUNTIME_SERVICE_ACCOUNT" \
+  --role=roles/storage.objectUser
+```
+
+Verify that the reported runtime service account is the intended identity before
+granting access. The bucket-scoped object role permits generation-conditional
+reads and replacements without granting bucket administration. Keep the archive
+separate from Terraform state. Do not add a lifecycle rule that deletes live
+observation objects; normalized observations are retained indefinitely.
+
+After applying the monitoring changes and deploying the hook, set
+`SHALLWESWIM_ARCHIVE_BUCKET` in the Cloud Run runtime configuration. Confirm
+successful merge events, archive objects, and dashboard samples. Unset the
+variable to stop capture without deleting archived data. Neither this hook nor
+the Terraform module enables the runtime variable automatically.
+
 ## State bootstrap
 
 Use a dedicated private, uniformly accessed, versioned GCS bucket for state.

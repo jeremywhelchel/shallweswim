@@ -483,6 +483,11 @@ stations are physical sources, while locations are application configuration.
 Two locations that use the same station share one archive partition, and the
 source-to-location mapping remains in `config/locations.py`.
 
+The capture hook percent-encodes each path component, preserving the source
+identity reversibly. For example, `nwis:temperature:08155500:00010` maps to
+`archive/temperature/nwis/08155500%3A00010/<year>.parquet`. Partitions use the UTC
+observation year, which can differ from the feed's local calendar year.
+
 `citation_key` is the permanent archive source identity. A golden-list contract
 test snapshots every configured source's `citation_key`. Any identity change
 must therefore fail CI and require an explicit archive-migration decision rather
@@ -558,6 +563,10 @@ but leaves feed publication, serving, and feed scheduling untouched, so a later
 overlapping fetch can recover the omitted rows. A conflicting equally recent
 claim is an expected, self-recovering anomaly and logs at WARNING; unexpected
 archive failures log at ERROR. The failed-outcome metric captures both.
+
+Individually validated historical years can be archived even if the combined
+historical publication subsequently fails validation; preserving those valid
+observations does not depend on a successful combined publication.
 
 The updater should fetch incrementally with a small overlap window, then merge
 using these rules. The overlap allows providers to revise recent readings.

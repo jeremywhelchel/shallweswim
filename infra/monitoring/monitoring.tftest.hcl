@@ -46,6 +46,14 @@ run "monitoring_plan" {
   }
 
   assert {
+    condition = strcontains(
+      google_monitoring_dashboard.operations.dashboard_json,
+      "${local.metric_prefix}/${google_logging_metric.archive_merges.name}"
+    )
+    error_message = "The operations dashboard must show the archive merge metric."
+  }
+
+  assert {
     condition = alltrue([
       for policy in [
         google_monitoring_alert_policy.live_feed_update_latency,

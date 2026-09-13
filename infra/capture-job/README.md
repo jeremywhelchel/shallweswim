@@ -86,6 +86,22 @@ gcloud projects add-iam-policy-binding shallweswim \
 Do not grant `shallweswim-capture` anything else, and do not grant the web
 runtime identity any archive bucket role.
 
+## Continuous build trigger
+
+The GitHub-triggered Cloud Build on `main` runs the same `cloudbuild.yaml`, so
+it must carry the bucket substitution or its job step fails after the service
+step has already deployed. Set it once on the trigger (find the trigger id with
+`gcloud builds triggers list`):
+
+```bash
+gcloud builds triggers update github TRIGGER_ID \
+  --project="$CLOUDSDK_CORE_PROJECT" \
+  --region=global \
+  --update-substitutions=_ARCHIVE_BUCKET="$SHALLWESWIM_ARCHIVE_BUCKET"
+```
+
+Do this before pushing the capture job definitions to `main`.
+
 ## First deploy
 
 `build_and_deploy.sh` builds the image, replaces the Cloud Run service, and then

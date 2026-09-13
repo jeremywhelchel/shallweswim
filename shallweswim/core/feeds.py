@@ -24,7 +24,7 @@ from shallweswim import config as config_lib
 from shallweswim import dataframe_models as df_models
 from shallweswim import harmonic_tides
 from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempStatus
-from shallweswim.archive.capture import capture_observations
+from shallweswim.archive.capture import CaptureResult, capture_observations
 from shallweswim.archive.observations import (
     CURRENTS_MEASUREMENT,
     CURRENTS_UNIT,
@@ -134,6 +134,9 @@ class Feed(BaseModel, abc.ABC):
     _ready_event: asyncio.Event = asyncio.Event()
     _last_error: Exception | None = None
     _consecutive_failures: int = 0
+    # Archive rows the most recent fetch added and revised, or None when this
+    # feed has not captured (no archive bucket, or no fetch yet).
+    _last_capture: CaptureResult | None = None
 
     # Modern Pydantic v2 configuration using model_config
     model_config = ConfigDict(
@@ -260,6 +263,16 @@ class Feed(BaseModel, abc.ABC):
             True if data has been published at least once, False otherwise
         """
         return self._data is not None
+
+    @property
+    def last_capture(self) -> CaptureResult | None:
+        """Archive rows the last fetch added and revised.
+
+        Returns:
+            Counts from the most recent capture, zeros when that capture failed,
+            or None when this feed has not captured observations.
+        """
+        return self._last_capture
 
     @property
     def values(self) -> pd.DataFrame:
@@ -481,12 +494,14 @@ class Feed(BaseModel, abc.ABC):
         unit: str,
     ) -> None:
         """Isolate all archive failures from feed publication and scheduling."""
+        # A stale count must never outlive the fetch that produced it.
+        self._last_capture = None
         bucket = os.environ.get("SHALLWESWIM_ARCHIVE_BUCKET")
         if not bucket:
             return
         started_at = time.monotonic()
         try:
-            await capture_observations(
+            self._last_capture = await capture_observations(
                 bucket,
                 frame=(
                     self._remove_outliers(frame)
@@ -516,6 +531,8 @@ class Feed(BaseModel, abc.ABC):
                     "attempt_count": 0,
                 },
             )
+            # The fetch captured nothing, which the run summary must still sum.
+            self._last_capture = CaptureResult(0, 0)
 
     @abc.abstractmethod
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:

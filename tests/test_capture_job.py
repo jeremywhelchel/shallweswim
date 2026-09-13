@@ -356,6 +356,8 @@ def test_all_feeds_failing_is_a_failed_run(
     assert summary.outcome == "failed"
     assert summary.levelno == logging.ERROR
     assert summary.record_count == 0
+    assert summary.new_count == 0
+    assert summary.revised_count == 0
 
 
 def test_missing_bucket_fails_before_any_client(
@@ -382,7 +384,9 @@ def test_missing_bucket_fails_before_any_client(
 def test_summary_event_fields_and_run_id(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    _install_job_environment(monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS])
+    _, _, store = _install_job_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
+    )
     monkeypatch.setenv("CLOUD_RUN_EXECUTION", "shallweswim-capture-abcde")
 
     with caplog.at_level(logging.INFO):
@@ -394,3 +398,33 @@ def test_summary_event_fields_and_run_id(
     assert summary.run_id == "shallweswim-capture-abcde"
     assert isinstance(summary.duration_ms, int)
     assert summary.record_count > 0
+    # A first run archives every observation it fetched and revises nothing.
+    assert summary.new_count == len(
+        _archived_rows(store, TEMPERATURE_KEY, TEMPERATURE_UNIT)
+    ) + len(_archived_rows(store, CURRENTS_KEY, CURRENTS_UNIT))
+    assert summary.revised_count == 0
+
+
+def test_identical_second_run_archives_no_new_or_revised_rows(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Re-fetching the same observations overlaps instead of rewriting them."""
+    _install_job_environment(monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS])
+
+    assert capture.main([]) == 0
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        assert capture.main([]) == 0
+
+    summary = _summary_record(caplog)
+    assert summary.outcome == "success"
+    assert summary.record_count > 0
+    assert summary.new_count == 0
+    assert summary.revised_count == 0
+    merges = [
+        record
+        for record in caplog.records
+        if getattr(record, "operation", "") == "merge"
+    ]
+    assert merges
+    assert {record.outcome for record in merges} == {"unchanged"}

@@ -469,7 +469,8 @@ Set `SHALLWESWIM_ARCHIVE_BUCKET` to a private GCS bucket name to preserve
 temperature and observational currents measurements after successful fetches.
 Leave it empty to disable capture. The service continues serving its in-memory
 data; archive failures are logged and do not change feed success or retry
-scheduling. Only fresh historical years are captured, so cached years keep their
+scheduling. Repeated fetches of unchanged readings leave the stored partition
+byte-identical, so only new observations and upstream revisions are written. Only fresh historical years are captured, so cached years keep their
 original retrieval times. Historical years are archived at the provider's native
 cadence, before the hourly serving resample, and a daylight-saving fall-back hour
 that appears only once is dropped with a warning rather than failing the year.
@@ -501,8 +502,9 @@ See [archive setup](infra/monitoring/README.md#observation-archive-setup) for
 the one-time bucket commands and the
 [capture job runbook](infra/capture-job/README.md) for the job identity,
 deployment, scheduling, and validation steps. The operations dashboard includes
-archive merges by outcome; bucket setup and job deployment are separate from
-applying monitoring Terraform.
+archive merges by outcome, capture runs per hour, and new and revised
+observations per hour by source; bucket setup and job deployment are separate
+from applying monitoring Terraform.
 
 #### Debugging CSPF Sandettie Historical Temperatures
 

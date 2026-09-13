@@ -65,9 +65,14 @@ def test_json_log_includes_archive_merge_fields() -> None:
             component="archive",
             operation="merge",
             source_identity="coops:temperature:8518750",
-            outcome="failed",
+            outcome="success",
             observed_at="2026-01-01T17:00:00+00:00",
             attempt_count=5,
+            record_count=9,
+            incoming_count=4,
+            new_count=2,
+            overlap_count=1,
+            revised_count=1,
         )
     )
 
@@ -76,6 +81,12 @@ def test_json_log_includes_archive_merge_fields() -> None:
     assert payload["source"]["file"] == "shallweswim/core/feeds.py"
     assert payload["observed_at"] == "2026-01-01T17:00:00+00:00"
     assert payload["attempt_count"] == 5
+    # The merge event contract's five row counts must all survive the allowlist.
+    assert payload["record_count"] == 9
+    assert payload["incoming_count"] == 4
+    assert payload["new_count"] == 2
+    assert payload["overlap_count"] == 1
+    assert payload["revised_count"] == 1
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])

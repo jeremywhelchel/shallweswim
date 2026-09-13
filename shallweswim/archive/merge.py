@@ -26,17 +26,30 @@ class ArchiveIntegrityError(Exception):
 
 @dataclass(frozen=True)
 class MergeResult:
-    """Outcome of one partition merge."""
+    """Outcome and row counts of one partition merge.
+
+    `record_count` is the partition size after the merge. The other three counts
+    classify the incoming rows and always sum to `incoming_count`: `new_count`
+    for keys absent from the partition, `revised_count` for keys whose stored
+    value this fetch replaced, and `overlap_count` for every incoming row that
+    left the partition unchanged.
+    """
 
     outcome: str
     record_count: int
     attempt_count: int
+    incoming_count: int
+    new_count: int
+    overlap_count: int
+    revised_count: int
 
 
 @dataclass(frozen=True)
 class _PreparedMerge:
     record_count: int
-    unchanged: bool
+    new_count: int
+    overlap_count: int
+    revised_count: int
     parquet_data: bytes | None
 
 
@@ -51,29 +64,6 @@ def _parquet_bytes(frame: pd.DataFrame) -> bytes:
     return output.getvalue()
 
 
-def _merge_frames(
-    current: pd.DataFrame,
-    incoming: pd.DataFrame,
-    *,
-    source_identity: str,
-) -> pd.DataFrame:
-    combined = pd.concat([current, incoming], ignore_index=True)
-    distinct_claims = combined.drop_duplicates()
-    conflicting_claims = distinct_claims.duplicated(
-        subset=["observed_at", "retrieved_at"], keep=False
-    )
-    if conflicting_claims.any():
-        conflict = distinct_claims.loc[conflicting_claims].iloc[0]
-        raise ArchiveIntegrityError(source_identity, conflict["observed_at"])
-
-    return (
-        combined.sort_values(["observed_at", "retrieved_at"], kind="stable")
-        .drop_duplicates(subset=["observed_at"], keep="last")
-        .sort_values("observed_at", kind="stable")
-        .reset_index(drop=True)
-    )
-
-
 def _prepare_merge(
     stored_data: bytes | None,
     incoming: pd.DataFrame,
@@ -81,33 +71,79 @@ def _prepare_merge(
     source_identity: str,
     expected_unit: str,
 ) -> _PreparedMerge:
+    """Classify incoming rows against the partition and write only if it changes.
+
+    The deduplication key is `observed_at`; source identity is fixed per
+    partition. A key absent from the partition is new. A key whose stored value
+    is identical keeps the stored row, including its original `retrieved_at`. A
+    key whose stored value differs is decided by the newest `retrieved_at`, and
+    an equally recent differing claim is an integrity conflict.
+    """
     if stored_data is None:
         current = incoming.iloc[0:0].copy()
     else:
         current = read_observations(BytesIO(stored_data), expected_unit=expected_unit)
-    merged = _merge_frames(current, incoming, source_identity=source_identity)
-    if merged.equals(current):
-        return _PreparedMerge(len(merged), True, None)
-    return _PreparedMerge(len(merged), False, _parquet_bytes(merged))
+
+    keys = incoming["observed_at"]
+    # Merges only ever write unique keys, so a duplicated stored key is a defect
+    # and reindex fails fast rather than silently multiplying rows.
+    stored = current.set_index("observed_at")
+    stored_value = stored["value"].reindex(keys).to_numpy()
+    stored_retrieved = stored["retrieved_at"].reindex(keys).to_numpy()
+
+    matched = ~pd.isna(stored_value)
+    differing = matched & (incoming["value"].to_numpy() != stored_value)
+    conflicting = differing & (incoming["retrieved_at"].to_numpy() == stored_retrieved)
+    if conflicting.any():
+        raise ArchiveIntegrityError(source_identity, keys.iloc[conflicting.argmax()])
+
+    new = ~matched
+    revised = differing & (incoming["retrieved_at"].to_numpy() > stored_retrieved)
+    new_count = int(new.sum())
+    revised_count = int(revised.sum())
+    # Overlapping means "did not change the partition": rows identical to the
+    # stored row, and differing rows the stored row already supersedes because
+    # it was retrieved more recently.
+    overlap_count = len(incoming) - new_count - revised_count
+
+    replacements = new | revised
+    if not replacements.any():
+        return _PreparedMerge(len(current), 0, overlap_count, 0, None)
+
+    kept = current.loc[~current["observed_at"].isin(keys.loc[revised])]
+    merged = (
+        pd.concat([kept, incoming.loc[replacements]], ignore_index=True)
+        .sort_values("observed_at", kind="stable")
+        .reset_index(drop=True)
+    )
+    return _PreparedMerge(
+        len(merged),
+        new_count,
+        overlap_count,
+        revised_count,
+        _parquet_bytes(merged),
+    )
 
 
 def _event_fields(
+    result: MergeResult,
     *,
     source_identity: str,
-    outcome: str,
     started_at: float,
-    record_count: int,
-    attempt_count: int,
     observed_at: str | None = None,
 ) -> dict[str, object]:
     fields: dict[str, object] = {
         "component": "archive",
         "operation": "merge",
         "source_identity": source_identity,
-        "outcome": outcome,
+        "outcome": result.outcome,
         "duration_ms": max(0, round((time.monotonic() - started_at) * 1000)),
-        "record_count": record_count,
-        "attempt_count": attempt_count,
+        "record_count": result.record_count,
+        "attempt_count": result.attempt_count,
+        "incoming_count": result.incoming_count,
+        "new_count": result.new_count,
+        "overlap_count": result.overlap_count,
+        "revised_count": result.revised_count,
     }
     if observed_at is not None:
         fields["observed_at"] = observed_at
@@ -130,21 +166,26 @@ async def merge_observations(
     started_at = time.monotonic()
     attempt_count = 0
     record_count = 0
+    incoming_count = 0
+    new_count = 0
+    overlap_count = 0
+    revised_count = 0
     try:
         validated_incoming = await asyncio.to_thread(
             normalize_archive_frame, incoming, expected_unit=expected_unit
         )
+        incoming_count = len(validated_incoming)
+        if validated_incoming["observed_at"].duplicated().any():
+            # Normalization collapses repeated instants, so a duplicate key here
+            # is a caller defect. Rejecting it keeps stored partitions unique.
+            raise ValueError("incoming observations must have unique observed_at")
         if validated_incoming.empty:
-            result = MergeResult("unchanged", 0, 0)
+            result = MergeResult("unchanged", 0, 0, 0, 0, 0, 0)
             logging.info(
                 "Archive merge had no observations for %s",
                 source_identity,
                 extra=_event_fields(
-                    source_identity=source_identity,
-                    outcome=result.outcome,
-                    started_at=started_at,
-                    record_count=result.record_count,
-                    attempt_count=result.attempt_count,
+                    result, source_identity=source_identity, started_at=started_at
                 ),
             )
             return result
@@ -161,23 +202,30 @@ async def merge_observations(
                 expected_unit=expected_unit,
             )
             record_count = prepared.record_count
-            if prepared.unchanged:
-                result = MergeResult("unchanged", record_count, attempt_count)
+            new_count = prepared.new_count
+            overlap_count = prepared.overlap_count
+            revised_count = prepared.revised_count
+            if prepared.parquet_data is None:
+                # Nothing new and nothing revised, so the stored bytes already
+                # express this fetch and rewriting them would only churn.
+                result = MergeResult(
+                    "unchanged",
+                    record_count,
+                    attempt_count,
+                    incoming_count,
+                    new_count,
+                    overlap_count,
+                    revised_count,
+                )
                 logging.info(
                     "Archive merge was unchanged for %s",
                     source_identity,
                     extra=_event_fields(
-                        source_identity=source_identity,
-                        outcome=result.outcome,
-                        started_at=started_at,
-                        record_count=result.record_count,
-                        attempt_count=result.attempt_count,
+                        result, source_identity=source_identity, started_at=started_at
                     ),
                 )
                 return result
 
-            if prepared.parquet_data is None:
-                raise RuntimeError("Changed archive merge produced no Parquet data")
             try:
                 await store.compare_and_swap(
                     key,
@@ -190,16 +238,20 @@ async def merge_observations(
                 await asyncio.sleep(retry_base_seconds * 2 ** (attempt_count - 1))
                 continue
 
-            result = MergeResult("success", record_count, attempt_count)
+            result = MergeResult(
+                "success",
+                record_count,
+                attempt_count,
+                incoming_count,
+                new_count,
+                overlap_count,
+                revised_count,
+            )
             logging.info(
                 "Archive merge succeeded for %s",
                 source_identity,
                 extra=_event_fields(
-                    source_identity=source_identity,
-                    outcome=result.outcome,
-                    started_at=started_at,
-                    record_count=result.record_count,
-                    attempt_count=result.attempt_count,
+                    result, source_identity=source_identity, started_at=started_at
                 ),
             )
             return result
@@ -219,11 +271,17 @@ async def merge_observations(
             source_identity,
             error,
             extra=_event_fields(
+                MergeResult(
+                    "failed",
+                    record_count,
+                    attempt_count,
+                    incoming_count,
+                    new_count,
+                    overlap_count,
+                    revised_count,
+                ),
                 source_identity=source_identity,
-                outcome="failed",
                 started_at=started_at,
-                record_count=record_count,
-                attempt_count=attempt_count,
                 observed_at=observed_at,
             ),
         )

@@ -24,6 +24,7 @@ import aiohttp
 
 from shallweswim import config as config_lib
 from shallweswim import logging_utils
+from shallweswim.archive.capture import CaptureResult
 from shallweswim.clients import create_api_clients
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.core import feeds
@@ -94,7 +95,7 @@ async def _capture_location(
     clients: dict[str, BaseApiClient],
     *,
     full_history: bool,
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, CaptureResult]:
     """Update one location's archivable feeds sequentially.
 
     A fresh feed is always expired, so one update per feed is the whole cycle.
@@ -107,8 +108,8 @@ async def _capture_location(
             temperature year range instead of only the current UTC year.
 
     Returns:
-        Tuple of attempted feed count, published feed count, and total published
-        row count for this location.
+        Tuple of attempted feed count, published feed count, total published row
+        count, and the archive rows this location added and revised.
     """
     location_feeds = build_feeds(
         config,
@@ -118,10 +119,12 @@ async def _capture_location(
     selected = _archivable_feeds(location_feeds)
     if not selected:
         logging.info(f"[{config.code}] No archivable feeds configured")
-        return 0, 0, 0
+        return 0, 0, 0, CaptureResult(0, 0)
 
     published = 0
     record_count = 0
+    new_count = 0
+    revised_count = 0
     for feed_name, feed in selected.items():
         try:
             await feed.update(clients=clients, feed_name=feed_name)
@@ -132,11 +135,23 @@ async def _capture_location(
         if feed.has_data:
             published += 1
             record_count += len(feed.values)
-    return len(selected), published, record_count
+            if feed.last_capture is not None:
+                new_count += feed.last_capture.new_count
+                revised_count += feed.last_capture.revised_count
+    return (
+        len(selected),
+        published,
+        record_count,
+        CaptureResult(new_count, revised_count),
+    )
 
 
 def _summary_fields(
-    outcome: str, started_at: float, record_count: int, run_id: str
+    outcome: str,
+    started_at: float,
+    record_count: int,
+    run_id: str,
+    archived: CaptureResult,
 ) -> dict[str, object]:
     """Return bounded fields for the single run summary event.
 
@@ -145,6 +160,7 @@ def _summary_fields(
         started_at: Monotonic timestamp taken when the run started.
         record_count: Total published rows across captured feeds.
         run_id: Identifier correlating this run with platform execution logs.
+        archived: Rows this run added to and revised in the archive.
 
     Returns:
         Approved structured logging fields for the summary event.
@@ -155,6 +171,8 @@ def _summary_fields(
         "outcome": outcome,
         "duration_ms": max(0, round((time.monotonic() - started_at) * 1000)),
         "record_count": record_count,
+        "new_count": archived.new_count,
+        "revised_count": archived.revised_count,
         "run_id": run_id,
     }
 
@@ -177,6 +195,7 @@ async def _run(*, full_history: bool) -> int:
     attempted = 0
     published = 0
     record_count = 0
+    archived = CaptureResult(0, 0)
     try:
         async with aiohttp.ClientSession() as session:
             clients = create_api_clients(session)
@@ -191,11 +210,15 @@ async def _run(*, full_history: bool) -> int:
         attempted = sum(result[0] for result in results)
         published = sum(result[1] for result in results)
         record_count = sum(result[2] for result in results)
+        archived = CaptureResult(
+            sum(result[3].new_count for result in results),
+            sum(result[3].revised_count for result in results),
+        )
         outcome = run_outcome(published, attempted)
     except Exception as error:
         logging.error(
             f"Capture run failed: {error}",
-            extra=_summary_fields("failed", started_at, record_count, run_id),
+            extra=_summary_fields("failed", started_at, record_count, run_id, archived),
         )
         return 1
 
@@ -207,7 +230,7 @@ async def _run(*, full_history: bool) -> int:
     logging.log(
         levels[outcome],
         f"Capture run {outcome}: {published} of {attempted} feeds published",
-        extra=_summary_fields(outcome, started_at, record_count, run_id),
+        extra=_summary_fields(outcome, started_at, record_count, run_id, archived),
     )
     return 0 if outcome != "failed" else 1
 

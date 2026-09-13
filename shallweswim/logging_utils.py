@@ -21,6 +21,10 @@ STRUCTURED_FIELDS = (
     "duration_ms",
     "record_count",
     "attempt_count",
+    "incoming_count",
+    "new_count",
+    "overlap_count",
+    "revised_count",
     "source_identity",
     "observed_at",
 )

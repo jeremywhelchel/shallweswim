@@ -93,6 +93,64 @@ async def test_update_archives_by_utc_year_and_preserves_serving(monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_identical_second_update_archives_nothing_new(
+    monkeypatch, caplog
+) -> None:
+    """A repeated fetch of the same readings overlaps and writes nothing."""
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    store = MemoryObjectStore()
+    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    frame = _frame("2026-01-01 12:00", "2026-01-01 13:00")
+    monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=frame))
+
+    first = _feed()
+    await first.update({})
+    stored = await store.read("archive/temperature/coops/8518750/2026.parquet")
+    assert stored is not None
+
+    # A fresh feed is the next run's fetch of identical upstream readings.
+    second = _feed()
+    with caplog.at_level(logging.INFO):
+        await second.update({})
+
+    assert first.last_capture == capture.CaptureResult(2, 0)
+    assert second.last_capture == capture.CaptureResult(0, 0)
+    merges = [r for r in caplog.records if getattr(r, "operation", None) == "merge"]
+    assert [record.outcome for record in merges] == ["unchanged"]
+    assert merges[0].overlap_count == 2
+    assert (
+        await store.read("archive/temperature/coops/8518750/2026.parquet")
+    ) == stored
+
+
+@pytest.mark.asyncio
+async def test_last_capture_reports_counts_only_when_capture_ran(monkeypatch) -> None:
+    """The feed keeps its merge counts so the job can sum them per run."""
+    store = MemoryObjectStore()
+    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(
+        feeds.CoopsTempFeed,
+        "_fetch",
+        AsyncMock(return_value=_frame("2026-01-01 12:00", "2026-01-01 13:00")),
+    )
+
+    monkeypatch.delenv("SHALLWESWIM_ARCHIVE_BUCKET", raising=False)
+    disabled = _feed()
+    await disabled.update({})
+    assert disabled.last_capture is None
+
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    captured = _feed()
+    await captured.update({})
+    assert captured.last_capture == capture.CaptureResult(2, 0)
+
+    monkeypatch.setattr(store, "read", AsyncMock(side_effect=OSError("offline")))
+    failed = _feed()
+    await failed.update({})
+    assert failed.last_capture == capture.CaptureResult(0, 0)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["timezone", "credentials", "storage"])
 async def test_archive_failure_keeps_success_state(
     monkeypatch, caplog, failure: str

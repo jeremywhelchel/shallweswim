@@ -84,7 +84,12 @@ never writes to the archive. The job builds feeds through the same
 archivable feed once, and exits. Live feeds publish and schedule before capture; historical
 feeds capture only freshly fetched years, including successful years in a
 partial fetch, at the provider's native cadence, from the per-year frame before
-the hourly serving resample. Cached years retain their retrieval times.
+the hourly serving resample. Cached years retain their retrieval times. Merging is
+value-aware per observation instant: an unchanged reading keeps the stored row
+and its original retrieval time, a changed reading is replaced by the more
+recently retrieved claim, and a fetch with nothing new or revised leaves the
+partition byte-identical. Each merge event reports those row counts and the
+job's run summary reports their totals for the run.
 Archive failures emit failed merge events without changing serving or retry
 state. Normalization, Parquet work, and synchronous GCS operations run in worker
 threads. Tide feeds and prediction currents feeds do not enter this archive.

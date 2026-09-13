@@ -1,6 +1,7 @@
 """Scalar-observation capture for the transitional in-process feed updater."""
 
 import asyncio
+import dataclasses
 import datetime
 import logging
 from functools import cache
@@ -11,6 +12,14 @@ import pandas as pd
 from shallweswim.archive.merge import merge_observations
 from shallweswim.archive.observations import normalize_observations
 from shallweswim.archive.store import GcsObjectStore
+
+
+@dataclasses.dataclass(frozen=True)
+class CaptureResult:
+    """Archive rows one capture added and revised, summed over its partitions."""
+
+    new_count: int
+    revised_count: int
 
 
 @cache
@@ -86,8 +95,12 @@ async def capture_observations(
     unit: str,
     timezone: datetime.tzinfo,
     retrieved_at: datetime.datetime,
-) -> None:
-    """Merge each UTC year; the feed caller isolates preparation failures."""
+) -> CaptureResult:
+    """Merge each UTC year; the feed caller isolates preparation failures.
+
+    Returns the rows this fetch added and revised, which the calling feed keeps
+    for the capture job's run summary.
+    """
     partitions = await asyncio.to_thread(
         _partitions,
         frame,
@@ -99,11 +112,13 @@ async def capture_observations(
         retrieved_at,
     )
     if not partitions:
-        return
+        return CaptureResult(0, 0)
     store = await asyncio.to_thread(_store_for, bucket)
+    new_count = 0
+    revised_count = 0
     for key, incoming in partitions:
         try:
-            await merge_observations(
+            merged = await merge_observations(
                 store,
                 key=key,
                 source_identity=source_identity,
@@ -114,3 +129,6 @@ async def capture_observations(
             # The merge writer already emitted the failed event. Continue so a
             # failed year does not prevent capture of other years in this fetch.
             continue
+        new_count += merged.new_count
+        revised_count += merged.revised_count
+    return CaptureResult(new_count, revised_count)

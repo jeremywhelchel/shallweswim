@@ -71,6 +71,18 @@ gcloud iam service-accounts add-iam-policy-binding \
   --role=roles/iam.serviceAccountUser
 ```
 
+The Cloud Build identity also needs `roles/run.developer` on the project so
+`gcloud run jobs replace` can create and update the job; a service-scoped
+deploy binding does not cover jobs. If the project policy contains conditional
+bindings, gcloud requires `--condition=None` for an unconditional grant.
+
+```bash
+gcloud projects add-iam-policy-binding shallweswim \
+  --member="serviceAccount:shallweswim-ci@shallweswim.iam.gserviceaccount.com" \
+  --role=roles/run.developer \
+  --condition=None
+```
+
 Do not grant `shallweswim-capture` anything else, and do not grant the web
 runtime identity any archive bucket role.
 

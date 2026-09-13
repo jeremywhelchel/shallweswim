@@ -1098,14 +1098,57 @@ read the archive.
 
 ### Phase 1b: Local Development Reads the Archive
 
+Status: contract; implementation pending.
+
 Once the capture job has populated the bucket, local development of the web
-service may hydrate historical temperature feeds from the archive instead of
+service hydrates historical temperature feeds from the archive instead of
 performing the full multi-year cold-start refetch. This is Phase 5's restore
 path scoped to development first: it makes local startup fast and makes the
 developer machine the archive's first read consumer, validating archived data
-quality before production depends on it. Guardrails: reads use a separate
-`SHALLWESWIM_ARCHIVE_READ_BUCKET` variable so no local configuration can
-enable writes, and the local credential holds read-only bucket access.
+quality before production depends on it.
+
+Configuration and guardrails:
+
+- `SHALLWESWIM_ARCHIVE_READ_BUCKET` names the bucket to hydrate from. It is
+  independent of `SHALLWESWIM_ARCHIVE_BUCKET`, which remains the only switch
+  that enables writes and which local configuration leaves unset. The
+  hydration path calls only the store's read operation and never constructs a
+  writer, so setting the read variable cannot cause a write. `.env.example`
+  documents the read variable; `service.yaml` and `capture-job.yaml` never set
+  it, pinned by the deployment-manifest test.
+- The local credential holds `roles/storage.objectViewer` on the bucket, so
+  even a misconfiguration that set the write variable locally would fail at
+  the bucket. The runbook replaces the temporary local write grant with the
+  viewer role.
+
+Behavior:
+
+- When the read variable is set, `HistoricalTempsFeed` hydrates before its
+  first provider fetch: for every required year before the current UTC year
+  that is not already cached, it reads that source's yearly partition through
+  the archive reader. Rows become a per-year frame in the client shape (a
+  timezone-aware UTC index named `time` and the feed's value column) and then
+  follow exactly the provider path: serving index derivation, the hourly
+  resample, validation, and the year cache with the hydration time as the
+  year's fetch timestamp. A served frame built from archived rows is therefore
+  identical to one built from a provider fetch of the same year, which a test
+  proves against a fixture year.
+- Years absent from the archive, and the current year, fetch from the
+  provider as today. Hydrated years are never re-captured; capture applies
+  only to years fetched from the provider.
+- Hydration never fails startup. A read or validation failure for a year is
+  logged and that year falls back to the provider fetch.
+- The partition key is derived by one shared function from the source
+  identity, measurement, and UTC year, used by both capture and hydration.
+- One INFO event per hydrated feed (`component=archive`,
+  `operation=hydrate`, `location`, `feed`, `outcome=success` or `failed`,
+  `record_count` = archived rows loaded) records what the archive supplied;
+  a failure event carries the years that fell back.
+
+Scope: temperature history only. Live temperature and observational currents
+feeds keep their short provider windows, tide feeds never archive, and the
+capture job never sets the read variable; incremental provider fetching driven
+by the archive is Phase 5.
 
 ### Phase 2: Define and Publish Snapshots
 

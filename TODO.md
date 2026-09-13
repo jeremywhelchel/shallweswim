@@ -236,6 +236,24 @@ Notes:
 - Investigate an alternative Chicago temperature source for year-round coverage,
   such as the daily NOAA/NWS marine observation text product, before changing
   configured data sources.
+- Decide the live temperature window semantics. `build_feeds` computes the
+  live window as `utc_now() - 24h` but clients treat those edges as station-local
+  calendar days, so the effective lookback is 20 to 44 hours depending on the
+  UTC hour. Either define the window in local time explicitly or request an
+  exact UTC interval; either changes serving data slightly.
+- NDBC `_build_request_urls` still mixes a naive `datetime.now()` with UTC
+  window edges when choosing which realtime/monthly files to fetch; the range
+  filter is exact, so this only risks fetching one file too many or too few at
+  month boundaries.
+- CSPF's default live window uses server-local `datetime.today()` while the
+  client interprets edges as station-local; harmless in a UTC container but
+  should use the location clock.
+- NWIS returns an empty body for years before a site's record begins (Austin
+  2011 and 2012); the client reports it as a JSON parse error instead of
+  station-unavailable, which logs at ERROR and lists the years as failed.
+- NDBC station 46237 (SFO live temperature) has returned no data since at
+  least 2026-09-12; confirm the upstream outage and consider an alternate live
+  source or a documented seasonal gap.
 
 ## Operations And Infrastructure
 
@@ -261,6 +279,16 @@ Notes:
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
+- Promote the six shadow alert policies once baselined, starting with the
+  capture job heartbeat; the feed-failure and plot policies remain scoped to the
+  web service resource and do not cover the capture job's feed failures.
+- Verify the "new/revised observations per hour" dashboard tiles render as
+  hourly totals. They aggregate distribution metrics with `ALIGN_SUM`, which may
+  display as distributions; if so, switch to an MQL query summing the
+  distribution or add counter-style metrics.
+- Capture the archive validation checklist outcome after the first week:
+  compare archived row counts with live feeds per source and record the result
+  in the design doc's Phase 1 status.
 
 ### Runtime And Deployment
 
@@ -281,6 +309,21 @@ Notes:
 - Reduce verbose logs that do not help diagnose data outages, retries, startup,
   or user-facing failures. Keep enough context for feed health and station
   debugging without making normal logs noisy.
+- The Terraform state bucket `shallweswim-terraform-state` is not readable by
+  the project owner or the local operator identity even though it lists under
+  the project; find which identity or project owns it, document it in
+  `infra/monitoring/README.md`, and document the impersonation path
+  (`impersonate_service_account` on the backend and provider) as the supported
+  way to run Terraform without a key file.
+- Remove the temporary grants made for the 2026-09-13 deployment once no
+  longer needed: `roles/iam.serviceAccountTokenCreator` for the local operator
+  on `shallweswim-terraform`, and the local operator's `roles/storage.objectUser`
+  on the archive bucket (downgrade to `objectViewer` for Phase 1b reads).
+- Consider enabling object versioning on the archive bucket as a safety net
+  against a defective merge rewriting a partition; retention would need a
+  matching lifecycle rule for noncurrent versions.
+- Phase 1b: local development reads the archive through
+  `SHALLWESWIM_ARCHIVE_READ_BUCKET` to skip the multi-year cold-start fetch.
 
 ## Codebase Maintenance
 
@@ -324,6 +367,14 @@ Notes:
   and copy/paste. Decide whether to use narrow `# fmt: off/on` blocks around
   URL-heavy location presentation config or adjust formatter settings if this
   becomes a broader repo-wide readability issue.
+- The integration suite exits non-zero after all tests pass because aiohttp
+  transports are garbage-collected with open sockets at fixture teardown,
+  surfacing as `PytestUnraisableExceptionWarning` under `filterwarnings=error`.
+  Close sessions and transports deterministically in the fixtures so the exit
+  code reflects test results.
+- Add a full-stack live check to the release routine: per-client integration
+  tests passed while the CO-OPS leap-year window regression was only caught by
+  `tests/test_api_integration.py`.
 
 ## Location Backlog
 

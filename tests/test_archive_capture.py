@@ -98,7 +98,7 @@ async def test_archive_failure_keeps_success_state(
     monkeypatch, caplog, failure: str
 ) -> None:
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
-    frame = _frame("2026-11-01 01:00" if failure == "timezone" else "2026-01-01 12:00")
+    frame = _frame("2026-03-08 02:30" if failure == "timezone" else "2026-01-01 12:00")
     monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=frame))
     store = MemoryObjectStore()
     if failure == "credentials":
@@ -123,6 +123,82 @@ async def test_archive_failure_keeps_success_state(
     failures = [r for r in caplog.records if getattr(r, "operation", None) == "merge"]
     assert len(failures) == 1
     assert failures[0].outcome == "failed"
+
+
+@pytest.mark.asyncio
+async def test_unresolvable_fall_back_row_is_dropped_with_one_warning(
+    monkeypatch, caplog
+) -> None:
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    store = MemoryObjectStore()
+    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    frame = _frame("2026-11-01 00:30", "2026-11-01 01:30", "2026-11-01 02:00")
+    monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=frame))
+    feed = _feed()
+    with caplog.at_level(logging.INFO):
+        await feed.update({})
+
+    pd.testing.assert_frame_equal(feed.values, frame)
+    dropped = [
+        record
+        for record in caplog.records
+        if getattr(record, "operation", None) == "normalize"
+    ]
+    assert len(dropped) == 1
+    assert dropped[0].levelno == logging.WARNING
+    assert dropped[0].component == "archive"
+    assert dropped[0].outcome == "ambiguous_dropped"
+    assert dropped[0].source_identity == feed.feed_config.citation_key
+    assert dropped[0].record_count == 1
+
+    stored = await store.read("archive/temperature/coops/8518750/2026.parquet")
+    assert stored is not None
+    rows = read_observations(BytesIO(stored.data), expected_unit="F")
+    assert rows["observed_at"].dt.strftime("%H:%M").tolist() == ["04:30", "07:00"]
+
+
+@pytest.mark.asyncio
+async def test_conflicting_repeated_instant_is_dropped_with_one_warning(
+    monkeypatch, caplog
+) -> None:
+    """A raw year frame repeating an instant with a different value warns once."""
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    store = MemoryObjectStore()
+    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    live = _feed()
+    history = feeds.HistoricalTempsFeed(
+        location_config=live.location_config,
+        feed_config=live.feed_config,
+        start_year=2026,
+        end_year=2026,
+        expiration_interval=datetime.timedelta(days=1),
+    )
+    raw = pd.DataFrame(
+        {"water_temp": [60.0, 61.0, 62.0]},
+        index=pd.DatetimeIndex(
+            ["2026-01-01 12:00", "2026-01-01 12:00", "2026-01-01 13:00"], name="time"
+        ),
+    )
+    monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=raw))
+    with caplog.at_level(logging.INFO):
+        await history.update({})
+
+    conflicts = [
+        record
+        for record in caplog.records
+        if getattr(record, "outcome", None) == "conflict_dropped"
+    ]
+    assert len(conflicts) == 1
+    assert conflicts[0].levelno == logging.WARNING
+    assert conflicts[0].component == "archive"
+    assert conflicts[0].operation == "normalize"
+    assert conflicts[0].source_identity == history.feed_config.citation_key
+    assert conflicts[0].record_count == 1
+
+    stored = await store.read("archive/temperature/coops/8518750/2026.parquet")
+    assert stored is not None
+    rows = read_observations(BytesIO(stored.data), expected_unit="F")
+    assert rows["value"].tolist() == [60.0, 62.0]
 
 
 @pytest.mark.asyncio
@@ -181,6 +257,81 @@ async def test_historical_capture_only_fresh_years_even_on_partial_failure(
     assert history._year_cache_fetch_timestamp[2023] == old_retrieval
     assert history._last_error is not None
     assert history._consecutive_failures == 1
+
+
+def _ten_minute_frame(*local_hours: str) -> pd.DataFrame:
+    """Native ten-minute cadence for each listed local hour, in order."""
+    return _frame(
+        *(f"{hour}:{minute:02d}" for hour in local_hours for minute in range(0, 60, 10))
+    )
+
+
+@pytest.mark.asyncio
+async def test_historical_capture_archives_native_cadence_and_both_folds(
+    monkeypatch, caplog
+) -> None:
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    store = MemoryObjectStore()
+    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    live = _feed()
+    history = feeds.HistoricalTempsFeed(
+        location_config=live.location_config,
+        feed_config=live.feed_config,
+        start_year=2024,
+        end_year=2025,
+        expiration_interval=datetime.timedelta(days=1),
+    )
+    # 2024 is a CO-OPS-style hourly year whose fall-back 01:00 appears once.
+    single_fold = _frame(
+        "2024-11-03 00:00", "2024-11-03 01:00", "2024-11-03 02:00", "2024-11-03 03:00"
+    )
+    # 2025 is a native ten-minute year carrying both fall-back folds.
+    both_folds = _ten_minute_frame(
+        "2025-11-02 00",
+        "2025-11-02 01",
+        "2025-11-02 01",
+        "2025-11-02 02",
+        "2025-11-02 03",
+    )
+    monkeypatch.setattr(
+        feeds.CoopsTempFeed,
+        "_fetch",
+        AsyncMock(side_effect=[single_fold, both_folds]),
+    )
+    with caplog.at_level(logging.INFO):
+        await history.update({})
+
+    stored = await store.read("archive/temperature/coops/8518750/2025.parquet")
+    assert stored is not None
+    rows = read_observations(BytesIO(stored.data), expected_unit="F")
+    assert len(rows) == len(both_folds)
+    assert rows["observed_at"].is_unique
+    assert rows["observed_at"].dt.strftime("%H:%M").tolist().count("05:00") == 1
+    assert rows["observed_at"].dt.strftime("%H:%M").tolist().count("06:00") == 1
+
+    # Serving still resamples to hourly, collapsing the repeated local hour.
+    served = history.values.loc["2025-11-02 00:00":"2025-11-02 03:00"]
+    assert served.index.strftime("%H:%M").tolist() == [
+        "00:00",
+        "01:00",
+        "02:00",
+        "03:00",
+    ]
+
+    stored_2024 = await store.read("archive/temperature/coops/8518750/2024.parquet")
+    assert stored_2024 is not None
+    rows_2024 = read_observations(BytesIO(stored_2024.data), expected_unit="F")
+    assert len(rows_2024) == len(single_fold) - 1
+    dropped = [
+        record
+        for record in caplog.records
+        if getattr(record, "operation", None) == "normalize"
+    ]
+    assert len(dropped) == 1
+    assert dropped[0].levelno == logging.WARNING
+    assert dropped[0].outcome == "ambiguous_dropped"
+    assert dropped[0].source_identity == history.feed_config.citation_key
+    assert dropped[0].record_count == 1
 
 
 def test_source_paths_preserve_station_parameter_identity() -> None:

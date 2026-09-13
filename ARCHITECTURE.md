@@ -83,7 +83,8 @@ never writes to the archive. The job builds feeds through the same
 `core.manager.build_feeds()` builder the web manager uses, updates each
 archivable feed once, and exits. Live feeds publish and schedule before capture; historical
 feeds capture only freshly fetched years, including successful years in a
-partial fetch. Cached years retain their retrieval times.
+partial fetch, at the provider's native cadence, from the per-year frame before
+the hourly serving resample. Cached years retain their retrieval times.
 Archive failures emit failed merge events without changing serving or retry
 state. Normalization, Parquet work, and synchronous GCS operations run in worker
 threads. Tide feeds and prediction currents feeds do not enter this archive.

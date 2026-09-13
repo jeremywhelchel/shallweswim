@@ -1619,6 +1619,8 @@ class HistoricalTempsFeed(CompositeFeed):
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         successful_dataframes: dict[int, pd.DataFrame] = {}
+        # Provider-cadence frames for capture, keyed by the same successful years.
+        raw_dataframes: dict[int, pd.DataFrame] = {}
         failed_years: dict[int, str] = {}
         failed_exceptions: dict[int, Exception] = {}
         for year, result in zip(years_to_fetch, results, strict=True):
@@ -1636,6 +1638,7 @@ class HistoricalTempsFeed(CompositeFeed):
                 continue
 
             successful_dataframes[year] = normalized_result
+            raw_dataframes[year] = result
 
         now = utc_now()
         for year, dataframe in successful_dataframes.items():
@@ -1650,7 +1653,13 @@ class HistoricalTempsFeed(CompositeFeed):
 
         # Capture only fresh years, including successes in a partial fetch.
         # Reusing a cached year must never make its retrieval time newer.
-        for dataframe in successful_dataframes.values():
+        # Capture the provider's native cadence, before the hourly serving
+        # resample collapses the repeated daylight-saving fall-back hour. These
+        # frames are deliberately not run through _validate_frame: the serving
+        # model requires a unique local time index, which a fall-back day's
+        # native-cadence frame legitimately violates. normalize_observations
+        # still requires the value column and a naive DatetimeIndex.
+        for dataframe in raw_dataframes.values():
             await self._capture_observations(
                 dataframe,
                 now,

@@ -1,5 +1,6 @@
 """Normalized scalar-observation schema, conversion, and read boundary."""
 
+import dataclasses
 import datetime
 from pathlib import Path
 from typing import Annotated, BinaryIO
@@ -52,6 +53,20 @@ class ObservationModel(pa.DataFrameModel):
         coerce = False
 
 
+@dataclasses.dataclass(frozen=True)
+class NormalizedObservations:
+    """Archive rows plus the rows dropped to produce them.
+
+    `ambiguous_dropped` counts unresolvable fall-back rows. `conflicting_dropped`
+    counts rows that repeated an instant already kept but claimed a different
+    value; identical repeats collapse silently and are not counted.
+    """
+
+    frame: pd.DataFrame
+    ambiguous_dropped: int
+    conflicting_dropped: int
+
+
 def normalize_observations(
     frame: pd.DataFrame,
     *,
@@ -59,13 +74,18 @@ def normalize_observations(
     unit: str,
     timezone: datetime.tzinfo,
     retrieved_at: datetime.datetime,
-) -> pd.DataFrame:
+) -> NormalizedObservations:
     """Convert a feed's scalar values and naive local times to archive rows.
 
     Ambiguous fall-back times are inferred only when the ordered observations
-    contain enough information to distinguish both folds. Ambiguous or
-    nonexistent wall times that cannot be resolved raise instead of being
-    guessed or shifted.
+    contain enough information to distinguish both folds. When inference is
+    impossible the ambiguous rows are dropped and counted for the caller, which
+    knows the source identity; a fold is never guessed. Nonexistent
+    spring-forward wall times still raise instead of being shifted.
+
+    A repeated UTC instant keeps its first row. A repeat that claims a different
+    value is also dropped, but counted separately so the discarded claim is
+    visible rather than silent.
     """
     if value_column not in frame.columns:
         raise ValueError(f"Feed frame must contain {value_column}")
@@ -79,15 +99,43 @@ def normalize_observations(
     if observed_at.tz is not None:
         raise ValueError("Feed timestamps must be timezone naive")
 
-    observed_at_utc = (
-        observed_at.tz_localize(
+    try:
+        localized = observed_at.tz_localize(
             timezone,
             ambiguous="infer",
             nonexistent="raise",
         )
-        .tz_convert("UTC")
-        .as_unit("ns")
-    )
+    except ValueError:
+        # pandas reports every failed localization as a plain ValueError, both
+        # "no repeated times" and "there are N dst switches". Retry with the
+        # ambiguous rows marked so the resolvable ones survive; nonexistent
+        # times raise again from this second attempt.
+        localized = observed_at.tz_localize(
+            timezone,
+            ambiguous="NaT",
+            nonexistent="raise",
+        )
+
+    resolved = localized.notna()
+    ambiguous_dropped = int((~resolved).sum())
+    if ambiguous_dropped:
+        observations = observations.loc[resolved]
+        localized = localized[resolved]
+
+    observed_at_utc = localized.tz_convert("UTC").as_unit("ns")
+
+    # Native-cadence provider frames may repeat a reading. Two fall-back folds
+    # are distinct UTC instants, so collapsing on the instant keeps both.
+    repeated = observed_at_utc.duplicated(keep="first")
+    conflicting_dropped = 0
+    if repeated.any():
+        values = observations[value_column].to_numpy(dtype="float64")
+        kept = pd.Series(values[~repeated], index=observed_at_utc[~repeated])
+        conflicting_dropped = int(
+            (repeated & (values != kept.reindex(observed_at_utc).to_numpy())).sum()
+        )
+        observations = observations.loc[~repeated]
+        observed_at_utc = observed_at_utc[~repeated]
 
     retrieved = pd.Timestamp(retrieved_at)
     if retrieved.tzinfo is None:
@@ -106,7 +154,11 @@ def normalize_observations(
             ),
         }
     )
-    return normalize_archive_frame(result, expected_unit=unit)
+    return NormalizedObservations(
+        frame=normalize_archive_frame(result, expected_unit=unit),
+        ambiguous_dropped=ambiguous_dropped,
+        conflicting_dropped=conflicting_dropped,
+    )
 
 
 def normalize_archive_frame(frame: pd.DataFrame, *, expected_unit: str) -> pd.DataFrame:

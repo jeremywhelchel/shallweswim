@@ -470,8 +470,11 @@ temperature and observational currents measurements after successful fetches.
 Leave it empty to disable capture. The service continues serving its in-memory
 data; archive failures are logged and do not change feed success or retry
 scheduling. Only fresh historical years are captured, so cached years keep their
-original retrieval times. Prediction feeds, including tide and NOAA CO-OPS
-currents predictions, are excluded.
+original retrieval times. Historical years are archived at the provider's native
+cadence, before the hourly serving resample, and a daylight-saving fall-back hour
+that appears only once is dropped with a warning rather than failing the year.
+Prediction feeds, including tide and NOAA CO-OPS currents predictions, are
+excluded.
 
 Production capture runs from a scheduled one-shot job rather than the web
 service. The job fetches every archivable feed once and exits:

@@ -535,6 +535,13 @@ unresolvable ambiguity, asserting that only the ambiguous rows are dropped. A
 nonexistent local time in the skipped spring-forward hour fails archive
 capture rather than allowing the timezone library to guess or shift it.
 
+Native-cadence provider frames may repeat an instant. After conversion, rows
+that share a UTC instant collapse to the first occurrence; the two fall-back
+folds are distinct instants and are never collapsed. An identical repeat is
+silent. A repeat whose value differs is still dropped but emits the same
+WARNING event with `outcome=conflict_dropped` and the dropped count, so a
+provider anomaly is visible without failing the partition.
+
 Historical temperature capture archives each freshly fetched year at the
 provider's native cadence, from the per-year frame before the serving
 resample. Resampling to hourly is a serving concern and collapses the repeated

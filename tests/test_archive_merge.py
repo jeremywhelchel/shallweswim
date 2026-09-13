@@ -38,7 +38,7 @@ def _rows(values: dict[str, float], retrieved_at: datetime.datetime) -> pd.DataF
         unit=TEMPERATURE_UNIT,
         timezone=EASTERN,
         retrieved_at=retrieved_at,
-    )
+    ).frame
 
 
 async def _read_frame(store: MemoryObjectStore) -> pd.DataFrame:

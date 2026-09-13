@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime
+import logging
 from functools import cache
 from urllib.parse import quote
 
@@ -35,13 +36,40 @@ def _partitions(
     prefix = (
         f"archive/{measurement}/{quote(provider, safe='')}/{quote(station, safe='')}"
     )
-    rows = normalize_observations(
+    normalized = normalize_observations(
         frame,
         value_column=value_column,
         unit=unit,
         timezone=timezone,
         retrieved_at=retrieved_at,
     )
+    if normalized.ambiguous_dropped:
+        logging.warning(
+            "Archive normalization dropped %d unresolvable ambiguous row(s) for %s",
+            normalized.ambiguous_dropped,
+            source_identity,
+            extra={
+                "component": "archive",
+                "operation": "normalize",
+                "source_identity": source_identity,
+                "outcome": "ambiguous_dropped",
+                "record_count": normalized.ambiguous_dropped,
+            },
+        )
+    if normalized.conflicting_dropped:
+        logging.warning(
+            "Archive normalization dropped %d conflicting repeated row(s) for %s",
+            normalized.conflicting_dropped,
+            source_identity,
+            extra={
+                "component": "archive",
+                "operation": "normalize",
+                "source_identity": source_identity,
+                "outcome": "conflict_dropped",
+                "record_count": normalized.conflicting_dropped,
+            },
+        )
+    rows = normalized.frame
     return [
         (f"{prefix}/{year}.parquet", partition)
         for year, partition in rows.groupby(rows["observed_at"].dt.year)

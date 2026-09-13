@@ -518,22 +518,66 @@ rewrite tools. Dictionary encoding makes the repeated canonical value
 negligible in practice. Retrieval time is also per row because a partition
 contains observations from many fetches after its first merge.
 
-Feeds currently store naive location-local timestamps. The archive writer must
-convert `observed_at` to UTC at the write boundary using the location's
-configured timezone; `retrieved_at` must also be stored as UTC. Daylight-saving
-fall-back times require explicit handling: the conversion must never silently
-choose one occurrence of an ambiguous local time. The converter first infers
-folds from the ordered observations, which succeeds whenever the source frame
-contains both occurrences of the repeated hour. If inference is impossible
-because a repeated hour appears only once, capture drops exactly the ambiguous
-rows, archives the rest of the frame, and emits a WARNING event
+Feeds publish naive location-local timestamps for serving. Until the UTC
+client frames below land, clients also return naive local frames, so the
+archive writer converts `observed_at` to UTC at the write boundary using the
+location's configured timezone; `retrieved_at` is always stored as UTC.
+Daylight-saving fall-back times require explicit handling in that transitional
+path: the conversion must never silently choose one occurrence of an
+ambiguous local time. The converter first infers folds from the ordered
+observations, which succeeds whenever the source frame contains both
+occurrences of the repeated hour. If inference is impossible because a
+repeated hour appears only once, capture drops exactly the ambiguous rows,
+archives the rest of the frame, and emits a WARNING event
 (`component=archive`, `operation=normalize`, `outcome=ambiguous_dropped`,
 `record_count` = rows dropped, plus the source identity) so the loss is
-visible per source. It never guesses a fold. Tests must include a fall-back
-transition with the repeated 1 AM hour and cover both resolvable and
-unresolvable ambiguity, asserting that only the ambiguous rows are dropped. A
-nonexistent local time in the skipped spring-forward hour fails archive
-capture rather than allowing the timezone library to guess or shift it.
+visible per source. It never guesses a fold. A nonexistent local time in the
+skipped spring-forward hour fails archive capture rather than allowing the
+timezone library to guess or shift it.
+
+Historical temperature capture archives each freshly fetched year at the
+provider's native cadence, from the per-year frame before the serving
+resample. Resampling to hourly is a serving concern and collapses the repeated
+fall-back hour, so it must not precede capture.
+
+#### UTC Client Frames
+
+Measured against live 2025 provider data, the transitional naive path still
+loses the fall-back hour everywhere: NDBC and NWIS clients sort by wall time
+after converting, which interleaves the two folds so inference cannot separate
+them, and the CO-OPS local-time products omit one fold upstream. The same
+duplicate wall times make a live NDBC or NWIS window that spans a fall-back
+day fail the serving model's unique-index rule, so those live feeds go stale
+for about a day every November. Both defects have one cause: absolute
+instants are discarded before either consumer sees them. The application
+therefore standardizes on UTC at the client boundary:
+
+- Every client method that returns a time-indexed frame (CO-OPS tides,
+  currents, and temperature; NDBC temperature; NWIS temperature and
+  currents; CSPF Sandettie; Irish Lights; Marine Institute tides) and the
+  local harmonic tide feed return frames indexed by timezone-aware UTC
+  instants, whatever the provider natively speaks. CO-OPS requests use
+  `time_zone=gmt` so both folds and the spring-forward hour are exact.
+  Clients de-duplicate on the UTC instant, never on wall time. Client
+  `timezone` parameters remain only where a request window must be expressed
+  in station-local time; they no longer drive output conversion.
+- Feeds own the serving derivation in one shared step before validation:
+  convert the UTC frame to the location timezone, drop the timezone, and
+  collapse any repeated wall time by keeping the first occurrence in instant
+  order. Published frames keep today's contract exactly: naive local, unique,
+  monotonic. Queries, plots, the API, and the historical resample are
+  untouched. During the client-by-client migration the step is a no-op for a
+  naive frame; the tolerance is removed with the last client.
+- Capture receives the UTC frame. `normalize_observations` requires an aware
+  index and converts it directly; fold inference, the `ambiguous_dropped`
+  event, and the naive input path are deleted once every client returns UTC.
+  The `conflict_dropped` rule for repeated instants stays.
+- Historical per-year frames are captured in UTC at native cadence, then
+  converted for the serving resample, so both folds reach the archive for
+  every source.
+- After deployment, one `--full-history` execution back-fills the fold rows;
+  they appear as `new_count` on the merge metrics, roughly 8 to 12 rows per
+  year per source.
 
 Native-cadence provider frames may repeat an instant. After conversion, rows
 that share a UTC instant collapse to the first occurrence; the two fall-back
@@ -1147,6 +1191,11 @@ requires stronger migration and equivalence validation.
   cannot be resolved drops only the ambiguous rows with a visible event.
 - Historical capture archives the pre-resample per-year frame, so native
   10- and 15-minute cadences and both fall-back folds reach the archive.
+- All clients return timezone-aware UTC frames; feeds derive the naive local
+  serving index by keeping the first occurrence of a repeated wall
+  time, and a live window spanning a fall-back day validates and serves.
+- CO-OPS observation history requested in GMT contains 8,761 hourly rows in a
+  fall-back year, and the archive holds both folds for every source.
 - Lifecycle rules preserve the active generation.
 - Local mode retains the current one-command development experience.
 - Live integration tests continue validating upstream contracts separately from

@@ -42,12 +42,12 @@ resource "google_monitoring_dashboard" "operations" {
           width  = 6
           height = 4
           widget = {
-            title = "Feed update duration p95 by location/feed"
+            title = "Feed update duration p95 by feed"
             xyChart = {
               dataSets = [{
                 plotType       = "LINE"
                 targetAxis     = "Y1"
-                legendTemplate = "$${metric.labels.location} / $${metric.labels.feed}"
+                legendTemplate = "$${metric.labels.feed}"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
                     filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.feed_update_duration.name}\" AND resource.type=\"cloud_run_revision\""
@@ -55,7 +55,7 @@ resource "google_monitoring_dashboard" "operations" {
                       alignmentPeriod    = "300s"
                       perSeriesAligner   = "ALIGN_PERCENTILE_95"
                       crossSeriesReducer = "REDUCE_MAX"
-                      groupByFields      = ["metric.label.location", "metric.label.feed"]
+                      groupByFields      = ["metric.label.feed"]
                     }
                   }
                 }
@@ -103,12 +103,12 @@ resource "google_monitoring_dashboard" "operations" {
           width  = 6
           height = 4
           widget = {
-            title = "Plot availability latency p95 by location/feed"
+            title = "Plot availability latency p95 by feed"
             xyChart = {
               dataSets = [{
                 plotType       = "LINE"
                 targetAxis     = "Y1"
-                legendTemplate = "$${metric.labels.location} / $${metric.labels.feed}"
+                legendTemplate = "$${metric.labels.feed}"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
                     filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.plot_availability_latency.name}\" AND resource.type=\"cloud_run_revision\""
@@ -116,7 +116,7 @@ resource "google_monitoring_dashboard" "operations" {
                       alignmentPeriod    = "300s"
                       perSeriesAligner   = "ALIGN_PERCENTILE_95"
                       crossSeriesReducer = "REDUCE_MAX"
-                      groupByFields      = ["metric.label.location", "metric.label.feed"]
+                      groupByFields      = ["metric.label.feed"]
                     }
                   }
                 }
@@ -163,7 +163,7 @@ resource "google_monitoring_dashboard" "operations" {
           width  = 12
           height = 4
           widget = {
-            title = "Archive merges per 5 minutes by outcome"
+            title = "Archive merges per hour by outcome"
             xyChart = {
               dataSets = [{
                 plotType       = "STACKED_BAR"
@@ -173,7 +173,7 @@ resource "google_monitoring_dashboard" "operations" {
                   timeSeriesFilter = {
                     filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merges.name}\""
                     aggregation = {
-                      alignmentPeriod    = "300s"
+                      alignmentPeriod    = "3600s"
                       perSeriesAligner   = "ALIGN_SUM"
                       crossSeriesReducer = "REDUCE_SUM"
                       groupByFields      = ["metric.label.outcome"]
@@ -182,7 +182,7 @@ resource "google_monitoring_dashboard" "operations" {
                 }
               }]
               yAxis = {
-                label = "merges / 5 min"
+                label = "merges / hour"
                 scale = "LINEAR"
               }
             }
@@ -224,7 +224,7 @@ resource "google_monitoring_dashboard" "operations" {
           width  = 6
           height = 4
           widget = {
-            title = "Archive merge duration p95 by source"
+            title = "Archive merge duration p95 by source per hour"
             xyChart = {
               dataSets = [{
                 plotType       = "LINE"
@@ -234,7 +234,7 @@ resource "google_monitoring_dashboard" "operations" {
                   timeSeriesFilter = {
                     filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merge_duration.name}\""
                     aggregation = {
-                      alignmentPeriod    = "300s"
+                      alignmentPeriod    = "3600s"
                       perSeriesAligner   = "ALIGN_PERCENTILE_95"
                       crossSeriesReducer = "REDUCE_MAX"
                       groupByFields      = ["metric.label.source"]
@@ -254,22 +254,24 @@ resource "google_monitoring_dashboard" "operations" {
           width  = 6
           height = 4
           widget = {
-            title = "New observations per hour by source"
+            title = "New observations per hour by source (estimated)"
             xyChart = {
               dataSets = [{
                 plotType       = "STACKED_BAR"
                 targetAxis     = "Y1"
                 legendTemplate = "$${metric.labels.source}"
                 timeSeriesQuery = {
-                  timeSeriesFilter = {
-                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merge_new_rows.name}\""
-                    aggregation = {
-                      alignmentPeriod    = "3600s"
-                      perSeriesAligner   = "ALIGN_SUM"
-                      crossSeriesReducer = "REDUCE_SUM"
-                      groupByFields      = ["metric.label.source"]
-                    }
-                  }
+                  # The row-count metrics are DISTRIBUTION valued, so the
+                  # timeSeriesFilter widget cannot sum them. MQL's sum_from()
+                  # reduces each distribution point to its estimated sum, which
+                  # the hourly delta then totals per source.
+                  timeSeriesQueryLanguage = <<-EOT
+                    fetch cloud_run_job
+                    | metric '${local.metric_prefix}/${google_logging_metric.archive_merge_new_rows.name}'
+                    | align delta(1h)
+                    | every 1h
+                    | group_by [metric.source], [rows: sum(sum_from(val()))]
+                  EOT
                 }
               }]
               yAxis = {
@@ -285,56 +287,24 @@ resource "google_monitoring_dashboard" "operations" {
           width  = 6
           height = 4
           widget = {
-            title = "Revised observations per hour by source"
+            title = "Revised observations per hour by source (estimated)"
             xyChart = {
               dataSets = [{
                 plotType       = "STACKED_BAR"
                 targetAxis     = "Y1"
                 legendTemplate = "$${metric.labels.source}"
                 timeSeriesQuery = {
-                  timeSeriesFilter = {
-                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merge_revised_rows.name}\""
-                    aggregation = {
-                      alignmentPeriod    = "3600s"
-                      perSeriesAligner   = "ALIGN_SUM"
-                      crossSeriesReducer = "REDUCE_SUM"
-                      groupByFields      = ["metric.label.source"]
-                    }
-                  }
+                  timeSeriesQueryLanguage = <<-EOT
+                    fetch cloud_run_job
+                    | metric '${local.metric_prefix}/${google_logging_metric.archive_merge_revised_rows.name}'
+                    | align delta(1h)
+                    | every 1h
+                    | group_by [metric.source], [rows: sum(sum_from(val()))]
+                  EOT
                 }
               }]
               yAxis = {
                 label = "observations / hour"
-                scale = "LINEAR"
-              }
-            }
-          }
-        },
-        {
-          yPos   = 24
-          width  = 12
-          height = 4
-          widget = {
-            title = "Failed archive merges per hour by source"
-            xyChart = {
-              dataSets = [{
-                plotType       = "STACKED_BAR"
-                targetAxis     = "Y1"
-                legendTemplate = "$${metric.labels.source}"
-                timeSeriesQuery = {
-                  timeSeriesFilter = {
-                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merges.name}\" AND metric.label.outcome=\"failed\""
-                    aggregation = {
-                      alignmentPeriod    = "3600s"
-                      perSeriesAligner   = "ALIGN_SUM"
-                      crossSeriesReducer = "REDUCE_SUM"
-                      groupByFields      = ["metric.label.source"]
-                    }
-                  }
-                }
-              }]
-              yAxis = {
-                label = "failed merges / hour"
                 scale = "LINEAR"
               }
             }

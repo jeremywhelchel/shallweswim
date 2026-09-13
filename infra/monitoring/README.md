@@ -25,17 +25,23 @@ resource type; the two capture job policies below are scoped to
 The observation archive is written by the scheduled Cloud Run capture job, not
 by the web service. `SHALLWESWIM_ARCHIVE_BUCKET` (a bucket name without
 `gs://`) names the bucket the job writes to; `service.yaml` never sets it. The
-managed operations dashboard shows archive merges per five minutes by outcome,
-capture runs per hour by outcome, new and revised observations per hour by
-source, merge duration p95 by source, and failed merges per hour by source.
+managed operations dashboard shows archive merges per hour by outcome, capture
+runs per hour by outcome, new and revised observations per hour by source, and
+merge duration p95 by source per hour. The capture job runs hourly, so these
+tiles align on the hour rather than on five minutes. Failed merges are one
+colour of the hourly outcome stack instead of a separate tile; the archive
+merge failure shadow policy covers that signal.
 
 Merges are value-aware, so a repeated fetch of unchanged readings reports
 `outcome=unchanged` and writes nothing. The `new_rows` and `revised_rows`
-metrics are distributions of the per-merge row counts, and their dashboard tiles
-sum them with `ALIGN_SUM` over an hour. Cloud Monitoring sums distributions into
-a distribution rather than a scalar, so confirm during the controlled apply that
-those two tiles render the hourly totals; if they do not, keep the metrics and
-chart their per-merge percentiles instead.
+metrics are distributions of the per-merge row counts, and the
+`timeSeriesFilter` widget cannot sum a distribution. Their two tiles therefore
+use the Monitoring Query Language, which can: `align delta(1h)` followed by
+`group_by [metric.source], [rows: sum(sum_from(val()))]`. Those observation
+counts are histogram estimates derived from the distribution's bucket counts
+rather than exact totals, which is why both tiles are titled `(estimated)`;
+exact per-merge counts stay available in the merge events' `new_count` and
+`revised_count` fields.
 
 Bucket creation is a one-time operator task, outside this Terraform module.
 Load the local-operator credential and project through repo-local environment
@@ -137,8 +143,9 @@ terraform -chdir=infra/monitoring test
 ```
 
 This test pins service and job scoping, bounded label counts, numeric
-extractors, the capture job policies' resource scope and heartbeat window, and
-the dashboard ownership marker. It cannot emulate Cloud Logging ingestion.
+extractors, the capture job policies' resource scope and heartbeat window, the
+dashboard ownership marker, and the dashboard's ten tiles, including the two
+MQL `sum_from` data sets. It cannot emulate Cloud Logging ingestion.
 
 Review the plan before every apply. The module now owns eleven log-based
 metrics, one dashboard, and six `[Terraform][Shadow]` alert policies with no

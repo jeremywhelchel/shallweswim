@@ -119,13 +119,52 @@ run "monitoring_plan" {
   assert {
     condition = alltrue([
       for tile in jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles :
-      !strcontains(tile.widget.xyChart.dataSets[0].timeSeriesQuery.timeSeriesFilter.filter, "resource.type=")
+      !strcontains(try(tile.widget.xyChart.dataSets[0].timeSeriesQuery.timeSeriesFilter.filter, ""), "resource.type=")
       if strcontains(
-        tile.widget.xyChart.dataSets[0].timeSeriesQuery.timeSeriesFilter.filter,
+        try(tile.widget.xyChart.dataSets[0].timeSeriesQuery.timeSeriesFilter.filter, ""),
         google_logging_metric.archive_merges.name
       )
     ])
     error_message = "The archive merge chart must not pin resource.type, or capture job series are hidden."
+  }
+
+  assert {
+    condition = (
+      length([
+        for query in flatten([
+          for tile in jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles :
+          [for data_set in tile.widget.xyChart.dataSets : try(data_set.timeSeriesQuery.timeSeriesQueryLanguage, "")]
+        ]) : query if query != ""
+      ]) == 2 &&
+      alltrue([
+        for query in flatten([
+          for tile in jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles :
+          [for data_set in tile.widget.xyChart.dataSets : try(data_set.timeSeriesQuery.timeSeriesQueryLanguage, "")]
+        ]) : strcontains(query, "sum_from(") if query != ""
+      ])
+    )
+    error_message = "The two distribution-valued observation counters must be charted with MQL sum_from, which timeSeriesFilter cannot express."
+  }
+
+  assert {
+    condition = (
+      length(jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles) == 10 &&
+      alltrue([
+        for title in [
+          "Archive merges per hour by outcome",
+          "New observations per hour by source (estimated)",
+          "Revised observations per hour by source (estimated)",
+          ] : contains([
+            for tile in jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles :
+            tile.widget.title
+        ], title)
+      ]) &&
+      !anytrue([
+        for tile in jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles :
+        strcontains(tile.widget.title, "Failed archive merges")
+      ])
+    )
+    error_message = "The dashboard must keep ten tiles, fold failed merges into the hourly outcome stack, and mark the estimated observation counts."
   }
 
   assert {

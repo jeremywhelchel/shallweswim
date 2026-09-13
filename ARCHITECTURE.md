@@ -76,11 +76,11 @@ Background Task → Derived Data Precompute → Update Derived Cache
 ```
 
 Clients are migrating to UTC-indexed frames, so a client may still return a
-naive location-local index or a timezone-aware UTC one. Feeds derive the naive
-local serving index in one step before validation, converting to the location
-timezone and keeping the first reading of a repeated fall-back wall time, while
-archive capture receives the client frame unconverted and unfiltered by
-configured outliers.
+naive location-local index or a timezone-aware UTC one; NOAA CO-OPS returns UTC.
+Feeds derive the naive local serving index in one step before validation,
+converting to the location timezone and keeping the first reading of a repeated
+fall-back wall time, while archive capture receives the client frame unconverted
+and unfiltered by configured outliers.
 
 When `SHALLWESWIM_ARCHIVE_BUCKET` is set, successful temperature updates and
 successful observational currents updates also merge observations into the
@@ -422,6 +422,12 @@ blocking async fanout at higher layers:
 - These gates are not rate-limit accounting or cross-instance distributed locks;
   they are local backpressure so startup, refresh, and retry bursts do not
   overwhelm upstream services or the app process.
+- The CO-OPS client requests `time_zone=gmt` and returns frames indexed by
+  timezone-aware UTC instants, so both folds of a daylight saving fall-back hour
+  and the skipped spring-forward hour are exact. Request windows stay
+  station-local days: callers pass naive local dates plus the station
+  `timezone`, and the client sends each window edge as the UTC instant that
+  local day boundary names.
 - The CSPF client is intentionally narrow: it fetches Dover/Sandettie
   historical temperature fallback data from CSPF Sandettie pages. It parses the
   embedded sea-temperature JavaScript series, normalizes Celsius to the internal

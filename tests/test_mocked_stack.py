@@ -149,7 +149,9 @@ class MockCoopsApi(CoopsApi):
         self.fail_tides_after_n_calls: int | None = None
         self.fail_currents_after_n_calls: int | None = None
 
-    async def tides(self, station: int, location_code: str = "unknown") -> pd.DataFrame:
+    async def tides(
+        self, station: int, timezone: str, location_code: str = "unknown"
+    ) -> pd.DataFrame:
         """Return mock tide predictions or raise if configured to fail."""
         self.call_count_tides += 1
 
@@ -168,6 +170,7 @@ class MockCoopsApi(CoopsApi):
     async def currents(
         self,
         station: str,
+        timezone: str,
         interpolate: bool = True,
         location_code: str = "unknown",
     ) -> pd.DataFrame:
@@ -192,6 +195,7 @@ class MockCoopsApi(CoopsApi):
         product: str,
         begin_date: datetime.date,
         end_date: datetime.date,
+        timezone: str,
         interval: str | None = None,
         location_code: str = "unknown",
     ) -> pd.DataFrame:

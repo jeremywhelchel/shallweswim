@@ -132,7 +132,9 @@ class MockCoopsApi(CoopsApi):
         self.live_temperature_error: Exception | None = None
         self.historic_temperature_error: Exception | None = None
 
-    async def tides(self, station: int, location_code: str = "unknown") -> pd.DataFrame:
+    async def tides(
+        self, station: int, timezone: str, location_code: str = "unknown"
+    ) -> pd.DataFrame:
         """Count tide requests; the capture job must never make one."""
         self.tides_calls += 1
         return _tides_frame()
@@ -140,6 +142,7 @@ class MockCoopsApi(CoopsApi):
     async def currents(
         self,
         station: str,
+        timezone: str,
         interpolate: bool = True,
         location_code: str = "unknown",
     ) -> pd.DataFrame:
@@ -154,6 +157,7 @@ class MockCoopsApi(CoopsApi):
         product: str,
         begin_date: object,
         end_date: object,
+        timezone: str,
         interval: str | None = None,
         location_code: str = "unknown",
     ) -> pd.DataFrame:

@@ -947,7 +947,9 @@ class TestCoopsTidesFeed:
         cast(MagicMock, mock_coops_client.tides).assert_called_once()
         _, kwargs = cast(MagicMock, mock_coops_client.tides).call_args
         assert kwargs["station"] == tide_config.station
-        # Add more specific checks for begin/end dates if needed
+        # The client needs the station timezone to express its local request
+        # window in UTC.
+        assert kwargs["timezone"] == str(location_config.timezone)
 
         # Check the result
         assert isinstance(result, pd.DataFrame)
@@ -1190,6 +1192,7 @@ class TestCoopsCurrentsFeed:
         _, kwargs = cast(MagicMock, mock_coops_client.currents).call_args
         assert kwargs["station"] == currents_config.stations[0]
         assert kwargs["interpolate"] is True
+        assert kwargs["timezone"] == str(location_config.timezone)
         assert kwargs["location_code"] == location_config.code
 
         # Check that the result is correct
@@ -1308,6 +1311,7 @@ class TestCoopsTempFeed:
         _, kwargs = cast(MagicMock, mock_coops_client.temperature).call_args
         assert kwargs["station"] == coops_temp_config_fixture.station
         assert kwargs["product"] == "water_temperature"
+        assert kwargs["timezone"] == str(location_config.timezone)
         assert kwargs["location_code"] == location_config.code
 
         # Check that the result is correct
@@ -1420,6 +1424,83 @@ class TestCoopsTempFeed:
         # Allow for small differences due to test execution timing
         date_diff = (end_date - begin_date).days
         assert date_diff == 8
+
+
+class TestCoopsFeedTimeFrames:
+    """The CO-OPS client frame is UTC; published feed values are naive local."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_keeps_utc_and_update_serves_naive_local(
+        self,
+        location_config: config_lib.LocationConfig,
+        coops_temp_config_fixture: config_lib.CoopsTempFeedConfig,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """_fetch passes the UTC frame through; update converts it once."""
+        mock_coops_client = cast(CoopsApi, mock_clients["coops"])
+        cast(MagicMock, mock_coops_client.temperature).return_value = pd.DataFrame(
+            {"water_temp": [60.0, 60.5, 61.0]},
+            index=pd.date_range(
+                "2025-06-01 12:00", periods=3, freq="h", tz="UTC", name="time"
+            ),
+        )
+
+        feed = CoopsTempFeed(
+            location_config=location_config,
+            feed_config=coops_temp_config_fixture,
+            interval="6-min",
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
+
+        fetched = await feed._fetch(clients=mock_clients)
+        assert str(fetched.index.tz) == "UTC"
+
+        await feed.update(clients=mock_clients)
+        values = feed.values
+        assert values.index.tz is None
+        # 12:00 UTC is 08:00 in New York during daylight time.
+        assert values.index.strftime("%H:%M").tolist() == ["08:00", "09:00", "10:00"]
+
+    @pytest.mark.asyncio
+    async def test_multi_station_currents_average_on_utc_instants(
+        self,
+        location_config: config_lib.LocationConfig,
+        currents_config: config_lib.CoopsCurrentsFeedConfig,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """Composite currents combine on the instant and stay UTC until update."""
+        index = pd.date_range(
+            "2025-06-01 12:00", periods=3, freq="h", tz="UTC", name="time"
+        )
+        velocities = {
+            currents_config.stations[0]: [1.0, 2.0, 3.0],
+            currents_config.stations[1]: [3.0, 4.0, 5.0],
+        }
+
+        async def station_frame(station: str, **kwargs: Any) -> pd.DataFrame:
+            return pd.DataFrame({"velocity": velocities[station]}, index=index)
+
+        cast(
+            MagicMock, cast(CoopsApi, mock_clients["coops"]).currents
+        ).side_effect = station_frame
+
+        feed = MultiStationCurrentsFeed(
+            location_config=location_config,
+            feed_config=currents_config,
+            expiration_interval=datetime.timedelta(hours=24),
+        )
+
+        combined = await feed._fetch(clients=mock_clients)
+        assert str(combined.index.tz) == "UTC"
+        assert combined["velocity"].tolist() == [2.0, 3.0, 4.0]
+
+        await feed.update(clients=mock_clients)
+        assert feed.values.index.tz is None
+        assert feed.values.index.strftime("%H:%M").tolist() == [
+            "08:00",
+            "09:00",
+            "10:00",
+        ]
 
 
 class TestCspfTempFeed:

@@ -27,6 +27,7 @@ NYC_BATTERY = 8518750  # NYC Battery - excellent station with comprehensive data
 TIDE_STATION = NYC_BATTERY
 CURRENT_STATION = "n03020"  # NY Harbor Entrance (nearby current station)
 TEMP_STATION = NYC_BATTERY
+STATION_TIMEZONE = "US/Eastern"  # All test stations are in the NYC area
 
 
 # Basic validation functions
@@ -36,6 +37,8 @@ def validate_tide_data(df: pd.DataFrame) -> None:
     """Validate structure and content of tide data."""
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert str(df.index.tz) == "UTC"
     assert "prediction" in df.columns
     assert "type" in df.columns
     assert bool(df["type"].isin(["high", "low"]).all())
@@ -46,6 +49,8 @@ def validate_current_data(df: pd.DataFrame) -> None:
     """Validate structure and content of current data."""
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert str(df.index.tz) == "UTC"
     assert "velocity" in df.columns
     assert pd.api.types.is_float_dtype(df["velocity"])
 
@@ -56,6 +61,8 @@ def validate_temperature_data(
     """Validate structure and content of temperature data."""
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert str(df.index.tz) == "UTC"
     expected_col = "water_temp" if product == "water_temperature" else "air_temp"
     assert expected_col in df.columns
     # Check that the column contains float values (can be NaN)
@@ -71,7 +78,7 @@ async def test_live_tides_fetch() -> None:
     """Test fetching real tide data from NOAA CO-OPS API."""
     async with aiohttp.ClientSession() as session:
         client = CoopsApi(session)
-        df = await client.tides(station=TIDE_STATION)
+        df = await client.tides(station=TIDE_STATION, timezone=STATION_TIMEZONE)
     validate_tide_data(df)
 
     # Verify we got multiple tide predictions
@@ -82,7 +89,7 @@ async def test_live_tides_fetch() -> None:
     assert df.index.is_monotonic_increasing
 
     # Check that we have some predictions in the past and some in the future
-    now = pd.Timestamp.now()
+    now = pd.Timestamp.now(tz="UTC")
     assert (df.index < now).any(), "Should have at least one past prediction"
     assert (df.index > now).any(), "Should have at least one future prediction"
 
@@ -97,7 +104,7 @@ async def test_live_currents_fetch() -> None:
     """Test fetching real current data from NOAA CO-OPS API."""
     async with aiohttp.ClientSession() as session:
         client = CoopsApi(session)
-        df = await client.currents(station=CURRENT_STATION)
+        df = await client.currents(station=CURRENT_STATION, timezone=STATION_TIMEZONE)
     validate_current_data(df)
 
     # Verify we have interpolated current data
@@ -108,7 +115,7 @@ async def test_live_currents_fetch() -> None:
     assert df.index.is_monotonic_increasing
 
     # Check that we have some predictions in the past and some in the future
-    now = pd.Timestamp.now()
+    now = pd.Timestamp.now(tz="UTC")
     assert (df.index < now).any(), "Should have at least one past prediction"
     assert (df.index > now).any(), "Should have at least one future prediction"
 
@@ -136,6 +143,7 @@ async def test_live_temperature_fetch(
             product=product,
             begin_date=begin_date,
             end_date=end_date,
+            timezone=STATION_TIMEZONE,
         )
     validate_temperature_data(df, product)
     assert len(df) > 0, f"Should have received {product} data"
@@ -158,6 +166,7 @@ async def test_live_temperature_intervals() -> None:
             product="air_temperature",
             begin_date=begin_date,
             end_date=end_date,
+            timezone=STATION_TIMEZONE,
             interval="h",  # hourly
         )
 
@@ -167,6 +176,7 @@ async def test_live_temperature_intervals() -> None:
             product="air_temperature",
             begin_date=begin_date,
             end_date=end_date,
+            timezone=STATION_TIMEZONE,
         )
 
     # Validate both datasets
@@ -191,7 +201,7 @@ async def test_api_retries() -> None:
         # Simply test that we can make a successful request
         # This is not a proper test of the retry logic, but it at least verifies
         # that the API client can connect to the API
-        df = await client.tides(station=TIDE_STATION)
+        df = await client.tides(station=TIDE_STATION, timezone=STATION_TIMEZONE)
     validate_tide_data(df)
     assert len(df) > 0, "Should have received tide data"
 
@@ -204,7 +214,7 @@ async def test_consecutive_api_calls() -> None:
         client = CoopsApi(session)
         # Make multiple API calls in succession
         for _ in range(3):
-            df = await client.tides(station=TIDE_STATION)
+            df = await client.tides(station=TIDE_STATION, timezone=STATION_TIMEZONE)
             validate_tide_data(df)
             # Small delay to avoid hitting rate limits
             await asyncio.sleep(0.5)

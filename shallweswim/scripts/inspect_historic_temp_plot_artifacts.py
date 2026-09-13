@@ -94,7 +94,14 @@ async def _fetch_historic_temps(
                 clients=clients,
             )
             try:
-                dataframes.append(await temp_feed._fetch(clients=clients))
+                # _fetch returns the client frame, which may be UTC-indexed;
+                # the plot pipeline shapes naive local times, as feeds serve.
+                dataframes.append(
+                    feeds.to_serving_index(
+                        await temp_feed._fetch(clients=clients),
+                        location_config.timezone,
+                    )
+                )
             except StationUnavailableError as e:
                 unavailable_years.append((year, str(e)))
 

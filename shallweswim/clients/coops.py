@@ -30,7 +30,9 @@ ProductType = Literal[
     "predictions", "currents_predictions", "air_temperature", "water_temperature"
 ]
 TimeInterval = Literal["hilo", "MAX_SLACK", "h", "6-min", None]
-DateFormat = "%Y%m%d"
+# CO-OPS accepts no date format without a time component, and requests are made
+# in GMT, so every window edge is sent as an explicit UTC minute.
+RequestTimeFormat = "%Y%m%d %H:%M"
 COOPS_PROVIDER = "coops"
 COOPS_MAX_CONCURRENT_REQUESTS = 4
 
@@ -98,14 +100,18 @@ class CoopsApi(BaseApiClient):
 
     API documentation: https://api.tidesandcurrents.noaa.gov/api/prod/
 
-    All methods return pandas DataFrames with timestamps localized to the station's
-    local time (either standard or daylight time).
+    All methods return pandas DataFrames indexed by timezone-aware UTC
+    timestamps. Requests use ``time_zone=gmt`` so both folds of a daylight
+    saving fall-back hour and the skipped spring-forward hour are exact.
+    Request windows are still expressed in station-local days: callers pass a
+    naive local date and a ``timezone``, which this client converts to UTC for
+    the request.
     """
 
     BASE_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
     BASE_PARAMS: ClassVar[CoopsRequestParams] = {
         "application": "shallweswim",
-        "time_zone": "lst_ldt",
+        "time_zone": "gmt",
         "units": "english",
         "format": "csv",
     }
@@ -118,16 +124,50 @@ class CoopsApi(BaseApiClient):
         """Initialize CoopsApi with an aiohttp client session."""
         super().__init__(session=session)
 
-    def _format_date(self, date: datetime.date | datetime.datetime) -> str:
-        """Format a date for NOAA CO-OPS API requests."""
+    def _format_request_time(
+        self,
+        date: datetime.date | datetime.datetime,
+        timezone: str,
+        *,
+        end_of_day: bool = False,
+    ) -> str:
+        """Format one edge of a station-local request window as a UTC time.
+
+        A window covers whole local days, from local midnight through the last
+        local minute, which is what date-only edges meant while requests were
+        made in local time. A local edge that a daylight saving transition
+        makes nonexistent or ambiguous is resolved deterministically rather
+        than raising: window edges select data, they do not describe an
+        observation.
+
+        Args:
+            date: Local window edge; a datetime contributes only its date.
+            timezone: Station timezone the naive edge is expressed in.
+            end_of_day: Whether the edge closes the window rather than opens it.
+
+        Returns:
+            The edge as a UTC timestamp string in the CO-OPS request format.
+        """
         if isinstance(date, datetime.datetime):
             date = date.date()
-        return date.strftime(DateFormat)
+        wall = datetime.datetime.combine(
+            date, datetime.time(23, 59) if end_of_day else datetime.time.min
+        )
+        local = pd.Timestamp(wall).tz_localize(
+            timezone, nonexistent="shift_forward", ambiguous=False
+        )
+        return local.tz_convert("UTC").strftime(RequestTimeFormat)
 
     def _build_url(self, params: CoopsRequestParams) -> str:
         """Build a CO-OPS datagetter URL with default and request params."""
         url_params = dict(self.BASE_PARAMS, **params)
-        return self.BASE_URL + "?" + urllib.parse.urlencode(url_params)
+        # Percent-encode rather than plus-encode: request times contain a space
+        # separator, and "%20" decodes to a space under every query parsing rule.
+        return (
+            self.BASE_URL
+            + "?"
+            + urllib.parse.urlencode(url_params, quote_via=urllib.parse.quote)
+        )
 
     async def _execute_request(self, url: str, location_code: str) -> pd.DataFrame:
         """Performs the CO-OPS API request, handles errors, and parses the response.
@@ -227,32 +267,37 @@ class CoopsApi(BaseApiClient):
     async def tides(
         self,
         station: int,
+        timezone: str,
         location_code: str = "unknown",
     ) -> pd.DataFrame:
         """Return tide predictions from yesterday to two days from now.
 
         Args:
             station: NOAA station ID
+            timezone: Station timezone the request window is expressed in
+            location_code: Location code for logging purposes
 
         Returns:
-            DataFrame with index=time and columns:
+            DataFrame indexed by timezone-aware UTC time, with columns:
                 prediction: float - Water level in feet relative to MLLW
                 type: str - Either 'low' or 'high'
         """
         today = datetime.date.today()
-        begin_date = today - datetime.timedelta(days=1)
-        end_date = today + datetime.timedelta(days=2)
+        begin = self._format_request_time(today - datetime.timedelta(days=1), timezone)
+        end = self._format_request_time(
+            today + datetime.timedelta(days=2), timezone, end_of_day=True
+        )
         params: CoopsRequestParams = {
             "product": "predictions",
             "datum": "MLLW",
-            "begin_date": self._format_date(begin_date),
-            "end_date": self._format_date(end_date),
+            "begin_date": begin,
+            "end_date": end,
             "station": station,
             "interval": "hilo",
         }
 
         self.log(
-            f"Fetching tide predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
+            f"Fetching tide predictions for station {station} from {begin} to {end} UTC",
             level=logging.DEBUG,
             location_code=location_code,
         )
@@ -276,6 +321,7 @@ class CoopsApi(BaseApiClient):
     async def currents(
         self,
         station: str,
+        timezone: str,
         interpolate: bool = True,
         location_code: str = "unknown",
     ) -> pd.DataFrame:
@@ -283,10 +329,12 @@ class CoopsApi(BaseApiClient):
 
         Args:
             station: NOAA current station ID (string format)
+            timezone: Station timezone the request window is expressed in
             interpolate: If True, interpolate between flood/slack/ebb points
+            location_code: Location code for logging purposes
 
         Returns:
-            DataFrame with index=time and columns:
+            DataFrame indexed by timezone-aware UTC time, with columns:
                 velocity: float - Current velocity in knots (positive=flood, negative=ebb)
                 depth: Optional[float] - Depth in feet (if available)
                 type: Optional[str] - Current type (flood/slack/ebb)
@@ -294,19 +342,21 @@ class CoopsApi(BaseApiClient):
                 bin: Optional[int] - Bin number
         """
         today = datetime.date.today()
-        begin_date = today - datetime.timedelta(days=1)
-        end_date = today + datetime.timedelta(days=2)
+        begin = self._format_request_time(today - datetime.timedelta(days=1), timezone)
+        end = self._format_request_time(
+            today + datetime.timedelta(days=2), timezone, end_of_day=True
+        )
         params: CoopsRequestParams = {
             "product": "currents_predictions",
             "datum": "MLLW",
-            "begin_date": self._format_date(begin_date),
-            "end_date": self._format_date(end_date),
+            "begin_date": begin,
+            "end_date": end,
             "station": station,
             "interval": "MAX_SLACK",
         }
 
         self.log(
-            f"Fetching current predictions for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
+            f"Fetching current predictions for station {station} from {begin} to {end} UTC",
             level=logging.DEBUG,
             location_code=location_code,
         )
@@ -349,6 +399,7 @@ class CoopsApi(BaseApiClient):
         product: Literal["air_temperature", "water_temperature"],
         begin_date: datetime.date,
         end_date: datetime.date,
+        timezone: str,
         interval: TimeInterval = None,
         location_code: str = "unknown",
     ) -> pd.DataFrame:
@@ -357,12 +408,14 @@ class CoopsApi(BaseApiClient):
         Args:
             station: NOAA station ID
             product: Type of temperature data to fetch
-            begin_date: Start date for data fetch
-            end_date: End date for data fetch
+            begin_date: Local start date for data fetch
+            end_date: Local end date for data fetch
+            timezone: Station timezone the request window is expressed in
             interval: Optional time interval (if None, returns 6-minute intervals)
+            location_code: Location code for logging purposes
 
         Returns:
-            DataFrame with index=time and columns:
+            DataFrame indexed by timezone-aware UTC time, with columns:
                 water_temp: Optional[float] - Water temperature in °F
                 air_temp: Optional[float] - Air temperature in °F
 
@@ -375,16 +428,18 @@ class CoopsApi(BaseApiClient):
         if product not in ["air_temperature", "water_temperature"]:
             raise ValueError(f"Invalid product: {product}")
 
+        begin = self._format_request_time(begin_date, timezone)
+        end = self._format_request_time(end_date, timezone, end_of_day=True)
         params: CoopsRequestParams = {
             "product": product,
-            "begin_date": self._format_date(begin_date),
-            "end_date": self._format_date(end_date),
+            "begin_date": begin,
+            "end_date": end,
             "station": station,
             "interval": interval,
         }
 
         self.log(
-            f"Fetching temperature data for station {station} from {self._format_date(begin_date)} to {self._format_date(end_date)}",
+            f"Fetching temperature data for station {station} from {begin} to {end} UTC",
             level=logging.DEBUG,
             location_code=location_code,
         )
@@ -418,14 +473,13 @@ class CoopsApi(BaseApiClient):
             time_col: Name of the timestamp column
 
         Returns:
-            DataFrame with:
-            - Timestamp column converted to datetime and set as index
-            - Timezone info removed (already in local time from API)
+            DataFrame whose timestamp column is parsed into a timezone-aware
+            UTC index named "time". Responses are requested in GMT, so the
+            index carries the absolute instant of every reading, including both
+            folds of a daylight saving fall-back hour.
         """
         return (
             df.assign(time=lambda x: pd.to_datetime(x[time_col], utc=True))
             .drop(columns=time_col)
             .set_index("time")
-            # Drop timezone info. Already in local time (LST/LDT in request)
-            .tz_localize(None)
         )

@@ -708,7 +708,7 @@ class CoopsTempFeed(TempFeed):
         """Fetch temperature data from NOAA CO-OPS API.
 
         Returns:
-            DataFrame with temperature data
+            DataFrame of temperature data indexed by timezone-aware UTC time
 
         Raises:
             Exception: If fetching fails
@@ -729,6 +729,8 @@ class CoopsTempFeed(TempFeed):
                 end_date=end_date,
                 product=self.product,  # Use the feed's product attribute
                 interval=self.interval,
+                # The window edges are local dates; the client sends them in UTC.
+                timezone=str(self.location_config.timezone),
                 location_code=self.location_config.code,
             )
             return df
@@ -951,7 +953,7 @@ class CoopsTidesFeed(Feed):
         """Fetch tide predictions from NOAA CO-OPS API.
 
         Returns:
-            DataFrame with tide predictions
+            DataFrame of tide predictions indexed by timezone-aware UTC time
 
         Raises:
             Exception: If fetching fails
@@ -965,6 +967,7 @@ class CoopsTidesFeed(Feed):
             # Fetch data from NOAA CO-OPS API using the client instance
             df = await coops_client.tides(
                 station=station_id,
+                timezone=str(self.location_config.timezone),
                 location_code=self.location_config.code,
             )
             return df
@@ -1080,7 +1083,7 @@ class CoopsCurrentsFeed(CurrentsFeed):
         """Fetch current predictions from NOAA CO-OPS API.
 
         Returns:
-            DataFrame with current predictions
+            DataFrame of current predictions indexed by timezone-aware UTC time
 
         Raises:
             Exception: If fetching fails
@@ -1096,6 +1099,7 @@ class CoopsCurrentsFeed(CurrentsFeed):
             # Fetch data from NOAA CO-OPS API using the client instance
             df = await coops_client.currents(
                 station=self.station,
+                timezone=str(self.location_config.timezone),
                 location_code=self.location_config.code,
                 interpolate=self.interpolate,
             )
@@ -1196,6 +1200,11 @@ class MultiStationCurrentsFeed(CompositeFeed):
 
         Strategy: For overlapping timestamps, calculate the average velocity.
         This matches the legacy implementation in LocationDataManager._fetch_tides_and_currents.
+
+        Stations are averaged on the component frames' own index, which CO-OPS
+        stations express as timezone-aware UTC instants, so stations align on
+        the absolute instant rather than on a wall time. The combined frame
+        keeps that index; Feed.update derives the naive local serving index.
 
         Args:
             dataframes: List of DataFrames from individual current stations

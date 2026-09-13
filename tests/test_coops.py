@@ -8,6 +8,7 @@ import urllib.parse
 from collections.abc import AsyncIterator
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 # Third-party imports
 import aiohttp
@@ -21,6 +22,26 @@ from shallweswim.clients.coops import (
     CoopsApi,
     CoopsConnectionError,
 )
+from shallweswim.core.feeds import to_serving_index
+
+# Station timezone used for every request window in these tests
+EASTERN = "US/Eastern"
+
+
+def request_query(mock_request: AsyncMock) -> dict[str, list[str]]:
+    """Return the query parameters of the URL the client requested."""
+    url = cast(str, mock_request.call_args.args[0])
+    return urllib.parse.parse_qs(
+        urllib.parse.urlparse(url).query, keep_blank_values=True
+    )
+
+
+def local_day_edge_utc(date: datetime.date, *, end_of_day: bool) -> str:
+    """Return a US/Eastern day edge as a CO-OPS UTC request string."""
+    wall = datetime.time(23, 59) if end_of_day else datetime.time.min
+    local = datetime.datetime.combine(date, wall, tzinfo=ZoneInfo(EASTERN))
+    return local.astimezone(datetime.UTC).strftime("%Y%m%d %H:%M")
+
 
 # Type definitions for test data (assuming they are defined elsewhere or basic)
 # Fixtures
@@ -43,7 +64,7 @@ def coops_client(mock_session: MagicMock) -> CoopsApi:
 
 @pytest.fixture
 def mock_tide_data() -> pd.DataFrame:
-    """Mock tide prediction data."""
+    """Mock tide prediction data, with GMT timestamps as the API returns them."""
     return pd.DataFrame(
         {
             "Date Time": ["2025-04-19 10:00", "2025-04-19 16:00"],
@@ -55,7 +76,7 @@ def mock_tide_data() -> pd.DataFrame:
 
 @pytest.fixture
 def mock_current_data() -> pd.DataFrame:
-    """Mock current prediction data."""
+    """Mock current prediction data, with GMT timestamps as the API returns them."""
     return pd.DataFrame(
         {
             "Time": ["2025-04-19 10:00", "2025-04-19 16:00"],
@@ -70,7 +91,7 @@ def mock_current_data() -> pd.DataFrame:
 
 @pytest.fixture
 def mock_temperature_data() -> pd.DataFrame:
-    """Create a mock temperature DataFrame."""
+    """Create a mock temperature DataFrame with GMT timestamps."""
     # Data *before* _FixTime processing (as returned by _Request mock)
     data = {
         "Date Time": ["2025-04-19 10:00", "2025-04-19 16:00"],
@@ -79,6 +100,25 @@ def mock_temperature_data() -> pd.DataFrame:
     }
     df = pd.DataFrame(data)
     return df
+
+
+@pytest.fixture
+def mock_fall_back_temperature_data() -> pd.DataFrame:
+    """GMT readings spanning the US/Eastern fall-back hour of 2025-11-02.
+
+    05:00Z is 01:00 EDT and 06:00Z is 01:00 EST: one repeated wall time, two
+    instants. The local-time product returns only one of them.
+    """
+    return pd.DataFrame(
+        {
+            "Date Time": [
+                "2025-11-02 05:00",
+                "2025-11-02 06:00",
+                "2025-11-02 07:00",
+            ],
+            " Water Temperature": [60.0, 59.0, 58.0],
+        }
+    )
 
 
 def test_build_url_merges_base_and_request_params(coops_client: CoopsApi) -> None:
@@ -98,7 +138,7 @@ def test_build_url_merges_base_and_request_params(coops_client: CoopsApi) -> Non
 
     assert url.startswith(CoopsApi.BASE_URL + "?")
     assert query["application"] == ["shallweswim"]
-    assert query["time_zone"] == ["lst_ldt"]
+    assert query["time_zone"] == ["gmt"]
     assert query["units"] == ["english"]
     assert query["format"] == ["csv"]
     assert query["product"] == ["water_temperature"]
@@ -124,6 +164,7 @@ async def test_tides_success(
 
         df = await coops_client.tides(
             station=9414290,
+            timezone=EASTERN,
             location_code="test_loc",
         )
 
@@ -131,6 +172,18 @@ async def test_tides_success(
     assert list(df.columns) == ["prediction", "type"]
     assert df["type"].tolist() == ["high", "low"]
     assert df["prediction"].tolist() == [5.2, 1.3]
+    assert str(df.index.tz) == "UTC"
+
+    # The request window stays a span of local days, expressed in UTC.
+    query = request_query(mock_request)
+    assert query["time_zone"] == ["gmt"]
+    today = datetime.date.today()
+    assert query["begin_date"] == [
+        local_day_edge_utc(today - datetime.timedelta(days=1), end_of_day=False)
+    ]
+    assert query["end_date"] == [
+        local_day_edge_utc(today + datetime.timedelta(days=2), end_of_day=True)
+    ]
 
 
 @pytest.mark.asyncio
@@ -148,6 +201,7 @@ async def test_currents_success(
 
         df = await coops_client.currents(
             station="SFB1201",
+            timezone=EASTERN,
             interpolate=False,
             location_code="test_loc",
         )
@@ -155,6 +209,8 @@ async def test_currents_success(
     assert len(df) == 2
     assert list(df.columns) == ["velocity"]
     assert df["velocity"].tolist() == [2.5, -1.8]
+    assert str(df.index.tz) == "UTC"
+    assert request_query(mock_request)["time_zone"] == ["gmt"]
 
 
 @pytest.mark.asyncio
@@ -174,11 +230,14 @@ async def test_temperature_success(
             station=9414290,
             begin_date=datetime.date(2025, 4, 19),
             end_date=datetime.date(2025, 4, 19),
+            timezone=EASTERN,
             product="water_temperature",
         )
         expected_water_df = pd.DataFrame(
             {"water_temp": [62.5, 63.2], "air_temp": [65.0, 66.0]},
-            index=pd.to_datetime(["2025-04-19 10:00:00", "2025-04-19 16:00:00"]),
+            index=pd.to_datetime(
+                ["2025-04-19 10:00:00", "2025-04-19 16:00:00"], utc=True
+            ),
         ).rename_axis("time")  # Match index name set by _FixTime
         # Client returns all temp columns found, test needs to select the relevant one
         assert_frame_equal(df_water[["water_temp"]], expected_water_df[["water_temp"]])
@@ -188,14 +247,103 @@ async def test_temperature_success(
             station=9414290,
             begin_date=datetime.date(2025, 4, 19),
             end_date=datetime.date(2025, 4, 19),
+            timezone=EASTERN,
             product="air_temperature",
         )
         expected_air_df = pd.DataFrame(
             {"water_temp": [62.5, 63.2], "air_temp": [65.0, 66.0]},
-            index=pd.to_datetime(["2025-04-19 10:00:00", "2025-04-19 16:00:00"]),
+            index=pd.to_datetime(
+                ["2025-04-19 10:00:00", "2025-04-19 16:00:00"], utc=True
+            ),
         ).rename_axis("time")  # Match index name set by _FixTime
         # Client returns all temp columns found, test needs to select the relevant one
         assert_frame_equal(df_air[["air_temp"]], expected_air_df[["air_temp"]])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("begin_date", "end_date", "expected_begin", "expected_end"),
+    [
+        # Wholly inside daylight time: local midnight is 04:00Z, the last local
+        # minute of the day is 03:59Z the next morning.
+        (
+            datetime.date(2025, 4, 19),
+            datetime.date(2025, 4, 19),
+            "20250419 04:00",
+            "20250420 03:59",
+        ),
+        # Across the 2025-11-02 fall-back day: the window opens on a daylight
+        # time offset and closes on a standard time one.
+        (
+            datetime.date(2025, 11, 1),
+            datetime.date(2025, 11, 3),
+            "20251101 04:00",
+            "20251104 04:59",
+        ),
+    ],
+)
+async def test_temperature_request_window_converts_local_days_to_utc(
+    coops_client: CoopsApi,
+    mock_temperature_data: pd.DataFrame,
+    begin_date: datetime.date,
+    end_date: datetime.date,
+    expected_begin: str,
+    expected_end: str,
+) -> None:
+    """Local window edges reach CO-OPS as the UTC instants they name."""
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.return_value = mock_temperature_data
+
+        await coops_client.temperature(
+            station=9414290,
+            product="water_temperature",
+            begin_date=begin_date,
+            end_date=end_date,
+            timezone=EASTERN,
+        )
+
+    query = request_query(mock_request)
+    assert query["time_zone"] == ["gmt"]
+    assert query["begin_date"] == [expected_begin]
+    assert query["end_date"] == [expected_end]
+
+
+@pytest.mark.asyncio
+async def test_temperature_keeps_both_folds_of_the_fall_back_hour(
+    coops_client: CoopsApi, mock_fall_back_temperature_data: pd.DataFrame
+) -> None:
+    """A GMT fall-back hour arrives as two distinct instants, one 01:00 local.
+
+    This is why a fall-back year has 8761 distinct hourly instants rather than
+    8760: the repeated wall time is two readings. Serving keeps the first.
+    """
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.return_value = mock_fall_back_temperature_data
+
+        df = await coops_client.temperature(
+            station=8518750,
+            product="water_temperature",
+            begin_date=datetime.date(2025, 11, 2),
+            end_date=datetime.date(2025, 11, 2),
+            timezone=EASTERN,
+        )
+
+    assert str(df.index.tz) == "UTC"
+    assert df.index.is_unique
+    local = df.index.tz_convert(EASTERN)
+    assert local.strftime("%H:%M").tolist() == ["01:00", "01:00", "02:00"]
+    assert df["water_temp"].tolist() == [60.0, 59.0, 58.0]
+
+    served = to_serving_index(df, ZoneInfo(EASTERN))
+    assert served.index.tz is None
+    assert served.index.is_unique
+    assert served.index.strftime("%H:%M").tolist() == ["01:00", "02:00"]
+    # The kept 01:00 reading is the daylight time fold, the earlier instant.
+    assert served["water_temp"].tolist() == [60.0, 58.0]
 
 
 @pytest.mark.asyncio
@@ -211,6 +359,7 @@ async def test_connection_error(coops_client: CoopsApi) -> None:
         with pytest.raises(CoopsConnectionError, match="Connection timed out"):
             await coops_client.tides(
                 station=9414290,
+                timezone=EASTERN,
                 location_code="test_conn_error",
             )
 
@@ -323,6 +472,7 @@ async def test_data_error(coops_client: CoopsApi) -> None:
             # Use tides for testing connection/data errors as it's simpler
             await coops_client.tides(
                 station=9414290,
+                timezone=EASTERN,
                 location_code="test_data_error",
             )
 
@@ -335,6 +485,7 @@ async def test_invalid_temperature_dates(coops_client: CoopsApi) -> None:
             station=9414290,  # Change to int
             begin_date=datetime.date(2025, 4, 20),  # Correct arg name
             end_date=datetime.date(2025, 4, 19),
+            timezone=EASTERN,
             product="air_temperature",
         )
 
@@ -347,5 +498,6 @@ async def test_invalid_temperature_product(coops_client: CoopsApi) -> None:
             station=9414290,  # Change to int
             begin_date=datetime.date(2025, 4, 19),  # Correct arg name
             end_date=datetime.date(2025, 4, 19),
+            timezone=EASTERN,
             product=cast(Any, "water_level"),  # Intentionally invalid, cast to Any
         )

@@ -1150,9 +1150,12 @@ Behavior:
   a failure event carries the years that fell back.
 
 Scope: temperature history only. Live temperature and observational currents
-feeds keep their short provider windows, tide feeds never archive, and the
-capture job never sets the read variable; incremental provider fetching driven
-by the archive is Phase 5.
+feeds keep their short provider windows and tide feeds never archive. The
+capture job sets the read variable only when it publishes snapshots (Phase
+2), because a snapshot carries the full historical range and the builder
+restores past years from the archive rather than refetching them; archive
+capture alone never hydrates. Broader archive-driven incremental fetching is
+Phase 5.
 
 ### Phase 2: Define and Publish Snapshots
 
@@ -1232,7 +1235,12 @@ and publishes. This adds the process pool and plot generation to the job;
 its measured duration and memory are Phase 2 observations. Publication is
 enabled by `SHALLWESWIM_SNAPSHOT_PUBLISH=1` in the job definition only, is
 isolated from capture like capture is from serving, and never runs in the
-web service. Hourly cadence is inherited from the job; Phase 4 revisits it.
+web service. When publishing, the job runs the full serving cycle for every
+location (all feeds, including tide and prediction feeds, which archive
+capture alone skips) with the historical range set to the full configured
+years and `SHALLWESWIM_ARCHIVE_READ_BUCKET` set, so past years hydrate from
+the archive and only the current year and any missing years reach the
+provider. Hourly cadence is inherited from the job; Phase 4 revisits it.
 
 Serialization and loading live in one module with a `Snapshot` model, a
 `SnapshotStore` protocol with memory, filesystem, and GCS implementations

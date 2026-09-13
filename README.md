@@ -471,11 +471,10 @@ Leave it empty to disable capture. The service continues serving its in-memory
 data; archive failures are logged and do not change feed success or retry
 scheduling. Repeated fetches of unchanged readings leave the stored partition
 byte-identical, so only new observations and upstream revisions are written. Only fresh historical years are captured, so cached years keep their
-original retrieval times. Historical years are archived at the provider's native
-cadence, before the hourly serving resample, and a daylight-saving fall-back hour
-that appears only once is dropped with a warning rather than failing the year.
-Prediction feeds, including tide and NOAA CO-OPS currents predictions, are
-excluded.
+original retrieval times. Historical years are archived in UTC at the provider's
+native cadence, before the hourly serving resample, so both folds of a
+daylight-saving fall-back hour reach the archive. Prediction feeds, including
+tide and NOAA CO-OPS currents predictions, are excluded.
 
 Production capture runs from a scheduled one-shot job rather than the web
 service. The job fetches every archivable feed once and exits:

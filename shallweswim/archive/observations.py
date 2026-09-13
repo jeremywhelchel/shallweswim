@@ -1,4 +1,8 @@
-"""Normalized scalar-observation schema, conversion, and read boundary."""
+"""Normalized scalar-observation schema, conversion, and read boundary.
+
+Capture receives the UTC-indexed frame a client returned, so conversion here is
+a timezone change rather than an interpretation of local wall times.
+"""
 
 import dataclasses
 import datetime
@@ -57,13 +61,12 @@ class ObservationModel(pa.DataFrameModel):
 class NormalizedObservations:
     """Archive rows plus the rows dropped to produce them.
 
-    `ambiguous_dropped` counts unresolvable fall-back rows. `conflicting_dropped`
-    counts rows that repeated an instant already kept but claimed a different
-    value; identical repeats collapse silently and are not counted.
+    `conflicting_dropped` counts rows that repeated an instant already kept but
+    claimed a different value; identical repeats collapse silently and are not
+    counted.
     """
 
     frame: pd.DataFrame
-    ambiguous_dropped: int
     conflicting_dropped: int
 
 
@@ -72,20 +75,21 @@ def normalize_observations(
     *,
     value_column: str,
     unit: str,
-    timezone: datetime.tzinfo,
     retrieved_at: datetime.datetime,
 ) -> NormalizedObservations:
-    """Convert a feed's scalar values and naive local times to archive rows.
+    """Convert a client's scalar values and UTC instants to archive rows.
 
-    Ambiguous fall-back times are inferred only when the ordered observations
-    contain enough information to distinguish both folds. When inference is
-    impossible the ambiguous rows are dropped and counted for the caller, which
-    knows the source identity; a fold is never guessed. Nonexistent
-    spring-forward wall times still raise instead of being shifted.
+    The frame must carry a timezone-aware index, which every client returns, so
+    the observation time is an exact instant and both folds of a daylight-saving
+    fall-back hour stay distinct.
 
     A repeated UTC instant keeps its first row. A repeat that claims a different
     value is also dropped, but counted separately so the discarded claim is
     visible rather than silent.
+
+    Raises:
+        ValueError: If the value column is missing, the unit is empty, or the
+            frame index is timezone naive.
     """
     if value_column not in frame.columns:
         raise ValueError(f"Feed frame must contain {value_column}")
@@ -96,33 +100,10 @@ def normalize_observations(
     observations = frame.loc[frame[value_column].notna()]
 
     observed_at = pd.DatetimeIndex(observations.index)
-    if observed_at.tz is not None:
-        raise ValueError("Feed timestamps must be timezone naive")
+    if observed_at.tz is None:
+        raise ValueError("Feed timestamps must be timezone-aware")
 
-    try:
-        localized = observed_at.tz_localize(
-            timezone,
-            ambiguous="infer",
-            nonexistent="raise",
-        )
-    except ValueError:
-        # pandas reports every failed localization as a plain ValueError, both
-        # "no repeated times" and "there are N dst switches". Retry with the
-        # ambiguous rows marked so the resolvable ones survive; nonexistent
-        # times raise again from this second attempt.
-        localized = observed_at.tz_localize(
-            timezone,
-            ambiguous="NaT",
-            nonexistent="raise",
-        )
-
-    resolved = localized.notna()
-    ambiguous_dropped = int((~resolved).sum())
-    if ambiguous_dropped:
-        observations = observations.loc[resolved]
-        localized = localized[resolved]
-
-    observed_at_utc = localized.tz_convert("UTC").as_unit("ns")
+    observed_at_utc = observed_at.tz_convert("UTC").as_unit("ns")
 
     # Native-cadence provider frames may repeat a reading. Two fall-back folds
     # are distinct UTC instants, so collapsing on the instant keeps both.
@@ -156,7 +137,6 @@ def normalize_observations(
     )
     return NormalizedObservations(
         frame=normalize_archive_frame(result, expected_unit=unit),
-        ambiguous_dropped=ambiguous_dropped,
         conflicting_dropped=conflicting_dropped,
     )
 

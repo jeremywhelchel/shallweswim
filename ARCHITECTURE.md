@@ -76,13 +76,13 @@ Background Task → Derived Data Precompute → Update Derived Cache
 ```
 
 Every client returns frames indexed by timezone-aware UTC instants, as does the
-local harmonic tide feed.
-Feeds derive the naive local serving index in one step before validation,
-converting to the location timezone and keeping the first reading of a repeated
-fall-back wall time, while archive capture receives the client frame unconverted
-and unfiltered by configured outliers. Composite feeds combine frames their
-member feeds already converted, so that step passes a naive frame through
-unchanged.
+local harmonic tide feed. Feeds derive the naive location-local serving index in
+one step before validation, converting to the location timezone and keeping the
+first reading of a repeated daylight-saving fall-back wall time. Archive capture
+receives the UTC client frame itself, unconverted and unfiltered by configured
+outliers, so both folds of that hour are archived as the distinct instants they
+are. Composite feeds combine frames their member feeds already converted, so
+that step passes a naive frame through unchanged.
 
 When `SHALLWESWIM_ARCHIVE_BUCKET` is set, successful temperature updates and
 successful observational currents updates also merge observations into the

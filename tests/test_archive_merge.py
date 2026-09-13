@@ -6,7 +6,6 @@ from io import BytesIO
 
 import pandas as pd
 import pytest
-import pytz
 
 from shallweswim.archive import merge as merge_module
 from shallweswim.archive.merge import ArchiveIntegrityError, merge_observations
@@ -24,19 +23,18 @@ from shallweswim.archive.store import (
 
 SOURCE = "coops:temperature:8518750"
 KEY = "archive/temperature/coops/8518750/2026.parquet"
-EASTERN = pytz.timezone("US/Eastern")
 
 
 def _rows(values: dict[str, float], retrieved_at: datetime.datetime) -> pd.DataFrame:
+    """Normalize a client-style UTC-indexed frame into archive rows."""
     frame = pd.DataFrame(
         {TEMPERATURE_VALUE_COLUMN: list(values.values())},
-        index=pd.DatetimeIndex(values, name="time"),
+        index=pd.DatetimeIndex(values, tz="UTC", name="time"),
     )
     return normalize_observations(
         frame,
         value_column=TEMPERATURE_VALUE_COLUMN,
         unit=TEMPERATURE_UNIT,
-        timezone=EASTERN,
         retrieved_at=retrieved_at,
     ).frame
 
@@ -249,7 +247,7 @@ async def test_equal_retrieval_conflict_fails_then_newer_fetch_recovers(
         caplog.at_level(logging.WARNING),
         pytest.raises(
             ArchiveIntegrityError,
-            match=r"source=coops:temperature:8518750 observed_at=2026-01-01T17:00:00\+00:00",
+            match=r"source=coops:temperature:8518750 observed_at=2026-01-01T12:00:00\+00:00",
         ),
     ):
         await merge_observations(
@@ -266,7 +264,7 @@ async def test_equal_retrieval_conflict_fails_then_newer_fetch_recovers(
     assert failure.outcome == "failed"
     assert failure.levelno == logging.WARNING
     assert failure.source_identity == SOURCE
-    assert failure.observed_at == "2026-01-01T17:00:00+00:00"
+    assert failure.observed_at == "2026-01-01T12:00:00+00:00"
     # A conflict aborts classification, so only the validated incoming count is
     # known and the unclassified counts stay zero.
     assert failure.incoming_count == 1

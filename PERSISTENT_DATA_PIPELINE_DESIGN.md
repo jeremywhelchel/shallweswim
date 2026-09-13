@@ -518,27 +518,17 @@ rewrite tools. Dictionary encoding makes the repeated canonical value
 negligible in practice. Retrieval time is also per row because a partition
 contains observations from many fetches after its first merge.
 
-Feeds publish naive location-local timestamps for serving. Until the UTC
-client frames below land, clients also return naive local frames, so the
-archive writer converts `observed_at` to UTC at the write boundary using the
-location's configured timezone; `retrieved_at` is always stored as UTC.
-Daylight-saving fall-back times require explicit handling in that transitional
-path: the conversion must never silently choose one occurrence of an
-ambiguous local time. The converter first infers folds from the ordered
-observations, which succeeds whenever the source frame contains both
-occurrences of the repeated hour. If inference is impossible because a
-repeated hour appears only once, capture drops exactly the ambiguous rows,
-archives the rest of the frame, and emits a WARNING event
-(`component=archive`, `operation=normalize`, `outcome=ambiguous_dropped`,
-`record_count` = rows dropped, plus the source identity) so the loss is
-visible per source. It never guesses a fold. A nonexistent local time in the
-skipped spring-forward hour fails archive capture rather than allowing the
-timezone library to guess or shift it.
+Clients return timezone-aware UTC frames and feeds publish naive
+location-local frames for serving, so the archive writer receives UTC
+instants directly: `observed_at` is the client instant converted to UTC with
+no wall-time interpretation, and `retrieved_at` is always stored as UTC. A
+naive index reaching the archive is a defect and fails capture rather than
+being localized.
 
 Historical temperature capture archives each freshly fetched year at the
-provider's native cadence, from the per-year frame before the serving
-resample. Resampling to hourly is a serving concern and collapses the repeated
-fall-back hour, so it must not precede capture.
+provider's native cadence, from the per-year UTC frame before the serving
+resample. Resampling to hourly is a serving concern and must not precede
+capture.
 
 #### UTC Client Frames
 
@@ -566,12 +556,12 @@ therefore standardizes on UTC at the client boundary:
   collapse any repeated wall time by keeping the first occurrence in instant
   order. Published frames keep today's contract exactly: naive local, unique,
   monotonic. Queries, plots, the API, and the historical resample are
-  untouched. During the client-by-client migration the step is a no-op for a
-  naive frame; the tolerance is removed with the last client.
+  untouched. A naive frame passes through the step unchanged, because
+  composite feeds publish frames their member feeds already converted.
 - Capture receives the UTC frame. `normalize_observations` requires an aware
-  index and converts it directly; fold inference, the `ambiguous_dropped`
-  event, and the naive input path are deleted once every client returns UTC.
-  The `conflict_dropped` rule for repeated instants stays.
+  index and converts it directly; the former fold inference,
+  `ambiguous_dropped` event, and naive input path no longer exist. The
+  `conflict_dropped` rule for repeated instants stays.
 - Historical per-year frames are captured in UTC at native cadence, then
   converted for the serving resample, so both folds reach the archive for
   every source.
@@ -1190,9 +1180,9 @@ requires stronger migration and equivalence validation.
   archive source identity.
 - Every archive read uses the normalizing reader helper; older additive schemas
   load missing newer nullable columns as null.
-- Daylight-saving fall-back tests prove that the repeated local 1 AM hour is
-  converted without silently conflating observations, and ambiguous input that
-  cannot be resolved drops only the ambiguous rows with a visible event.
+- Daylight-saving fall-back tests prove that two UTC instants sharing a local
+  wall time archive as two rows and serve as one, and that a naive index is
+  rejected at the archive boundary.
 - Historical capture archives the pre-resample per-year frame, so native
   10- and 15-minute cadences and both fall-back folds reach the archive.
 - All clients return timezone-aware UTC frames; feeds derive the naive local

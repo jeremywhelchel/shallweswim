@@ -97,20 +97,26 @@ def setup_logging_mock(monkeypatch: pytest.MonkeyPatch) -> Mock:
 
 
 def _temp_frame() -> pd.DataFrame:
-    """Return a fixed day of hourly water temperatures."""
-    index = pd.date_range(OBSERVATION_START, periods=24, freq="h", name="time")
+    """Return a fixed day of hourly water temperatures, as a client returns them."""
+    index = pd.date_range(
+        OBSERVATION_START, periods=24, freq="h", tz="UTC", name="time"
+    )
     return pd.DataFrame({"water_temp": [68.5] * len(index)}, index=index)
 
 
 def _currents_frame() -> pd.DataFrame:
-    """Return a fixed day of hourly NWIS velocity observations."""
-    index = pd.date_range(OBSERVATION_START, periods=24, freq="h", name="time")
+    """Return a fixed day of hourly NWIS velocity observations in UTC."""
+    index = pd.date_range(
+        OBSERVATION_START, periods=24, freq="h", tz="UTC", name="time"
+    )
     return pd.DataFrame({"velocity_fps": [1.5] * len(index)}, index=index)
 
 
 def _tides_frame() -> pd.DataFrame:
     """Return a minimal high/low tide frame; the job must never request it."""
-    index = pd.date_range(OBSERVATION_START, periods=2, freq="6h", name="time")
+    index = pd.date_range(
+        OBSERVATION_START, periods=2, freq="6h", tz="UTC", name="time"
+    )
     return pd.DataFrame(
         {
             "prediction": [-0.5, 1.2],
@@ -148,7 +154,9 @@ class MockCoopsApi(CoopsApi):
     ) -> pd.DataFrame:
         """Count prediction current requests; the job must never make one."""
         self.currents_calls += 1
-        index = pd.date_range(OBSERVATION_START, periods=2, freq="h", name="time")
+        index = pd.date_range(
+            OBSERVATION_START, periods=2, freq="h", tz="UTC", name="time"
+        )
         return pd.DataFrame({"velocity": [1.0, 1.1]}, index=index)
 
     async def temperature(

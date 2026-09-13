@@ -536,8 +536,8 @@ class Feed(BaseModel, abc.ABC):
         """Isolate all archive failures from feed publication and scheduling.
 
         The archive keeps provider readings unfiltered: the frame arrives as the
-        client returned it. Configured outlier removal is a serving concern and
-        applies only to published data.
+        client returned it, indexed by timezone-aware UTC instants. Configured
+        outlier removal is a serving concern and applies only to published data.
         """
         # A stale count must never outlive the fetch that produced it.
         self._last_capture = None
@@ -553,7 +553,6 @@ class Feed(BaseModel, abc.ABC):
                 measurement=measurement,
                 value_column=value_column,
                 unit=unit,
-                timezone=self.location_config.timezone,
                 retrieved_at=retrieved_at,
             )
         except Exception as error:
@@ -1757,7 +1756,7 @@ class HistoricalTempsFeed(CompositeFeed):
         # frames are deliberately not run through _validate_frame: the serving
         # model requires a unique local time index, which a fall-back day's
         # native-cadence frame legitimately violates. normalize_observations
-        # still requires the value column and a naive DatetimeIndex.
+        # still requires the value column and a timezone-aware DatetimeIndex.
         for dataframe in raw_dataframes.values():
             await self._capture_observations(
                 dataframe,

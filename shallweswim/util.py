@@ -30,8 +30,10 @@ class EffectiveTimeQuery:
 def utc_now() -> datetime.datetime:
     """Returns the current time in UTC as a naive datetime (without timezone information).
 
-    All timestamps in the application are naive datetimes in their respective timezones.
-    For NOAA data, timestamps are in local time based on the station's location.
+    Clients return frames indexed by timezone-aware UTC instants, and feeds
+    derive the naive location-local index they publish for serving. This clock
+    is separate from both: it is a naive UTC wall clock used for feed scheduling
+    and retrieval times.
     """
     # Get timezone-aware UTC time, then strip the timezone to make it naive
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)

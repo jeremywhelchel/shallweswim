@@ -34,10 +34,12 @@ def _partitions(
     measurement: str,
     value_column: str,
     unit: str,
-    timezone: datetime.tzinfo,
     retrieved_at: datetime.datetime,
 ) -> list[tuple[str, pd.DataFrame]]:
-    """Normalize and partition by UTC year, preserving source identity."""
+    """Normalize the UTC client frame and partition by UTC year.
+
+    Source identity is preserved in the partition key prefix.
+    """
     provider, source_measurement, station = source_identity.split(":", 2)
     if source_measurement != measurement or not provider or not station:
         raise ValueError(f"Expected a {measurement} source identity")
@@ -49,22 +51,8 @@ def _partitions(
         frame,
         value_column=value_column,
         unit=unit,
-        timezone=timezone,
         retrieved_at=retrieved_at,
     )
-    if normalized.ambiguous_dropped:
-        logging.warning(
-            "Archive normalization dropped %d unresolvable ambiguous row(s) for %s",
-            normalized.ambiguous_dropped,
-            source_identity,
-            extra={
-                "component": "archive",
-                "operation": "normalize",
-                "source_identity": source_identity,
-                "outcome": "ambiguous_dropped",
-                "record_count": normalized.ambiguous_dropped,
-            },
-        )
     if normalized.conflicting_dropped:
         logging.warning(
             "Archive normalization dropped %d conflicting repeated row(s) for %s",
@@ -93,13 +81,13 @@ async def capture_observations(
     measurement: str,
     value_column: str,
     unit: str,
-    timezone: datetime.tzinfo,
     retrieved_at: datetime.datetime,
 ) -> CaptureResult:
     """Merge each UTC year; the feed caller isolates preparation failures.
 
-    Returns the rows this fetch added and revised, which the calling feed keeps
-    for the capture job's run summary.
+    The frame arrives as the client returned it, indexed by timezone-aware UTC
+    instants. Returns the rows this fetch added and revised, which the calling
+    feed keeps for the capture job's run summary.
     """
     partitions = await asyncio.to_thread(
         _partitions,
@@ -108,7 +96,6 @@ async def capture_observations(
         measurement,
         value_column,
         unit,
-        timezone,
         retrieved_at,
     )
     if not partitions:

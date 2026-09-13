@@ -60,9 +60,9 @@ def _mock_config_get(code: str):
 def create_mock_tides_df() -> pd.DataFrame:
     """Create mock tide predictions matching TidePredictionDataModel.
 
-    Returns a DataFrame with 2 past tides and 2 future tides.
+    Returns a UTC-indexed client-style DataFrame with 2 past and 2 future tides.
     """
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.UTC)
     data = {
         "prediction": [-0.5, 1.2, -0.3, 1.4],
         "type": pd.Categorical(
@@ -84,9 +84,9 @@ def create_mock_tides_df() -> pd.DataFrame:
 def create_mock_currents_df() -> pd.DataFrame:
     """Create mock current velocities matching CurrentDataModel.
 
-    Returns 24 hours of data at 1-minute intervals with sinusoidal velocity.
+    Returns 24 UTC-indexed hours at 1-minute intervals with sinusoidal velocity.
     """
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.UTC)
     # Create 24 hours of data at 1-minute intervals
     index = pd.date_range(
         now - datetime.timedelta(hours=12),
@@ -102,9 +102,9 @@ def create_mock_currents_df() -> pd.DataFrame:
 def create_mock_temp_df() -> pd.DataFrame:
     """Create mock temperature data matching WaterTempDataModel.
 
-    Returns 7 days of hourly data with constant temperature.
+    Returns 7 UTC-indexed days of hourly data with constant temperature.
     """
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.UTC)
     index = pd.date_range(
         now - datetime.timedelta(days=7),
         now,

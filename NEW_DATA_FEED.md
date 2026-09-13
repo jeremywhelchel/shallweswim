@@ -118,7 +118,12 @@ New feeds need both unit and live coverage.
 Unit tests should cover:
 
 - URL construction and query parameters.
-- Unit conversion and timezone normalization.
+- Unit conversion and UTC normalization: a client must return a frame indexed
+  by timezone-aware UTC instants, de-duplicated on the instant rather than on
+  wall time. A request window that the provider expresses in station-local
+  time is converted to UTC inside the client, which is the only reason a
+  client takes a `timezone` parameter. The feed derives the naive local
+  serving index; a client never returns naive local timestamps.
 - Required columns or fields.
 - Empty source data.
 - Provider error payloads.
@@ -127,7 +132,7 @@ Unit tests should cover:
 
 Live integration tests should hit the real upstream source with a small bounded
 request and assert the app-native shape, plausible values, monotonic timestamps,
-and local-naive index behavior.
+and a timezone-aware UTC index.
 
 Documentation should update:
 

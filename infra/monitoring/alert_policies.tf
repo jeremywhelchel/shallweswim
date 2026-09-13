@@ -1,5 +1,8 @@
 locals {
   cloud_run_resource_filter = "resource.type = \"cloud_run_revision\""
+  # The capture job is the archive's only production writer, so its policies
+  # watch the job resource rather than the web service revisions.
+  cloud_run_job_resource_filter = "resource.type = \"cloud_run_job\""
   shadow_alert_labels = {
     managed_by = "terraform"
     mode       = "shadow"
@@ -141,6 +144,75 @@ resource "google_monitoring_alert_policy" "plot_generation_failure" {
         per_series_aligner   = "ALIGN_SUM"
         cross_series_reducer = "REDUCE_SUM"
         group_by_fields      = ["metric.label.location", "metric.label.feed"]
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "capture_job_heartbeat" {
+  display_name          = "[Terraform][Shadow] Capture job heartbeat"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = []
+  severity              = "CRITICAL"
+  user_labels           = local.shadow_alert_labels
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Shadow policy: the hourly capture job reported no success or partial run summary for 3 hours, which is three missed runs. A partial run still proves the job executed. This dead-man policy deliberately sends no notifications while its window is baselined; it can only fire once the metric has produced data, so confirm the run counter is populated before trusting its silence."
+  }
+
+  conditions {
+    display_name = "No successful or partial capture run in 3h"
+
+    condition_absent {
+      filter   = "metric.type = \"${local.metric_prefix}/${google_logging_metric.updater_runs.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.outcome = one_of(\"success\", \"partial\")"
+      duration = "10800s"
+
+      aggregations {
+        alignment_period     = "3600s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "archive_merge_failures" {
+  display_name          = "[Terraform][Shadow] Archive merge failures"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = []
+  severity              = "WARNING"
+  user_labels           = local.shadow_alert_labels
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Shadow policy: an archive partition merge completed with a failed outcome in the last hour. A conflicting equally recent claim is self-recovering, so this is a warn candidate rather than a page candidate. This policy deliberately sends no notifications during baseline evaluation."
+  }
+
+  conditions {
+    display_name = "Any failed archive merge in 1h"
+
+    condition_threshold {
+      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.archive_merges.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.outcome = \"failed\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+
+      aggregations {
+        alignment_period     = "3600s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["metric.label.source"]
       }
 
       trigger {

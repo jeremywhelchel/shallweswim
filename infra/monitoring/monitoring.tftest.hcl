@@ -17,6 +17,11 @@ run "monitoring_plan" {
         google_logging_metric.plot_generations,
         google_logging_metric.plot_availability_latency,
         google_logging_metric.archive_merges,
+        google_logging_metric.archive_merge_duration,
+        google_logging_metric.archive_merge_new_rows,
+        google_logging_metric.archive_merge_revised_rows,
+        google_logging_metric.updater_runs,
+        google_logging_metric.updater_run_duration,
       ] : strcontains(metric.filter, "resource.labels.service_name=\"shallweswim\"")
     ])
     error_message = "Every metric must be scoped to the configured Cloud Run service."
@@ -31,6 +36,11 @@ run "monitoring_plan" {
         google_logging_metric.plot_generations,
         google_logging_metric.plot_availability_latency,
         google_logging_metric.archive_merges,
+        google_logging_metric.archive_merge_duration,
+        google_logging_metric.archive_merge_new_rows,
+        google_logging_metric.archive_merge_revised_rows,
+        google_logging_metric.updater_runs,
+        google_logging_metric.updater_run_duration,
       ] : strcontains(metric.filter, "resource.labels.job_name=\"shallweswim-capture\"")
     ])
     error_message = "Every metric must also match the capture job, which is the archive's only production writer."
@@ -40,7 +50,12 @@ run "monitoring_plan" {
     condition = (
       length(google_logging_metric.feed_updates.metric_descriptor[0].labels) == 4 &&
       length(google_logging_metric.plot_generations.metric_descriptor[0].labels) == 3 &&
-      length(google_logging_metric.archive_merges.metric_descriptor[0].labels) == 2
+      length(google_logging_metric.archive_merges.metric_descriptor[0].labels) == 2 &&
+      length(google_logging_metric.archive_merge_duration.metric_descriptor[0].labels) == 2 &&
+      length(google_logging_metric.archive_merge_new_rows.metric_descriptor[0].labels) == 1 &&
+      length(google_logging_metric.archive_merge_revised_rows.metric_descriptor[0].labels) == 1 &&
+      length(google_logging_metric.updater_runs.metric_descriptor[0].labels) == 1 &&
+      length(google_logging_metric.updater_run_duration.metric_descriptor[0].labels) == 1
     )
     error_message = "Metric label sets must remain bounded by the reviewed contracts."
   }
@@ -49,9 +64,43 @@ run "monitoring_plan" {
     condition = (
       google_logging_metric.feed_update_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
       google_logging_metric.feed_records.value_extractor == "EXTRACT(jsonPayload.record_count)" &&
-      google_logging_metric.plot_availability_latency.value_extractor == "EXTRACT(jsonPayload.duration_ms)"
+      google_logging_metric.plot_availability_latency.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
+      google_logging_metric.archive_merge_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
+      google_logging_metric.updater_run_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
+      google_logging_metric.archive_merge_new_rows.value_extractor == "EXTRACT(jsonPayload.new_count)" &&
+      google_logging_metric.archive_merge_revised_rows.value_extractor == "EXTRACT(jsonPayload.revised_count)"
     )
     error_message = "Distribution metrics must extract the reviewed numeric JSON fields."
+  }
+
+  assert {
+    condition = alltrue([
+      for metric in [
+        google_logging_metric.updater_runs,
+        google_logging_metric.archive_merge_new_rows,
+        google_logging_metric.archive_merge_revised_rows,
+        google_logging_metric.archive_merge_duration,
+        ] : strcontains(
+        google_monitoring_dashboard.operations.dashboard_json,
+        "${local.metric_prefix}/${metric.name}"
+      )
+    ])
+    error_message = "The operations dashboard must show the capture run and archive row metrics."
+  }
+
+  assert {
+    condition = (
+      google_monitoring_alert_policy.capture_job_heartbeat.conditions[0].condition_absent[0].duration == "10800s" &&
+      strcontains(
+        google_monitoring_alert_policy.capture_job_heartbeat.conditions[0].condition_absent[0].filter,
+        "resource.type = \"cloud_run_job\""
+      ) &&
+      strcontains(
+        google_monitoring_alert_policy.archive_merge_failures.conditions[0].condition_threshold[0].filter,
+        "resource.type = \"cloud_run_job\""
+      )
+    )
+    error_message = "The capture job policies must watch the job resource with the reviewed 3 hour heartbeat window."
   }
 
   assert {
@@ -86,6 +135,8 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.live_plot_availability_latency,
         google_monitoring_alert_policy.repeated_feed_failures,
         google_monitoring_alert_policy.plot_generation_failure,
+        google_monitoring_alert_policy.capture_job_heartbeat,
+        google_monitoring_alert_policy.archive_merge_failures,
         ] : (
         startswith(policy.display_name, "[Terraform][Shadow]") &&
         length(policy.notification_channels) == 0 &&

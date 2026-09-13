@@ -14,17 +14,28 @@ Logging creates metric samples from new matching entries after the metrics are
 created. Existing log entries are not backfilled.
 
 The metric filters match structured events from both the Cloud Run service and
-the `shallweswim-capture` Cloud Run Job, so the capture job's feed-update and
-`archive.merge` events feed the same metrics and dashboard as the web service.
-Alert policies remain scoped to the service resource type for now; a dead-man
-alert covering the job is a follow-up once it has run in production.
+the `shallweswim-capture` Cloud Run Job, so the capture job's feed-update,
+`archive.merge`, and run summary events feed the same metrics and dashboard as
+the web service. The feed and plot alert policies stay scoped to the service
+resource type; the two capture job policies below are scoped to
+`resource.type = "cloud_run_job"` instead.
 
 ## Observation archive setup
 
 The observation archive is written by the scheduled Cloud Run capture job, not
 by the web service. `SHALLWESWIM_ARCHIVE_BUCKET` (a bucket name without
 `gs://`) names the bucket the job writes to; `service.yaml` never sets it. The
-managed operations dashboard shows archive merges per five minutes by outcome.
+managed operations dashboard shows archive merges per five minutes by outcome,
+capture runs per hour by outcome, new and revised observations per hour by
+source, merge duration p95 by source, and failed merges per hour by source.
+
+Merges are value-aware, so a repeated fetch of unchanged readings reports
+`outcome=unchanged` and writes nothing. The `new_rows` and `revised_rows`
+metrics are distributions of the per-merge row counts, and their dashboard tiles
+sum them with `ALIGN_SUM` over an hour. Cloud Monitoring sums distributions into
+a distribution rather than a scalar, so confirm during the controlled apply that
+those two tiles render the hourly totals; if they do not, keep the metrics and
+chart their per-merge percentiles instead.
 
 Bucket creation is a one-time operator task, outside this Terraform module.
 Load the local-operator credential and project through repo-local environment
@@ -125,12 +136,33 @@ mock Google provider to execute a plan without credentials, state, or GCP:
 terraform -chdir=infra/monitoring test
 ```
 
-This test pins service scoping, bounded label counts, numeric extractors, and
+This test pins service and job scoping, bounded label counts, numeric
+extractors, the capture job policies' resource scope and heartbeat window, and
 the dashboard ownership marker. It cannot emulate Cloud Logging ingestion.
 
-Review the plan before every apply. The initial baseline creates five log-based
-metrics and one dashboard. The next slice adds only `[Terraform][Shadow]` alert
-policies with no notification channels; it does not change existing monitoring.
+Review the plan before every apply. The module now owns eleven log-based
+metrics, one dashboard, and six `[Terraform][Shadow]` alert policies with no
+notification channels. It does not change pre-Terraform monitoring.
+
+## Capture job shadow policies
+
+Two shadow policies watch the capture job, following the dead-man switch design
+in `OBSERVABILITY_DESIGN.md`:
+
+- **Capture job heartbeat**: a metric-absence condition on
+  `shallweswim_updater_runs` restricted to `outcome` `success` or `partial`,
+  firing after 3 hours without either, which is three missed hourly runs. A
+  `partial` run still proves the job executed. Absence conditions evaluate only
+  a metric that has produced data, so this policy is trustworthy only once the
+  run counter has been populated by real runs.
+- **Archive merge failures**: a threshold condition on
+  `shallweswim_archive_merges` with `outcome="failed"` over a one-hour
+  alignment. A conflicting equally recent claim recovers on the next
+  overlapping fetch, so this is a warn candidate.
+
+Promotion is the same rule as the other shadow policies: review the policy's
+production behavior over a real baseline period, choose notification channels
+explicitly, and remove the `[Shadow]` marker in a separately reviewed change.
 
 ## Apply and integration-test
 
@@ -144,9 +176,10 @@ There is no faithful local emulator for Cloud Logging log-based metrics or
 Cloud Monitoring dashboards. Local validation checks HCL, provider schemas, and
 the proposed API operations. The GCP integration test is a controlled apply:
 
-1. Confirm the apply creates only the six expected resources.
-2. Generate or wait for new feed/plot completion events. Metrics do not backfill.
-3. Verify the five metrics appear with bounded labels and the dashboard charts
+1. Confirm the apply creates only the expected resources listed in the plan.
+2. Generate or wait for new feed, plot, merge, and capture run events. Metrics
+   do not backfill.
+3. Verify the eleven metrics appear with bounded labels and the dashboard charts
    populate after several minutes.
 4. Compare metric counts with a Cloud Logging query over the same interval.
 5. Confirm shadow policies have no notification channels before applying them.

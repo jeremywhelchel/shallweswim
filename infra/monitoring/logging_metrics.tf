@@ -24,6 +24,11 @@ locals {
     source  = "EXTRACT(jsonPayload.source_identity)"
     outcome = "EXTRACT(jsonPayload.outcome)"
   }
+
+  # One completion event per partition merge and one summary event per capture
+  # run. Several metrics extract different numbers from each of them.
+  archive_merge_filter = "${local.application_log_filter}\njsonPayload.component=\"archive\"\njsonPayload.operation=\"merge\""
+  updater_run_filter   = "${local.application_log_filter}\njsonPayload.component=\"updater\"\njsonPayload.operation=\"run\""
 }
 
 resource "google_logging_metric" "feed_updates" {
@@ -183,7 +188,7 @@ resource "google_logging_metric" "plot_availability_latency" {
 resource "google_logging_metric" "archive_merges" {
   name        = "shallweswim_archive_merges"
   description = "Completed archive partition merges by bounded outcome. Managed by Terraform."
-  filter      = "${local.application_log_filter}\njsonPayload.component=\"archive\"\njsonPayload.operation=\"merge\""
+  filter      = local.archive_merge_filter
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -203,4 +208,150 @@ resource "google_logging_metric" "archive_merges" {
   }
 
   label_extractors = local.archive_labels
+}
+
+resource "google_logging_metric" "updater_runs" {
+  name        = "shallweswim_updater_runs"
+  description = "Completed capture runs by bounded outcome. Managed by Terraform."
+  filter      = local.updater_run_filter
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success, partial, or failed."
+    }
+  }
+
+  label_extractors = {
+    outcome = "EXTRACT(jsonPayload.outcome)"
+  }
+}
+
+resource "google_logging_metric" "updater_run_duration" {
+  name            = "shallweswim_updater_run_duration_ms"
+  description     = "Capture run duration in milliseconds. Managed by Terraform."
+  filter          = local.updater_run_filter
+  value_extractor = "EXTRACT(jsonPayload.duration_ms)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "ms"
+
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success, partial, or failed."
+    }
+  }
+
+  label_extractors = {
+    outcome = "EXTRACT(jsonPayload.outcome)"
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 20
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
+resource "google_logging_metric" "archive_merge_duration" {
+  name            = "shallweswim_archive_merge_duration_ms"
+  description     = "Archive partition merge duration in milliseconds. Managed by Terraform."
+  filter          = local.archive_merge_filter
+  value_extractor = "EXTRACT(jsonPayload.duration_ms)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "ms"
+
+    dynamic "labels" {
+      for_each = toset(["source", "outcome"])
+      content {
+        key        = labels.value
+        value_type = "STRING"
+      }
+    }
+  }
+
+  label_extractors = local.archive_labels
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 20
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
+resource "google_logging_metric" "archive_merge_new_rows" {
+  name            = "shallweswim_archive_merge_new_rows"
+  description     = "Observations added to the archive per merge. Managed by Terraform."
+  filter          = local.archive_merge_filter
+  value_extractor = "EXTRACT(jsonPayload.new_count)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "{record}"
+
+    labels {
+      key         = "source"
+      value_type  = "STRING"
+      description = "Permanent archive source identity."
+    }
+  }
+
+  label_extractors = {
+    source = local.archive_labels.source
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 12
+      growth_factor      = 4
+      scale              = 1
+    }
+  }
+}
+
+resource "google_logging_metric" "archive_merge_revised_rows" {
+  name            = "shallweswim_archive_merge_revised_rows"
+  description     = "Upstream corrections applied to the archive per merge. Managed by Terraform."
+  filter          = local.archive_merge_filter
+  value_extractor = "EXTRACT(jsonPayload.revised_count)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "{record}"
+
+    labels {
+      key         = "source"
+      value_type  = "STRING"
+      description = "Permanent archive source identity."
+    }
+  }
+
+  label_extractors = {
+    source = local.archive_labels.source
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 12
+      growth_factor      = 4
+      scale              = 1
+    }
+  }
 }

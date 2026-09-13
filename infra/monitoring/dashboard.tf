@@ -187,6 +187,158 @@ resource "google_monitoring_dashboard" "operations" {
               }
             }
           }
+        },
+        {
+          yPos   = 16
+          width  = 6
+          height = 4
+          widget = {
+            title = "Capture runs per hour by outcome"
+            xyChart = {
+              dataSets = [{
+                plotType       = "STACKED_BAR"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.outcome}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.updater_runs.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "3600s"
+                      perSeriesAligner   = "ALIGN_SUM"
+                      crossSeriesReducer = "REDUCE_SUM"
+                      groupByFields      = ["metric.label.outcome"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "runs / hour"
+                scale = "LINEAR"
+              }
+            }
+          }
+        },
+        {
+          xPos   = 6
+          yPos   = 16
+          width  = 6
+          height = 4
+          widget = {
+            title = "Archive merge duration p95 by source"
+            xyChart = {
+              dataSets = [{
+                plotType       = "LINE"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.source}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merge_duration.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "300s"
+                      perSeriesAligner   = "ALIGN_PERCENTILE_95"
+                      crossSeriesReducer = "REDUCE_MAX"
+                      groupByFields      = ["metric.label.source"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "ms"
+                scale = "LOG10"
+              }
+            }
+          }
+        },
+        {
+          yPos   = 20
+          width  = 6
+          height = 4
+          widget = {
+            title = "New observations per hour by source"
+            xyChart = {
+              dataSets = [{
+                plotType       = "STACKED_BAR"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.source}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merge_new_rows.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "3600s"
+                      perSeriesAligner   = "ALIGN_SUM"
+                      crossSeriesReducer = "REDUCE_SUM"
+                      groupByFields      = ["metric.label.source"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "observations / hour"
+                scale = "LINEAR"
+              }
+            }
+          }
+        },
+        {
+          xPos   = 6
+          yPos   = 20
+          width  = 6
+          height = 4
+          widget = {
+            title = "Revised observations per hour by source"
+            xyChart = {
+              dataSets = [{
+                plotType       = "STACKED_BAR"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.source}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merge_revised_rows.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "3600s"
+                      perSeriesAligner   = "ALIGN_SUM"
+                      crossSeriesReducer = "REDUCE_SUM"
+                      groupByFields      = ["metric.label.source"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "observations / hour"
+                scale = "LINEAR"
+              }
+            }
+          }
+        },
+        {
+          yPos   = 24
+          width  = 12
+          height = 4
+          widget = {
+            title = "Failed archive merges per hour by source"
+            xyChart = {
+              dataSets = [{
+                plotType       = "STACKED_BAR"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.source}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.archive_merges.name}\" AND metric.label.outcome=\"failed\""
+                    aggregation = {
+                      alignmentPeriod    = "3600s"
+                      perSeriesAligner   = "ALIGN_SUM"
+                      crossSeriesReducer = "REDUCE_SUM"
+                      groupByFields      = ["metric.label.source"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "failed merges / hour"
+                scale = "LINEAR"
+              }
+            }
+          }
         }
       ]
     }

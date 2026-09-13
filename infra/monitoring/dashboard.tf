@@ -224,6 +224,36 @@ resource "google_monitoring_dashboard" "operations" {
           width  = 6
           height = 4
           widget = {
+            title = "Snapshot publishes per hour by outcome"
+            xyChart = {
+              dataSets = [{
+                plotType       = "STACKED_BAR"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.outcome}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.snapshot_publishes.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "3600s"
+                      perSeriesAligner   = "ALIGN_SUM"
+                      crossSeriesReducer = "REDUCE_SUM"
+                      groupByFields      = ["metric.label.outcome"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "publishes / hour"
+                scale = "LINEAR"
+              }
+            }
+          }
+        },
+        {
+          yPos   = 20
+          width  = 6
+          height = 4
+          widget = {
             title = "Archive merge duration p95 by source per hour"
             xyChart = {
               dataSets = [{
@@ -250,6 +280,7 @@ resource "google_monitoring_dashboard" "operations" {
           }
         },
         {
+          xPos   = 6
           yPos   = 20
           width  = 6
           height = 4
@@ -282,8 +313,7 @@ resource "google_monitoring_dashboard" "operations" {
           }
         },
         {
-          xPos   = 6
-          yPos   = 20
+          yPos   = 24
           width  = 6
           height = 4
           widget = {

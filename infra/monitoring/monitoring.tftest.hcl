@@ -22,6 +22,8 @@ run "monitoring_plan" {
         google_logging_metric.archive_merge_revised_rows,
         google_logging_metric.updater_runs,
         google_logging_metric.updater_run_duration,
+        google_logging_metric.snapshot_publishes,
+        google_logging_metric.snapshot_publish_duration,
       ] : strcontains(metric.filter, "resource.labels.service_name=\"shallweswim\"")
     ])
     error_message = "Every metric must be scoped to the configured Cloud Run service."
@@ -41,6 +43,8 @@ run "monitoring_plan" {
         google_logging_metric.archive_merge_revised_rows,
         google_logging_metric.updater_runs,
         google_logging_metric.updater_run_duration,
+        google_logging_metric.snapshot_publishes,
+        google_logging_metric.snapshot_publish_duration,
       ] : strcontains(metric.filter, "resource.labels.job_name=\"shallweswim-capture\"")
     ])
     error_message = "Every metric must also match the capture job, which is the archive's only production writer."
@@ -55,7 +59,9 @@ run "monitoring_plan" {
       length(google_logging_metric.archive_merge_new_rows.metric_descriptor[0].labels) == 1 &&
       length(google_logging_metric.archive_merge_revised_rows.metric_descriptor[0].labels) == 1 &&
       length(google_logging_metric.updater_runs.metric_descriptor[0].labels) == 1 &&
-      length(google_logging_metric.updater_run_duration.metric_descriptor[0].labels) == 1
+      length(google_logging_metric.updater_run_duration.metric_descriptor[0].labels) == 1 &&
+      length(google_logging_metric.snapshot_publishes.metric_descriptor[0].labels) == 1 &&
+      length(google_logging_metric.snapshot_publish_duration.metric_descriptor[0].labels) == 1
     )
     error_message = "Metric label sets must remain bounded by the reviewed contracts."
   }
@@ -67,6 +73,7 @@ run "monitoring_plan" {
       google_logging_metric.plot_availability_latency.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
       google_logging_metric.archive_merge_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
       google_logging_metric.updater_run_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
+      google_logging_metric.snapshot_publish_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
       google_logging_metric.archive_merge_new_rows.value_extractor == "EXTRACT(jsonPayload.new_count)" &&
       google_logging_metric.archive_merge_revised_rows.value_extractor == "EXTRACT(jsonPayload.revised_count)"
     )
@@ -77,6 +84,7 @@ run "monitoring_plan" {
     condition = alltrue([
       for metric in [
         google_logging_metric.updater_runs,
+        google_logging_metric.snapshot_publishes,
         google_logging_metric.archive_merge_new_rows,
         google_logging_metric.archive_merge_revised_rows,
         google_logging_metric.archive_merge_duration,
@@ -85,7 +93,7 @@ run "monitoring_plan" {
         "${local.metric_prefix}/${metric.name}"
       )
     ])
-    error_message = "The operations dashboard must show the capture run and archive row metrics."
+    error_message = "The operations dashboard must show the capture run, snapshot publish, and archive row metrics."
   }
 
   assert {
@@ -148,10 +156,11 @@ run "monitoring_plan" {
 
   assert {
     condition = (
-      length(jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles) == 10 &&
+      length(jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles) == 11 &&
       alltrue([
         for title in [
           "Archive merges per hour by outcome",
+          "Snapshot publishes per hour by outcome",
           "New observations per hour by source (estimated)",
           "Revised observations per hour by source (estimated)",
           ] : contains([
@@ -164,7 +173,7 @@ run "monitoring_plan" {
         strcontains(tile.widget.title, "Failed archive merges")
       ])
     )
-    error_message = "The dashboard must keep ten tiles, fold failed merges into the hourly outcome stack, and mark the estimated observation counts."
+    error_message = "The dashboard must keep eleven tiles, fold failed merges into the hourly outcome stack, and mark the estimated observation counts."
   }
 
   assert {

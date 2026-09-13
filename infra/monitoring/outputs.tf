@@ -17,5 +17,7 @@ output "logging_metric_names" {
     google_logging_metric.archive_merge_revised_rows.name,
     google_logging_metric.updater_runs.name,
     google_logging_metric.updater_run_duration.name,
+    google_logging_metric.snapshot_publishes.name,
+    google_logging_metric.snapshot_publish_duration.name,
   ]
 }

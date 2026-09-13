@@ -25,10 +25,12 @@ locals {
     outcome = "EXTRACT(jsonPayload.outcome)"
   }
 
-  # One completion event per partition merge and one summary event per capture
-  # run. Several metrics extract different numbers from each of them.
-  archive_merge_filter = "${local.application_log_filter}\njsonPayload.component=\"archive\"\njsonPayload.operation=\"merge\""
-  updater_run_filter   = "${local.application_log_filter}\njsonPayload.component=\"updater\"\njsonPayload.operation=\"run\""
+  # One completion event per partition merge, one summary event per capture
+  # run, and one event per snapshot publish attempt. Several metrics extract
+  # different numbers from each of them.
+  archive_merge_filter    = "${local.application_log_filter}\njsonPayload.component=\"archive\"\njsonPayload.operation=\"merge\""
+  updater_run_filter      = "${local.application_log_filter}\njsonPayload.component=\"updater\"\njsonPayload.operation=\"run\""
+  snapshot_publish_filter = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"publish\""
 }
 
 resource "google_logging_metric" "feed_updates" {
@@ -351,6 +353,59 @@ resource "google_logging_metric" "archive_merge_revised_rows" {
     exponential_buckets {
       num_finite_buckets = 12
       growth_factor      = 4
+      scale              = 1
+    }
+  }
+}
+
+resource "google_logging_metric" "snapshot_publishes" {
+  name        = "shallweswim_snapshot_publishes"
+  description = "Completed snapshot publish attempts by bounded outcome. Managed by Terraform."
+  filter      = local.snapshot_publish_filter
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success, unchanged, or failed."
+    }
+  }
+
+  label_extractors = {
+    outcome = "EXTRACT(jsonPayload.outcome)"
+  }
+}
+
+resource "google_logging_metric" "snapshot_publish_duration" {
+  name            = "shallweswim_snapshot_publish_duration_ms"
+  description     = "Snapshot publish attempt duration in milliseconds. Managed by Terraform."
+  filter          = local.snapshot_publish_filter
+  value_extractor = "EXTRACT(jsonPayload.duration_ms)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "ms"
+
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success, unchanged, or failed."
+    }
+  }
+
+  label_extractors = {
+    outcome = "EXTRACT(jsonPayload.outcome)"
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 20
+      growth_factor      = 2
       scale              = 1
     }
   }

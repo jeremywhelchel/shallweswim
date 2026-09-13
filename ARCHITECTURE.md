@@ -407,6 +407,9 @@ after a successful fetch, they do not refresh automatically.
   - Timeouts and connection errors
   - Broken protocol responses such as chunked transfer or content decoding errors
   - Retryable HTTP statuses: `429`, `500`, `502`, `503`, `504`
+  - CO-OPS `200` responses whose body is a NOAA error message instead of CSV,
+    other than the stable "no data" answer, which stays
+    `StationUnavailableError`
   - Automatically retried by `BaseApiClient.request_with_retry()`
 
 - **`*ApiError`**: Unexpected client/library/API failures that are not known
@@ -425,7 +428,9 @@ name; pass the concrete helper into `request_with_retry()` instead.
 Client request retries and feed scheduling are separate layers:
 
 - `BaseApiClient.request_with_retry()` uses tenacity to retry transient
-  HTTP/network failures inside one fetch attempt over seconds.
+  HTTP/network failures inside one fetch attempt over seconds. CO-OPS also
+  reports transient rejections under HTTP `200` with an error body in place of
+  CSV, so its client classifies the body before parsing.
 - `Feed.update()` schedules the next whole-feed attempt over minutes after the
   fetch attempt finishes. This state is visible in `/api/status`.
 

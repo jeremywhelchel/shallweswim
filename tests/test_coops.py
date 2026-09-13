@@ -4,6 +4,7 @@
 import contextlib
 import datetime
 import io
+import logging
 import urllib.parse
 from collections.abc import AsyncIterator
 from typing import Any, cast
@@ -17,7 +18,7 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 # Local imports
-from shallweswim.clients.base import RetryableClientError
+from shallweswim.clients.base import RetryableClientError, StationUnavailableError
 from shallweswim.clients.coops import (
     CoopsApi,
     CoopsConnectionError,
@@ -618,3 +619,117 @@ async def test_invalid_temperature_product(coops_client: CoopsApi) -> None:
             timezone=EASTERN,
             product=cast(Any, "water_level"),  # Intentionally invalid, cast to Any
         )
+
+
+# A NOAA rejection seen under HTTP 200 during bursts of concurrent requests,
+# which the same request survives seconds later.
+TRANSIENT_ERROR_BODY = (
+    "No Predictions data was found. Please make sure the Datum input is valid."
+)
+VALID_TIDE_CSV = "Date Time, Prediction, Type\n2025-04-19 10:00,5.2,H\n"
+
+
+class BodyResponse:
+    """A mock 200 aiohttp response serving one canned body."""
+
+    status = 200
+
+    def __init__(self, body: str) -> None:
+        self._body = body
+
+    async def __aenter__(self) -> "BodyResponse":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    async def text(self) -> str:
+        return self._body
+
+
+@pytest.mark.asyncio
+async def test_execute_request_retries_error_body_under_http_200(
+    coops_client: CoopsApi,
+) -> None:
+    """A 200 body that is a NOAA rejection rather than CSV is retryable."""
+    cast(MagicMock, coops_client._session.get).return_value = BodyResponse(
+        TRANSIENT_ERROR_BODY
+    )
+
+    with pytest.raises(RetryableClientError) as excinfo:
+        await coops_client._execute_request("https://example.test", "test")
+
+    assert TRANSIENT_ERROR_BODY in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_execute_request_retries_json_error_body_under_http_200(
+    coops_client: CoopsApi,
+) -> None:
+    """A JSON error object is an error body too, even though CSV was requested."""
+    cast(MagicMock, coops_client._session.get).return_value = BodyResponse(
+        '{"error": {"message": "' + TRANSIENT_ERROR_BODY + '"}}'
+    )
+
+    with pytest.raises(RetryableClientError) as excinfo:
+        await coops_client._execute_request("https://example.test", "test")
+
+    assert TRANSIENT_ERROR_BODY in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_request_with_retry_recovers_from_an_error_body(
+    coops_client: CoopsApi,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The retry ladder turns a transient error body into a successful fetch."""
+    # Retry immediately: this test asserts classification, not backoff timing.
+    monkeypatch.setattr(coops_client, "INITIAL_RETRY_DELAY", 0.0)
+    cast(MagicMock, coops_client._session.get).side_effect = [
+        BodyResponse(TRANSIENT_ERROR_BODY),
+        BodyResponse(VALID_TIDE_CSV),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        df = await coops_client.request_with_retry(
+            "test", coops_client._execute_request, "https://example.test"
+        )
+
+    assert list(df.columns) == ["Date Time", " Prediction", " Type"]
+    assert len(df) == 1
+    # One retry was logged: the zero backoff shortens the message to "Retrying...".
+    retry_logs = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.WARNING and "Retry" in record.message
+    ]
+    assert len(retry_logs) == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_request_keeps_station_no_data_unavailable(
+    coops_client: CoopsApi,
+) -> None:
+    """A station's stable "no data" answer stays an expected condition, not a retry."""
+    no_data_body = (
+        "Error: No data was found. This product may not be offered at this station."
+    )
+    cast(MagicMock, coops_client._session.get).return_value = BodyResponse(no_data_body)
+
+    with pytest.raises(StationUnavailableError, match="No data was found"):
+        await coops_client._execute_request("https://example.test", "test")
+
+
+@pytest.mark.asyncio
+async def test_execute_request_keeps_station_no_data_unavailable_with_csv_header(
+    coops_client: CoopsApi,
+) -> None:
+    """NOAA's other no-data shape, an error row under a CSV header, is unchanged."""
+    cast(MagicMock, coops_client._session.get).return_value = BodyResponse(
+        "Date Time, Water Temperature, X, N, R \n"
+        "Error: No data was found. This product may not be offered at this station.\n"
+    )
+
+    with pytest.raises(StationUnavailableError, match="No data was found"):
+        await coops_client._execute_request("https://example.test", "test")

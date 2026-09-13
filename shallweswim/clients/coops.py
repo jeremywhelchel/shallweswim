@@ -3,6 +3,7 @@
 # Standard library imports
 import datetime
 import io
+import json
 import logging
 import urllib.parse
 from typing import ClassVar, Literal, TypedDict
@@ -15,6 +16,7 @@ import pandas as pd
 from shallweswim.clients.base import (
     BaseApiClient,
     BaseClientError,
+    RetryableClientError,
     StationUnavailableError,
     provider_request_slot,
     raise_if_retryable_http_status,
@@ -40,6 +42,10 @@ COOPS_MAX_CONCURRENT_REQUESTS = 4
 COOPS_MAX_REQUEST_RANGE = datetime.timedelta(days=365)
 # How much of an error response body to quote back in an exception message.
 RESPONSE_DETAIL_CHARS = 200
+# Phrase NOAA uses for the stable answer "this station has no data for this
+# product", which is an expected operational condition rather than a transient
+# failure. Other error bodies are transient often enough to be worth retrying.
+STATION_NO_DATA_MARKER = "no data"
 
 # Temperature product types
 air_temperature = "air_temperature"
@@ -94,6 +100,45 @@ def response_detail(body: str) -> str:
     return " ".join(body.split())[:RESPONSE_DETAIL_CHARS]
 
 
+def error_body_detail(body: str) -> str | None:
+    """Return a collapsed detail when a 200 body is an error instead of CSV.
+
+    CO-OPS answers some valid requests with HTTP 200 and a prose or JSON error
+    message ("No Predictions data was found. Please make sure the Datum input
+    is valid", `{"error": {"message": ...}}`) where CSV was requested. Parsing
+    such a body as CSV yields a nonsense frame, so it has to be recognized
+    before parsing.
+
+    The check is deliberately narrow: every CSV product this client requests
+    has at least two columns, so a first line without a comma is never a CSV
+    header, and a JSON object is never CSV at all.
+
+    Args:
+        body: The decoded response body of a 200 response.
+
+    Returns:
+        The collapsed error detail, or None when the body looks like CSV.
+    """
+    stripped = body.strip()
+    if not stripped:
+        # An empty body is not an error message; CSV parsing reports it.
+        return None
+    if stripped.startswith("{"):
+        try:
+            payload = json.loads(stripped)
+        except ValueError:
+            return response_detail(stripped)
+        if not isinstance(payload, dict) or "error" not in payload:
+            return None
+        error = payload["error"]
+        message = error.get("message") if isinstance(error, dict) else error
+        return response_detail(str(message) if message else stripped)
+    first_line = stripped.split("\n", 1)[0]
+    if "," in first_line:
+        return None
+    return response_detail(stripped)
+
+
 class CoopsApiError(BaseClientError):
     """Base error for NOAA CO-OPS API calls."""
 
@@ -120,6 +165,11 @@ class CoopsApi(BaseApiClient):
     Request windows are still expressed in station-local days: callers pass a
     naive local date and a ``timezone``, which this client converts to UTC for
     the request.
+
+    CO-OPS reports failures in the response body, sometimes under HTTP 200. A
+    200 body that is a NOAA error message rather than CSV is retried as a
+    transient rejection, except for the stable "no data" answer, which raises
+    ``StationUnavailableError`` as an expected operational condition.
     """
 
     BASE_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
@@ -240,8 +290,11 @@ class CoopsApi(BaseApiClient):
             A pandas DataFrame containing the successfully parsed data.
 
         Raises:
-            RetryableClientError: For transient network errors (connection, timeout).
+            RetryableClientError: For transient network errors (connection,
+                timeout) and for a 200 response whose body is a NOAA error
+                message rather than CSV.
             CoopsConnectionError: For non-retryable HTTP errors (e.g., status 404, 500).
+            StationUnavailableError: When NOAA reports the station has no data.
             CoopsDataError: For errors parsing the response or API-level errors in data.
         """
         self.log(
@@ -285,7 +338,28 @@ class CoopsApi(BaseApiClient):
                 error=e,
             ) from e
 
-        # --- Parsing logic (outside the network try/except) ---
+        # --- VALIDATION PHASE (outside the network try/except) ---
+        # NOAA sometimes answers a valid request with HTTP 200 and an error
+        # message instead of CSV. Parsing that as CSV would raise a terminal
+        # data error, so classify the body first.
+        error_detail = error_body_detail(csv_data)
+        if error_detail is not None:
+            if STATION_NO_DATA_MARKER in error_detail.lower():
+                # Stable answer: the station offers no data for this product.
+                self.log(
+                    f"NOAA CO-OPS station has no data for {url}: {error_detail}",
+                    level=logging.WARNING,
+                    location_code=location_code,
+                )
+                raise StationUnavailableError(error_detail)
+            # Anything else is a transient rejection that the same request
+            # usually survives moments later (seen for tide predictions during
+            # bursts of concurrent requests). The retry logger records it.
+            raise RetryableClientError(
+                f"NOAA CO-OPS returned an error body for {url}: {error_detail}"
+            )
+
+        # --- Parsing logic ---
         try:
             df = pd.read_csv(io.StringIO(csv_data))
         except Exception as e:
@@ -305,7 +379,7 @@ class CoopsApi(BaseApiClient):
             if "error" in first_cell.lower():
                 error_msg = first_cell
                 # Distinguish between "no data" (expected) and other errors (unexpected)
-                if "no data" in first_cell.lower():
+                if STATION_NO_DATA_MARKER in first_cell.lower():
                     # Station has no data - expected operational condition
                     self.log(
                         f"NOAA CO-OPS station has no data for {url}: {error_msg}",

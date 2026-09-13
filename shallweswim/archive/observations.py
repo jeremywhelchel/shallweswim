@@ -8,6 +8,7 @@ import dataclasses
 import datetime
 from pathlib import Path
 from typing import Annotated, BinaryIO
+from urllib.parse import quote
 
 import pandas as pd
 import pandera.pandas as pa
@@ -30,6 +31,45 @@ TEMPERATURE_UNIT = "F"
 CURRENTS_MEASUREMENT = "currents"
 CURRENTS_VALUE_COLUMN = "velocity"
 CURRENTS_UNIT = "kt"
+
+
+def validate_source_identity(source_identity: str, measurement: str) -> tuple[str, str]:
+    """Return the provider and station of a source identity for this measurement.
+
+    Args:
+        source_identity: A feed's `citation_key`, shaped
+            `<provider>:<measurement>:<station>`, where the station may itself
+            carry a colon-separated parameter suffix.
+        measurement: The measurement the caller is archiving or reading.
+
+    Returns:
+        The provider and station segments of the identity.
+
+    Raises:
+        ValueError: If the identity does not name this measurement, or either
+            of its other segments is empty.
+    """
+    provider, source_measurement, station = source_identity.split(":", 2)
+    if source_measurement != measurement or not provider or not station:
+        raise ValueError(f"Expected a {measurement} source identity")
+    return provider, station
+
+
+def partition_key(source_identity: str, measurement: str, year: int) -> str:
+    """Return the archive object key holding one source's UTC year.
+
+    Capture writes and hydration reads the same keys, so both derive them here.
+
+    Raises:
+        ValueError: If the source identity does not name this measurement.
+    """
+    provider, station = validate_source_identity(source_identity, measurement)
+    # Percent encoding is reversible, including USGS's station:parameter suffix.
+    return (
+        f"archive/{measurement}/{quote(provider, safe='')}"
+        f"/{quote(station, safe='')}/{year}.parquet"
+    )
+
 
 # Additive nullable fields belong here and in ObservationModel when the archive
 # contract grows. The reader fills fields absent from older Parquet objects before

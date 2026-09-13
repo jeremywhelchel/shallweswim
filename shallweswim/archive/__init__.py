@@ -1,5 +1,6 @@
 """Durable observation archive contracts."""
 
+from shallweswim.archive.hydrate import hydrate_year
 from shallweswim.archive.observations import (
     CURRENTS_MEASUREMENT,
     CURRENTS_UNIT,
@@ -12,7 +13,9 @@ from shallweswim.archive.observations import (
     ObservationModel,
     normalize_archive_frame,
     normalize_observations,
+    partition_key,
     read_observations,
+    validate_source_identity,
 )
 from shallweswim.archive.store import (
     FilesystemObjectStore,
@@ -21,6 +24,7 @@ from shallweswim.archive.store import (
     ObjectStore,
     StoredObject,
     VersionConflictError,
+    gcs_store,
 )
 
 __all__ = [
@@ -39,7 +43,11 @@ __all__ = [
     "ObservationModel",
     "StoredObject",
     "VersionConflictError",
+    "gcs_store",
+    "hydrate_year",
     "normalize_archive_frame",
     "normalize_observations",
+    "partition_key",
     "read_observations",
+    "validate_source_identity",
 ]

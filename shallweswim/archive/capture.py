@@ -4,14 +4,16 @@ import asyncio
 import dataclasses
 import datetime
 import logging
-from functools import cache
-from urllib.parse import quote
 
 import pandas as pd
 
 from shallweswim.archive.merge import merge_observations
-from shallweswim.archive.observations import normalize_observations
-from shallweswim.archive.store import GcsObjectStore
+from shallweswim.archive.observations import (
+    normalize_observations,
+    partition_key,
+    validate_source_identity,
+)
+from shallweswim.archive.store import gcs_store
 
 
 @dataclasses.dataclass(frozen=True)
@@ -20,12 +22,6 @@ class CaptureResult:
 
     new_count: int
     revised_count: int
-
-
-@cache
-def _store_for(bucket: str) -> GcsObjectStore:
-    """Reuse the GCS client and connection pool for each bucket in this process."""
-    return GcsObjectStore(bucket)
 
 
 def _partitions(
@@ -40,13 +36,9 @@ def _partitions(
 
     Source identity is preserved in the partition key prefix.
     """
-    provider, source_measurement, station = source_identity.split(":", 2)
-    if source_measurement != measurement or not provider or not station:
-        raise ValueError(f"Expected a {measurement} source identity")
-    # Percent encoding is reversible, including USGS's station:parameter suffix.
-    prefix = (
-        f"archive/{measurement}/{quote(provider, safe='')}/{quote(station, safe='')}"
-    )
+    # Reject a mismatched identity before normalization, so the failure names
+    # the identity rather than the value column that identity would not carry.
+    validate_source_identity(source_identity, measurement)
     normalized = normalize_observations(
         frame,
         value_column=value_column,
@@ -68,7 +60,7 @@ def _partitions(
         )
     rows = normalized.frame
     return [
-        (f"{prefix}/{year}.parquet", partition)
+        (partition_key(source_identity, measurement, int(year)), partition)
         for year, partition in rows.groupby(rows["observed_at"].dt.year)
     ]
 
@@ -100,7 +92,7 @@ async def capture_observations(
     )
     if not partitions:
         return CaptureResult(0, 0)
-    store = await asyncio.to_thread(_store_for, bucket)
+    store = await asyncio.to_thread(gcs_store, bucket)
     new_count = 0
     revised_count = 0
     for key, incoming in partitions:

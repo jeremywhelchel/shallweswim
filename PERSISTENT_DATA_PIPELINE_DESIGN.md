@@ -1098,7 +1098,8 @@ read the archive.
 
 ### Phase 1b: Local Development Reads the Archive
 
-Status: contract; implementation pending.
+Status: implemented; local validation against the production archive
+pending the viewer-only credential.
 
 Once the capture job has populated the bucket, local development of the web
 service hydrates historical temperature feeds from the archive instead of
@@ -1125,8 +1126,11 @@ Behavior:
 
 - When the read variable is set, `HistoricalTempsFeed` hydrates before its
   first provider fetch: for every required year before the current UTC year
-  that is not already cached, it reads that source's yearly partition through
-  the archive reader. Rows become a per-year frame in the client shape (a
+  that is not already cached, it reads the partitions that cover that
+  station-local year (the UTC year and the following one) through the archive
+  reader and keeps the rows whose local time falls inside the year, so a
+  hydrated year spans exactly what a provider fetch of that local year would.
+  Years hydrate concurrently under a small bound. Rows become a per-year frame in the client shape (a
   timezone-aware UTC index named `time` and the feed's value column) and then
   follow exactly the provider path: serving index derivation, the hourly
   resample, validation, and the year cache with the hydration time as the

@@ -99,6 +99,15 @@ and its original retrieval time, a changed reading is replaced by the more
 recently retrieved claim, and a fetch with nothing new or revised leaves the
 partition byte-identical. Each merge event reports those row counts and the
 job's run summary reports their totals for the run.
+When `SHALLWESWIM_ARCHIVE_READ_BUCKET` is set, which local development does and
+deployed manifests never do, the historical temperature feed first hydrates each
+required past year that is not already cached. Archive partitions are UTC years
+while a historical year frame is a station-local year, so hydration reads that
+year's partition and the next one, keeps the rows inside the local year, and
+runs them through the same serving index, hourly
+resample, and validation as a provider fetch; the current year, years the
+archive lacks, and years whose read fails still fetch from the provider, and
+hydrated years are never captured.
 Archive failures emit failed merge events without changing serving or retry
 state. Normalization, Parquet work, and synchronous GCS operations run in worker
 threads. Tide feeds and prediction currents feeds do not enter this archive.

@@ -25,6 +25,7 @@ from shallweswim import dataframe_models as df_models
 from shallweswim import harmonic_tides
 from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempStatus
 from shallweswim.archive.capture import CaptureResult, capture_observations
+from shallweswim.archive.hydrate import hydrate_year
 from shallweswim.archive.observations import (
     CURRENTS_MEASUREMENT,
     CURRENTS_UNIT,
@@ -33,6 +34,7 @@ from shallweswim.archive.observations import (
     TEMPERATURE_UNIT,
     TEMPERATURE_VALUE_COLUMN,
 )
+from shallweswim.archive.store import gcs_store
 from shallweswim.clients import coops, cspf, irish_lights, marine_institute, ndbc, nwis
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
@@ -87,6 +89,10 @@ PLOT_HISTORIC_TEMPS_12MO = PlotName.HISTORIC_TEMPS_12MO
 HEALTH_CHECK_BUFFER = datetime.timedelta(
     minutes=15
 )  # Longer buffer for service health checks
+
+# Archive partition reads are network-bound and independent per year. This bounds
+# concurrent reads so a long configured history does not open a read per year.
+ARCHIVE_HYDRATION_CONCURRENCY = 8
 
 FEED_RETRY_INTERVALS = (
     datetime.timedelta(minutes=1),
@@ -1737,6 +1743,9 @@ class HistoricalTempsFeed(CompositeFeed):
             )
 
         feed_by_year = dict(zip(required_years, all_year_feeds, strict=True))
+        # Hydration fills past years from the archive first, so only the
+        # current year and years the archive lacks reach the provider.
+        await self._hydrate_from_archive(required_years)
         years_to_fetch = self._years_to_fetch(required_years)
         year_feeds = [feed_by_year[year] for year in years_to_fetch]
 
@@ -1823,6 +1832,103 @@ class HistoricalTempsFeed(CompositeFeed):
             raise HistoricalTempsIncompleteError(incomplete_years)
 
         return self._combine_feeds([self._year_cache[year] for year in required_years])
+
+    async def _hydrate_from_archive(self, required_years: tuple[int, ...]) -> None:
+        """Load past years from the archive instead of refetching them.
+
+        Local development sets SHALLWESWIM_ARCHIVE_READ_BUCKET to avoid the
+        multi-year cold-start refetch. Archived rows follow exactly the provider
+        path - serving index, hourly resample, validation - so a hydrated year
+        serves identically to a fetched one. Hydrated years never enter this
+        attempt's fetched years, so they are never captured back to the archive.
+
+        Each year's archive reads run concurrently under a bounded number of
+        slots, because a configured history can span many years.
+
+        Hydration never fails an update: a year the archive lacks, or one whose
+        read or validation fails, is simply left for the provider fetch.
+
+        Args:
+            required_years: The complete configured historical year range.
+        """
+        bucket = os.environ.get("SHALLWESWIM_ARCHIVE_READ_BUCKET")
+        if not bucket:
+            return
+        current_year = self._current_historical_year()
+        candidate_years = [
+            year
+            for year in required_years
+            # The current year keeps refreshing from the provider.
+            if year < current_year and year not in self._year_cache
+        ]
+        if not candidate_years:
+            return
+
+        store = await asyncio.to_thread(gcs_store, bucket)
+        read_slots = asyncio.Semaphore(ARCHIVE_HYDRATION_CONCURRENCY)
+
+        async def read_year(year: int) -> pd.DataFrame | None:
+            """Read one year's partitions under the shared concurrency bound."""
+            async with read_slots:
+                return await hydrate_year(
+                    store,
+                    source_identity=self.feed_config.citation_key,
+                    measurement=TEMPERATURE_MEASUREMENT,
+                    value_column=TEMPERATURE_VALUE_COLUMN,
+                    unit=TEMPERATURE_UNIT,
+                    year=year,
+                    timezone=self.location_config.timezone,
+                )
+
+        # Reads run concurrently; the serving conversion below stays sequential
+        # because it is small CPU work, and results are consumed in year order.
+        frames = await asyncio.gather(
+            *(read_year(year) for year in candidate_years), return_exceptions=True
+        )
+
+        hydrated_years: list[int] = []
+        failed_years: list[int] = []
+        record_count = 0
+        for year, frame in zip(candidate_years, frames, strict=True):
+            try:
+                if isinstance(frame, BaseException):
+                    raise frame
+                if frame is None:
+                    continue
+                served = self._combine_feeds(
+                    [to_serving_index(frame, self.location_config.timezone)]
+                )
+                self._validate_frame(served)
+            except Exception as error:
+                failed_years.append(year)
+                self.log(
+                    f"Archive hydration failed for {year}: {error}",
+                    logging.WARNING,
+                )
+                continue
+            self._year_cache[year] = served
+            self._year_cache_fetch_timestamp[year] = utc_now()
+            hydrated_years.append(year)
+            record_count += len(frame)
+
+        if not hydrated_years and not failed_years:
+            return
+        message = f"Archive hydration loaded years {hydrated_years}"
+        if failed_years:
+            message += f"; the provider fetch covers {failed_years}"
+        self.log(
+            message,
+            extra={
+                "component": "archive",
+                "operation": "hydrate",
+                "location": self.location_config.code,
+                # This class is the historical temperature feed, so its event
+                # carries that feed name rather than the class name.
+                "feed": FeedName.HISTORIC_TEMPS.value,
+                "outcome": "failed" if failed_years else "success",
+                "record_count": record_count,
+            },
+        )
 
     def _combine_feeds(self, dataframes: list[pd.DataFrame]) -> pd.DataFrame:
         """Combine temperature data from multiple years.

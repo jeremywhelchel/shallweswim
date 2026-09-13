@@ -497,6 +497,28 @@ run concurrently and each location's feeds run in sequence. One failing feed
 leaves the run `partial` and still exits zero; a run that publishes nothing
 exits non-zero.
 
+##### Hydrating Local Historical Temperatures From The Archive
+
+Local development can read the archive instead of refetching every historical
+temperature year from the provider at startup. Set the read-only variable:
+
+```bash
+SHALLWESWIM_ARCHIVE_READ_BUCKET=shallweswim-archive \
+  uv run python -m shallweswim.main --port=12345
+```
+
+`SHALLWESWIM_ARCHIVE_READ_BUCKET` is independent of
+`SHALLWESWIM_ARCHIVE_BUCKET`, which remains the only variable that enables
+writes. Hydration calls only the store's read operation, so the local
+credential needs no more than `roles/storage.objectViewer` on the bucket. The
+current year and any year the archive does not hold still fetch from the
+provider, and hydrated years are never captured back. Archived partitions are
+UTC years, so hydrating a station-local year reads that year's partition and the
+next one and keeps the rows inside the local year; its final local hours are
+served exactly as a provider fetch would return them. A failed read or
+validation for one year logs a warning and leaves that year to the provider, so
+hydration never fails startup. Deployed manifests never set this variable.
+
 See [archive setup](infra/monitoring/README.md#observation-archive-setup) for
 the one-time bucket commands and the
 [capture job runbook](infra/capture-job/README.md) for the job identity,

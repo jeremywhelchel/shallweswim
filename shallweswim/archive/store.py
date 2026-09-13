@@ -10,6 +10,7 @@ import hashlib
 import os
 import tempfile
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol
 
@@ -240,3 +241,13 @@ class GcsObjectStore:
         if blob.generation is None:
             raise RuntimeError(f"GCS write returned no generation: {key}")
         return str(blob.generation)
+
+
+@cache
+def gcs_store(bucket: str) -> GcsObjectStore:
+    """Reuse the GCS client and connection pool for each bucket in this process.
+
+    Capture writes through this store and local hydration reads through it, so
+    one process holds at most one client per bucket.
+    """
+    return GcsObjectStore(bucket)

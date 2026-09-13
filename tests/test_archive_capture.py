@@ -11,6 +11,7 @@ import pytest
 
 from shallweswim import config
 from shallweswim.archive import capture
+from shallweswim.archive import store as archive_store
 from shallweswim.archive.observations import (
     CURRENTS_MEASUREMENT,
     CURRENTS_UNIT,
@@ -29,15 +30,15 @@ from shallweswim.types import TIDE_TYPE_CATEGORIES
 @pytest.fixture(autouse=True)
 def clear_store_cache() -> Iterator[None]:
     """Keep mocked stores from leaking between capture tests."""
-    capture._store_for.cache_clear()
+    archive_store.gcs_store.cache_clear()
     yield
-    capture._store_for.cache_clear()
+    archive_store.gcs_store.cache_clear()
 
 
 @pytest.mark.asyncio
 async def test_capture_reuses_store_per_bucket(monkeypatch) -> None:
     factory = Mock(side_effect=lambda bucket: MemoryObjectStore())
-    monkeypatch.setattr(capture, "GcsObjectStore", factory)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", factory)
     feed = _feed()
     for bucket in ("first", "first", "second", "first"):
         await capture.capture_observations(
@@ -79,7 +80,7 @@ def _served(frame: pd.DataFrame, location: config.LocationConfig) -> pd.DataFram
 async def test_update_archives_by_utc_year_and_preserves_serving(monkeypatch) -> None:
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     store = MemoryObjectStore()
-    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     # One instant each side of the UTC year boundary, on the same local day.
     frame = _frame("2025-12-31 23:00", "2026-01-01 00:00")
     monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=frame))
@@ -109,7 +110,7 @@ async def test_identical_second_update_archives_nothing_new(
     """A repeated fetch of the same readings overlaps and writes nothing."""
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     store = MemoryObjectStore()
-    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     frame = _frame("2026-01-01 12:00", "2026-01-01 13:00")
     monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=frame))
 
@@ -137,7 +138,7 @@ async def test_identical_second_update_archives_nothing_new(
 async def test_last_capture_reports_counts_only_when_capture_ran(monkeypatch) -> None:
     """The feed keeps its merge counts so the job can sum them per run."""
     store = MemoryObjectStore()
-    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     monkeypatch.setattr(
         feeds.CoopsTempFeed,
         "_fetch",
@@ -187,9 +188,9 @@ async def test_archive_failure_keeps_success_state(
         def make_store(bucket: str) -> MemoryObjectStore:
             raise RuntimeError("credentials unavailable")
 
-        monkeypatch.setattr(capture, "GcsObjectStore", make_store)
+        monkeypatch.setattr(archive_store, "GcsObjectStore", make_store)
     else:
-        monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+        monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     if failure == "storage":
         monkeypatch.setattr(store, "read", AsyncMock(side_effect=OSError("offline")))
     feed = _feed()
@@ -215,7 +216,7 @@ async def test_configured_outlier_is_served_out_but_archived(monkeypatch) -> Non
     """The archive keeps provider readings a configured outlier hides from serving."""
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     store = MemoryObjectStore()
-    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     frame = _frame("2026-01-01 12:00", "2026-01-01 13:00")
     monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=frame))
 
@@ -249,7 +250,7 @@ async def test_conflicting_repeated_instant_is_dropped_with_one_warning(
     """A raw year frame repeating an instant with a different value warns once."""
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     store = MemoryObjectStore()
-    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     live = _feed()
     history = feeds.HistoricalTempsFeed(
         location_config=live.location_config,
@@ -359,7 +360,7 @@ async def test_historical_capture_archives_native_cadence_and_both_folds(
 ) -> None:
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     store = MemoryObjectStore()
-    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     live = _feed()
     history = feeds.HistoricalTempsFeed(
         location_config=live.location_config,
@@ -428,7 +429,7 @@ async def test_historical_capture_sums_years_around_a_failed_one(monkeypatch) ->
     """A year whose capture fails contributes zeros, not a lost total."""
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     store = MemoryObjectStore()
-    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     live = _feed()
     history = feeds.HistoricalTempsFeed(
         location_config=live.location_config,
@@ -560,7 +561,7 @@ def test_currents_capture_rejects_mismatched_measurement() -> None:
 async def test_observational_currents_update_archives_by_utc_year(monkeypatch) -> None:
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     store = MemoryObjectStore()
-    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     frame = _currents_frame("2025-12-31 23:00", "2026-01-01 00:00")
     monkeypatch.setattr(feeds.NwisCurrentFeed, "_fetch", AsyncMock(return_value=frame))
     feed = _currents_feed()
@@ -587,7 +588,7 @@ async def test_currents_archive_failure_keeps_success_state(
 ) -> None:
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
     store = MemoryObjectStore()
-    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     monkeypatch.setattr(store, "read", AsyncMock(side_effect=OSError("offline")))
     frame = _currents_frame("2026-01-01 12:00")
     monkeypatch.setattr(feeds.NwisCurrentFeed, "_fetch", AsyncMock(return_value=frame))

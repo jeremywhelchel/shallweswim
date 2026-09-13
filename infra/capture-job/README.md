@@ -83,8 +83,21 @@ gcloud projects add-iam-policy-binding shallweswim \
   --condition=None
 ```
 
-Do not grant `shallweswim-capture` anything else, and do not grant the web
-runtime identity any archive bucket role.
+Local development hydrates historical temperature years from the archive
+through `SHALLWESWIM_ARCHIVE_READ_BUCKET`, which only reads. Grant the local
+operator identity read access to the bucket, and no write role; this viewer
+grant is the intended steady state for local work.
+
+```bash
+gcloud storage buckets add-iam-policy-binding \
+  "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
+  --member="serviceAccount:shallweswim-local-operator@shallweswim.iam.gserviceaccount.com" \
+  --role=roles/storage.objectViewer
+```
+
+Do not grant `shallweswim-capture` anything else, do not grant the web runtime
+identity any archive bucket role, and do not leave any local identity holding a
+write role on the bucket.
 
 ## Continuous build trigger
 

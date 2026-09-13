@@ -9,6 +9,7 @@ CAPTURE_JOB_YAML = (ROOT / "capture-job.yaml").read_text()
 CLOUDBUILD_YAML = (ROOT / "cloudbuild.yaml").read_text()
 
 ARCHIVE_BUCKET_VAR = "SHALLWESWIM_ARCHIVE_BUCKET"
+ARCHIVE_READ_BUCKET_VAR = "SHALLWESWIM_ARCHIVE_READ_BUCKET"
 
 
 def _service_account(manifest: str) -> str:
@@ -26,6 +27,12 @@ def _image(manifest: str) -> str:
 def test_web_service_never_configures_the_archive_bucket() -> None:
     """Multi-instance web serving must not become a concurrent archive writer."""
     assert ARCHIVE_BUCKET_VAR not in SERVICE_YAML
+
+
+def test_no_deployed_manifest_configures_archive_hydration() -> None:
+    """Archive hydration is a local development convenience, never deployed."""
+    assert ARCHIVE_READ_BUCKET_VAR not in SERVICE_YAML
+    assert ARCHIVE_READ_BUCKET_VAR not in CAPTURE_JOB_YAML
 
 
 def test_capture_job_configures_the_archive_bucket_placeholder() -> None:

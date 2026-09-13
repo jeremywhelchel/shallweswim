@@ -241,6 +241,11 @@ Notes:
   calendar days, so the effective lookback is 20 to 44 hours depending on the
   UTC hour. Either define the window in local time explicitly or request an
   exact UTC interval; either changes serving data slightly.
+- NDBC historical windows are UTC days, so a station's "2011" serving frame
+  begins at 19:00 local on 31 December 2010 and each year ends five hours
+  early; the archive hydration path trims to the station-local year, so the
+  two paths differ by the leading five hours of the first year. Express NDBC
+  historical windows in station-local days like CO-OPS and NWIS.
 - NDBC `_build_request_urls` still mixes a naive `datetime.now()` with UTC
   window edges when choosing which realtime/monthly files to fetch; the range
   filter is exact, so this only risks fetching one file too many or too few at
@@ -322,8 +327,6 @@ Notes:
 - Consider enabling object versioning on the archive bucket as a safety net
   against a defective merge rewriting a partition; retention would need a
   matching lifecycle rule for noncurrent versions.
-- Phase 1b: local development reads the archive through
-  `SHALLWESWIM_ARCHIVE_READ_BUCKET` to skip the multi-year cold-start fetch.
 
 ## Codebase Maintenance
 

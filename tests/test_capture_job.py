@@ -19,7 +19,7 @@ import pytest
 import pytz
 
 from shallweswim import capture, config
-from shallweswim.archive import capture as archive_capture
+from shallweswim.archive import store as archive_store
 from shallweswim.archive.observations import (
     CURRENTS_UNIT,
     TEMPERATURE_UNIT,
@@ -83,9 +83,9 @@ MULTI_YEAR_HISTORY_CONFIG = LocationConfig(
 @pytest.fixture(autouse=True)
 def clear_store_cache() -> Iterator[None]:
     """Keep mocked stores from leaking between capture tests."""
-    archive_capture._store_for.cache_clear()
+    archive_store.gcs_store.cache_clear()
     yield
-    archive_capture._store_for.cache_clear()
+    archive_store.gcs_store.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -219,7 +219,7 @@ def _install_job_environment(
     clients: dict[str, BaseApiClient] = {"coops": coops_client, "nwis": nwis_client}
     monkeypatch.setattr(capture, "create_api_clients", lambda session: clients)
     store = MemoryObjectStore()
-    monkeypatch.setattr(archive_capture, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     return coops_client, nwis_client, store
 
 

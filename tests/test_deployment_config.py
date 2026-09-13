@@ -1,4 +1,8 @@
-"""Deployment manifests must keep the capture job the archive's only writer."""
+"""Deployment manifests must keep the capture job the archive's only writer.
+
+The job is also the only snapshot publisher, so the publish switch and the
+archive read bucket it needs belong to the job manifest alone.
+"""
 
 import re
 from pathlib import Path
@@ -10,6 +14,7 @@ CLOUDBUILD_YAML = (ROOT / "cloudbuild.yaml").read_text()
 
 ARCHIVE_BUCKET_VAR = "SHALLWESWIM_ARCHIVE_BUCKET"
 ARCHIVE_READ_BUCKET_VAR = "SHALLWESWIM_ARCHIVE_READ_BUCKET"
+SNAPSHOT_PUBLISH_VAR = "SHALLWESWIM_SNAPSHOT_PUBLISH"
 
 
 def _service_account(manifest: str) -> str:
@@ -29,16 +34,29 @@ def test_web_service_never_configures_the_archive_bucket() -> None:
     assert ARCHIVE_BUCKET_VAR not in SERVICE_YAML
 
 
-def test_no_deployed_manifest_configures_archive_hydration() -> None:
-    """Archive hydration is a local development convenience, never deployed."""
+def test_web_service_never_publishes_or_hydrates() -> None:
+    """Publication and archive hydration belong to the job, never the service."""
+    assert SNAPSHOT_PUBLISH_VAR not in SERVICE_YAML
     assert ARCHIVE_READ_BUCKET_VAR not in SERVICE_YAML
-    assert ARCHIVE_READ_BUCKET_VAR not in CAPTURE_JOB_YAML
 
 
 def test_capture_job_configures_the_archive_bucket_placeholder() -> None:
     """The job is the writer, and the bucket name is substituted at deploy time."""
     assert f"name: {ARCHIVE_BUCKET_VAR}" in CAPTURE_JOB_YAML
     assert f"value: ${{{ARCHIVE_BUCKET_VAR}}}" in CAPTURE_JOB_YAML
+
+
+def test_capture_job_publishes_snapshots_from_the_archive_bucket() -> None:
+    """The job publishes, and hydrates history from the bucket it writes to."""
+    assert f"name: {SNAPSHOT_PUBLISH_VAR}\n" in CAPTURE_JOB_YAML
+    assert re.search(rf"name: {SNAPSHOT_PUBLISH_VAR}\s+value: \"1\"", CAPTURE_JOB_YAML)
+    assert re.search(
+        rf"name: {ARCHIVE_READ_BUCKET_VAR}\s+value: \${{{ARCHIVE_BUCKET_VAR}}}",
+        CAPTURE_JOB_YAML,
+    )
+    # Cloud Build substitutes every occurrence of the placeholder.
+    assert CAPTURE_JOB_YAML.count(f"value: ${{{ARCHIVE_BUCKET_VAR}}}") == 2
+    assert f"s|\\$${{{ARCHIVE_BUCKET_VAR}}}|${{_ARCHIVE_BUCKET}}|g" in CLOUDBUILD_YAML
 
 
 def test_service_and_capture_job_use_distinct_identities() -> None:

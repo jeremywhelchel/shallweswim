@@ -769,6 +769,64 @@ class LocationDataManager:
 
         self.log("Precomputed tide prediction frame.", level=logging.DEBUG)
 
+    async def update_once(self) -> None:
+        """Run one serving cycle: update every feed, derive frames, tend plots.
+
+        Each feed's update is a no-op unless the feed is expired, so a fresh
+        manager fetches everything and a running one only what is due. Plot
+        generation is decoupled and non-blocking; see _generate_plots(). The
+        background loop runs this every tick, and a bounded host such as the
+        publishing job runs it once and then awaits wait_for_plots().
+
+        Raises:
+            Exception: A feed's unexpected update failure, after the feed has
+                logged it and scheduled its retry; feeds later in the cycle
+                are then left for the next cycle, which skips the failed one.
+        """
+        loop = asyncio.get_running_loop()
+        # Update each feed (feed.update() is a no-op if not expired)
+        for feed_name in (
+            feeds.FEED_TIDES,
+            feeds.FEED_CURRENTS,
+            feeds.FEED_LIVE_TEMPS,
+            feeds.FEED_HISTORIC_TEMPS,
+        ):
+            await updater.update_dataset(self._feeds, self.clients, feed_name)
+
+        self._precompute_tide_predictions()
+        self._precompute_current_predictions()
+        self._generate_plots(loop)
+
+    async def wait_for_plots(self, timeout: float) -> None:
+        """Harvest plot results until none are pending or `timeout` elapses.
+
+        The background loop never calls this; it harvests one tick at a time.
+        A bounded host calls it after update_once() so every submitted plot is
+        stored before the host reads them. Waiting uses asyncio.wait, which
+        leaves a still-running executor future untouched on timeout.
+
+        Args:
+            timeout: Maximum seconds to wait for the pending plots.
+        """
+        deadline = asyncio.get_running_loop().time() + timeout
+        while True:
+            self._collect_completed_plots()
+            if not self._pending_plot_futures:
+                return
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                pending = sorted(name.value for name in self._pending_plot_futures)
+                self.log(
+                    f"Plots for {pending} still pending after {timeout}s",
+                    level=logging.WARNING,
+                )
+                return
+            await asyncio.wait(
+                [future for future, _ in self._pending_plot_futures.values()],
+                timeout=remaining,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
     async def __update_loop(self) -> None:
         """Background task that refreshes feed data and regenerates plots.
 
@@ -776,24 +834,10 @@ class LocationDataManager:
         Feed updates respect the feed's own scheduling semantics (see feeds.py).
         Plot generation is decoupled — see _generate_plots().
         """
-        loop = asyncio.get_running_loop()
         try:
             while True:
                 try:
-                    # Update each feed (feed.update() is a no-op if not expired)
-                    for feed_name in (
-                        feeds.FEED_TIDES,
-                        feeds.FEED_CURRENTS,
-                        feeds.FEED_LIVE_TEMPS,
-                        feeds.FEED_HISTORIC_TEMPS,
-                    ):
-                        await updater.update_dataset(
-                            self._feeds, self.clients, feed_name
-                        )
-
-                    self._precompute_tide_predictions()
-                    self._precompute_current_predictions()
-                    self._generate_plots(loop)
+                    await self.update_once()
 
                 except Exception as e:
                     self.log(f"Error in data update loop: {e}", level=logging.ERROR)

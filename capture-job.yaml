@@ -4,7 +4,12 @@
 # Cloud Build (see cloudbuild.yaml) before the file is applied. The archive
 # bucket name differs per installation and is never hard-coded here.
 # This job is the only production writer to the archive bucket; the web
-# service (service.yaml) never sets SHALLWESWIM_ARCHIVE_BUCKET.
+# service (service.yaml) never sets SHALLWESWIM_ARCHIVE_BUCKET. It is also
+# the snapshot publisher: SHALLWESWIM_SNAPSHOT_PUBLISH=1 makes each run
+# publish a serving snapshot under published/ in the same bucket, and
+# SHALLWESWIM_ARCHIVE_READ_BUCKET (the same bucket) lets the historical
+# feed restore past years from the archive instead of refetching them. The
+# web service sets neither.
 # Operator runbook: infra/capture-job/README.md
 # Docs: https://cloud.google.com/run/docs/reference/yaml/v1
 apiVersion: run.googleapis.com/v1
@@ -29,6 +34,10 @@ spec:
                 - name: SHALLWESWIM_LOG_FORMAT
                   value: json
                 - name: SHALLWESWIM_ARCHIVE_BUCKET
+                  value: ${SHALLWESWIM_ARCHIVE_BUCKET}
+                - name: SHALLWESWIM_SNAPSHOT_PUBLISH
+                  value: "1"
+                - name: SHALLWESWIM_ARCHIVE_READ_BUCKET
                   value: ${SHALLWESWIM_ARCHIVE_BUCKET}
                 - name: USGS_WATERDATA_API_KEY
                   valueFrom:

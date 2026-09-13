@@ -489,13 +489,32 @@ SHALLWESWIM_ARCHIVE_BUCKET=my-archive-bucket \
   uv run python -m shallweswim.capture --full-history
 ```
 
-The job fetches only live temperatures, historical temperatures, and
-observational currents; it never fetches tide or current predictions, generates
-plots, or starts the web app. A missing bucket variable fails the run before any
-upstream request, because fetching without capturing has no purpose. Locations
-run concurrently and each location's feeds run in sequence. One failing feed
-leaves the run `partial` and still exits zero; a run that publishes nothing
-exits non-zero.
+In this capture-only mode the job fetches only live temperatures, historical
+temperatures, and observational currents; it never fetches tide or current
+predictions, generates plots, or starts the web app. A missing bucket variable
+fails the run before any upstream request, because fetching without capturing
+has no purpose. Locations run concurrently and each location's feeds run in
+sequence. One failing feed leaves the run `partial` and still exits zero; a run
+that publishes nothing exits non-zero.
+
+##### Published Snapshots
+
+The deployed job also publishes a serving snapshot after its capture cycle.
+`SHALLWESWIM_SNAPSHOT_PUBLISH=1` switches a run to the full serving cycle of
+every location, exactly as the web service runs it: all four feeds including
+tide and current predictions, derived frames, and plots in a process pool. It
+then writes one immutable generation under `published/` in the archive bucket:
+content-addressed Parquet objects (one per served feed frame) and SVG objects
+(one per plot) under `published/objects/`, a manifest under
+`published/manifests/`, and finally the `published/current.json` pointer,
+replaced conditionally. A generation identical to the current one is not
+written. Nothing reads these objects yet; they exist so object sizes and
+publication cost are observed in production first. Publishing requires
+`SHALLWESWIM_ARCHIVE_READ_BUCKET`, set to the same bucket, so the historical
+feed restores past years from the archive instead of refetching them; a
+publishing run always uses the full historical range. A failed publish is
+logged, does not change the run's outcome or exit code, and is named in the run
+summary. The web service sets neither variable.
 
 ##### Hydrating Local Historical Temperatures From The Archive
 
@@ -517,15 +536,17 @@ UTC years, so hydrating a station-local year reads that year's partition and the
 next one and keeps the rows inside the local year; its final local hours are
 served exactly as a provider fetch would return them. A failed read or
 validation for one year logs a warning and leaves that year to the provider, so
-hydration never fails startup. Deployed manifests never set this variable.
+hydration never fails startup. The web service manifest never sets this
+variable; the capture job sets it because publishing a snapshot hydrates the
+full historical range.
 
 See [archive setup](infra/monitoring/README.md#observation-archive-setup) for
 the one-time bucket commands and the
 [capture job runbook](infra/capture-job/README.md) for the job identity,
 deployment, scheduling, and validation steps. The operations dashboard includes
-archive merges by outcome, capture runs per hour, and new and revised
-observations per hour by source; bucket setup and job deployment are separate
-from applying monitoring Terraform.
+archive merges by outcome, capture runs and snapshot publishes per hour by
+outcome, and new and revised observations per hour by source; bucket setup and
+job deployment are separate from applying monitoring Terraform.
 
 #### Debugging CSPF Sandettie Historical Temperatures
 

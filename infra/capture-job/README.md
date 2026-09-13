@@ -1,10 +1,27 @@
 # Observation Capture Job
 
 The Cloud Run Job defined by [`capture-job.yaml`](../../capture-job.yaml) runs
-`python -m shallweswim.capture` on a schedule. It fetches only archivable feeds
-(live temperatures, historical temperatures, and observational currents) and
-writes normalized observations to the private archive bucket. It generates no
-plots and starts no web server.
+`python -m shallweswim.capture` on a schedule. It writes normalized
+observations to the private archive bucket and, because the job definition sets
+`SHALLWESWIM_SNAPSHOT_PUBLISH=1`, it also runs the full serving cycle of every
+location (tide and prediction feeds included), generates plots in a process
+pool, and publishes one serving snapshot generation under `published/` in the
+same bucket. It starts no web server. Without the publish variable the job
+fetches only archivable feeds (live temperatures, historical temperatures, and
+observational currents) and generates no plots.
+
+The job manifest sets three application variables:
+
+- `SHALLWESWIM_ARCHIVE_BUCKET`: the bucket capture writes to and snapshots
+  publish into; substituted at deploy time.
+- `SHALLWESWIM_SNAPSHOT_PUBLISH`: `"1"` makes every run publish a snapshot
+  after its capture cycle.
+- `SHALLWESWIM_ARCHIVE_READ_BUCKET`: the same bucket, substituted from the same
+  placeholder, so the historical feed restores past years from the archive
+  instead of refetching them; a publishing run always uses the full historical
+  range. It is required whenever publishing is enabled.
+
+`service.yaml` sets none of them.
 
 **The invariant: this job is the only production writer to the archive.** The
 web runtime identity `shallweswim-runtime@shallweswim.iam.gserviceaccount.com`
@@ -130,7 +147,8 @@ gcloud run jobs describe shallweswim-capture --region=us-east4
 
 Confirm in the description that the image tag matches the build just deployed,
 the service account is `shallweswim-capture@shallweswim.iam.gserviceaccount.com`,
-`SHALLWESWIM_ARCHIVE_BUCKET` holds the intended bucket name, the task timeout is
+`SHALLWESWIM_ARCHIVE_BUCKET` and `SHALLWESWIM_ARCHIVE_READ_BUCKET` both hold the
+intended bucket name, `SHALLWESWIM_SNAPSHOT_PUBLISH` is `1`, the task timeout is
 1200 seconds, and retries are limited to one.
 
 ## Manual runs
@@ -141,7 +159,9 @@ Run the scheduled cycle on demand and wait for it to finish:
 gcloud run jobs execute shallweswim-capture --region=us-east4 --wait
 ```
 
-The one-time historical backfill adds `--full-history`. `gcloud run jobs
+The one-time historical backfill adds `--full-history`. It only matters for a
+capture-only run: a publishing run always fetches the full range, with past
+years hydrated from the archive. `gcloud run jobs
 execute` accepts `--args` as a per-execution override: the comma-separated list
 replaces the container `args` for that execution only, leaving the job
 definition (and therefore every scheduled run) unchanged. The `command` stays
@@ -231,10 +251,27 @@ After the first scheduled runs:
    gcloud storage ls --recursive "gs://$SHALLWESWIM_ARCHIVE_BUCKET/archive/"
    ```
 
-5. The "Archive merges per 5 minutes by outcome" chart on the
-   `Shall We Swim Operations [Terraform]` dashboard shows the job's merges. That
-   chart is deliberately not restricted to `cloud_run_revision`, so job series
-   appear alongside any service series.
+5. A snapshot generation was published: one `snapshot.publish` event per run
+   with a bounded outcome, objects and a manifest under the published prefix,
+   and a current pointer whose `manifest_key` exists under
+   `published/manifests/`. The run summary message also names the publish
+   outcome; a run whose publish failed still exits zero, so check the event
+   rather than the execution state.
+
+   ```bash
+   gcloud logging read \
+     'resource.type="cloud_run_job" AND resource.labels.job_name="shallweswim-capture" AND jsonPayload.component="snapshot" AND jsonPayload.operation="publish"' \
+     --limit=10 \
+     --format='table(timestamp,severity,jsonPayload.outcome,jsonPayload.duration_ms,jsonPayload.record_count,jsonPayload.generation_id)'
+
+   gcloud storage ls --recursive "gs://$SHALLWESWIM_ARCHIVE_BUCKET/published/"
+   gcloud storage cat "gs://$SHALLWESWIM_ARCHIVE_BUCKET/published/current.json"
+   ```
+
+6. The "Archive merges per hour by outcome" and "Snapshot publishes per hour by
+   outcome" charts on the `Shall We Swim Operations [Terraform]` dashboard show
+   the job's merges and publishes. Those charts are deliberately not restricted
+   to `cloud_run_revision`, so job series appear alongside any service series.
 
 Compare archived row counts with the live feeds for at least a week before
 anything reads the archive.

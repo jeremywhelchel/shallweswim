@@ -100,8 +100,16 @@ and its original retrieval time, a changed reading is replaced by the more
 recently retrieved claim, and a fetch with nothing new or revised leaves the
 partition byte-identical. Each merge event reports those row counts and the
 job's run summary reports their totals for the run.
-When `SHALLWESWIM_ARCHIVE_READ_BUCKET` is set, which local development does and
-deployed manifests never do, the historical temperature feed first hydrates each
+When the job definition also sets `SHALLWESWIM_SNAPSHOT_PUBLISH=1`, the job
+instead runs each location's full serving cycle through `LocationDataManager`
+(`update_once()`, then `wait_for_plots()` for the process-pool plots) and, after
+the cycle, publishes every location's served frames, plots, and feed metadata as
+one immutable content-addressed generation under `published/` in the same
+bucket (`shallweswim/snapshot/`); publication failure is isolated from the run's
+outcome, and nothing reads the generations yet.
+When `SHALLWESWIM_ARCHIVE_READ_BUCKET` is set, which local development and the
+publishing job do and the web service never does, the historical temperature
+feed first hydrates each
 required past year that is not already cached. Archive partitions are UTC years
 while a historical year frame is a station-local year, so hydration reads that
 year's partition and the next one, keeps the rows inside the local year, and

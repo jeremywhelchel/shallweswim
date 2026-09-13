@@ -1115,8 +1115,9 @@ Configuration and guardrails:
   that enables writes and which local configuration leaves unset. The
   hydration path calls only the store's read operation and never constructs a
   writer, so setting the read variable cannot cause a write. `.env.example`
-  documents the read variable; `service.yaml` and `capture-job.yaml` never set
-  it, pinned by the deployment-manifest test.
+  documents the read variable; `service.yaml` never sets it, and
+  `capture-job.yaml` sets it only because the job publishes snapshots, both
+  pinned by the deployment-manifest test.
 - The local credential holds `roles/storage.objectViewer` on the bucket, so
   even a misconfiguration that set the write variable locally would fail at
   the bucket. The runbook replaces the temporary local write grant with the

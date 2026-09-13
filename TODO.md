@@ -253,6 +253,10 @@ Notes:
 - CSPF's default live window uses server-local `datetime.today()` while the
   client interprets edges as station-local; harmless in a UTC container but
   should use the location clock.
+- `summarize_dataframe` in `util.py` calls `pd.infer_freq` on any non-empty
+  index, so `Feed.status` (and therefore `/api/status` and the snapshot
+  builder) raises `ValueError: Need at least 3 dates` for a frame with one or
+  two rows. Guard the call so short frames report no frequency.
 - NWIS returns an empty body for years before a site's record begins (Austin
   2011 and 2012); the client reports it as a JSON parse error instead of
   station-unavailable, which logs at ERROR and lists the years as failed.

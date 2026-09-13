@@ -13,6 +13,7 @@ shallweswim/
 ├── main.py              # App entry point, web UI routes, templates
 ├── capture.py           # One-shot bounded observation capture job entry point
 ├── archive/             # Observation schemas, conditional stores, and merge writer
+├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher
 ├── api/                 # API layer
 │   ├── __init__.py      # Re-exports from routes
 │   └── routes.py        # JSON API routes (delegates to core/)

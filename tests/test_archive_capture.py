@@ -184,6 +184,37 @@ async def test_archive_failure_keeps_success_state(
 
 
 @pytest.mark.asyncio
+async def test_configured_outlier_is_served_out_but_archived(monkeypatch) -> None:
+    """The archive keeps provider readings a configured outlier hides from serving."""
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    store = MemoryObjectStore()
+    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    frame = _frame("2026-01-01 12:00", "2026-01-01 13:00")
+    monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=frame))
+
+    location = next(item for item in config.get_all_configs() if item.code == "nyc")
+    feed = feeds.CoopsTempFeed(
+        location_config=location,
+        feed_config=config.CoopsTempFeedConfig(
+            station=8518750, outliers=["2026-01-01 13:00:00"]
+        ),
+        interval="h",
+        expiration_interval=datetime.timedelta(minutes=10),
+    )
+    await feed.update({})
+
+    assert feed.values.index.strftime("%H:%M").tolist() == ["12:00"]
+
+    stored = await store.read("archive/temperature/coops/8518750/2026.parquet")
+    assert stored is not None
+    rows = read_observations(BytesIO(stored.data), expected_unit="F")
+    local_times = (
+        rows["observed_at"].dt.tz_convert(location.timezone).dt.strftime("%H:%M")
+    )
+    assert local_times.tolist() == ["12:00", "13:00"]
+
+
+@pytest.mark.asyncio
 async def test_unresolvable_fall_back_row_is_dropped_with_one_warning(
     monkeypatch, caplog
 ) -> None:

@@ -575,6 +575,10 @@ therefore standardizes on UTC at the client boundary:
 - Historical per-year frames are captured in UTC at native cadence, then
   converted for the serving resample, so both folds reach the archive for
   every source.
+- The archive stores provider readings unfiltered. Configured outlier removal
+  applies to the serving frame only, so a known-bad reading is absent from
+  what the site serves but present in the archive; a future quality column,
+  not deletion, is how such readings would be marked.
 - After deployment, one `--full-history` execution back-fills the fold rows;
   they appear as `new_count` on the merge metrics, roughly 8 to 12 rows per
   year per source.

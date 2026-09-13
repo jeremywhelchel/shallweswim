@@ -98,6 +98,42 @@ FEED_RETRY_INTERVALS = (
 )
 
 
+def to_serving_index(frame: pd.DataFrame, timezone: datetime.tzinfo) -> pd.DataFrame:
+    """Derive a feed's naive local serving index from a client frame.
+
+    Published frames are naive local, unique, and monotonic. A UTC-indexed
+    client frame is converted to the location timezone, stripped of its
+    timezone, and collapsed so a repeated wall time keeps its first occurrence
+    in instant order. The two folds of a fall-back hour arrive as distinct
+    instants, so keeping the first occurrence keeps the daylight-time reading
+    and drops the standard-time repeat for serving only; the archive still
+    receives both folds from the unconverted frame.
+
+    Raises:
+        ValueError: If the frame is not indexed by datetimes.
+    """
+    index = frame.index
+    if not isinstance(index, pd.DatetimeIndex):
+        raise ValueError(
+            f"Feed frame must have a DatetimeIndex, got {type(index).__name__}"
+        )
+    # Transitional: a naive frame is already in serving form. This tolerance is
+    # removed when the last client returns UTC.
+    if index.tz is None:
+        return frame
+
+    local = index.tz_convert(timezone).tz_localize(None)
+    # Order by the absolute instant, not by wall time: a fall-back hour's two
+    # folds share wall times, and only instant order identifies which reading
+    # came first.
+    order = index.argsort(kind="stable")
+    ordered = local[order]
+    keep = ~ordered.duplicated(keep="first")
+    result = frame.iloc[order][keep].set_axis(ordered[keep], axis=0)
+    result.index.name = "time"
+    return result
+
+
 class Feed(BaseModel, abc.ABC):
     """Abstract base class for all data feeds.
 
@@ -421,7 +457,11 @@ class Feed(BaseModel, abc.ABC):
         try:
             self.log(f"Fetching data for {self.__class__.__name__}", logging.DEBUG)
             # Pass clients to _fetch
-            df = await self._fetch(clients=clients)
+            fetched = await self._fetch(clients=clients)
+
+            # Serving owns the naive local index; the archive keeps the client
+            # frame, whose absolute instants survive the fall-back hour.
+            df = to_serving_index(fetched, self.location_config.timezone)
 
             # Validate the dataframe before storing it
             self._validate_frame(df)
@@ -442,7 +482,7 @@ class Feed(BaseModel, abc.ABC):
             )
             if isinstance(self, TempFeed):
                 await self._capture_observations(
-                    df,
+                    fetched,
                     now,
                     measurement=TEMPERATURE_MEASUREMENT,
                     value_column=TEMPERATURE_VALUE_COLUMN,
@@ -454,7 +494,7 @@ class Feed(BaseModel, abc.ABC):
             ):
                 # Prediction feeds never enter the observation archive.
                 await self._capture_observations(
-                    df,
+                    fetched,
                     now,
                     measurement=CURRENTS_MEASUREMENT,
                     value_column=CURRENTS_VALUE_COLUMN,
@@ -493,7 +533,12 @@ class Feed(BaseModel, abc.ABC):
         value_column: str,
         unit: str,
     ) -> None:
-        """Isolate all archive failures from feed publication and scheduling."""
+        """Isolate all archive failures from feed publication and scheduling.
+
+        The archive keeps provider readings unfiltered: the frame arrives as the
+        client returned it. Configured outlier removal is a serving concern and
+        applies only to published data.
+        """
         # A stale count must never outlive the fetch that produced it.
         self._last_capture = None
         bucket = os.environ.get("SHALLWESWIM_ARCHIVE_BUCKET")
@@ -503,11 +548,7 @@ class Feed(BaseModel, abc.ABC):
         try:
             self._last_capture = await capture_observations(
                 bucket,
-                frame=(
-                    self._remove_outliers(frame)
-                    if isinstance(self, HistoricalTempsFeed)
-                    else frame
-                ),
+                frame=frame,
                 source_identity=self.feed_config.citation_key,
                 measurement=measurement,
                 value_column=value_column,
@@ -1647,7 +1688,10 @@ class HistoricalTempsFeed(CompositeFeed):
                 continue
 
             try:
-                normalized_result = self._combine_feeds([result])
+                # Serving derives the naive local index before the hourly
+                # resample; raw_dataframes keeps the client frame for capture.
+                serving_result = to_serving_index(result, self.location_config.timezone)
+                normalized_result = self._combine_feeds([serving_result])
                 self._validate_frame(normalized_result)
             except Exception as e:
                 failed_years[year] = f"{e.__class__.__name__}: {e}"

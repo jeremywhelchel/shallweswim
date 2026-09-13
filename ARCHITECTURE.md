@@ -75,6 +75,13 @@ Background Task → Feed → ApiClient → External Service → Update Feed Cach
 Background Task → Derived Data Precompute → Update Derived Cache
 ```
 
+Clients are migrating to UTC-indexed frames, so a client may still return a
+naive location-local index or a timezone-aware UTC one. Feeds derive the naive
+local serving index in one step before validation, converting to the location
+timezone and keeping the first reading of a repeated fall-back wall time, while
+archive capture receives the client frame unconverted and unfiltered by
+configured outliers.
+
 When `SHALLWESWIM_ARCHIVE_BUCKET` is set, successful temperature updates and
 successful observational currents updates also merge observations into the
 private GCS archive. Production sets that variable only for the bounded capture

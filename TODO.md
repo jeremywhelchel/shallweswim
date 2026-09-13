@@ -257,6 +257,17 @@ Notes:
   index, so `Feed.status` (and therefore `/api/status` and the snapshot
   builder) raises `ValueError: Need at least 3 dates` for a frame with one or
   two rows. Guard the call so short frames report no frequency.
+- CO-OPS sometimes answers a valid request with an HTTP 200 error body such as
+  "No Predictions data was found. Please make sure the Datum input is valid",
+  seen for Palm Beach and San Francisco tides during the capture job's burst
+  of concurrent requests and not reproducible seconds later. The client parses
+  the body as CSV and fails the feed; treat NOAA error bodies as retryable
+  through the existing retry ladder before reporting the station unavailable,
+  and consider staggering the job's per-location fetches.
+- A snapshot generation omits any feed that failed during that run. Before
+  web servers read snapshots, the publisher should carry forward the previous
+  generation's object and metadata for a feed with no new data, so a transient
+  provider failure never removes last-known-good data from serving.
 - NWIS returns an empty body for years before a site's record begins (Austin
   2011 and 2012); the client reports it as a JSON parse error instead of
   station-unavailable, which logs at ERROR and lists the years as failed.

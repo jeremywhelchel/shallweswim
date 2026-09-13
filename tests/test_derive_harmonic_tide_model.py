@@ -374,7 +374,6 @@ def test_compare_model_to_ntslf_returns_timing_deltas(tmp_path: Path) -> None:
         model,
         start_utc=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         end_utc=datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),
-        timezone=datetime.UTC,
         sample_minutes=1,
     ).reset_index()
     event = first_high.iloc[0]

@@ -1034,6 +1034,7 @@ class TestLocalHarmonicTidesFeed:
         result = await feed._fetch(clients={})
 
         assert not result.empty
+        assert str(result.index.tz) == "UTC"
         assert set(result["type"].astype(str)) == {"high", "low"}
         assert all(
             timestamp.second == 0 and timestamp.microsecond == 0
@@ -1043,7 +1044,21 @@ class TestLocalHarmonicTidesFeed:
             3.280839895013123,
             rel=1e-4,
         )
-        frame = queries.prepare_tide_prediction_frame(result)
+
+        await feed.update(clients={})
+        published = feed.values
+        # The published events are the same events at their local wall times.
+        assert published.index.tz is None
+        pd.testing.assert_index_equal(
+            published.index,
+            pd.DatetimeIndex(
+                result.index.tz_convert(location_config.timezone).tz_localize(None),
+                name="time",
+            ),
+        )
+        assert published["prediction"].to_list() == result["prediction"].to_list()
+
+        frame = queries.prepare_tide_prediction_frame(published)
         state = queries.predict_tide_from_precomputed_frame(
             frame,
             location_config,
@@ -1068,9 +1083,21 @@ class TestLocalHarmonicTidesFeed:
         result = await feed._fetch(clients={})
 
         assert not result.empty
+        assert str(result.index.tz) == "UTC"
         assert set(result["type"].astype(str)) == {"high", "low"}
         assert result.index.is_monotonic_increasing
         assert result["prediction"].max() > result["prediction"].min()
+
+        await feed.update(clients={})
+        # Dover publishes the same events at Europe/London wall times.
+        assert feed.values.index.tz is None
+        pd.testing.assert_index_equal(
+            feed.values.index,
+            pd.DatetimeIndex(
+                result.index.tz_convert(location_config.timezone).tz_localize(None),
+                name="time",
+            ),
+        )
 
     def test_create_tide_feed_supports_local_harmonic_config(
         self,
@@ -1119,6 +1146,8 @@ class TestMarineInstituteTidesFeed:
                 start=datetime.datetime(2026, 6, 14, 4, 0, 0),
                 periods=3,
                 freq="6h",
+                tz="UTC",
+                name="time",
             ),
         )
         feed = MarineInstituteTidesFeed(
@@ -1129,13 +1158,14 @@ class TestMarineInstituteTidesFeed:
 
         result = await feed._fetch(clients=mock_clients)
 
+        # ERDDAP publishes and is queried in UTC, so no timezone is sent.
         cast(MagicMock, mock_client.tides).assert_called_once_with(
             station_id="Kinsale",
-            timezone=location_config.timezone,
             height_offset_m=2.01,
             location_code=location_config.code,
         )
         assert list(result.columns) == ["prediction", "type"]
+        assert str(result.index.tz) == "UTC"
 
     def test_create_tide_feed_supports_marine_institute_config(
         self,
@@ -1638,7 +1668,9 @@ class TestCspfTempFeed:
         end = datetime.datetime(2025, 12, 31, 23, 59, 59)
         expected = pd.DataFrame(
             {"water_temp": [50.0]},
-            index=pd.DatetimeIndex([datetime.datetime(2025, 4, 1)], name="time"),
+            index=pd.DatetimeIndex(
+                [datetime.datetime(2025, 4, 1, tzinfo=datetime.UTC)], name="time"
+            ),
         )
         mock_cspf_client = cast(CspfApi, mock_clients["cspf"])
         cast(MagicMock, mock_cspf_client.sandettie_temperature).return_value = expected
@@ -1654,6 +1686,9 @@ class TestCspfTempFeed:
         result = await feed._fetch(clients=mock_clients)
 
         assert result is expected
+        assert str(result.index.tz) == "UTC"
+        # CSPF windows are station-local calendar years, so the client still
+        # needs the location timezone.
         cast(MagicMock, mock_cspf_client.sandettie_temperature).assert_called_once_with(
             begin_date=start,
             end_date=end,
@@ -1712,7 +1747,9 @@ class TestIrishLightsTempFeed:
         end = datetime.datetime(2026, 6, 16)
         expected = pd.DataFrame(
             {"water_temp": [55.4]},
-            index=pd.DatetimeIndex([datetime.datetime(2026, 6, 15, 1)], name="time"),
+            index=pd.DatetimeIndex(
+                [datetime.datetime(2026, 6, 15, 1, tzinfo=datetime.UTC)], name="time"
+            ),
         )
         mock_client = cast(IrishLightsApi, mock_clients["irish_lights"])
         cast(MagicMock, mock_client.water_temperature).return_value = expected
@@ -1728,11 +1765,12 @@ class TestIrishLightsTempFeed:
         result = await feed._fetch(clients=mock_clients)
 
         assert result is expected
+        assert str(result.index.tz) == "UTC"
+        # MetOcean publishes and is queried in UTC, so no timezone is sent.
         cast(MagicMock, mock_client.water_temperature).assert_called_once_with(
             mmsi="992501100",
             begin_date=start,
             end_date=end,
-            timezone=location_config.timezone,
             location_code=location_config.code,
             min_valid_temp_c=1.0,
             max_valid_temp_c=20.0,

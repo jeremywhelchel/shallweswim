@@ -31,7 +31,6 @@ async def test_cork_buoy_temperature_fetch_matches_config() -> None:
             mmsi=cork.live_temp_source.mmsi,
             begin_date=begin,
             end_date=end,
-            timezone=cork.timezone,
             location_code=cork.code,
             min_valid_temp_c=cork.live_temp_source.min_valid_temp_c,
             max_valid_temp_c=cork.live_temp_source.max_valid_temp_c,
@@ -41,5 +40,7 @@ async def test_cork_buoy_temperature_fetch_matches_config() -> None:
     assert len(df) >= 12
     assert df.index.name == "time"
     assert df.index.is_monotonic_increasing
-    assert df.index.tz is None
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert str(df.index.tz) == "UTC"
+    assert df.index.is_unique
     assert df["water_temp"].between(32.0, 77.0).all()

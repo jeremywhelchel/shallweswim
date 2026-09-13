@@ -71,6 +71,8 @@ async def _main() -> None:
                 continue
 
             total_rows += len(df)
+            # The client frame is UTC-indexed, so these instants print with an
+            # offset; the request window stays station-local.
             print(
                 f"{year}: rows={len(df)} oldest={df.index.min()} newest={df.index.max()} "
                 f"elapsed={time.monotonic() - year_started:.2f}s"

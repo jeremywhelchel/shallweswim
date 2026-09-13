@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-import pytz
 
 from shallweswim.clients.base import StationUnavailableError
 from shallweswim.clients.marine_institute import (
@@ -35,8 +34,8 @@ def test_build_tide_high_low_url_encodes_station_and_time_constraints() -> None:
     assert "time%3C=2026-06-16T00:00:00Z" in url
 
 
-def test_high_low_tide_predictions_convert_units_datum_and_timezone() -> None:
-    """OD Malin high/low rows become local-naive LAT-like feet events."""
+def test_high_low_tide_predictions_convert_units_and_datum() -> None:
+    """OD Malin high/low rows become UTC-indexed LAT-like feet events."""
     raw_df = pd.DataFrame(
         {
             "time": [
@@ -50,7 +49,6 @@ def test_high_low_tide_predictions_convert_units_datum_and_timezone() -> None:
 
     result = _high_low_tide_predictions_to_feed(
         raw_df=raw_df,
-        timezone=pytz.timezone("Europe/Dublin"),
         height_offset_m=2.01,
     )
 
@@ -59,10 +57,11 @@ def test_high_low_tide_predictions_convert_units_datum_and_timezone() -> None:
         [(1.564 + 2.01) * METERS_TO_FEET, (-1.482 + 2.01) * METERS_TO_FEET]
     )
     assert result.index.to_list() == [
-        datetime.datetime(2026, 6, 14, 5, 0),
-        datetime.datetime(2026, 6, 14, 11, 20),
+        pd.Timestamp("2026-06-14 04:00:00", tz="UTC"),
+        pd.Timestamp("2026-06-14 10:20:00", tz="UTC"),
     ]
-    assert result.index.tz is None
+    assert result.index.name == "time"
+    assert str(result.index.tz) == "UTC"
 
 
 def test_high_low_tide_predictions_require_expected_columns() -> None:
@@ -72,7 +71,6 @@ def test_high_low_tide_predictions_require_expected_columns() -> None:
     with pytest.raises(MarineInstituteDataError, match="Water_Level_ODMalin"):
         _high_low_tide_predictions_to_feed(
             raw_df=raw_df,
-            timezone=pytz.UTC,
             height_offset_m=2.01,
         )
 
@@ -90,6 +88,5 @@ def test_high_low_tide_predictions_require_usable_rows() -> None:
     with pytest.raises(StationUnavailableError, match="no usable high/low events"):
         _high_low_tide_predictions_to_feed(
             raw_df=raw_df,
-            timezone=pytz.UTC,
             height_offset_m=2.01,
         )

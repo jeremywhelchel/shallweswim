@@ -783,7 +783,6 @@ def predicted_high_low_events_for_window(
             start, datetime.time(), tzinfo=datetime.UTC
         ),
         end_utc=datetime.datetime.combine(end, datetime.time(), tzinfo=datetime.UTC),
-        timezone=datetime.UTC,
         sample_minutes=1,
     ).reset_index()
     if predicted.empty:
@@ -1024,7 +1023,6 @@ def compare_model_to_ntslf(
         model,
         start_utc=start,
         end_utc=end,
-        timezone=datetime.UTC,
         sample_minutes=1,
     ).reset_index()
     predicted["time"] = pd.to_datetime(predicted["time"], utc=True)

@@ -517,9 +517,10 @@ uv run python -m shallweswim.scripts.debug_cspf_fetch --location dov \
 ```
 
 The command fetches the same CSPF Sandettie pages as the runtime client and
-reports per-year row counts, date bounds, failures, and elapsed time. The client
-uses monthly CSPF pages first because they are denser than annual summaries, and
-falls back to an annual page only when monthly pages have no data.
+reports per-year row counts, UTC instant bounds, failures, and elapsed time. The
+client uses monthly CSPF pages first because they are denser than annual
+summaries, and falls back to an annual page only when monthly pages have no
+data.
 
 #### Debugging Irish Lights Temperature Fetches
 
@@ -533,8 +534,8 @@ uv run python -m shallweswim.scripts.debug_irish_lights_fetch --location cor \
 ```
 
 The command fetches the same Irish Lights MetOcean endpoint as the runtime
-client and reports row counts, date bounds, Fahrenheit min/max values, failures,
-and elapsed time. Cork uses the Irish Lights Cork Buoy as a shared live and
+client and reports row counts, UTC instant bounds, Fahrenheit min/max values,
+failures, and elapsed time. Cork uses the Irish Lights Cork Buoy as a shared live and
 historical temperature source, with source-specific filtering for implausible
 water-temperature outliers.
 

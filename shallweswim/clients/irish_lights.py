@@ -38,7 +38,13 @@ class IrishLightsDataError(IrishLightsApiError):
 
 
 class IrishLightsApi(BaseApiClient):
-    """Client for Irish Lights MetOcean buoy observations."""
+    """Client for Irish Lights MetOcean buoy observations.
+
+    MetOcean stamps every observation with a UTC ISO instant, so all methods
+    return pandas DataFrames indexed by timezone-aware UTC timestamps and
+    de-duplicate on that instant. Request windows are UTC as well, because a
+    naive window edge is read as UTC, so no station timezone is needed.
+    """
 
     @property
     def client_type(self) -> str:
@@ -68,12 +74,30 @@ class IrishLightsApi(BaseApiClient):
         mmsi: str,
         begin_date: datetime.datetime,
         end_date: datetime.datetime,
-        timezone: datetime.tzinfo,
         location_code: str,
         min_valid_temp_c: float = IRISH_LIGHTS_MIN_WATER_TEMP_C,
         max_valid_temp_c: float = IRISH_LIGHTS_MAX_WATER_TEMP_C,
     ) -> pd.DataFrame:
-        """Return buoy water-temperature observations in app-native schema."""
+        """Return buoy water-temperature observations in app-native schema.
+
+        Args:
+            mmsi: MetOcean buoy MMSI identifier
+            begin_date: UTC instant that opens the request window; a naive
+                value is read as UTC
+            end_date: UTC instant that closes the request window
+            location_code: Location code for logging purposes
+            min_valid_temp_c: Lowest plausible Celsius reading to publish
+            max_valid_temp_c: Highest plausible Celsius reading to publish
+
+        Returns:
+            DataFrame indexed by timezone-aware UTC time, with columns:
+                water_temp: float - Water temperature in °F
+
+        Raises:
+            IrishLightsDataError: If the window is inverted or the response
+                does not match the expected MetOcean schema
+            StationUnavailableError: If the buoy published no usable readings
+        """
         begin_utc = _to_utc_aware(begin_date)
         end_utc = _to_utc_aware(end_date)
         if end_utc < begin_utc:
@@ -85,7 +109,6 @@ class IrishLightsApi(BaseApiClient):
             mmsi=mmsi,
             begin_utc=begin_utc,
             end_utc=end_utc,
-            timezone=timezone,
             min_valid_temp_c=min_valid_temp_c,
             max_valid_temp_c=max_valid_temp_c,
         )
@@ -96,7 +119,6 @@ class IrishLightsApi(BaseApiClient):
         mmsi: str,
         begin_utc: datetime.datetime,
         end_utc: datetime.datetime,
-        timezone: datetime.tzinfo,
         min_valid_temp_c: float,
         max_valid_temp_c: float,
         location_code: str,
@@ -126,7 +148,6 @@ class IrishLightsApi(BaseApiClient):
 
         return _metocean_temperature_to_feed(
             payload=payload,
-            timezone=timezone,
             min_valid_temp_c=min_valid_temp_c,
             max_valid_temp_c=max_valid_temp_c,
             mmsi=mmsi,
@@ -184,7 +205,6 @@ def _to_utc_aware(timestamp: datetime.datetime) -> datetime.datetime:
 def _metocean_temperature_to_feed(
     *,
     payload: dict[str, Any],
-    timezone: datetime.tzinfo,
     min_valid_temp_c: float,
     max_valid_temp_c: float,
     mmsi: str,
@@ -232,10 +252,11 @@ def _metocean_temperature_to_feed(
             f"Irish Lights MMSI {mmsi} returned no usable water temperature data"
         )
 
-    time_index = frame["time"].dt.tz_convert(timezone).dt.tz_localize(None)
     result = pd.DataFrame(
         {"water_temp": frame["temperature_c"].map(c_to_f).to_numpy(dtype=float)},
-        index=pd.DatetimeIndex(time_index, name="time"),
+        index=pd.DatetimeIndex(frame["time"], name="time"),
     )
-    result = result.sort_index()
+    # Order by the absolute instant with a stable sort, so a repeated instant
+    # keeps the last row MetOcean reported for it.
+    result = result.sort_index(kind="stable")
     return result[~result.index.duplicated(keep="last")]

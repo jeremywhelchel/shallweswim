@@ -17,8 +17,8 @@ pytestmark = pytest.mark.integration
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_sandettie_monthly_temperature_fetch_is_dense_and_local_time() -> None:
-    """CSPF monthly pages provide dense Dover-local Sandettie history."""
+async def test_sandettie_monthly_temperature_fetch_is_dense_and_utc() -> None:
+    """CSPF monthly pages provide dense Sandettie history as UTC instants."""
     timezone = pytz.timezone("Europe/London")
     async with aiohttp.ClientSession() as session:
         client = CspfApi(session)
@@ -34,7 +34,9 @@ async def test_sandettie_monthly_temperature_fetch_is_dense_and_local_time() -> 
     assert len(df) > 300
     assert df.index.name == "time"
     assert df.index.is_monotonic_increasing
-    assert df.index.tz is None
-    assert df.index.min() <= pd.Timestamp("2026-01-01 02:00:00")
-    assert df.index.max() >= pd.Timestamp("2026-06-01")
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert str(df.index.tz) == "UTC"
+    assert df.index.is_unique
+    assert df.index.min() <= pd.Timestamp("2026-01-01 02:00:00", tz="UTC")
+    assert df.index.max() >= pd.Timestamp("2026-06-01", tz="UTC")
     assert df["water_temp"].between(30.0, 80.0).all()

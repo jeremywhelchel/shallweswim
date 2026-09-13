@@ -41,7 +41,12 @@ class MarineInstituteDataError(MarineInstituteApiError):
 
 
 class MarineInstituteApi(BaseApiClient):
-    """Client for Marine Institute Ireland ERDDAP datasets."""
+    """Client for Marine Institute Ireland ERDDAP datasets.
+
+    ERDDAP stamps every row with a UTC ISO instant, so all methods return
+    pandas DataFrames indexed by timezone-aware UTC timestamps. Request windows
+    are UTC days as well, so no station timezone is needed.
+    """
 
     TIDE_HIGH_LOW_COLUMNS: ClassVar[tuple[str, ...]] = (
         "time",
@@ -135,7 +140,6 @@ class MarineInstituteApi(BaseApiClient):
         self,
         *,
         station_id: str,
-        timezone: datetime.tzinfo,
         height_offset_m: float = 0.0,
         location_code: str = "unknown",
     ) -> pd.DataFrame:
@@ -145,6 +149,21 @@ class MarineInstituteApi(BaseApiClient):
         metre heights relative to Ordnance Datum Malin. `height_offset_m`
         converts those heights into the desired local tide-height datum before
         the app's standard feet conversion.
+
+        Args:
+            station_id: Marine Institute tide station identifier
+            height_offset_m: Metres added to each OD Malin height before the
+                conversion to feet
+            location_code: Location code for logging purposes
+
+        Returns:
+            DataFrame indexed by timezone-aware UTC time, with columns:
+                prediction: float - Water level in feet
+                type: str - Either 'low' or 'high'
+
+        Raises:
+            MarineInstituteDataError: If the response schema is unexpected
+            StationUnavailableError: If the station published no usable events
         """
         today = datetime.datetime.now(datetime.UTC).date()
         begin_utc = datetime.datetime.combine(
@@ -180,7 +199,6 @@ class MarineInstituteApi(BaseApiClient):
 
         return _high_low_tide_predictions_to_feed(
             raw_df=raw_df,
-            timezone=timezone,
             height_offset_m=height_offset_m,
         )
 
@@ -195,10 +213,13 @@ def _format_erddap_time(timestamp: datetime.datetime) -> str:
 def _high_low_tide_predictions_to_feed(
     *,
     raw_df: pd.DataFrame,
-    timezone: datetime.tzinfo,
     height_offset_m: float,
 ) -> pd.DataFrame:
-    """Convert Marine Institute high/low rows into app-native tide events."""
+    """Convert Marine Institute high/low rows into app-native tide events.
+
+    The parsed index is the absolute instant ERDDAP published, timezone-aware in
+    UTC, so a repeated event is identified by instant rather than by wall time.
+    """
     required_columns = {"time", "Water_Level_ODMalin", "tide_time_category"}
     missing_columns = required_columns - set(raw_df.columns)
     if missing_columns:
@@ -225,7 +246,9 @@ def _high_low_tide_predictions_to_feed(
             ),
         )
         .dropna(subset=["time", "prediction", "type"])
-        .sort_values("time")
+        # Order by the absolute instant with a stable sort, so a repeated event
+        # deterministically keeps the first row ERDDAP reported for it.
+        .sort_values("time", kind="stable")
         .drop_duplicates(subset=["time", "type"])
         .set_index("time")[["prediction", "type"]]
     )
@@ -234,7 +257,6 @@ def _high_low_tide_predictions_to_feed(
             "Marine Institute tide response had no usable high/low events"
         )
 
-    local_index = df.index.tz_convert(timezone).tz_localize(None)
     result = pd.DataFrame(
         {
             "prediction": df["prediction"].to_numpy(dtype=float),
@@ -243,7 +265,7 @@ def _high_low_tide_predictions_to_feed(
                 categories=TIDE_TYPE_CATEGORIES,
             ),
         },
-        index=local_index,
+        index=df.index,
     )
     result.index.name = "time"
     return result

@@ -50,7 +50,14 @@ class _CspfPage:
 
 
 class CspfApi(BaseApiClient):
-    """Client for CSPF Sandettie historical water temperature pages."""
+    """Client for CSPF Sandettie historical water temperature pages.
+
+    CSPF embeds each reading as epoch milliseconds, an absolute instant, so all
+    methods return pandas DataFrames indexed by timezone-aware UTC timestamps
+    and de-duplicate on that instant. Request windows stay station-local: the
+    caller's naive edges name the local calendar year whose pages are read and
+    trim the result, which is why the methods still take a ``timezone``.
+    """
 
     @property
     def client_type(self) -> str:
@@ -65,7 +72,23 @@ class CspfApi(BaseApiClient):
         timezone: datetime.tzinfo,
         station_slug: str = "sandettie-data",
     ) -> pd.DataFrame:
-        """Fetch Sandettie historical sea temperatures for a date range."""
+        """Fetch Sandettie historical sea temperatures for a date range.
+
+        Args:
+            begin_date: Naive station-local instant that opens the window
+            end_date: Naive station-local instant that closes the window
+            location_code: Location code for logging purposes
+            timezone: Station timezone the request window is expressed in
+            station_slug: CSPF page slug for the station
+
+        Returns:
+            DataFrame indexed by timezone-aware UTC time, with columns:
+                water_temp: float - Water temperature in °F
+
+        Raises:
+            CspfDataError: If the window spans more than one year
+            StationUnavailableError: If CSPF published no data in the window
+        """
         return await self.request_with_retry(
             location_code,
             self._execute_request,
@@ -88,23 +111,21 @@ class CspfApi(BaseApiClient):
             raise CspfDataError("CSPF temperature fetch expects a single year range")
 
         year = begin_date.year
+        begin_utc = _window_edge_utc(begin_date, timezone)
+        end_utc = _window_edge_utc(end_date, timezone)
 
         try:
             temperature_frame = await self._fetch_monthly_temperature(
                 year=year,
                 station_slug=station_slug,
                 location_code=location_code,
-                timezone=timezone,
             )
             if temperature_frame.empty:
                 annual_page = await self._fetch_page(
                     path=f"{station_slug}/{year}",
                     location_code=location_code,
                 )
-                temperature_frame = self._parse_temperature_page(
-                    annual_page,
-                    timezone=timezone,
-                )
+                temperature_frame = self._parse_temperature_page(annual_page)
         except TimeoutError as e:
             raise retryable_timeout_error(
                 timeout_seconds=self.REQUEST_TIMEOUT,
@@ -123,9 +144,11 @@ class CspfApi(BaseApiClient):
             self.log(message, level=logging.WARNING, location_code=location_code)
             raise StationUnavailableError(message)
 
-        result = temperature_frame.sort_index()
+        # Order by the absolute instant with a stable sort, so a repeated
+        # instant keeps the value of whichever page supplied it last.
+        result = temperature_frame.sort_index(kind="stable")
         result = result[~result.index.duplicated(keep="last")]
-        result = result.loc[(result.index >= begin_date) & (result.index <= end_date)]
+        result = result.loc[(result.index >= begin_utc) & (result.index <= end_utc)]
         if result.empty:
             message = (
                 f"CSPF Sandettie returned no temperature data in requested range "
@@ -142,7 +165,6 @@ class CspfApi(BaseApiClient):
         year: int,
         station_slug: str,
         location_code: str,
-        timezone: datetime.tzinfo,
     ) -> pd.DataFrame:
         frames: list[pd.DataFrame] = []
         for month in range(1, 13):
@@ -150,13 +172,15 @@ class CspfApi(BaseApiClient):
                 path=f"{station_slug}/{year}/{month}",
                 location_code=location_code,
             )
-            frame = self._parse_temperature_page(page, timezone=timezone)
+            frame = self._parse_temperature_page(page)
             if not frame.empty:
                 frames.append(frame)
 
         if not frames:
             return pd.DataFrame()
-        result = pd.concat(frames).sort_index()
+        # Neighbouring month pages overlap at their edges; a stable sort by the
+        # absolute instant keeps the later month's value for a shared instant.
+        result = pd.concat(frames).sort_index(kind="stable")
         return result[~result.index.duplicated(keep="last")]
 
     async def _fetch_page(self, *, path: str, location_code: str) -> _CspfPage:
@@ -220,20 +244,19 @@ class CspfApi(BaseApiClient):
                 return _CspfPage(url=url, body=body)
 
     @classmethod
-    def _parse_temperature_page(
-        cls, page: _CspfPage, *, timezone: datetime.tzinfo
-    ) -> pd.DataFrame:
-        """Parse CSPF's embedded sea-temperature JavaScript array."""
+    def _parse_temperature_page(cls, page: _CspfPage) -> pd.DataFrame:
+        """Parse CSPF's embedded sea-temperature JavaScript array.
+
+        Each point carries epoch milliseconds, so the parsed index is the
+        absolute instant CSPF published, timezone-aware in UTC.
+        """
         match = CSPF_TEMP_ARRAY_RE.search(page.body)
         if not match:
             return pd.DataFrame()
 
         rows = [
             (
-                _local_naive_datetime(
-                    int(point.group("timestamp_ms")),
-                    timezone=timezone,
-                ).replace(tzinfo=None),
+                int(point.group("timestamp_ms")),
                 c_to_f(float(point.group("temperature_c"))),
             )
             for point in CSPF_TEMP_POINT_RE.finditer(match.group("body"))
@@ -241,19 +264,26 @@ class CspfApi(BaseApiClient):
         if not rows:
             return pd.DataFrame()
 
-        frame = pd.DataFrame(rows, columns=["timestamp", "water_temp"]).set_index(
-            "timestamp"
-        )
+        frame = pd.DataFrame(rows, columns=["timestamp", "water_temp"])
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], unit="ms", utc=True)
+        frame = frame.set_index("timestamp")
         frame.index.name = "time"
-        return frame.sort_index()
+        return frame.sort_index(kind="stable")
 
 
-def _local_naive_datetime(
-    timestamp_ms: int, *, timezone: datetime.tzinfo
-) -> datetime.datetime:
-    """Convert CSPF epoch milliseconds to station-local naive time."""
-    utc_timestamp = datetime.datetime.fromtimestamp(
-        timestamp_ms / 1000,
-        tz=datetime.UTC,
+def _window_edge_utc(
+    edge: datetime.datetime, timezone: datetime.tzinfo
+) -> pd.Timestamp:
+    """Return one naive station-local window edge as a UTC instant.
+
+    CSPF windows are station-local: the edge names the local calendar year whose
+    pages are read and trims the parsed instants. An edge that a daylight saving
+    transition makes nonexistent or ambiguous is resolved deterministically
+    rather than raising: window edges select data, they do not describe an
+    observation.
+    """
+    return (
+        pd.Timestamp(edge)
+        .tz_localize(timezone, nonexistent="shift_forward", ambiguous=False)
+        .tz_convert("UTC")
     )
-    return utc_timestamp.astimezone(timezone).replace(tzinfo=None)

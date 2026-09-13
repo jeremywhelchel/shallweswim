@@ -79,7 +79,7 @@ async def _main() -> None:
     ranges = _ranges(args)
     print(
         f"target={location_config.code}:temperature mmsi={temp_source.mmsi} "
-        f"timezone={location_config.timezone} ranges={len(ranges)}"
+        f"ranges={len(ranges)} (UTC)"
     )
     started = time.monotonic()
     total_rows = 0
@@ -94,7 +94,6 @@ async def _main() -> None:
                     mmsi=temp_source.mmsi,
                     begin_date=start,
                     end_date=end,
-                    timezone=location_config.timezone,
                     location_code=location_config.code,
                     min_valid_temp_c=temp_source.min_valid_temp_c,
                     max_valid_temp_c=temp_source.max_valid_temp_c,
@@ -105,6 +104,8 @@ async def _main() -> None:
                 continue
 
             total_rows += len(df)
+            # The client frame is UTC-indexed, so these instants print with an
+            # offset.
             print(
                 f"{label}: rows={len(df)} oldest={df.index.min()} newest={df.index.max()} "
                 f"min_f={df['water_temp'].min():.2f} max_f={df['water_temp'].max():.2f} "

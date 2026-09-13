@@ -16,7 +16,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import pytz
 from scipy import optimize
 from scipy.signal import find_peaks
 
@@ -263,10 +262,14 @@ def predict_high_low_events(
     *,
     start_utc: datetime.datetime,
     end_utc: datetime.datetime,
-    timezone: datetime.tzinfo,
     sample_minutes: int = 5,
 ) -> pd.DataFrame:
-    """Generate local-naive high/low tide events for a UTC time window."""
+    """Generate high/low tide events for a UTC time window.
+
+    The model computes in UTC throughout, so events are returned indexed by the
+    timezone-aware UTC instant they occur at. The feed that publishes them
+    derives the naive local serving index.
+    """
     if start_utc.tzinfo is None:
         start_utc = start_utc.replace(tzinfo=datetime.UTC)
     if end_utc.tzinfo is None:
@@ -313,11 +316,7 @@ def predict_high_low_events(
         )
 
     rows = [
-        (
-            _to_location_naive(event_time, timezone),
-            prediction,
-            event_type,
-        )
+        (event_time, prediction, event_type)
         for event_time, prediction, event_type in events
         if start_utc <= event_time <= end_utc
     ]
@@ -326,7 +325,9 @@ def predict_high_low_events(
     df = pd.DataFrame(rows, columns=["time", "prediction", "type"]).set_index("time")
     # The app's derived tide-state curve is minute-resolution. Keep the refined
     # heights, but publish event timestamps on minute boundaries like NOAA does.
-    df.index = pd.DatetimeIndex(df.index).round("min")
+    df.index = pd.DatetimeIndex(pd.to_datetime(df.index, utc=True), name="time").round(
+        "min"
+    )
     df["type"] = pd.Categorical(df["type"], categories=types.TIDE_TYPE_CATEGORIES)
     return df
 
@@ -358,13 +359,3 @@ def _refine_extremum(
     event_time = left + datetime.timedelta(seconds=float(result.x))
     prediction = model.predict_utc(np.array([event_time], dtype=object))[0]
     return event_time, float(prediction), kind
-
-
-def _to_location_naive(
-    event_time_utc: datetime.datetime, timezone: datetime.tzinfo
-) -> datetime.datetime:
-    """Convert a UTC event timestamp to the app's location-local naive form."""
-    local = event_time_utc.astimezone(timezone)
-    if isinstance(timezone, pytz.BaseTzInfo):
-        local = timezone.normalize(local)
-    return local.replace(tzinfo=None)

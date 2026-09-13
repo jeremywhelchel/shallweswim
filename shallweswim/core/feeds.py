@@ -117,8 +117,8 @@ def to_serving_index(frame: pd.DataFrame, timezone: datetime.tzinfo) -> pd.DataF
         raise ValueError(
             f"Feed frame must have a DatetimeIndex, got {type(index).__name__}"
         )
-    # Transitional: a naive frame is already in serving form. This tolerance is
-    # removed when the last client returns UTC.
+    # Every client returns UTC, but composite feeds publish frames their member
+    # feeds already converted, so a naive frame is passed through as-is.
     if index.tz is None:
         return frame
 
@@ -869,7 +869,14 @@ class CspfTempFeed(TempFeed):
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
-        """Fetch historical Sandettie temperatures from CSPF pages."""
+        """Fetch historical Sandettie temperatures from CSPF pages.
+
+        Returns:
+            DataFrame of temperature data indexed by timezone-aware UTC time
+
+        Raises:
+            CspfApiError: If fetching fails
+        """
         begin_date = self.start or (
             datetime.datetime.today() - datetime.timedelta(days=8)
         )
@@ -881,6 +888,8 @@ class CspfTempFeed(TempFeed):
                 begin_date=begin_date,
                 end_date=end_date,
                 station_slug=self.feed_config.station_slug,
+                # The window edges are local wall times naming a local calendar
+                # year; the client trims the UTC instants they bound.
                 timezone=self.location_config.timezone,
                 location_code=self.location_config.code,
             )
@@ -907,7 +916,14 @@ class IrishLightsTempFeed(TempFeed):
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
-        """Fetch Irish Lights buoy water-temperature observations."""
+        """Fetch Irish Lights buoy water-temperature observations.
+
+        Returns:
+            DataFrame of temperature data indexed by timezone-aware UTC time
+
+        Raises:
+            IrishLightsApiError: If fetching fails
+        """
         begin_date = self.start or (
             datetime.datetime.today() - datetime.timedelta(days=8)
         )
@@ -915,11 +931,12 @@ class IrishLightsTempFeed(TempFeed):
 
         try:
             irish_lights_client: IrishLightsApi = clients["irish_lights"]  # type: ignore
+            # MetOcean publishes UTC and its request window is UTC, so the
+            # client needs no station timezone.
             temp_df = await irish_lights_client.water_temperature(
                 mmsi=self.feed_config.mmsi,
                 begin_date=begin_date,
                 end_date=end_date,
-                timezone=self.location_config.timezone,
                 location_code=self.location_config.code,
                 min_valid_temp_c=self.feed_config.min_valid_temp_c,
                 max_valid_temp_c=self.feed_config.max_valid_temp_c,
@@ -997,7 +1014,11 @@ class LocalHarmonicTidesFeed(Feed):
         return df_models.TidePredictionDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
-        """Generate tide predictions locally from stored harmonic coefficients."""
+        """Generate tide predictions locally from stored harmonic coefficients.
+
+        Returns:
+            DataFrame of tide predictions indexed by timezone-aware UTC time
+        """
         model = harmonic_tides.load_model(self.feed_config.model_path)
         today = datetime.datetime.now(datetime.UTC).date()
         start_utc = datetime.datetime.combine(
@@ -1014,7 +1035,6 @@ class LocalHarmonicTidesFeed(Feed):
             model,
             start_utc=start_utc,
             end_utc=end_utc,
-            timezone=self.location_config.timezone,
         )
         return _convert_tide_predictions_to_feet(df, model.height_units)
 
@@ -1030,12 +1050,20 @@ class MarineInstituteTidesFeed(Feed):
         return df_models.TidePredictionDataModel  # type: ignore[return-value]
 
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
-        """Fetch tide predictions from Marine Institute Ireland ERDDAP."""
+        """Fetch tide predictions from Marine Institute Ireland ERDDAP.
+
+        Returns:
+            DataFrame of tide predictions indexed by timezone-aware UTC time
+
+        Raises:
+            MarineInstituteApiError: If fetching fails
+        """
         try:
             marine_client: MarineInstituteApi = clients["marine_institute"]  # type: ignore
+            # ERDDAP publishes UTC and its request window is UTC days, so the
+            # client needs no station timezone.
             return await marine_client.tides(
                 station_id=self.feed_config.station_id,
-                timezone=self.location_config.timezone,
                 height_offset_m=self.feed_config.height_offset_m,
                 location_code=self.location_config.code,
             )

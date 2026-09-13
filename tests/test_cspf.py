@@ -10,6 +10,7 @@ import pytz
 
 from shallweswim.clients.base import StationUnavailableError
 from shallweswim.clients.cspf import CspfApi, _CspfPage
+from shallweswim.core.feeds import to_serving_index
 from shallweswim.util import c_to_f
 
 
@@ -42,13 +43,14 @@ def test_parse_temperature_page_converts_celsius_to_internal_fahrenheit() -> Non
                 ("1744657200000", 10.1),
                 ("1744660800000", 10.2),
             ]
-        ),
-        timezone=pytz.timezone("Europe/London"),
+        )
     )
 
     assert list(frame.columns) == ["water_temp"]
     assert frame.index.name == "time"
-    assert frame.index[0] == pd.Timestamp("2025-04-14 20:00:00")
+    assert str(frame.index.tz) == "UTC"
+    # The epoch milliseconds name 19:00Z, which is 20:00 British Summer Time.
+    assert frame.index[0] == pd.Timestamp("2025-04-14 19:00:00", tz="UTC")
     assert frame["water_temp"].iloc[0] == pytest.approx(c_to_f(10.1))
     assert frame["water_temp"].iloc[1] == pytest.approx(c_to_f(10.2))
 
@@ -83,7 +85,58 @@ async def test_monthly_pages_are_primary(
         f"sandettie-data/2025/{month}" for month in range(1, 13)
     ]
     assert len(frame) == 2
+    assert str(frame.index.tz) == "UTC"
     assert frame["water_temp"].iloc[-1] == pytest.approx(c_to_f(10.2))
+
+
+@pytest.mark.asyncio
+async def test_fall_back_hour_keeps_both_folds_as_distinct_instants(
+    cspf_client: CspfApi,
+) -> None:
+    """Both folds of a British fall-back hour survive as separate readings."""
+    # 2025-10-26 01:30 local happens twice in Europe/London: once at 00:30Z on
+    # British Summer Time and again at 01:30Z on Greenwich Mean Time.
+    monthly_page = cspf_page(
+        [
+            ("1761438600000", 11.1),
+            ("1761442200000", 11.2),
+            ("1761445800000", 11.3),
+        ]
+    )
+    empty_page = _CspfPage(url="https://cspf.co.uk/sandettie-data/2025/1", body="")
+    timezone = pytz.timezone("Europe/London")
+
+    with patch.object(
+        cspf_client,
+        "_fetch_page",
+        new_callable=AsyncMock,
+        side_effect=[empty_page for _ in range(9)]
+        + [monthly_page]
+        + [empty_page for _ in range(2)],
+    ):
+        frame = await cspf_client.sandettie_temperature(
+            begin_date=datetime.datetime(2025, 1, 1),
+            end_date=datetime.datetime(2025, 12, 31, 23, 59, 59),
+            location_code="dov",
+            timezone=timezone,
+        )
+
+    assert frame.index.is_unique
+    assert frame.index.to_list() == [
+        pd.Timestamp("2025-10-26 00:30:00", tz="UTC"),
+        pd.Timestamp("2025-10-26 01:30:00", tz="UTC"),
+        pd.Timestamp("2025-10-26 02:30:00", tz="UTC"),
+    ]
+
+    served = to_serving_index(frame, timezone)
+    assert served.index.tz is None
+    assert served.index.is_unique
+    # Serving keeps the first fold, the British Summer Time reading.
+    assert served.index.to_list() == [
+        pd.Timestamp("2025-10-26 01:30:00"),
+        pd.Timestamp("2025-10-26 02:30:00"),
+    ]
+    assert served["water_temp"].iloc[0] == pytest.approx(c_to_f(11.1))
 
 
 @pytest.mark.asyncio
@@ -110,6 +163,7 @@ async def test_empty_monthly_pages_fall_back_to_annual_page(
     assert fetch_page.call_args_list[-1].kwargs["path"] == "sandettie-data/2025"
     assert fetch_page.call_count == 13
     assert len(frame) == 1
+    assert str(frame.index.tz) == "UTC"
     assert frame["water_temp"].iloc[0] == pytest.approx(c_to_f(10.1))
 
 

@@ -170,8 +170,9 @@ class Feed(BaseModel, abc.ABC):
     _ready_event: asyncio.Event = asyncio.Event()
     _last_error: Exception | None = None
     _consecutive_failures: int = 0
-    # Archive rows the most recent fetch added and revised, or None when this
-    # feed has not captured (no archive bucket, or no fetch yet).
+    # Archive rows this update's captures added and revised, summed over every
+    # capture the update ran, or None when this feed has not captured (no
+    # archive bucket, or no capture attempted this update).
     _last_capture: CaptureResult | None = None
 
     # Modern Pydantic v2 configuration using model_config
@@ -302,11 +303,17 @@ class Feed(BaseModel, abc.ABC):
 
     @property
     def last_capture(self) -> CaptureResult | None:
-        """Archive rows the last fetch added and revised.
+        """Archive rows the last update added and revised.
+
+        A single update may capture more than once - the historical temperature
+        feed captures each freshly fetched year - so these counts sum every
+        capture of the most recent update. A capture that failed contributes
+        zeros, leaving the successful captures of the same update counted.
 
         Returns:
-            Counts from the most recent capture, zeros when that capture failed,
-            or None when this feed has not captured observations.
+            Summed counts from the most recent update's captures, zeros when
+            every one of them failed, or None when this feed has not captured
+            observations.
         """
         return self._last_capture
 
@@ -454,6 +461,9 @@ class Feed(BaseModel, abc.ABC):
             return
 
         started_at = time.monotonic()
+        # A stale count must never outlive the update that produced it. Reset
+        # once here so the captures _fetch runs accumulate into this update.
+        self._last_capture = None
         try:
             self.log(f"Fetching data for {self.__class__.__name__}", logging.DEBUG)
             # Pass clients to _fetch
@@ -538,22 +548,26 @@ class Feed(BaseModel, abc.ABC):
         The archive keeps provider readings unfiltered: the frame arrives as the
         client returned it, indexed by timezone-aware UTC instants. Configured
         outlier removal is a serving concern and applies only to published data.
+
+        The resulting counts accumulate into _last_capture, which update resets
+        once per update, so a feed that captures several frames - one per
+        freshly fetched year - reports their sum rather than only the last.
         """
-        # A stale count must never outlive the fetch that produced it.
-        self._last_capture = None
         bucket = os.environ.get("SHALLWESWIM_ARCHIVE_BUCKET")
         if not bucket:
             return
         started_at = time.monotonic()
         try:
-            self._last_capture = await capture_observations(
-                bucket,
-                frame=frame,
-                source_identity=self.feed_config.citation_key,
-                measurement=measurement,
-                value_column=value_column,
-                unit=unit,
-                retrieved_at=retrieved_at,
+            self._record_capture(
+                await capture_observations(
+                    bucket,
+                    frame=frame,
+                    source_identity=self.feed_config.citation_key,
+                    measurement=measurement,
+                    value_column=value_column,
+                    unit=unit,
+                    retrieved_at=retrieved_at,
+                )
             )
         except Exception as error:
             self.log(
@@ -571,8 +585,24 @@ class Feed(BaseModel, abc.ABC):
                     "attempt_count": 0,
                 },
             )
-            # The fetch captured nothing, which the run summary must still sum.
-            self._last_capture = CaptureResult(0, 0)
+            # This capture archived nothing, which the run summary must still
+            # sum, and which must not discard the update's other captures.
+            self._record_capture(CaptureResult(0, 0))
+
+    def _record_capture(self, result: CaptureResult) -> None:
+        """Add one capture's counts to this update's running total.
+
+        Args:
+            result: Counts from a single capture, zeros when it failed.
+        """
+        previous = self._last_capture
+        if previous is None:
+            self._last_capture = result
+        else:
+            self._last_capture = CaptureResult(
+                previous.new_count + result.new_count,
+                previous.revised_count + result.revised_count,
+            )
 
     @abc.abstractmethod
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:

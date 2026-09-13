@@ -154,6 +154,12 @@ async def test_last_capture_reports_counts_only_when_capture_ran(monkeypatch) ->
     await captured.update({})
     assert captured.last_capture == capture.CaptureResult(2, 0)
 
+    # Update resets the counts, so a second update of the same feed reports
+    # only its own captures - here a re-fetch of readings already archived.
+    captured._next_fetch_after = feeds.utc_now() - datetime.timedelta(seconds=1)
+    await captured.update({})
+    assert captured.last_capture == capture.CaptureResult(0, 0)
+
     monkeypatch.setattr(store, "read", AsyncMock(side_effect=OSError("offline")))
     failed = _feed()
     await failed.update({})
@@ -412,6 +418,55 @@ async def test_historical_capture_archives_native_cadence_and_both_folds(
         for record in caplog.records
         if getattr(record, "operation", None) == "normalize"
     ]
+    # One update captures once per fetched year, and the run summary needs the
+    # sum of every year, not only the last one captured.
+    assert history.last_capture == capture.CaptureResult(len(rows_2024) + len(rows), 0)
+
+
+@pytest.mark.asyncio
+async def test_historical_capture_sums_years_around_a_failed_one(monkeypatch) -> None:
+    """A year whose capture fails contributes zeros, not a lost total."""
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    store = MemoryObjectStore()
+    monkeypatch.setattr(capture, "GcsObjectStore", lambda bucket: store)
+    live = _feed()
+    history = feeds.HistoricalTempsFeed(
+        location_config=live.location_config,
+        feed_config=live.feed_config,
+        start_year=2024,
+        end_year=2025,
+        expiration_interval=datetime.timedelta(days=1),
+    )
+    first_year = _frame("2024-06-01 12:00", "2024-06-01 13:00")
+    second_year = _frame("2025-06-01 12:00", "2025-06-01 13:00", "2025-06-01 14:00")
+    monkeypatch.setattr(
+        feeds.CoopsTempFeed,
+        "_fetch",
+        AsyncMock(side_effect=[first_year, second_year]),
+    )
+
+    real_capture = capture.capture_observations
+    calls = 0
+
+    async def flaky(*args, **kwargs) -> capture.CaptureResult:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("offline")
+        return await real_capture(*args, **kwargs)
+
+    monkeypatch.setattr(feeds, "capture_observations", flaky)
+    await history.update({})
+
+    assert calls == 2
+    # 2024 is captured first and fails, so only 2025's rows reach the archive.
+    assert await store.read("archive/temperature/coops/8518750/2024.parquet") is None
+    stored = await store.read("archive/temperature/coops/8518750/2025.parquet")
+    assert stored is not None
+    assert len(read_observations(BytesIO(stored.data), expected_unit="F")) == len(
+        second_year
+    )
+    assert history.last_capture == capture.CaptureResult(len(second_year), 0)
 
 
 def test_source_paths_preserve_station_parameter_identity() -> None:

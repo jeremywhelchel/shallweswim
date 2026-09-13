@@ -522,13 +522,26 @@ Feeds currently store naive location-local timestamps. The archive writer must
 convert `observed_at` to UTC at the write boundary using the location's
 configured timezone; `retrieved_at` must also be stored as UTC. Daylight-saving
 fall-back times require explicit handling: the conversion must never silently
-choose one occurrence of an ambiguous local time. If the correct fold cannot be
-inferred from the ordered observations, archive capture fails for that update
-rather than writing a potentially corrupt deduplication key. Tests must include
-a fall-back transition with the repeated 1 AM hour and cover both resolvable and
-unresolvable ambiguity. A nonexistent local time in the skipped spring-forward
-hour likewise fails archive capture rather than allowing the timezone library to
-guess or shift it.
+choose one occurrence of an ambiguous local time. The converter first infers
+folds from the ordered observations, which succeeds whenever the source frame
+contains both occurrences of the repeated hour. If inference is impossible
+because a repeated hour appears only once, capture drops exactly the ambiguous
+rows, archives the rest of the frame, and emits a WARNING event
+(`component=archive`, `operation=normalize`, `outcome=ambiguous_dropped`,
+`record_count` = rows dropped, plus the source identity) so the loss is
+visible per source. It never guesses a fold. Tests must include a fall-back
+transition with the repeated 1 AM hour and cover both resolvable and
+unresolvable ambiguity, asserting that only the ambiguous rows are dropped. A
+nonexistent local time in the skipped spring-forward hour fails archive
+capture rather than allowing the timezone library to guess or shift it.
+
+Historical temperature capture archives each freshly fetched year at the
+provider's native cadence, from the per-year frame before the serving
+resample. Resampling to hourly is a serving concern and collapses the repeated
+fall-back hour, so it must not precede capture. Sources whose hourly product
+already omits one fold (NOAA CO-OPS hourly history) lose that single row per
+year under the drop rule until the client fetches history in UTC, which is a
+separate client change.
 
 No quality column exists initially because no current client surfaces quality or
 provisional flags; an all-null column would preserve no information. When a
@@ -553,11 +566,23 @@ Archive paths have no version prefix. The archive uses additive schema evolution
 ### Merge Semantics
 
 The deduplication key is stable source identity plus `observed_at`. Location is
-not part of the key. Within a deduplication key, the row with the newest
-`retrieved_at` wins. This makes overlapping fetches, upstream corrections, and
-repeated merges deterministic and idempotent. Provider deletion or omission of
-an observation never deletes an archived row; preservation is the archive's
-purpose.
+not part of the key. Within a deduplication key, merging is value-aware:
+
+- A key absent from the partition is a **new** row and is added as fetched.
+- A key already present with an identical `value` is an **overlapping** row.
+  The stored row is kept unchanged, including its original `retrieved_at`, so
+  the column records the fetch that first supplied the observation and
+  repeated fetches of unchanged data do not rewrite the partition.
+- A key already present with a different `value` is a **revised** row. The row
+  with the newest `retrieved_at` wins, so upstream corrections replace earlier
+  readings deterministically and idempotently.
+- Two rows with the same key, the same `retrieved_at`, and different values
+  are an integrity conflict and fail the merge.
+
+A merge whose incoming rows are all overlapping leaves the partition
+byte-identical and reports `outcome=unchanged`; only new or revised rows
+produce a write. Provider deletion or omission of an observation never deletes
+an archived row; preservation is the archive's purpose.
 
 Any archive-capture failure—including timestamp conversion, exhausted
 conditional-write retries, or storage unavailability—is isolated from the
@@ -596,6 +621,29 @@ to be long-lived.
 Archived data must not disguise current source availability. The application
 should be able to say both "the last archived observation was at time X" and
 "the source is currently unavailable."
+
+### Merge Event Contract
+
+Every partition merge emits exactly one completion event, `component=archive`,
+`operation=merge`, carrying the source identity, a bounded `outcome`
+(`success`, `unchanged`, `failed`), `duration_ms`, `attempt_count` (conditional
+write attempts), and these integer row counts:
+
+| Field | Meaning |
+| --- | --- |
+| `record_count` | Rows in the partition after the merge |
+| `incoming_count` | Validated rows the fetch supplied for this partition |
+| `new_count` | Incoming rows whose key was absent from the partition |
+| `overlap_count` | Incoming rows identical to a stored row |
+| `revised_count` | Incoming rows that replaced a stored value |
+
+`incoming_count` equals the sum of the other three on any non-failed merge; a
+failed merge reports the counts computed so far and zero for the rest. The
+counts are bounded-cardinality numeric fields, never labels.
+
+The run summary event (`component=updater`, `operation=run`) additionally
+reports `new_count` and `revised_count` summed across every merge in the run,
+so one event per run answers whether the run added anything to the archive.
 
 ## Open Source, Independent Bootstrap, and Archive Distribution
 
@@ -1089,7 +1137,9 @@ requires stronger migration and equivalence validation.
   load missing newer nullable columns as null.
 - Daylight-saving fall-back tests prove that the repeated local 1 AM hour is
   converted without silently conflating observations, and ambiguous input that
-  cannot be resolved fails archive capture.
+  cannot be resolved drops only the ambiguous rows with a visible event.
+- Historical capture archives the pre-resample per-year frame, so native
+  10- and 15-minute cadences and both fall-back folds reach the archive.
 - Lifecycle rules preserve the active generation.
 - Local mode retains the current one-command development experience.
 - Live integration tests continue validating upstream contracts separately from

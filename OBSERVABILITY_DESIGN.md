@@ -250,6 +250,16 @@ together. Their disagreement is diagnostic: a platform-successful job without
 an application-success heartbeat suggests initialization, instrumentation, or
 semantic completion problems.
 
+### Capture Job Heartbeat
+
+Until the bounded updater exists, the hourly capture job is the only scheduled
+execution. Its heartbeat is the run summary event with `outcome=success` or
+`partial`; a `partial` run still proves the job executed. The initial shadow
+policy treats three missed hourly runs—no heartbeat in 3 hours—as the
+page-candidate condition, and any `archive.merge` event with `outcome=failed`
+within one hour as a warn-candidate. Both follow the existing shadow-policy
+promotion rule.
+
 ### Publication and Data Freshness
 
 A successful no-change run intentionally publishes no redundant generation.
@@ -284,6 +294,8 @@ implementation.
 | `shallweswim.feed.consecutive_failures` | Gauge | Current failure state |
 | `shallweswim.archive.merge.duration` | Histogram, seconds | Archive persistence cost |
 | `shallweswim.archive.merge` | Counter | Merge outcomes/conflicts |
+| `shallweswim.archive.merge.new_rows` | Histogram by source | New observations archived per merge |
+| `shallweswim.archive.merge.revised_rows` | Histogram by source | Upstream corrections applied per merge |
 | `shallweswim.snapshot.gc` | Counter | Published objects examined/deleted and GC outcomes |
 | `shallweswim.snapshot.gc.duration` | Histogram, seconds | Published-object mark-and-sweep cost |
 | `shallweswim.plot.availability_latency` | Histogram, seconds | Submit-to-harvest latency, including scheduling or CPU starvation |
@@ -312,6 +324,10 @@ Allowed bounded attributes include:
 - `provider`: bounded configured provider name
 - `outcome`: a small documented enum
 - `operation`: a small documented enum
+- `source`: the configured archive source identity (`citation_key`), only on
+  archive metrics. This is a deliberate exception to the station-identifier
+  rule: the set is the golden-listed configured sources, not request input,
+  and per-source visibility is the purpose of those metrics.
 
 Do not use generation IDs, station IDs from arbitrary requests, URLs, exception
 messages, timestamps, user agents, or run IDs as metric attributes. Those belong
@@ -345,6 +361,15 @@ feed update:
 - elapsed `duration_ms`, plus `record_count` on success
 - `INFO` for `success`, `WARNING` for handled `unavailable`, and `ERROR` for
   `failed`
+
+Archive merges emit one completion event per partition with
+`component=archive`, `operation=merge`, the source identity, a bounded
+outcome, `duration_ms`, `attempt_count`, and the row counts defined in the
+pipeline design's merge event contract (`incoming_count`, `new_count`,
+`overlap_count`, `revised_count`, and `record_count`). The capture job's run
+summary (`component=updater`, `operation=run`) carries the bounded run
+outcome, `duration_ms`, `record_count`, the summed `new_count` and
+`revised_count`, and the platform execution name as `run_id`.
 
 Plot harvesting uses the same completion-event pattern with `component=plot`,
 `operation=plot_generation`, the plotted feed, submit-to-harvest
@@ -463,7 +488,10 @@ One application operations dashboard should show:
 - Duration by phase: fetch, merge, plot, publish
 - Changed versus no-change runs
 - Publication generation age
-- Archive conflicts and failures
+- Runs per hour by outcome
+- New and revised observations per hour by source
+- Merge duration p95 by source
+- Archive conflicts and failures per hour by source
 - Garbage-collection objects examined/deleted, duration, and failures
 
 ### Feeds

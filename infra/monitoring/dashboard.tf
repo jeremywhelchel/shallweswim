@@ -133,12 +133,12 @@ resource "google_monitoring_dashboard" "operations" {
           width  = 12
           height = 4
           widget = {
-            title = "Published feed record count p50 by location/feed"
+            title = "Published feed record count p50 by feed"
             xyChart = {
               dataSets = [{
                 plotType       = "LINE"
                 targetAxis     = "Y1"
-                legendTemplate = "$${metric.labels.location} / $${metric.labels.feed}"
+                legendTemplate = "$${metric.labels.feed}"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
                     filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.feed_records.name}\" AND resource.type=\"cloud_run_revision\""
@@ -146,7 +146,7 @@ resource "google_monitoring_dashboard" "operations" {
                       alignmentPeriod    = "300s"
                       perSeriesAligner   = "ALIGN_PERCENTILE_50"
                       crossSeriesReducer = "REDUCE_MIN"
-                      groupByFields      = ["metric.label.location", "metric.label.feed"]
+                      groupByFields      = ["metric.label.feed"]
                     }
                   }
                 }
@@ -270,7 +270,7 @@ resource "google_monitoring_dashboard" "operations" {
                     | metric '${local.metric_prefix}/${google_logging_metric.archive_merge_new_rows.name}'
                     | align delta(1h)
                     | every 1h
-                    | group_by [metric.source], [rows: sum(sum_from(val()))]
+                    | group_by [source: metric.source], [rows: sum(sum_from(val()))]
                   EOT
                 }
               }]
@@ -299,7 +299,7 @@ resource "google_monitoring_dashboard" "operations" {
                     | metric '${local.metric_prefix}/${google_logging_metric.archive_merge_revised_rows.name}'
                     | align delta(1h)
                     | every 1h
-                    | group_by [metric.source], [rows: sum(sum_from(val()))]
+                    | group_by [source: metric.source], [rows: sum(sum_from(val()))]
                   EOT
                 }
               }]

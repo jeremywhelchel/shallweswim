@@ -37,7 +37,7 @@ Merges are value-aware, so a repeated fetch of unchanged readings reports
 metrics are distributions of the per-merge row counts, and the
 `timeSeriesFilter` widget cannot sum a distribution. Their two tiles therefore
 use the Monitoring Query Language, which can: `align delta(1h)` followed by
-`group_by [metric.source], [rows: sum(sum_from(val()))]`. Those observation
+`group_by [source: metric.source], [rows: sum(sum_from(val()))]`. Those observation
 counts are histogram estimates derived from the distribution's bucket counts
 rather than exact totals, which is why both tiles are titled `(estimated)`;
 exact per-merge counts stay available in the merge events' `new_count` and

@@ -194,6 +194,32 @@ async def test_live_temperature_intervals() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_live_leap_year_history_fetch() -> None:
+    """A leap year exceeds the CO-OPS range limit and must still come back whole."""
+    async with aiohttp.ClientSession() as session:
+        client = CoopsApi(session)
+        df = await client.temperature(
+            station=TEMP_STATION,
+            product="water_temperature",
+            begin_date=datetime.date(2024, 1, 1),
+            end_date=datetime.date(2024, 12, 31),
+            timezone=STATION_TIMEZONE,
+            interval="h",
+        )
+    validate_temperature_data(df, "water_temperature")
+
+    assert df.index.is_monotonic_increasing
+    assert df.index.is_unique
+    # The stitched window covers both ends of the year, across the split.
+    local = df.index.tz_convert(STATION_TIMEZONE)
+    assert local.min().month == 1
+    assert local.max().month == 12
+    # A leap year holds 8784 hours; allow for the station's routine outages.
+    assert len(df) > 8000
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_api_retries() -> None:
     """Test API retry mechanism with real requests."""
     async with aiohttp.ClientSession() as session:

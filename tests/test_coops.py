@@ -28,9 +28,14 @@ from shallweswim.core.feeds import to_serving_index
 EASTERN = "US/Eastern"
 
 
-def request_query(mock_request: AsyncMock) -> dict[str, list[str]]:
-    """Return the query parameters of the URL the client requested."""
-    url = cast(str, mock_request.call_args.args[0])
+def request_query(request: AsyncMock | Any) -> dict[str, list[str]]:
+    """Return the query parameters of a requested URL.
+
+    Accepts either the mocked request helper, whose most recent call is used,
+    or one specific call from its call list.
+    """
+    call = request.call_args if isinstance(request, AsyncMock) else request
+    url = cast(str, call.args[0])
     return urllib.parse.parse_qs(
         urllib.parse.urlparse(url).query, keep_blank_values=True
     )
@@ -310,6 +315,84 @@ async def test_temperature_request_window_converts_local_days_to_utc(
     assert query["end_date"] == [expected_end]
 
 
+def temperature_csv_frame(timestamps: list[str], temps: list[float]) -> pd.DataFrame:
+    """Build a raw CO-OPS temperature response frame with GMT timestamps."""
+    return pd.DataFrame({"Date Time": timestamps, " Water Temperature": temps})
+
+
+@pytest.mark.asyncio
+async def test_temperature_splits_a_window_over_the_range_limit(
+    coops_client: CoopsApi,
+) -> None:
+    """A leap-year window is fetched as two requests and stitched together.
+
+    CO-OPS rejects an explicit range longer than 365 days, so 2024 cannot be
+    one request. The parts abut to the minute and cover the window exactly.
+    """
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.side_effect = [
+            temperature_csv_frame(
+                ["2024-01-01 05:00", "2024-06-01 12:00"], [40.0, 70.0]
+            ),
+            temperature_csv_frame(
+                ["2024-12-31 05:00", "2025-01-01 04:00"], [41.0, 40.5]
+            ),
+        ]
+
+        df = await coops_client.temperature(
+            station=8518750,
+            product="water_temperature",
+            begin_date=datetime.date(2024, 1, 1),
+            end_date=datetime.date(2024, 12, 31),
+            timezone=EASTERN,
+            interval="h",
+        )
+
+    windows = [
+        (request_query(call)["begin_date"][0], request_query(call)["end_date"][0])
+        for call in mock_request.call_args_list
+    ]
+    assert windows == [
+        ("20240101 05:00", "20241231 04:59"),
+        ("20241231 05:00", "20250101 04:59"),
+    ]
+
+    assert df["water_temp"].tolist() == [40.0, 70.0, 41.0, 40.5]
+    assert str(df.index.tz) == "UTC"
+    assert df.index.is_monotonic_increasing
+    assert df.index.is_unique
+
+
+@pytest.mark.asyncio
+async def test_temperature_keeps_a_window_within_the_range_limit_whole(
+    coops_client: CoopsApi,
+) -> None:
+    """A non-leap year fits the range limit exactly and stays one request."""
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.return_value = temperature_csv_frame(
+            ["2023-01-01 05:00", "2023-07-01 12:00"], [40.0, 72.0]
+        )
+
+        df = await coops_client.temperature(
+            station=8518750,
+            product="water_temperature",
+            begin_date=datetime.date(2023, 1, 1),
+            end_date=datetime.date(2023, 12, 31),
+            timezone=EASTERN,
+            interval="h",
+        )
+
+    assert mock_request.call_count == 1
+    query = request_query(mock_request)
+    assert query["begin_date"] == ["20230101 05:00"]
+    assert query["end_date"] == ["20240101 04:59"]
+    assert len(df) == 2
+
+
 @pytest.mark.asyncio
 async def test_temperature_keeps_both_folds_of_the_fall_back_hour(
     coops_client: CoopsApi, mock_fall_back_temperature_data: pd.DataFrame
@@ -451,6 +534,40 @@ async def test_execute_request_keeps_non_retryable_http_statuses_terminal(
 
     with pytest.raises(CoopsConnectionError, match="HTTP error 404"):
         await coops_client._execute_request("https://example.test", "test")
+
+
+@pytest.mark.asyncio
+async def test_execute_request_reports_the_error_response_body(
+    coops_client: CoopsApi,
+) -> None:
+    """NOAA states its reason in the body, so the error message must carry it."""
+
+    class MockResponse:
+        status = 400
+
+        async def __aenter__(self) -> "MockResponse":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def text(self) -> str:
+            return (
+                "Wrong Date: The requested begin/end date or range are not\n"
+                "   valid. Range Limit Exceeded: The size limit for data\n"
+                "   retrieval for this product is 365 days"
+            )
+
+    cast(MagicMock, coops_client._session.get).return_value = MockResponse()
+
+    with pytest.raises(CoopsConnectionError) as excinfo:
+        await coops_client._execute_request("https://example.test", "test")
+
+    message = str(excinfo.value)
+    assert message.startswith("HTTP error 400 for https://example.test: ")
+    # Whitespace is collapsed so the reason stays one readable log line.
+    assert "Range Limit Exceeded: The size limit for data retrieval" in message
+    assert "\n" not in message
 
 
 @pytest.mark.asyncio

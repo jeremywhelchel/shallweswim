@@ -35,6 +35,11 @@ TimeInterval = Literal["hilo", "MAX_SLACK", "h", "6-min", None]
 RequestTimeFormat = "%Y%m%d %H:%M"
 COOPS_PROVIDER = "coops"
 COOPS_MAX_CONCURRENT_REQUESTS = 4
+# CO-OPS rejects a request whose explicit range exceeds 365 days, which a
+# window over a leap year does. Sub-windows stay strictly under the limit.
+COOPS_MAX_REQUEST_RANGE = datetime.timedelta(days=365)
+# How much of an error response body to quote back in an exception message.
+RESPONSE_DETAIL_CHARS = 200
 
 # Temperature product types
 air_temperature = "air_temperature"
@@ -78,6 +83,15 @@ class TemperatureData(TypedDict):
 
     water_temp: float | None
     air_temp: float | None
+
+
+def response_detail(body: str) -> str:
+    """Collapse a response body into a short single-line message detail.
+
+    NOAA reports the reason a request was rejected in the response body rather
+    than the status line, so an error message that omits it is undiagnosable.
+    """
+    return " ".join(body.split())[:RESPONSE_DETAIL_CHARS]
 
 
 class CoopsApiError(BaseClientError):
@@ -124,14 +138,14 @@ class CoopsApi(BaseApiClient):
         """Initialize CoopsApi with an aiohttp client session."""
         super().__init__(session=session)
 
-    def _format_request_time(
+    def _window_edge(
         self,
         date: datetime.date | datetime.datetime,
         timezone: str,
         *,
         end_of_day: bool = False,
-    ) -> str:
-        """Format one edge of a station-local request window as a UTC time.
+    ) -> pd.Timestamp:
+        """Resolve one edge of a station-local request window to a UTC instant.
 
         A window covers whole local days, from local midnight through the last
         local minute, which is what date-only edges meant while requests were
@@ -146,7 +160,7 @@ class CoopsApi(BaseApiClient):
             end_of_day: Whether the edge closes the window rather than opens it.
 
         Returns:
-            The edge as a UTC timestamp string in the CO-OPS request format.
+            The edge as a timezone-aware UTC timestamp.
         """
         if isinstance(date, datetime.datetime):
             date = date.date()
@@ -156,7 +170,50 @@ class CoopsApi(BaseApiClient):
         local = pd.Timestamp(wall).tz_localize(
             timezone, nonexistent="shift_forward", ambiguous=False
         )
-        return local.tz_convert("UTC").strftime(RequestTimeFormat)
+        return local.tz_convert("UTC")
+
+    def _format_request_time(
+        self,
+        date: datetime.date | datetime.datetime,
+        timezone: str,
+        *,
+        end_of_day: bool = False,
+    ) -> str:
+        """Format one edge of a station-local request window for a request."""
+        return self._window_edge(date, timezone, end_of_day=end_of_day).strftime(
+            RequestTimeFormat
+        )
+
+    def _split_request_window(
+        self, begin: pd.Timestamp, end: pd.Timestamp
+    ) -> list[tuple[str, str]]:
+        """Split a UTC window into request windows within the CO-OPS range limit.
+
+        A single request may span at most 365 days, so a window over a leap
+        year has to be fetched in parts. Consecutive parts abut to the minute:
+        each ends one minute before the next begins, so every reading falls in
+        exactly one part and none falls between two.
+
+        Args:
+            begin: First instant of the window, timezone-aware UTC.
+            end: Last instant of the window, timezone-aware UTC.
+
+        Returns:
+            Formatted (begin, end) request strings in ascending instant order.
+        """
+        minute = datetime.timedelta(minutes=1)
+        windows: list[tuple[str, str]] = []
+        start = begin
+        while start <= end:
+            stop = min(start + COOPS_MAX_REQUEST_RANGE - minute, end)
+            windows.append(
+                (
+                    start.strftime(RequestTimeFormat),
+                    stop.strftime(RequestTimeFormat),
+                )
+            )
+            start = stop + minute
+        return windows
 
     def _build_url(self, params: CoopsRequestParams) -> str:
         """Build a CO-OPS datagetter URL with default and request params."""
@@ -201,6 +258,14 @@ class CoopsApi(BaseApiClient):
                 async with self._session.get(url, timeout=timeout) as response:
                     if response.status != 200:
                         error_msg = f"HTTP error {response.status} for {url}"
+                        try:
+                            detail = response_detail(await response.text())
+                        except (TimeoutError, aiohttp.ClientError):
+                            # The body is diagnostic detail only; failing to read
+                            # it must not reclassify the HTTP error itself.
+                            detail = ""
+                        if detail:
+                            error_msg = f"{error_msg}: {detail}"
                         raise_if_retryable_http_status(response.status, error_msg)
 
                         self.log(
@@ -414,6 +479,10 @@ class CoopsApi(BaseApiClient):
             interval: Optional time interval (if None, returns 6-minute intervals)
             location_code: Location code for logging purposes
 
+        A window longer than the CO-OPS range limit is fetched as consecutive
+        requests and stitched back together, so callers pass the window they
+        want regardless of its length.
+
         Returns:
             DataFrame indexed by timezone-aware UTC time, with columns:
                 water_temp: Optional[float] - Water temperature in °F
@@ -428,30 +497,36 @@ class CoopsApi(BaseApiClient):
         if product not in ["air_temperature", "water_temperature"]:
             raise ValueError(f"Invalid product: {product}")
 
-        begin = self._format_request_time(begin_date, timezone)
-        end = self._format_request_time(end_date, timezone, end_of_day=True)
-        params: CoopsRequestParams = {
-            "product": product,
-            "begin_date": begin,
-            "end_date": end,
-            "station": station,
-            "interval": interval,
-        }
+        windows = self._split_request_window(
+            self._window_edge(begin_date, timezone),
+            self._window_edge(end_date, timezone, end_of_day=True),
+        )
 
         self.log(
-            f"Fetching temperature data for station {station} from {begin} to {end} UTC",
+            f"Fetching temperature data for station {station} from "
+            f"{windows[0][0]} to {windows[-1][1]} UTC in {len(windows)} request(s)",
             level=logging.DEBUG,
             location_code=location_code,
         )
 
-        url = self._build_url(params)
-        raw_df = await self.request_with_retry(
-            location_code, self._execute_request, url
-        )
+        raw_frames: list[pd.DataFrame] = []
+        for begin, end in windows:
+            params: CoopsRequestParams = {
+                "product": product,
+                "begin_date": begin,
+                "end_date": end,
+                "station": station,
+                "interval": interval,
+            }
+            url = self._build_url(params)
+            raw_frames.append(
+                await self.request_with_retry(location_code, self._execute_request, url)
+            )
 
         # Existing processing logic
         df = (
-            raw_df.pipe(self._FixTime)
+            pd.concat(raw_frames, ignore_index=True)
+            .pipe(self._FixTime)
             .rename(
                 columns={
                     " Water Temperature": "water_temp",
@@ -462,6 +537,14 @@ class CoopsApi(BaseApiClient):
                 columns=[" X", " N", " R "], errors="ignore"
             )  # Metadata columns we don't use
         )
+
+        if len(raw_frames) > 1:
+            # Stitched windows are ours to make coherent: order by instant and
+            # keep the first reading should a boundary ever be returned twice.
+            # A single response is passed through as the provider sent it, so a
+            # genuine provider repeat still reaches the archive's conflict rule.
+            df = df.sort_index(kind="stable")
+            df = df[~df.index.duplicated(keep="first")]
 
         return df
 

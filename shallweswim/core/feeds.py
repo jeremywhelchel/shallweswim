@@ -762,7 +762,7 @@ class NdbcTempFeed(TempFeed):
         """Fetch temperature data from NOAA NDBC API.
 
         Returns:
-            DataFrame with temperature data
+            DataFrame of temperature data indexed by timezone-aware UTC time
 
         Raises:
             Exception: If fetching fails
@@ -778,11 +778,12 @@ class NdbcTempFeed(TempFeed):
             # Fetch the data using the NDBC API client
             self.log(f"Fetching NDBC data for station {station_id}", logging.DEBUG)
 
+            # NDBC publishes in UTC and its request window is UTC days, so the
+            # client needs no station timezone.
             temp_df = await self.client.temperature(  # Corrected call
                 station_id=station_id,
                 begin_date=begin_date,
                 end_date=end_date,
-                timezone=str(self.location_config.timezone),
                 location_code=self.location_config.code,
                 mode=self.mode,
             )
@@ -818,7 +819,7 @@ class NwisTempFeed(TempFeed):
         """Fetch temperature data from USGS NWIS API.
 
         Returns:
-            DataFrame with temperature data
+            DataFrame of temperature data indexed by timezone-aware UTC time
 
         Raises:
             Exception: If fetching fails
@@ -838,6 +839,7 @@ class NwisTempFeed(TempFeed):
                 site_no=site_no,
                 begin_date=begin_date,
                 end_date=end_date,
+                # The window edges are local dates; the client sends them in UTC.
                 timezone=str(self.location_config.timezone),
                 location_code=self.location_config.code,
                 parameter_cd=parameter_cd,
@@ -1480,7 +1482,7 @@ class NwisCurrentFeed(CurrentsFeed):
         """Fetch currents data from NWIS.
 
         Returns:
-            DataFrame with currents data
+            DataFrame of currents data indexed by timezone-aware UTC time
 
         Raises:
             Exception: If fetching fails
@@ -1500,9 +1502,8 @@ class NwisCurrentFeed(CurrentsFeed):
         df = await nwis_client.currents(
             site_no=self.feed_config.site_no,
             parameter_cd=self.feed_config.parameter_cd,
-            timezone=str(
-                self.location_config.timezone
-            ),  # Use str() for timezone string
+            # The client expresses its request window in station-local days.
+            timezone=str(self.location_config.timezone),
             location_code=self.location_config.code,
         )
 

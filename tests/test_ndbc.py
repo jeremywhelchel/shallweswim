@@ -7,6 +7,7 @@ import contextlib
 import datetime
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 # Third-party imports
 import aiohttp
@@ -27,7 +28,11 @@ from shallweswim.clients.ndbc import (
     NdbcApi,
     NdbcDataError,
 )
+from shallweswim.core.feeds import to_serving_index
 from shallweswim.util import c_to_f
+
+# Station timezone used wherever these tests derive a serving index
+EASTERN = "US/Eastern"
 
 
 def create_mock_ndbc_data(mode: str = "stdmet") -> pd.DataFrame:
@@ -39,8 +44,8 @@ def create_mock_ndbc_data(mode: str = "stdmet") -> pd.DataFrame:
     # Create MultiIndex with timestamp and station_id
     index = pd.MultiIndex.from_tuples(
         [
-            (pd.Timestamp("2025-04-19 14:00:00"), "44025"),
-            (pd.Timestamp("2025-04-19 15:00:00"), "44025"),
+            (pd.Timestamp("2025-04-19 14:00:00", tz="UTC"), "44025"),
+            (pd.Timestamp("2025-04-19 15:00:00", tz="UTC"), "44025"),
         ],
         names=["timestamp", "station_id"],
     )
@@ -67,11 +72,11 @@ def ndbc_client() -> NdbcApi:
 # Mock data fixtures
 @pytest.fixture
 def mock_ndbc_stdmet_raw() -> pd.DataFrame:
-    """Mock raw DataFrame for stdmet data from NDBC."""
+    """Mock raw DataFrame for stdmet data, with UTC instants as NDBC reports."""
     index = pd.MultiIndex.from_tuples(
         [
-            ("44013", pd.Timestamp("2025-04-19 10:00:00")),
-            ("44013", pd.Timestamp("2025-04-19 11:00:00")),
+            ("44013", pd.Timestamp("2025-04-19 10:00:00", tz="UTC")),
+            ("44013", pd.Timestamp("2025-04-19 11:00:00", tz="UTC")),
         ],
         names=["station_id", "timestamp"],
     )
@@ -80,11 +85,11 @@ def mock_ndbc_stdmet_raw() -> pd.DataFrame:
 
 @pytest.fixture
 def mock_ndbc_ocean_raw() -> pd.DataFrame:
-    """Mock raw DataFrame for ocean data from NDBC."""
+    """Mock raw DataFrame for ocean data, with UTC instants as NDBC reports."""
     index = pd.MultiIndex.from_tuples(
         [
-            ("44013", pd.Timestamp("2025-04-19 10:00:00")),
-            ("44013", pd.Timestamp("2025-04-19 11:00:00")),
+            ("44013", pd.Timestamp("2025-04-19 10:00:00", tz="UTC")),
+            ("44013", pd.Timestamp("2025-04-19 11:00:00", tz="UTC")),
         ],
         names=["station_id", "timestamp"],
     )
@@ -105,12 +110,13 @@ async def test_temperature_success(
             station_id="44013",
             begin_date=datetime.date(2025, 4, 19),
             end_date=datetime.date(2025, 4, 19),
-            timezone="America/New_York",
         )
 
         assert not result.empty
         assert "water_temp" in result.columns
         assert pd.api.types.is_datetime64_any_dtype(result.index)
+        assert str(result.index.tz) == "UTC"
+        assert result.index.name == "time"
         # Check C to F conversion
         assert result["water_temp"].iloc[0] == pytest.approx(c_to_f(15.0))
         mock_request.assert_called_once()
@@ -133,7 +139,6 @@ async def test_temperature_stdmet(
             station_id="44013",
             begin_date=datetime.date(2025, 4, 19),
             end_date=datetime.date(2025, 4, 19),
-            timezone="America/New_York",
             mode="stdmet",
         )
 
@@ -157,7 +162,6 @@ async def test_temperature_ocean(
             station_id="44013",
             begin_date=datetime.date(2025, 4, 19),
             end_date=datetime.date(2025, 4, 19),
-            timezone="America/New_York",
             mode="ocean",
         )
 
@@ -182,7 +186,6 @@ async def test_api_error(
                 station_id="44013",
                 begin_date=datetime.date(2025, 4, 19),
                 end_date=datetime.date(2025, 4, 19),
-                timezone="America/New_York",
             )
 
 
@@ -234,14 +237,15 @@ async def test_execute_request_includes_full_end_date_without_next_day(
             location_code="test",
         )
 
+    # NDBC text files are UTC, so the window edges name UTC day boundaries.
     timestamps = result.index.get_level_values("timestamp")
     assert list(timestamps) == [
-        pd.Timestamp("2026-06-10 00:00:00"),
-        pd.Timestamp("2026-06-10 17:00:00"),
+        pd.Timestamp("2026-06-10 00:00:00", tz="UTC"),
+        pd.Timestamp("2026-06-10 17:00:00", tz="UTC"),
     ]
-    assert pd.Timestamp("2026-06-10 17:00:00") in timestamps
-    assert pd.Timestamp("2026-06-09 23:00:00") not in timestamps
-    assert pd.Timestamp("2026-06-11 00:00:00") not in timestamps
+    assert pd.Timestamp("2026-06-10 17:00:00", tz="UTC") in timestamps
+    assert pd.Timestamp("2026-06-09 23:00:00", tz="UTC") not in timestamps
+    assert pd.Timestamp("2026-06-11 00:00:00", tz="UTC") not in timestamps
 
 
 @pytest.mark.asyncio
@@ -351,8 +355,8 @@ def test_parse_stdmet_response_body() -> None:
     result = NdbcApi._parse_response_body(body=body, station_id="44013", mode="stdmet")
 
     assert list(result.index) == [
-        pd.Timestamp("2025-01-01 00:00:00"),
-        pd.Timestamp("2025-01-01 00:10:00"),
+        pd.Timestamp("2025-01-01 00:00:00", tz="UTC"),
+        pd.Timestamp("2025-01-01 00:10:00", tz="UTC"),
     ]
     assert result["WTMP"].iloc[0] == pytest.approx(7.6)
     assert pd.isna(result["WTMP"].iloc[1])
@@ -395,7 +399,6 @@ async def test_dictionary_result(
                 station_id="44013",
                 begin_date=datetime.date(2025, 4, 19),
                 end_date=datetime.date(2025, 4, 19),
-                timezone="America/New_York",
             )
 
 
@@ -422,7 +425,6 @@ async def test_missing_temp_column_stdmet(
                 station_id="44013",
                 begin_date=datetime.date(2025, 4, 19),
                 end_date=datetime.date(2025, 4, 19),
-                timezone="America/New_York",
                 mode="stdmet",
             )
 
@@ -449,41 +451,108 @@ async def test_missing_temp_column_ocean(
                 station_id="44013",
                 begin_date=datetime.date(2025, 4, 19),
                 end_date=datetime.date(2025, 4, 19),
-                timezone="America/New_York",
                 mode="ocean",
             )
 
 
-def test_fix_time(ndbc_client: NdbcApi) -> None:
-    """Test the _fix_time method for timezone conversion.
+FALL_BACK_REALTIME_BODY = """#YY  MM DD hh mm WDIR WSPD GST  WVHT   DPD   APD MWD   PRES  ATMP  WTMP  DEWP  VIS PTDY  TIDE
+#yr  mo dy hr mn degT m/s  m/s     m   sec   sec degT   hPa  degC  degC  degC  nmi  hPa    ft
+2025 11 02 07 00 250  2.6   MM   1.3    MM     6  MM 1017.3  12.4  14.0   7.9   11   MM    MM
+2025 11 02 06 00 250  2.6   MM   1.3    MM     6  MM 1017.3  12.4  15.0   7.9   11   MM    MM
+2025 11 02 05 00 250  3.6   MM   0.5    MM     6  MM 1014.2  13.0  16.0   8.1   11   MM    MM
+"""
 
-    Based on original implementation provided by user.
-    Checks conversion from naive (assumed UTC) to local naive.
+
+@pytest.mark.asyncio
+async def test_execute_request_keeps_both_folds_of_the_fall_back_hour(
+    ndbc_client: NdbcApi,
+) -> None:
+    """The two 01:00 US/Eastern readings are distinct UTC instants.
+
+    05:00Z is 01:00 EDT and 06:00Z is 01:00 EST on 2025-11-02. Sorting by the
+    instant keeps them in fetch order instead of interleaving the folds, and
+    serving keeps only the first of the repeated wall time.
     """
-    # Create a DataFrame with a naive DatetimeIndex (as might come from MultiIndex drop)
-    # Original test used naive times assumed to be UTC
-    index = pd.DatetimeIndex(
-        [
-            pd.Timestamp("2025-04-19 14:00:00"),  # Represents 10:00 AM EDT
-            pd.Timestamp("2025-04-19 20:00:00"),  # Represents 4:00 PM EDT
-        ]
-    )
-    df = pd.DataFrame({"water_temp": [15.0, 15.5]}, index=index)
+    with patch.object(
+        ndbc_client,
+        "_fetch_url",
+        new_callable=AsyncMock,
+        return_value=type(
+            "Response", (), {"status": 200, "body": FALL_BACK_REALTIME_BODY}
+        )(),
+    ):
+        result = await ndbc_client._execute_request(
+            station_id="44013",
+            mode="stdmet",
+            start_time="2025-11-02",
+            end_time="2025-11-02",
+            location_code="test",
+        )
 
-    # Call instance method via fixture
-    result_df = ndbc_client._fix_time(df, "America/New_York")
-
-    # Check that timestamps were converted correctly and result is naive
-    expected_times = [
-        pd.Timestamp("2025-04-19 10:00:00"),  # Expected 10:00 AM EDT (naive)
-        pd.Timestamp("2025-04-19 16:00:00"),  # Expected 4:00 PM EDT (naive)
+    timestamps = result.index.get_level_values("timestamp")
+    assert str(timestamps.tz) == "UTC"
+    assert timestamps.is_unique
+    assert timestamps.is_monotonic_increasing
+    assert list(timestamps) == [
+        pd.Timestamp("2025-11-02 05:00:00", tz="UTC"),
+        pd.Timestamp("2025-11-02 06:00:00", tz="UTC"),
+        pd.Timestamp("2025-11-02 07:00:00", tz="UTC"),
     ]
-    # Ensure result index is naive
-    # Use isinstance to check if it's a DatetimeIndex before accessing tz
-    assert isinstance(result_df.index, pd.DatetimeIndex)
-    assert result_df.index.tz is None
-    expected_index = pd.DatetimeIndex(expected_times, name="time")
-    pd.testing.assert_index_equal(result_df.index, expected_index)
+
+    frame = result.droplevel("station_id")[["WTMP"]]
+    assert timestamps.tz_convert(EASTERN).strftime("%H:%M").tolist() == [
+        "01:00",
+        "01:00",
+        "02:00",
+    ]
+
+    served = to_serving_index(frame, ZoneInfo(EASTERN))
+    assert served.index.tz is None
+    assert served.index.is_unique
+    assert served.index.strftime("%H:%M").tolist() == ["01:00", "02:00"]
+    # The kept 01:00 reading is the daylight time fold, the earlier instant.
+    assert served["WTMP"].tolist() == [16.0, 14.0]
+
+
+@pytest.mark.asyncio
+async def test_execute_request_collapses_duplicate_utc_instants_keep_first(
+    ndbc_client: NdbcApi,
+) -> None:
+    """Overlapping realtime and monthly components de-duplicate on the instant."""
+    monthly_body = """#YY  MM DD hh mm WDIR WSPD GST  WVHT   DPD   APD MWD   PRES  ATMP  WTMP  DEWP  VIS PTDY  TIDE
+#yr  mo dy hr mn degT m/s  m/s     m   sec   sec degT   hPa  degC  degC  degC  nmi  hPa    ft
+2025 11 02 05 00 250  3.6   MM   0.5    MM     6  MM 1014.2  13.0  20.0   8.1   11   MM    MM
+2025 11 02 06 00 250  2.6   MM   1.3    MM     6  MM 1017.3  12.4  21.0   7.9   11   MM    MM
+"""
+
+    responses = [
+        type("Response", (), {"status": 200, "body": FALL_BACK_REALTIME_BODY})(),
+        type("Response", (), {"status": 200, "body": monthly_body})(),
+    ]
+
+    with patch.object(
+        ndbc_client, "_build_request_urls", return_value=["url-a", "url-b"]
+    ):
+        with patch.object(
+            ndbc_client,
+            "_fetch_url",
+            new_callable=AsyncMock,
+            side_effect=responses,
+        ):
+            result = await ndbc_client._execute_request(
+                station_id="44013",
+                mode="stdmet",
+                start_time="2025-11-02",
+                end_time="2025-11-02",
+                location_code="test",
+            )
+
+    timestamps = result.index.get_level_values("timestamp")
+    assert timestamps.is_unique
+    assert len(result) == 3
+    # Both folds survive, and the first component supplying an instant wins, so
+    # the monthly file's differing readings never replace the realtime ones.
+    assert result["WTMP"].tolist() == [16.0, 15.0, 14.0]
 
 
 # Example from user about potential data issue

@@ -47,7 +47,13 @@ NDBC_NAN_VALUES = ["MM", 99.0, 999, 9999, 9999.0]
 
 
 class NdbcApi(BaseApiClient):
-    """NOAA NDBC API client using direct async HTTP requests."""
+    """NOAA NDBC API client using direct async HTTP requests.
+
+    NDBC text products report every observation in UTC, so all methods return
+    pandas DataFrames indexed by timezone-aware UTC timestamps and de-duplicate
+    on the absolute instant. Request windows are UTC days: a station-local
+    timezone is not needed to select or to shape the data.
+    """
 
     @property
     def client_type(self) -> str:
@@ -65,10 +71,13 @@ class NdbcApi(BaseApiClient):
         end_time: str,
         location_code: str,
     ) -> pd.DataFrame:
-        """Fetch and parse raw NDBC data for a station/date range."""
+        """Fetch and parse raw NDBC data for a station/UTC date range."""
         start_dt = datetime.datetime.strptime(start_time, "%Y-%m-%d")
         end_dt = datetime.datetime.strptime(end_time, "%Y-%m-%d")
         end_exclusive_dt = end_dt + datetime.timedelta(days=1)
+        # NDBC publishes in UTC, so the window edges name UTC day boundaries.
+        start_utc = pd.Timestamp(start_dt, tz="UTC")
+        end_exclusive_utc = pd.Timestamp(end_exclusive_dt, tz="UTC")
         station_id = station_id.lower()
 
         urls = self._build_request_urls(
@@ -120,6 +129,8 @@ class NdbcApi(BaseApiClient):
             raise StationUnavailableError(error_msg)
 
         result = pd.concat(components)
+        # Realtime and monthly components overlap; the UTC instant is the
+        # identity, so a repeat keeps the first component that supplied it.
         result = (
             result.reset_index()
             .drop_duplicates(subset="timestamp", keep="first")
@@ -127,7 +138,7 @@ class NdbcApi(BaseApiClient):
             .sort_index()
         )
         result = result.loc[
-            (result.index >= start_dt) & (result.index < end_exclusive_dt)
+            (result.index >= start_utc) & (result.index < end_exclusive_utc)
         ]
         if result.empty:
             raise StationUnavailableError(
@@ -345,7 +356,11 @@ class NdbcApi(BaseApiClient):
         date_col_names = names[:5]
         date_strings = df[date_col_names].astype(str).agg(" ".join, axis=1)
         try:
-            df["timestamp"] = pd.to_datetime(date_strings, format="%Y %m %d %H %M")
+            # NDBC text columns are UTC; localizing here keeps the absolute
+            # instant, so both folds of a fall-back hour stay distinct rows.
+            df["timestamp"] = pd.to_datetime(
+                date_strings, format="%Y %m %d %H %M", utc=True
+            )
         except ValueError as e:
             raise NdbcDataError(
                 f"Failed to parse NDBC timestamps for station {station_id}: {e}"
@@ -358,11 +373,25 @@ class NdbcApi(BaseApiClient):
         station_id: str,
         begin_date: datetime.date,
         end_date: datetime.date,
-        timezone: str,
         location_code: str = "unknown",
         mode: Literal["stdmet", "ocean"] = "stdmet",
     ) -> pd.DataFrame:
-        """Fetch water temperature data from NDBC station with retries."""
+        """Fetch water temperature data from NDBC station with retries.
+
+        Args:
+            station_id: NDBC station id
+            begin_date: First UTC date of the request window
+            end_date: Last UTC date of the request window
+            location_code: Location code for logging purposes
+            mode: NDBC product to read, standard meteorological or oceanographic
+
+        Returns:
+            DataFrame indexed by timezone-aware UTC time, with columns:
+                water_temp: float - Water temperature in °F
+
+        Raises:
+            NdbcDataError: If the response has no usable temperature column
+        """
         location_code = location_code or station_id
         begin_date_str = begin_date.strftime("%Y-%m-%d")
         end_date_str = end_date.strftime("%Y-%m-%d")
@@ -411,7 +440,8 @@ class NdbcApi(BaseApiClient):
                 self.log(error_msg, level=logging.ERROR, location_code=location_code)
                 raise NdbcDataError(error_msg)
 
-            temp_df = self._fix_time(temp_df, timezone)
+            temp_df.index.name = "time"
+            # Order by the absolute instant, which is what the UTC index is.
             temp_df.sort_index(inplace=True)
 
             self.log(
@@ -431,17 +461,6 @@ class NdbcApi(BaseApiClient):
             )
             self.log(error_msg, level=logging.ERROR, location_code=location_code)
             raise NdbcDataError(error_msg) from e
-
-    def _fix_time(self, df: pd.DataFrame, timezone: str) -> pd.DataFrame:
-        """Convert UTC timestamps to local naive timestamps."""
-        df.index = (
-            pd.DatetimeIndex(df.index)
-            .tz_localize("UTC")
-            .tz_convert(timezone)
-            .tz_localize(None)
-        )
-        df.index.name = "time"
-        return df
 
 
 class _NdbcHttpResponse:

@@ -76,7 +76,8 @@ Background Task → Derived Data Precompute → Update Derived Cache
 ```
 
 Clients are migrating to UTC-indexed frames, so a client may still return a
-naive location-local index or a timezone-aware UTC one; NOAA CO-OPS returns UTC.
+naive location-local index or a timezone-aware UTC one; NOAA CO-OPS, NOAA NDBC,
+and USGS NWIS return UTC.
 Feeds derive the naive local serving index in one step before validation,
 converting to the location timezone and keeping the first reading of a repeated
 fall-back wall time, while archive capture receives the client frame unconverted
@@ -428,6 +429,16 @@ blocking async fanout at higher layers:
   station-local days: callers pass naive local dates plus the station
   `timezone`, and the client sends each window edge as the UTC instant that
   local day boundary names.
+- The NDBC client returns frames indexed by timezone-aware UTC instants,
+  because NDBC text products report UTC. It de-duplicates overlapping realtime,
+  monthly, and yearly components on the absolute instant, keeping the first
+  component that supplied one. Its request window is a span of UTC days, so the
+  client takes no station `timezone`.
+- The NWIS client returns frames indexed by timezone-aware UTC instants. USGS
+  stamps each observation with an explicit offset, which the client normalizes
+  to UTC so both folds of a fall-back hour stay distinct. Request windows stay
+  station-local days: callers pass naive local dates plus the station
+  `timezone`, and the client converts each edge to a UTC RFC3339 instant.
 - The CSPF client is intentionally narrow: it fetches Dover/Sandettie
   historical temperature fallback data from CSPF Sandettie pages. It parses the
   embedded sea-temperature JavaScript series, normalizes Celsius to the internal

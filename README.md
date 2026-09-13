@@ -423,7 +423,7 @@ uv run python -m shallweswim.scripts.debug_ndbc_fetch --location bos \
 ```
 
 The command uses the same first-party NDBC client as the app and reports per-year
-row counts, missing temperature counts, date bounds, and elapsed time. The
+row counts, missing temperature counts, UTC instant bounds, and elapsed time. The
 script's `--concurrency` flag controls diagnostic workload fanout; runtime
 upstream HTTP concurrency is bounded by provider gates in the clients.
 

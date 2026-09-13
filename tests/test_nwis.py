@@ -3,6 +3,7 @@
 import asyncio
 import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import aiohttp
 import pandas as pd
@@ -21,6 +22,10 @@ from shallweswim.clients.nwis import (
     NwisApiError,
     NwisDataError,
 )
+from shallweswim.core.feeds import to_serving_index
+
+# Station timezone used wherever these tests derive a serving index
+EASTERN = "US/Eastern"
 
 
 def create_mock_nwis_data(parameter_cd: str = "00010") -> pd.DataFrame:
@@ -117,6 +122,12 @@ async def test_temperature_success(nwis_client: NwisApi) -> None:
     assert "water_temp" in df.columns
     assert round(df["water_temp"].iloc[0], 1) == 59.9
     assert round(df["water_temp"].iloc[1], 1) == 61.2
+    assert str(df.index.tz) == "UTC"
+    assert df.index.name == "time"
+    assert list(df.index) == [
+        pd.Timestamp("2025-04-19 14:00:00", tz="UTC"),
+        pd.Timestamp("2025-04-19 15:00:00", tz="UTC"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -212,6 +223,8 @@ async def test_currents_success(nwis_client: NwisApi) -> None:
     assert len(df) == 2
     assert "velocity_fps" in df.columns
     assert df["velocity_fps"].tolist() == [3.44, 3.43]
+    assert str(df.index.tz) == "UTC"
+    assert df.index.name == "time"
 
 
 @pytest.mark.asyncio
@@ -624,21 +637,21 @@ async def test_missing_temp_column(nwis_client: NwisApi) -> None:
 
 @pytest.mark.asyncio
 async def test_fix_time(nwis_client: NwisApi) -> None:
-    """Test the _fix_time method."""
+    """_fix_time normalizes a provider offset to the same UTC instant."""
     index = pd.DatetimeIndex(
         [
-            pd.Timestamp("2025-04-19 14:00:00", tz="UTC"),
-            pd.Timestamp("2025-04-19 20:00:00", tz="UTC"),
+            pd.Timestamp("2025-04-19 10:00:00", tz=EASTERN),
+            pd.Timestamp("2025-04-19 16:00:00", tz=EASTERN),
         ]
     )
     df = pd.DataFrame({"water_temp": [59.9, 61.2]}, index=index)
 
-    result_df = nwis_client._fix_time(df, "America/New_York")
+    result_df = nwis_client._fix_time(df)
 
     expected_index = pd.DatetimeIndex(
         [
-            pd.Timestamp("2025-04-19 10:00:00"),
-            pd.Timestamp("2025-04-19 16:00:00"),
+            pd.Timestamp("2025-04-19 14:00:00", tz="UTC"),
+            pd.Timestamp("2025-04-19 20:00:00", tz="UTC"),
         ],
         name="time",
     )
@@ -657,4 +670,76 @@ async def test_fix_time_rejects_naive_timestamps(nwis_client: NwisApi) -> None:
     df = pd.DataFrame({"water_temp": [59.9, 61.2]}, index=index)
 
     with pytest.raises(NwisApiError, match="NWIS timestamps must be timezone-aware"):
-        nwis_client._fix_time(df, "America/New_York")
+        nwis_client._fix_time(df)
+
+
+def create_fall_back_payload() -> dict[str, object]:
+    """Return USGS readings spanning the US/Eastern fall-back hour of 2025-11-02.
+
+    USGS stamps each observation with its own offset, so the repeated 01:00
+    wall time arrives as 01:00-04:00 (EDT) and 01:00-05:00 (EST): two
+    instants, an hour apart. The order is deliberately not instant order.
+    """
+    stamps = [
+        ("2025-11-02T02:00:00-05:00", "16.0"),
+        ("2025-11-02T01:00:00-05:00", "15.0"),
+        ("2025-11-02T01:00:00-04:00", "14.0"),
+    ]
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "parameter_code": "00011",
+                    "statistic_id": "00011",
+                    "time": time,
+                    "value": value,
+                },
+            }
+            for time, value in stamps
+        ],
+        "links": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_temperature_keeps_both_folds_of_the_fall_back_hour(
+    nwis_client: NwisApi,
+) -> None:
+    """Mixed provider offsets become distinct UTC instants in instant order."""
+    with patch.object(
+        nwis_client, "_fetch_json_pages", new_callable=AsyncMock
+    ) as mock_fetch:
+        mock_fetch.return_value = [create_fall_back_payload()]
+
+        df = await nwis_client.temperature(
+            site_no="03292494",
+            begin_date=datetime.date(2025, 11, 2),
+            end_date=datetime.date(2025, 11, 2),
+            timezone=EASTERN,
+            location_code="sdf",
+            parameter_cd="00011",
+        )
+
+    assert str(df.index.tz) == "UTC"
+    assert df.index.is_unique
+    assert df.index.is_monotonic_increasing
+    assert list(df.index) == [
+        pd.Timestamp("2025-11-02 05:00:00", tz="UTC"),
+        pd.Timestamp("2025-11-02 06:00:00", tz="UTC"),
+        pd.Timestamp("2025-11-02 07:00:00", tz="UTC"),
+    ]
+    assert df.index.tz_convert(EASTERN).strftime("%H:%M").tolist() == [
+        "01:00",
+        "01:00",
+        "02:00",
+    ]
+    assert df["water_temp"].tolist() == [14.0, 15.0, 16.0]
+
+    served = to_serving_index(df, ZoneInfo(EASTERN))
+    assert served.index.tz is None
+    assert served.index.is_unique
+    assert served.index.strftime("%H:%M").tolist() == ["01:00", "02:00"]
+    # The kept 01:00 reading is the daylight time fold, the earlier instant.
+    assert served["water_temp"].tolist() == [14.0, 16.0]

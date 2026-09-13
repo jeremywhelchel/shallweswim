@@ -31,6 +31,9 @@ def validate_temperature_data(df: pd.DataFrame) -> None:
     """Validate structure and content of temperature data."""
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert str(df.index.tz) == "UTC"
+    assert df.index.is_unique
     assert "water_temp" in df.columns
     # Check that the column contains float values (can be NaN)
     assert pd.api.types.is_float_dtype(df["water_temp"])
@@ -57,7 +60,6 @@ async def test_live_temperature_fetch_stdmet() -> None:
         station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
-        timezone="America/New_York",
         location_code="tst",
         mode="stdmet",
     )
@@ -107,7 +109,6 @@ async def test_live_temperature_fetch_ocean() -> None:
             station_id=NDBC_OCEAN_STATION,
             begin_date=begin_date,
             end_date=end_date,
-            timezone="America/New_York",
             location_code="tst",
             mode="ocean",
         )
@@ -163,7 +164,6 @@ async def test_date_range_handling() -> None:
         station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
-        timezone="America/New_York",
         location_code="tst",
         mode="stdmet",
     )
@@ -178,7 +178,6 @@ async def test_date_range_handling() -> None:
         station_id=NDBC_STDMET_STATION,
         begin_date=begin_date_long,
         end_date=end_date,
-        timezone="America/New_York",
         location_code="tst",
         mode="stdmet",
     )
@@ -194,8 +193,8 @@ async def test_date_range_handling() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_timezone_conversion() -> None:
-    """Test timezone conversion with real data."""
+async def test_live_readings_are_past_utc_instants() -> None:
+    """Live NDBC readings are timezone-aware UTC instants no later than now."""
 
     # Get data for the last 3 days
     end_date = datetime.date.today()
@@ -203,56 +202,22 @@ async def test_timezone_conversion() -> None:
 
     ndbc_api = NdbcApi(session=None)
 
-    # Fetch data with Eastern timezone
-    df_eastern = await ndbc_api.temperature(
+    df = await ndbc_api.temperature(
         station_id=NDBC_STDMET_STATION,
         begin_date=begin_date,
         end_date=end_date,
-        timezone="America/New_York",
         location_code="tst",
         mode="stdmet",
     )
 
-    # Fetch the same data with Pacific timezone
-    df_pacific = await ndbc_api.temperature(
-        station_id=NDBC_STDMET_STATION,
-        begin_date=begin_date,
-        end_date=end_date,
-        timezone="America/Los_Angeles",
-        location_code="tst",
-        mode="stdmet",
+    validate_temperature_data(df)
+    assert df.index.is_monotonic_increasing
+
+    now = pd.Timestamp.now(tz="UTC")
+    assert (df.index <= now).all(), "Observations should never be in the future"
+    assert (df.index >= now - datetime.timedelta(days=4)).all(), (
+        "Observations should fall inside the requested UTC window"
     )
-
-    # Both should have valid data
-    validate_temperature_data(df_eastern)
-    validate_temperature_data(df_pacific)
-
-    # They should have the same number of data points
-    assert len(df_eastern) == len(df_pacific), (
-        "Same data should have same number of points regardless of timezone"
-    )
-
-    # The timestamps should be different due to timezone conversion
-    # Eastern time is 3 hours ahead of Pacific time
-
-    # Add explicit assertions that data exists
-    assert not df_eastern.empty, "Eastern timezone data should not be empty"
-    assert not df_pacific.empty, "Pacific timezone data should not be empty"
-
-    # Convert both to UTC for comparison
-    eastern_utc = (
-        pd.DatetimeIndex(df_eastern.index)
-        .tz_localize("America/New_York")
-        .tz_convert("UTC")
-    )
-    pacific_utc = (
-        pd.DatetimeIndex(df_pacific.index)
-        .tz_localize("America/Los_Angeles")
-        .tz_convert("UTC")
-    )
-
-    # The UTC timestamps should be identical
-    pd.testing.assert_index_equal(eastern_utc, pacific_utc)
 
 
 @pytest.mark.integration
@@ -272,7 +237,6 @@ async def test_consecutive_api_calls() -> None:
             station_id=NDBC_STDMET_STATION,
             begin_date=begin_date,
             end_date=end_date,
-            timezone="America/New_York",
             location_code="tst",
             mode="stdmet",
         )
@@ -302,7 +266,6 @@ async def test_invalid_station() -> None:
             station_id=invalid_station,
             begin_date=begin_date,
             end_date=end_date,
-            timezone="America/New_York",
             location_code="tst",
             mode="stdmet",
         )

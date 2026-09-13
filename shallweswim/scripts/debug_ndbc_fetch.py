@@ -18,7 +18,6 @@ from shallweswim.util import utc_now
 @dataclass(frozen=True)
 class FetchTarget:
     station: str
-    timezone: str
     mode: str
     label: str
 
@@ -33,7 +32,6 @@ def _parse_args() -> argparse.Namespace:
         "--location",
         help="Location code with an NDBC temperature source, such as bos or chi.",
     )
-    parser.add_argument("--timezone", help="IANA timezone for station mode.")
     parser.add_argument(
         "--mode",
         choices=["stdmet", "ocean"],
@@ -74,16 +72,12 @@ def _target(args: argparse.Namespace) -> FetchTarget:
             raise ValueError(f"{args.location} does not use an NDBC temperature source")
         return FetchTarget(
             station=temp_source.station,
-            timezone=str(location_config.timezone),
             mode=args.mode,
             label=args.location,
         )
 
-    if not args.timezone:
-        raise ValueError("--timezone is required when fetching by station")
     return FetchTarget(
         station=args.station,
-        timezone=args.timezone,
         mode=args.mode,
         label=args.station,
     )
@@ -132,11 +126,11 @@ async def _fetch_range(
         station_id=target.station,
         begin_date=start,
         end_date=end,
-        timezone=target.timezone,
         location_code=target.label,
         mode=target.mode,
     )
     elapsed = time.monotonic() - started
+    # The client frame is UTC-indexed, so these instants print with an offset.
     oldest = df.index.min() if not df.empty else None
     newest = df.index.max() if not df.empty else None
     missing = int(df["water_temp"].isna().sum()) if "water_temp" in df else 0
@@ -154,7 +148,7 @@ async def _main() -> None:
 
     print(
         f"target={target.label} station={target.station} mode={target.mode} "
-        f"timezone={target.timezone} start={start} end={end}"
+        f"start={start} end={end} (UTC)"
     )
 
     async with aiohttp.ClientSession() as session:

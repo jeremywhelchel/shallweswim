@@ -65,6 +65,11 @@ class NwisApi(BaseApiClient):
 
     The public methods intentionally preserve the old NWIS client interface so
     feed code can migrate without changing call sites.
+
+    USGS reports each observation with an explicit UTC offset, so all methods
+    return pandas DataFrames indexed by timezone-aware UTC instants. Request
+    windows remain station-local days, which is why the methods still take a
+    ``timezone``; it no longer shapes the returned index.
     """
 
     @property
@@ -350,7 +355,13 @@ class NwisApi(BaseApiClient):
                 )
             return pd.DataFrame()
 
-        index = pd.DatetimeIndex([record[0] for record in records], name="datetime")
+        # USGS may report a window's readings under more than one offset, such
+        # as the two folds of a fall-back hour. Parsing to UTC keeps every
+        # absolute instant and keeps the index a single datetime64 dtype.
+        index = pd.DatetimeIndex(
+            pd.to_datetime([record[0] for record in records], utc=True),
+            name="datetime",
+        )
         column_name = f"{parameter_cd}_{NWIS_INSTANTANEOUS_STATISTIC_ID}"
         return pd.DataFrame(
             {
@@ -375,13 +386,13 @@ class NwisApi(BaseApiClient):
             site_no: USGS site number (e.g., '01646500')
             begin_date: Start date for data fetch
             end_date: End date for data fetch
-            timezone: Timezone to convert timestamps to
+            timezone: Station timezone the request window is expressed in
             location_code: Optional location code for logging
             parameter_cd: USGS parameter code, default '00010' for water temperature
                           Note: Some stations may use '00011' instead
 
         Returns:
-            DataFrame with index=time and columns:
+            DataFrame indexed by timezone-aware UTC time, with columns:
                 water_temp: float - Water temperature in °F
 
         Raises:
@@ -438,10 +449,10 @@ class NwisApi(BaseApiClient):
                 )
                 temp_df["water_temp"] = temp_df["water_temp"].map(c_to_f)
 
-            # Convert timestamps to local timezone
-            temp_df = self._fix_time(temp_df, timezone)
+            # Keep the absolute instant the provider reported
+            temp_df = self._fix_time(temp_df)
 
-            # Sort by time to ensure chronological order
+            # Sort by the absolute instant to ensure chronological order
             temp_df.sort_index(inplace=True)
 
             self.log(
@@ -477,11 +488,11 @@ class NwisApi(BaseApiClient):
         Args:
             site_no: USGS site number.
             parameter_cd: USGS parameter code(s) for velocity/discharge (e.g., '00060').
-            timezone: Timezone to convert timestamps to.
+            timezone: Station timezone the request window is expressed in.
             location_code: Optional location code for logging.
 
         Returns:
-            DataFrame with index=time and columns like:
+            DataFrame indexed by timezone-aware UTC time, with columns like:
                 discharge_cfs: float - Discharge in cubic feet per second (if param 00060)
                 discharge_cms: float - Discharge in cubic meters per second (if param 00061)
                 velocity_fps: float - Velocity in feet per second (if param 00055)
@@ -551,10 +562,10 @@ class NwisApi(BaseApiClient):
                 {output_col_name: raw_result[data_column_name]}, index=raw_result.index
             )
 
-            # Convert timestamps to local timezone
-            current_df = self._fix_time(current_df, timezone)
+            # Keep the absolute instant the provider reported
+            current_df = self._fix_time(current_df)
 
-            # Sort by time
+            # Sort by the absolute instant
             current_df.sort_index(inplace=True)
 
             self.log(
@@ -573,15 +584,22 @@ class NwisApi(BaseApiClient):
             self.log(error_msg, level=logging.ERROR, location_code=location_code)
             raise NwisApiError(error_msg) from e
 
-    def _fix_time(self, df: pd.DataFrame, timezone: str) -> pd.DataFrame:
-        """Convert timestamps to local timezone.
+    def _fix_time(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize parsed USGS timestamps to a timezone-aware UTC index.
+
+        USGS reports every observation with an explicit offset, so the absolute
+        instant is exact even across a daylight saving fall-back hour, whose two
+        folds share a wall time but not an instant. Feeds derive the naive local
+        serving index from this frame.
 
         Args:
-            df: DataFrame with timestamps in the index (either naive or tz-aware)
-            timezone: Timezone to convert timestamps to
+            df: DataFrame with timezone-aware timestamps in the index
 
         Returns:
-            DataFrame with local timezone timestamps (naive datetimes)
+            DataFrame indexed by timezone-aware UTC timestamps, named "time"
+
+        Raises:
+            NwisApiError: If the index is not a timezone-aware DatetimeIndex
         """
 
         if not isinstance(df.index, pd.DatetimeIndex) or df.index.tz is None:
@@ -589,10 +607,7 @@ class NwisApi(BaseApiClient):
                 "NWIS timestamps must be timezone-aware before conversion"
             )
 
-        # Convert to the location's timezone and then make the timestamps naive again.
-        datetime_index = df.index
-        local_index = datetime_index.tz_convert(timezone)
-        df.index = local_index.tz_localize(None)
+        df.index = df.index.tz_convert("UTC")
 
         # Rename the index to 'time' to match our convention
         df.index.name = "time"

@@ -43,6 +43,11 @@ async def test_integration_temperature() -> None:
     assert not df.empty
     assert "water_temp" in df.columns
     assert df.index.name == "time"
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert str(df.index.tz) == "UTC"
+    assert df.index.is_unique
+    assert df.index.is_monotonic_increasing
+    assert (df.index < pd.Timestamp.now(tz="UTC")).all()
     assert df["water_temp"].between(32.0, 100.0).all()
 
 
@@ -95,6 +100,9 @@ async def test_get_nwis_currents() -> None:
         )
         assert "velocity_fps" in df.columns
         assert isinstance(df.index, pd.DatetimeIndex)
+        assert str(df.index.tz) == "UTC"
+        assert df.index.is_unique
+        assert (df.index <= pd.Timestamp.now(tz="UTC")).all()
         # Note: NWIS 'iv' service might only return one row
         print(f"\nReceived {len(df)} current readings for {site_no}:")
         print(df.head())

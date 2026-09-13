@@ -367,6 +367,8 @@ def _print_dataframe_summary(
     target: FetchTarget,
     elapsed: float,
 ) -> None:
+    # The client frame is UTC-indexed, so these instants print with an offset;
+    # target.timezone only shapes the local-day request window.
     oldest = df.index.min() if not df.empty else None
     newest = df.index.max() if not df.empty else None
     value_column = _value_column(target)

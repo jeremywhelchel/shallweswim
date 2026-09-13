@@ -54,6 +54,9 @@ from shallweswim.feeds import (
     LocalHarmonicTidesFeed,
     MarineInstituteTidesFeed,
     MultiStationCurrentsFeed,
+    NdbcTempFeed,
+    NwisCurrentFeed,
+    NwisTempFeed,
     create_temp_feed,
     create_tide_feed,
 )
@@ -1493,6 +1496,120 @@ class TestCoopsFeedTimeFrames:
         combined = await feed._fetch(clients=mock_clients)
         assert str(combined.index.tz) == "UTC"
         assert combined["velocity"].tolist() == [2.0, 3.0, 4.0]
+
+        await feed.update(clients=mock_clients)
+        assert feed.values.index.tz is None
+        assert feed.values.index.strftime("%H:%M").tolist() == [
+            "08:00",
+            "09:00",
+            "10:00",
+        ]
+
+
+class TestNdbcAndNwisFeedTimeFrames:
+    """NDBC and NWIS client frames are UTC; published feed values are naive local."""
+
+    @staticmethod
+    def _utc_frame(column: str) -> pd.DataFrame:
+        """Return three hourly UTC readings starting at 12:00Z on a summer day."""
+        return pd.DataFrame(
+            {column: [1.0, 2.0, 3.0]},
+            index=pd.date_range(
+                "2025-06-01 12:00", periods=3, freq="h", tz="UTC", name="time"
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_ndbc_temp_fetch_keeps_utc_and_update_serves_naive_local(
+        self,
+        location_config: config_lib.LocationConfig,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """NdbcTempFeed passes the UTC frame through; update converts it once."""
+        ndbc_client = cast(NdbcApi, mock_clients["ndbc"])
+        cast(MagicMock, ndbc_client.temperature).return_value = self._utc_frame(
+            "water_temp"
+        )
+
+        feed = NdbcTempFeed(
+            location_config=location_config,
+            feed_config=config_lib.NdbcTempFeedConfig(station="44013"),
+            client=ndbc_client,
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
+
+        fetched = await feed._fetch(clients=mock_clients)
+        assert str(fetched.index.tz) == "UTC"
+        # NDBC publishes and is requested in UTC, so no station timezone is sent.
+        _, kwargs = cast(MagicMock, ndbc_client.temperature).call_args
+        assert "timezone" not in kwargs
+
+        await feed.update(clients=mock_clients)
+        assert feed.values.index.tz is None
+        # 12:00 UTC is 08:00 in New York during daylight time.
+        assert feed.values.index.strftime("%H:%M").tolist() == [
+            "08:00",
+            "09:00",
+            "10:00",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_nwis_temp_fetch_keeps_utc_and_update_serves_naive_local(
+        self,
+        location_config: config_lib.LocationConfig,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """NwisTempFeed keeps the UTC frame and still sends the local window."""
+        nwis_client = cast(NwisApi, mock_clients["nwis"])
+        cast(MagicMock, nwis_client.temperature).return_value = self._utc_frame(
+            "water_temp"
+        )
+
+        feed = NwisTempFeed(
+            location_config=location_config,
+            feed_config=config_lib.NwisTempFeedConfig(site_no="03292494"),
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
+
+        fetched = await feed._fetch(clients=mock_clients)
+        assert str(fetched.index.tz) == "UTC"
+        # The request window is still expressed in station-local days.
+        _, kwargs = cast(MagicMock, nwis_client.temperature).call_args
+        assert kwargs["timezone"] == str(location_config.timezone)
+
+        await feed.update(clients=mock_clients)
+        assert feed.values.index.tz is None
+        assert feed.values.index.strftime("%H:%M").tolist() == [
+            "08:00",
+            "09:00",
+            "10:00",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_nwis_currents_fetch_keeps_utc_and_update_serves_naive_local(
+        self,
+        location_config: config_lib.LocationConfig,
+        mock_clients: dict[str, BaseApiClient],
+    ) -> None:
+        """NwisCurrentFeed converts velocity units without losing the instant."""
+        nwis_client = cast(NwisApi, mock_clients["nwis"])
+        cast(MagicMock, nwis_client.currents).return_value = self._utc_frame(
+            "velocity_fps"
+        )
+
+        feed = NwisCurrentFeed(
+            location_config=location_config,
+            feed_config=config_lib.NwisCurrentFeedConfig(
+                site_no="03292494", parameter_cd="72255"
+            ),
+            expiration_interval=datetime.timedelta(minutes=10),
+        )
+
+        fetched = await feed._fetch(clients=mock_clients)
+        assert str(fetched.index.tz) == "UTC"
+        assert list(fetched.columns) == ["velocity"]
+        _, kwargs = cast(MagicMock, nwis_client.currents).call_args
+        assert kwargs["timezone"] == str(location_config.timezone)
 
         await feed.update(clients=mock_clients)
         assert feed.values.index.tz is None

@@ -60,6 +60,7 @@ def test_builder_captures_every_feed_and_plot() -> None:
     snapshot = build_location_snapshot(manager)
 
     assert set(snapshot.feeds) == set(feeds.FeedName)
+    assert snapshot.failures == {}
     for feed_name, feed_snapshot in snapshot.feeds.items():
         feed = manager._feeds[feed_name]
         assert feed is not None
@@ -103,11 +104,15 @@ def test_builder_captures_every_feed_and_plot() -> None:
         assert plot.feed_fetch_timestamp == FETCHED.replace(tzinfo=datetime.UTC)
 
 
-def test_builder_omits_feeds_without_data() -> None:
+def test_builder_records_a_configured_feed_without_data_as_a_failure() -> None:
     manager = _manager()
     currents = manager._feeds[feeds.FeedName.CURRENTS]
     assert currents is not None
     currents._data = None
+    currents._last_error = StationUnavailableError("station TEST001 returned no data")
+    currents._consecutive_failures = 3
+    currents._next_fetch_after = FETCHED + datetime.timedelta(minutes=5)
+    # A feed that is not configured for the location stays absent entirely.
     manager._feeds[feeds.FeedName.TIDES] = None
 
     snapshot = build_location_snapshot(manager)
@@ -116,6 +121,29 @@ def test_builder_omits_feeds_without_data() -> None:
         feeds.FeedName.LIVE_TEMPS,
         feeds.FeedName.HISTORIC_TEMPS,
     }
+    assert set(snapshot.failures) == {feeds.FeedName.CURRENTS}
+    failure = snapshot.failures[feeds.FeedName.CURRENTS]
+    assert failure.source_identity == currents.feed_config.citation_key
+    assert failure.consecutive_failures == 3
+    assert failure.last_error == "station TEST001 returned no data"
+    assert failure.next_fetch_after == (
+        FETCHED + datetime.timedelta(minutes=5)
+    ).replace(tzinfo=datetime.UTC)
+
+
+def test_builder_reports_a_location_whose_feeds_all_failed() -> None:
+    manager = _manager()
+    for feed_name in feeds.FeedName:
+        feed = manager._feeds[feed_name]
+        assert feed is not None
+        feed._data = None
+    manager._plots = {}
+
+    snapshot = build_location_snapshot(manager)
+
+    assert snapshot.feeds == {}
+    assert snapshot.plots == {}
+    assert set(snapshot.failures) == set(feeds.FeedName)
 
 
 def test_builder_rejects_a_plot_whose_feed_has_no_data() -> None:

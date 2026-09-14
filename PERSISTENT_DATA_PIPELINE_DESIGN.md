@@ -1166,8 +1166,8 @@ objects and a manifest of about 21 KB per generation. Because the job is a
 fresh process, every feed refetches on every run and its fetch timestamp
 changes, so the `unchanged` outcome is not reachable until the updater
 persists feed state (Phase 4); every run writes a new manifest plus whichever
-objects changed. The carry-forward rule below is the one remaining publisher
-change before anything reads the bundle.
+objects changed. The carry-forward rule below is implemented and deploys with
+the next build.
 
 Phase 2 makes serving state serializable and publishes it from the capture
 job so object sizes, publication cost, and manifest semantics are observed in
@@ -1260,8 +1260,7 @@ retains everything so its growth is measurable.
 
 #### Carry-Forward of Failed Feeds
 
-Status: contract; implementation pending. Required before any web server
-reads the bundle.
+Status: implemented. Required before any web server reads the bundle.
 
 Today a generation omits any feed that failed during that run, so one
 transient provider failure removes last-known-good data from the bundle even
@@ -1289,9 +1288,10 @@ publisher observed when it started, the base generation:
 - If the base generation has no such entry, because the feed never succeeded
   or its source identity changed, the feed is omitted, as today.
 - A plot absent from this run's build is copied from the base generation when
-  present there, whether its source feed was carried forward or was refreshed
-  but its plot did not complete in time. The copied `feed_fetch_timestamp`
-  states which feed state the plot shows.
+  present there and its source feed is in the assembled manifest, whether that
+  feed was carried forward or was refreshed but its plot did not complete in
+  time. The copied `feed_fetch_timestamp` states which feed state the plot
+  shows. A plot whose feed is no longer published is dropped with it.
 - A location or feed that is no longer configured is dropped. Configuration
   is authoritative and carry-forward never resurrects it.
 - Carry-forward has no age limit. Retention is separate from alerting and

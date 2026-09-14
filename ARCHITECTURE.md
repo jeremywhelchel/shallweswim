@@ -106,7 +106,18 @@ instead runs each location's full serving cycle through `LocationDataManager`
 the cycle, publishes every location's served frames, plots, and feed metadata as
 one immutable content-addressed generation under `published/` in the same
 bucket (`shallweswim/snapshot/`); publication failure is isolated from the run's
-outcome, and nothing reads the generations yet.
+outcome, and nothing reads the generations yet. The builder reports every
+configured feed, as a served frame or as a failure, and manifest assembly
+resolves each failure against the generation the publisher observed at start:
+an entry published for the same `citation_key` is carried forward unchanged
+except for its accumulated failure count, this run's error, and this run's
+retry time, as is any plot the run did not produce whose feed the assembled
+manifest still publishes. Carried objects are
+referenced by key, never reread or rewritten, so a repeatedly failing feed
+publishes a manifest and no object. After assembly, and whether or not the
+generation is promoted, the job logs one `snapshot.freshness` event per
+location and feed with the served frame's `age_seconds` and a bounded
+`success`, `carried`, or `absent` outcome.
 When `SHALLWESWIM_ARCHIVE_READ_BUCKET` is set, which local development and the
 publishing job do and the web service never does, the historical temperature
 feed first hydrates each

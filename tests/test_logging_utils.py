@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from shallweswim.logging_utils import PROJECT_ROOT, _create_handler, setup_logging
+from shallweswim.logging_utils import (
+    PROJECT_ROOT,
+    STRUCTURED_FIELDS,
+    _create_handler,
+    setup_logging,
+)
 
 
 def _record(**kwargs: object) -> logging.LogRecord:
@@ -54,6 +59,28 @@ def test_json_log_includes_only_approved_extra_fields() -> None:
     assert payload["location"] == "nyc"
     assert payload["duration_ms"] == 12.5
     assert "api_token" not in payload
+
+
+def test_json_log_includes_snapshot_freshness_fields() -> None:
+    stream = StringIO()
+    handler = _create_handler("json", stream)
+
+    handler.handle(
+        _record(
+            component="snapshot",
+            operation="freshness",
+            location="nyc",
+            feed="live_temps",
+            outcome="carried",
+            age_seconds=3720,
+        )
+    )
+
+    payload = json.loads(stream.getvalue())
+    assert "age_seconds" in STRUCTURED_FIELDS
+    assert payload["age_seconds"] == 3720
+    assert payload["outcome"] == "carried"
+    assert payload["feed"] == "live_temps"
 
 
 def test_json_log_includes_archive_merge_fields() -> None:

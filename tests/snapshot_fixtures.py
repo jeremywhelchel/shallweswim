@@ -12,6 +12,7 @@ import pandas as pd
 
 from shallweswim.core.feeds import FeedName, PlotName
 from shallweswim.snapshot.model import (
+    FeedFailure,
     FeedMetadata,
     FeedSnapshot,
     LocationSnapshot,
@@ -21,6 +22,7 @@ from shallweswim.snapshot.model import (
 from shallweswim.types import TIDE_TYPE_CATEGORIES
 
 FETCHED_AT = datetime.datetime(2026, 6, 1, 12, 0, 5, tzinfo=datetime.UTC)
+RETRY_AT = datetime.datetime(2026, 9, 13, 16, 10, 0, tzinfo=datetime.UTC)
 
 
 def _naive_index(times: list[datetime.datetime]) -> pd.DatetimeIndex:
@@ -74,6 +76,23 @@ FRAMES = {
 }
 
 
+def feed_failure(
+    feed_name: FeedName,
+    *,
+    source_identity: str | None = None,
+    consecutive_failures: int = 1,
+    last_error: str | None = "station 8518750 returned no data",
+    next_fetch_after: datetime.datetime | None = RETRY_AT,
+) -> FeedFailure:
+    """What one run learned about a configured feed that produced no data."""
+    return FeedFailure(
+        source_identity=source_identity or f"coops:{feed_name}:8518750",
+        consecutive_failures=consecutive_failures,
+        last_error=last_error,
+        next_fetch_after=next_fetch_after,
+    )
+
+
 def feed_metadata(
     feed_name: FeedName,
     frame: pd.DataFrame,
@@ -97,8 +116,13 @@ def sample_snapshot(
     *,
     live_offset: float = 0.0,
     live_fetch_timestamp: datetime.datetime = FETCHED_AT,
+    failures: dict[FeedName, FeedFailure] | None = None,
 ) -> Snapshot:
-    """One location with every feed and plot; ten distinct objects in all."""
+    """One location with every feed and plot; ten distinct objects in all.
+
+    A feed named in `failures` is reported as the builder reports one that
+    produced no data: no frame, no plot drawn from it, and a failure record.
+    """
     frames = {name: build() for name, build in FRAMES.items()}
     frames[FeedName.LIVE_TEMPS] = live_temps_frame(live_offset)
     feeds = {
@@ -131,7 +155,22 @@ def sample_snapshot(
             feed_fetch_timestamp=FETCHED_AT,
         ),
     }
-    return Snapshot(locations={"nyc": LocationSnapshot(feeds=feeds, plots=plots)})
+    failed = failures or {}
+    return Snapshot(
+        locations={
+            "nyc": LocationSnapshot(
+                feeds={
+                    name: feed for name, feed in feeds.items() if name not in failed
+                },
+                plots={
+                    name: plot
+                    for name, plot in plots.items()
+                    if plot.feed not in failed
+                },
+                failures=dict(failed),
+            )
+        }
+    )
 
 
 SAMPLE_OBJECT_COUNT = len(FRAMES) + 3

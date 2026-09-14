@@ -24,6 +24,7 @@ run "monitoring_plan" {
         google_logging_metric.updater_run_duration,
         google_logging_metric.snapshot_publishes,
         google_logging_metric.snapshot_publish_duration,
+        google_logging_metric.snapshot_feed_age,
       ] : strcontains(metric.filter, "resource.labels.service_name=\"shallweswim\"")
     ])
     error_message = "Every metric must be scoped to the configured Cloud Run service."
@@ -45,6 +46,7 @@ run "monitoring_plan" {
         google_logging_metric.updater_run_duration,
         google_logging_metric.snapshot_publishes,
         google_logging_metric.snapshot_publish_duration,
+        google_logging_metric.snapshot_feed_age,
       ] : strcontains(metric.filter, "resource.labels.job_name=\"shallweswim-capture\"")
     ])
     error_message = "Every metric must also match the capture job, which is the archive's only production writer."
@@ -61,7 +63,8 @@ run "monitoring_plan" {
       length(google_logging_metric.updater_runs.metric_descriptor[0].labels) == 1 &&
       length(google_logging_metric.updater_run_duration.metric_descriptor[0].labels) == 1 &&
       length(google_logging_metric.snapshot_publishes.metric_descriptor[0].labels) == 1 &&
-      length(google_logging_metric.snapshot_publish_duration.metric_descriptor[0].labels) == 1
+      length(google_logging_metric.snapshot_publish_duration.metric_descriptor[0].labels) == 1 &&
+      length(google_logging_metric.snapshot_feed_age.metric_descriptor[0].labels) == 3
     )
     error_message = "Metric label sets must remain bounded by the reviewed contracts."
   }
@@ -75,7 +78,8 @@ run "monitoring_plan" {
       google_logging_metric.updater_run_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
       google_logging_metric.snapshot_publish_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
       google_logging_metric.archive_merge_new_rows.value_extractor == "EXTRACT(jsonPayload.new_count)" &&
-      google_logging_metric.archive_merge_revised_rows.value_extractor == "EXTRACT(jsonPayload.revised_count)"
+      google_logging_metric.archive_merge_revised_rows.value_extractor == "EXTRACT(jsonPayload.revised_count)" &&
+      google_logging_metric.snapshot_feed_age.value_extractor == "EXTRACT(jsonPayload.age_seconds)"
     )
     error_message = "Distribution metrics must extract the reviewed numeric JSON fields."
   }
@@ -88,12 +92,13 @@ run "monitoring_plan" {
         google_logging_metric.archive_merge_new_rows,
         google_logging_metric.archive_merge_revised_rows,
         google_logging_metric.archive_merge_duration,
+        google_logging_metric.snapshot_feed_age,
         ] : strcontains(
         google_monitoring_dashboard.operations.dashboard_json,
         "${local.metric_prefix}/${metric.name}"
       )
     ])
-    error_message = "The operations dashboard must show the capture run, snapshot publish, and archive row metrics."
+    error_message = "The operations dashboard must show the capture run, snapshot publish, snapshot freshness, and archive row metrics."
   }
 
   assert {
@@ -156,11 +161,12 @@ run "monitoring_plan" {
 
   assert {
     condition = (
-      length(jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles) == 11 &&
+      length(jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles) == 12 &&
       alltrue([
         for title in [
           "Archive merges per hour by outcome",
           "Snapshot publishes per hour by outcome",
+          "Snapshot feed age max by feed per hour",
           "New observations per hour by source (estimated)",
           "Revised observations per hour by source (estimated)",
           ] : contains([
@@ -173,24 +179,46 @@ run "monitoring_plan" {
         strcontains(tile.widget.title, "Failed archive merges")
       ])
     )
-    error_message = "The dashboard must keep eleven tiles, fold failed merges into the hourly outcome stack, and mark the estimated observation counts."
+    error_message = "The dashboard must keep twelve tiles, fold failed merges into the hourly outcome stack, and mark the estimated observation counts."
   }
 
   assert {
     condition = alltrue([
-      for policy in [
+      for policy in concat([
         google_monitoring_alert_policy.live_feed_update_latency,
         google_monitoring_alert_policy.live_plot_availability_latency,
         google_monitoring_alert_policy.repeated_feed_failures,
         google_monitoring_alert_policy.plot_generation_failure,
         google_monitoring_alert_policy.capture_job_heartbeat,
         google_monitoring_alert_policy.archive_merge_failures,
-        ] : (
+        ], values(google_monitoring_alert_policy.snapshot_feed_freshness)) : (
         startswith(policy.display_name, "[Terraform][Shadow]") &&
         length(policy.notification_channels) == 0 &&
         policy.user_labels.mode == "shadow"
       )
     ])
     error_message = "Baseline alert policies must remain visibly marked as shadow policies without notification channels."
+  }
+
+  assert {
+    condition = (
+      length(google_monitoring_alert_policy.snapshot_feed_freshness) == 4 &&
+      alltrue([
+        for feed, policy in google_monitoring_alert_policy.snapshot_feed_freshness : (
+          policy.conditions[0].condition_threshold[0].threshold_value ==
+          local.snapshot_freshness_thresholds[feed] &&
+          policy.conditions[0].condition_threshold[0].aggregations[0].alignment_period == "3600s" &&
+          strcontains(
+            policy.conditions[0].condition_threshold[0].filter,
+            "metric.label.feed = \"${feed}\""
+          ) &&
+          strcontains(
+            policy.conditions[0].condition_threshold[0].filter,
+            "resource.type = \"cloud_run_job\""
+          )
+        )
+      ])
+    )
+    error_message = "Each feed type must keep its reviewed snapshot freshness threshold over a one hour window on the capture job."
   }
 }

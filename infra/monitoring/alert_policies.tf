@@ -7,6 +7,18 @@ locals {
     managed_by = "terraform"
     mode       = "shadow"
   }
+
+  # Per-feed-type snapshot freshness thresholds, in seconds, from the existing
+  # feed health rule: the feed's expiration interval plus 15 minutes. A feed
+  # whose published frame is older than its threshold is being carried forward
+  # across runs rather than refreshed. The capture job publishes hourly, so one
+  # hour of samples holds one value per feed and location.
+  snapshot_freshness_thresholds = {
+    live_temps     = 1500
+    historic_temps = 11700
+    tides          = 87300
+    currents       = 87300
+  }
 }
 
 resource "google_monitoring_alert_policy" "live_feed_update_latency" {
@@ -213,6 +225,47 @@ resource "google_monitoring_alert_policy" "archive_merge_failures" {
         per_series_aligner   = "ALIGN_SUM"
         cross_series_reducer = "REDUCE_SUM"
         group_by_fields      = ["metric.label.source"]
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "snapshot_feed_freshness" {
+  for_each = local.snapshot_freshness_thresholds
+
+  display_name          = "[Terraform][Shadow] Snapshot ${each.key} freshness"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = []
+  severity              = "WARNING"
+  user_labels           = local.shadow_alert_labels
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Shadow policy: the published snapshot served a `${each.key}` frame older than ${each.value} seconds, its expiration interval plus 15 minutes, which means the feed is being carried forward instead of refreshed. This policy deliberately sends no notifications while its threshold is baselined on real data."
+  }
+
+  conditions {
+    display_name = "Snapshot ${each.key} age > ${each.value}s in 1h"
+
+    condition_threshold {
+      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.snapshot_feed_age.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.feed = \"${each.key}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = each.value
+      duration        = "0s"
+
+      # The metric is a distribution, which has no max aligner; with one hourly
+      # publish per feed and location, the hour's 99th percentile is that
+      # hour's maximum sample.
+      aggregations {
+        alignment_period     = "3600s"
+        per_series_aligner   = "ALIGN_PERCENTILE_99"
+        cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["metric.label.location", "metric.label.feed"]
       }
 
       trigger {

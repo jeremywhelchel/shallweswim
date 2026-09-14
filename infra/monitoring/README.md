@@ -15,10 +15,10 @@ created. Existing log entries are not backfilled.
 
 The metric filters match structured events from both the Cloud Run service and
 the `shallweswim-capture` Cloud Run Job, so the capture job's feed-update,
-`archive.merge`, `snapshot.publish`, and run summary events feed the same
-metrics and dashboard as the web service. The feed and plot alert policies stay scoped to the service
-resource type; the two capture job policies below are scoped to
-`resource.type = "cloud_run_job"` instead.
+`archive.merge`, `snapshot.publish`, `snapshot.freshness`, and run summary
+events feed the same metrics and dashboard as the web service. The feed and
+plot alert policies stay scoped to the service resource type; the six capture
+job policies below are scoped to `resource.type = "cloud_run_job"` instead.
 
 ## Observation archive setup
 
@@ -26,9 +26,9 @@ The observation archive is written by the scheduled Cloud Run capture job, not
 by the web service. `SHALLWESWIM_ARCHIVE_BUCKET` (a bucket name without
 `gs://`) names the bucket the job writes to; `service.yaml` never sets it. The
 managed operations dashboard shows archive merges per hour by outcome, capture
-runs per hour by outcome, snapshot publishes per hour by outcome, new and
-revised observations per hour by source, and merge duration p95 by source per
-hour. The capture job runs hourly, so these tiles align on the hour rather than
+runs per hour by outcome, snapshot publishes per hour by outcome, maximum
+published feed age by feed per hour, new and revised observations per hour by
+source, and merge duration p95 by source per hour. The capture job runs hourly, so these tiles align on the hour rather than
 on five minutes. Failed merges are one colour of the hourly outcome stack
 instead of a separate tile; the archive merge failure shadow policy covers that
 signal.
@@ -39,7 +39,16 @@ The job also publishes a serving snapshot each run and emits one
 `shallweswim_snapshot_publish_duration_ms` records their duration; the
 "Snapshot publishes per hour by outcome" tile shows the counter. The event's
 `record_count` is the number of objects written, which is exact in the event
-and not charted. No alert policy watches publication yet.
+and not charted. No alert policy watches publication itself.
+
+Each publish also emits one `snapshot.freshness` event per location and feed,
+carrying the age of the frame that generation serves and an `outcome` of
+`success` (fetched this run), `carried` (the previous entry carried forward),
+or `absent` (configured with nothing to serve, and therefore no age).
+`shallweswim_snapshot_feed_age_seconds` is a distribution of those ages by
+location, feed, and outcome, charted as "Snapshot feed age max by feed per
+hour". It is the signal that a feed is stuck on carried-forward data: a
+publish stays `success` while the age grows run after run.
 
 Merges are value-aware, so a repeated fetch of unchanged readings reports
 `outcome=unchanged` and writes nothing. The `new_rows` and `revised_rows`
@@ -153,17 +162,18 @@ terraform -chdir=infra/monitoring test
 
 This test pins service and job scoping, bounded label counts, numeric
 extractors, the capture job policies' resource scope and heartbeat window, the
-dashboard ownership marker, and the dashboard's eleven tiles, including the two
-MQL `sum_from` data sets. It cannot emulate Cloud Logging ingestion.
+dashboard ownership marker, the per-feed snapshot freshness thresholds, and the
+dashboard's twelve tiles, including the two MQL `sum_from` data sets. It cannot
+emulate Cloud Logging ingestion.
 
-Review the plan before every apply. The module now owns thirteen log-based
-metrics, one dashboard, and six `[Terraform][Shadow]` alert policies with no
+Review the plan before every apply. The module now owns fourteen log-based
+metrics, one dashboard, and ten `[Terraform][Shadow]` alert policies with no
 notification channels. It does not change pre-Terraform monitoring.
 
 ## Capture job shadow policies
 
-Two shadow policies watch the capture job, following the dead-man switch design
-in `OBSERVABILITY_DESIGN.md`:
+Six shadow policies watch the capture job, the first two following the dead-man
+switch design in `OBSERVABILITY_DESIGN.md`:
 
 - **Capture job heartbeat**: a metric-absence condition on
   `shallweswim_updater_runs` restricted to `outcome` `success` or `partial`,
@@ -175,6 +185,15 @@ in `OBSERVABILITY_DESIGN.md`:
   `shallweswim_archive_merges` with `outcome="failed"` over a one-hour
   alignment. A conflicting equally recent claim recovers on the next
   overlapping fetch, so this is a warn candidate.
+- **Snapshot feed freshness**, one policy per feed type: a threshold condition
+  on `shallweswim_snapshot_feed_age_seconds` restricted to that feed, over a
+  one-hour alignment. The thresholds come from the feed health rule, the
+  expiration interval plus 15 minutes: 1500s for `live_temps`, 11700s for
+  `historic_temps`, and 87300s for `tides` and `currents`. The metric is a
+  distribution, which has no maximum aligner, and the hourly job contributes
+  one sample per feed and location per hour, so the hour's 99th percentile is
+  that hour's maximum age. These thresholds are first guesses to be tuned on
+  the baseline.
 
 Promotion is the same rule as the other shadow policies: review the policy's
 production behavior over a real baseline period, choose notification channels
@@ -193,9 +212,9 @@ Cloud Monitoring dashboards. Local validation checks HCL, provider schemas, and
 the proposed API operations. The GCP integration test is a controlled apply:
 
 1. Confirm the apply creates only the expected resources listed in the plan.
-2. Generate or wait for new feed, plot, merge, snapshot publish, and capture
-   run events. Metrics do not backfill.
-3. Verify the thirteen metrics appear with bounded labels and the dashboard
+2. Generate or wait for new feed, plot, merge, snapshot publish, snapshot
+   freshness, and capture run events. Metrics do not backfill.
+3. Verify the fourteen metrics appear with bounded labels and the dashboard
    charts populate after several minutes.
 4. Compare metric counts with a Cloud Logging query over the same interval.
 5. Confirm shadow policies have no notification channels before applying them.

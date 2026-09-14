@@ -1,5 +1,6 @@
 """Publication and load of snapshot generations on the memory store."""
 
+import dataclasses
 import datetime
 import logging
 from unittest.mock import patch
@@ -10,12 +11,14 @@ import pytest
 from shallweswim.archive.store import MemoryObjectStore
 from shallweswim.core.feeds import FeedName, PlotName
 from shallweswim.snapshot.load import load_current
-from shallweswim.snapshot.model import SCHEMA_VERSION, CurrentPointer
+from shallweswim.snapshot.model import SCHEMA_VERSION, CurrentPointer, Snapshot
 from shallweswim.snapshot.publish import PublishResult, publish
 from shallweswim.snapshot.store import CURRENT_KEY, SnapshotStore, manifest_key
 from tests.snapshot_fixtures import (
     FETCHED_AT,
+    RETRY_AT,
     SAMPLE_OBJECT_COUNT,
+    feed_failure,
     sample_snapshot,
 )
 
@@ -28,6 +31,16 @@ def _publish_events(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]
         record
         for record in caplog.records
         if getattr(record, "component", None) == "snapshot"
+        and record.operation == "publish"
+    ]
+
+
+def _freshness_events(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [
+        record
+        for record in caplog.records
+        if getattr(record, "component", None) == "snapshot"
+        and record.operation == "freshness"
     ]
 
 
@@ -323,3 +336,302 @@ async def test_load_current_rejects_objects_that_differ_from_the_manifest() -> N
     del objects._objects[plot_key]
     with pytest.raises(ValueError, match="missing"):
         await load_current(store)
+
+
+# =============================================================================
+# Carry-forward of failed feeds and the per-feed freshness event
+# =============================================================================
+
+
+def _freshness(caplog: pytest.LogCaptureFixture) -> dict[str, logging.LogRecord]:
+    """The run's freshness events keyed by feed name."""
+    return {record.feed: record for record in _freshness_events(caplog)}
+
+
+@pytest.mark.asyncio
+async def test_failed_feed_carries_the_base_entry_forward(caplog) -> None:
+    objects = MemoryObjectStore()
+    store = SnapshotStore(objects)
+    first = await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+    base = await store.read_manifest(manifest_key(first.generation_id))
+    assert base is not None
+    before = dict(objects._objects)
+
+    failing = sample_snapshot(
+        failures={
+            FeedName.LIVE_TEMPS: feed_failure(
+                FeedName.LIVE_TEMPS, consecutive_failures=2, last_error="boom"
+            )
+        }
+    )
+    with caplog.at_level(logging.INFO):
+        result = await publish(store, failing, run_id="run-2", now=LATER)
+
+    # A carried-forward entry changes the manifest without writing any object.
+    assert result.outcome == "success"
+    assert result.objects_written == 0
+    assert result.objects_reused == SAMPLE_OBJECT_COUNT - 2
+    assert set(objects._objects) - set(before) == {manifest_key(result.generation_id)}
+    manifest = await store.read_manifest(manifest_key(result.generation_id))
+    assert manifest is not None
+    base_feed = base.locations["nyc"].feeds[FeedName.LIVE_TEMPS]
+    carried = manifest.locations["nyc"].feeds[FeedName.LIVE_TEMPS]
+    assert carried == base_feed.model_copy(
+        update={
+            "consecutive_failures": 2,
+            "last_error": "boom",
+            "next_fetch_after": RETRY_AT,
+        }
+    )
+    assert carried.key == base_feed.key
+    assert carried.size_bytes == base_feed.size_bytes
+    assert carried.fetch_timestamp == FETCHED_AT
+    assert carried.record_count == base_feed.record_count
+    # The plot drawn from the failed feed comes along unchanged.
+    assert manifest.locations["nyc"].plots == base.locations["nyc"].plots
+
+    loaded = await load_current(store)
+    assert loaded is not None
+    pd.testing.assert_frame_equal(
+        loaded.frames["nyc"][FeedName.LIVE_TEMPS],
+        sample_snapshot().locations["nyc"].feeds[FeedName.LIVE_TEMPS].frame,
+        check_freq=False,
+    )
+
+    events = _freshness(caplog)
+    assert set(events) == {name.value for name in FeedName}
+    live = events[FeedName.LIVE_TEMPS]
+    assert live.outcome == "carried"
+    assert live.levelno == logging.WARNING
+    assert live.age_seconds == int((LATER - FETCHED_AT).total_seconds())
+    assert live.location == "nyc"
+    assert f"(age {live.age_seconds}s)" in live.getMessage()
+    tides = events[FeedName.TIDES]
+    assert tides.outcome == "success"
+    assert tides.levelno == logging.INFO
+    assert tides.age_seconds == int((LATER - FETCHED_AT).total_seconds())
+
+
+@pytest.mark.asyncio
+async def test_repeated_failures_accumulate_on_the_carried_entry() -> None:
+    store = SnapshotStore(MemoryObjectStore())
+    await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+    await publish(
+        store,
+        sample_snapshot(
+            failures={
+                FeedName.LIVE_TEMPS: feed_failure(
+                    FeedName.LIVE_TEMPS, consecutive_failures=2
+                )
+            }
+        ),
+        run_id="run-2",
+        now=LATER,
+    )
+
+    result = await publish(
+        store,
+        sample_snapshot(
+            failures={
+                FeedName.LIVE_TEMPS: feed_failure(
+                    FeedName.LIVE_TEMPS,
+                    consecutive_failures=3,
+                    last_error="still failing",
+                    next_fetch_after=None,
+                )
+            }
+        ),
+        run_id="run-3",
+        now=LATER + datetime.timedelta(hours=1),
+    )
+
+    assert result.outcome == "success"
+    manifest = await store.read_manifest(manifest_key(result.generation_id))
+    assert manifest is not None
+    carried = manifest.locations["nyc"].feeds[FeedName.LIVE_TEMPS]
+    assert carried.consecutive_failures == 5
+    assert carried.last_error == "still failing"
+    assert carried.next_fetch_after is None
+    assert carried.fetch_timestamp == FETCHED_AT
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_carried_when_the_base_lacks_the_feed(caplog) -> None:
+    store = SnapshotStore(MemoryObjectStore())
+    failure = {FeedName.LIVE_TEMPS: feed_failure(FeedName.LIVE_TEMPS)}
+    first = await publish(
+        store, sample_snapshot(failures=failure), run_id="run-1", now=NOW
+    )
+
+    with caplog.at_level(logging.INFO):
+        result = await publish(
+            store, sample_snapshot(failures=failure), run_id="run-2", now=LATER
+        )
+
+    assert first.outcome == "success"
+    assert result.outcome == "unchanged"
+    manifest = await store.read_manifest(manifest_key(first.generation_id))
+    assert manifest is not None
+    assert FeedName.LIVE_TEMPS not in manifest.locations["nyc"].feeds
+    assert PlotName.LIVE_TEMPS not in manifest.locations["nyc"].plots
+    live = _freshness(caplog)[FeedName.LIVE_TEMPS]
+    assert live.outcome == "absent"
+    assert live.levelno == logging.WARNING
+    assert not hasattr(live, "age_seconds")
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_carried_when_the_source_identity_differs() -> None:
+    store = SnapshotStore(MemoryObjectStore())
+    await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+
+    result = await publish(
+        store,
+        sample_snapshot(
+            failures={
+                FeedName.LIVE_TEMPS: feed_failure(
+                    FeedName.LIVE_TEMPS, source_identity="coops:live_temps:9999999"
+                )
+            }
+        ),
+        run_id="run-2",
+        now=LATER,
+    )
+
+    manifest = await store.read_manifest(manifest_key(result.generation_id))
+    assert manifest is not None
+    assert FeedName.LIVE_TEMPS not in manifest.locations["nyc"].feeds
+
+
+@pytest.mark.asyncio
+async def test_feeds_and_locations_no_longer_configured_are_dropped() -> None:
+    store = SnapshotStore(MemoryObjectStore())
+    base_location = sample_snapshot().locations["nyc"]
+    await publish(
+        store,
+        Snapshot(locations={"nyc": base_location, "obs": base_location}),
+        run_id="run-1",
+        now=NOW,
+    )
+
+    # The location keeps only two feeds, and the other location is gone.
+    reduced = dataclasses.replace(
+        base_location,
+        feeds={
+            name: feed
+            for name, feed in base_location.feeds.items()
+            if name in {FeedName.TIDES, FeedName.CURRENTS}
+        },
+        plots={},
+    )
+    result = await publish(
+        store, Snapshot(locations={"nyc": reduced}), run_id="run-2", now=LATER
+    )
+
+    manifest = await store.read_manifest(manifest_key(result.generation_id))
+    assert manifest is not None
+    assert set(manifest.locations) == {"nyc"}
+    assert set(manifest.locations["nyc"].feeds) == {FeedName.TIDES, FeedName.CURRENTS}
+    # Every base plot was drawn from a feed that is no longer published, and a
+    # plot never outlives its feed.
+    assert manifest.locations["nyc"].plots == {}
+
+
+@pytest.mark.asyncio
+async def test_a_plot_this_run_did_not_produce_is_copied_from_the_base() -> None:
+    store = SnapshotStore(MemoryObjectStore())
+    first = await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+    base = await store.read_manifest(manifest_key(first.generation_id))
+    assert base is not None
+
+    # Every feed refreshed, but one plot did not complete in time.
+    refetched = FETCHED_AT + datetime.timedelta(minutes=10)
+    location = sample_snapshot(live_fetch_timestamp=refetched).locations["nyc"]
+    incomplete = dataclasses.replace(
+        location,
+        plots={
+            name: plot
+            for name, plot in location.plots.items()
+            if name is not PlotName.LIVE_TEMPS
+        },
+    )
+    result = await publish(
+        store, Snapshot(locations={"nyc": incomplete}), run_id="run-2", now=LATER
+    )
+
+    assert result.outcome == "success"
+    assert result.objects_written == 0
+    manifest = await store.read_manifest(manifest_key(result.generation_id))
+    assert manifest is not None
+    # The feed the plot was drawn from is still published, so the plot is too.
+    assert set(manifest.locations["nyc"].plots) == set(PlotName)
+    carried = manifest.locations["nyc"].plots[PlotName.LIVE_TEMPS]
+    assert carried == base.locations["nyc"].plots[PlotName.LIVE_TEMPS]
+    # The copied plot states the feed state it shows, which is now behind the
+    # feed's own refreshed fetch timestamp.
+    assert carried.feed_fetch_timestamp == FETCHED_AT
+    assert manifest.locations["nyc"].feeds[FeedName.LIVE_TEMPS].fetch_timestamp == (
+        refetched
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_plot_is_carried_only_while_its_feed_is_published() -> None:
+    store = SnapshotStore(MemoryObjectStore())
+    first = await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+    base = await store.read_manifest(manifest_key(first.generation_id))
+    assert base is not None
+
+    # live_temps fails and is carried forward, so its plot comes with it;
+    # historic_temps is no longer configured, so both of its plots are dropped.
+    failing = sample_snapshot(
+        failures={FeedName.LIVE_TEMPS: feed_failure(FeedName.LIVE_TEMPS)}
+    )
+    location = failing.locations["nyc"]
+    deconfigured = dataclasses.replace(
+        location,
+        feeds={
+            name: feed
+            for name, feed in location.feeds.items()
+            if name is not FeedName.HISTORIC_TEMPS
+        },
+        plots={},
+    )
+    result = await publish(
+        store, Snapshot(locations={"nyc": deconfigured}), run_id="run-2", now=LATER
+    )
+
+    manifest = await store.read_manifest(manifest_key(result.generation_id))
+    assert manifest is not None
+    assert set(manifest.locations["nyc"].feeds) == {
+        FeedName.LIVE_TEMPS,
+        FeedName.TIDES,
+        FeedName.CURRENTS,
+    }
+    assert set(manifest.locations["nyc"].plots) == {PlotName.LIVE_TEMPS}
+    assert (
+        manifest.locations["nyc"].plots[PlotName.LIVE_TEMPS]
+        == base.locations["nyc"].plots[PlotName.LIVE_TEMPS]
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_location_whose_feeds_all_failed_without_a_base_publishes_nothing(
+    caplog,
+) -> None:
+    objects = MemoryObjectStore()
+    store = SnapshotStore(objects)
+    failures = {name: feed_failure(name) for name in FeedName}
+
+    with caplog.at_level(logging.INFO):
+        result = await publish(
+            store, sample_snapshot(failures=failures), run_id="run-1", now=NOW
+        )
+
+    assert result.outcome == "skipped"
+    assert result.objects_written == 0
+    assert objects._objects == {}
+    assert _publish_events(caplog) == []
+    events = _freshness(caplog)
+    assert {record.outcome for record in events.values()} == {"absent"}
+    assert set(events) == {name.value for name in FeedName}

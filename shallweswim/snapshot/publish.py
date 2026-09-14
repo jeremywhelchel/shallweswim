@@ -4,6 +4,12 @@ Objects are written first, the manifest second, and the current pointer last,
 conditionally, so readers see either the complete previous generation or the
 complete new one. A generation whose objects and metadata all match the
 current one is not published at all.
+
+A feed that failed this run keeps its last published entry: assembly copies it
+from the base generation, the generation the publisher observed when it
+started, and updates only the failure fields. The manifest then says both when
+the served frame was fetched and that its source is failing now, which the
+per-feed freshness event reports.
 """
 
 import asyncio
@@ -18,6 +24,7 @@ from shallweswim.snapshot.model import (
     CurrentPointer,
     FeedObject,
     LocationManifest,
+    LocationSnapshot,
     Manifest,
     PlotObject,
     Snapshot,
@@ -26,14 +33,22 @@ from shallweswim.snapshot.model import (
 from shallweswim.snapshot.serialize import frame_to_parquet
 from shallweswim.snapshot.store import PromotionConflictError, SnapshotStore, object_key
 
+# Bounded outcomes of the per-feed freshness event: the run fetched the feed,
+# the manifest carries its last published entry forward, or the feed is
+# configured with nothing to serve.
+FRESHNESS_SUCCESS = "success"
+FRESHNESS_CARRIED = "carried"
+FRESHNESS_ABSENT = "absent"
+
 
 @dataclasses.dataclass(frozen=True)
 class PublishResult:
     """Outcome of one publish attempt.
 
-    `objects_written` and `objects_reused` partition the generation's distinct
-    object keys; `bytes_written` sums the objects and manifest actually stored.
-    `reason` explains a failed outcome.
+    `objects_written` and `objects_reused` partition the distinct object keys
+    this run serialized; carried-forward objects are referenced by key without
+    being read or rewritten and are in neither count. `bytes_written` sums the
+    objects and manifest actually stored. `reason` explains a failed outcome.
     """
 
     outcome: str
@@ -90,6 +105,102 @@ async def _serialize(
     return locations, objects
 
 
+def _carry_forward(
+    location: LocationManifest,
+    snapshot: LocationSnapshot,
+    base: LocationManifest | None,
+) -> LocationManifest:
+    """Fill one location's gaps from the base generation.
+
+    A failed feed keeps the entry the base generation published for the same
+    source, with this run's failure count added to the base entry's and this
+    run's error and scheduled retry replacing it. A plot this run did not
+    produce keeps the base generation's, whose `feed_fetch_timestamp` states
+    which feed state it shows, but only while the feed it was drawn from is
+    still in the assembled manifest; a plot never outlives its feed. Nothing is
+    carried for a feed the base generation lacks or published from a different
+    source, and a feed or location that is no longer configured is never
+    resurrected, because it is not in the snapshot at all.
+
+    Args:
+        location: The feeds and plots this run produced for the location.
+        snapshot: The location's built serving state, holding its failures.
+        base: The same location in the base generation, if it has one.
+
+    Returns:
+        The location's assembled manifest entry.
+    """
+    if base is None:
+        return location
+    feed_objects = dict(location.feeds)
+    for feed_name, failure in snapshot.failures.items():
+        base_feed = base.feeds.get(feed_name)
+        if base_feed is None or base_feed.source_identity != failure.source_identity:
+            continue
+        feed_objects[feed_name] = base_feed.model_copy(
+            update={
+                "consecutive_failures": (
+                    base_feed.consecutive_failures + failure.consecutive_failures
+                ),
+                "last_error": failure.last_error,
+                "next_fetch_after": failure.next_fetch_after,
+            }
+        )
+    plot_objects = dict(location.plots)
+    for plot_name, base_plot in base.plots.items():
+        if plot_name in plot_objects or base_plot.feed not in feed_objects:
+            continue
+        plot_objects[plot_name] = base_plot
+    return LocationManifest(feeds=feed_objects, plots=plot_objects)
+
+
+def _log_freshness(
+    manifest: Manifest, snapshot: Snapshot, now: datetime.datetime
+) -> None:
+    """Log one freshness event per location and configured feed.
+
+    The event is emitted after assembly whether or not the generation is
+    promoted, so a feed stuck on carried-forward data shows a growing age even
+    while nothing else about the snapshot changes.
+
+    Args:
+        manifest: The assembled manifest, whose entries name the served frames.
+        snapshot: The built serving state, distinguishing fetched from carried.
+        now: The publication instant the ages are measured against.
+    """
+    for code, location in manifest.locations.items():
+        built = snapshot.locations[code]
+        for feed_name, feed_object in location.feeds.items():
+            fetched = feed_name in built.feeds
+            outcome = FRESHNESS_SUCCESS if fetched else FRESHNESS_CARRIED
+            age_seconds = int((now - feed_object.fetch_timestamp).total_seconds())
+            logging.log(
+                logging.INFO if fetched else logging.WARNING,
+                f"[{code}] {feed_name} freshness {outcome} (age {age_seconds}s)",
+                extra={
+                    "component": "snapshot",
+                    "operation": "freshness",
+                    "location": code,
+                    "feed": feed_name,
+                    "outcome": outcome,
+                    "age_seconds": age_seconds,
+                },
+            )
+        for feed_name in built.failures:
+            if feed_name in location.feeds:
+                continue
+            logging.warning(
+                f"[{code}] {feed_name} freshness {FRESHNESS_ABSENT}",
+                extra={
+                    "component": "snapshot",
+                    "operation": "freshness",
+                    "location": code,
+                    "feed": feed_name,
+                    "outcome": FRESHNESS_ABSENT,
+                },
+            )
+
+
 async def publish(
     store: SnapshotStore,
     snapshot: Snapshot,
@@ -107,8 +218,11 @@ async def publish(
 
     Returns:
         The attempt's outcome: `success`, `unchanged` when nothing was written,
-        or `failed` when a newer publisher promoted first. Exactly one
-        structured `snapshot.publish` event is logged per attempt.
+        `skipped` when assembly produced a manifest referencing no object at
+        all, or `failed` when a newer publisher promoted first. One structured
+        `snapshot.publish` event is logged per attempt that reaches the store,
+        and one `snapshot.freshness` event per location and configured feed
+        once the manifest is assembled.
 
     Raises:
         Exception: Any store or serialization failure, after logging the failed
@@ -132,8 +246,33 @@ async def publish(
             generation_id=new_generation_id,
             published_at=now,
             previous_generation_id=previous_generation_id,
-            locations=locations,
+            locations={
+                code: _carry_forward(
+                    location,
+                    snapshot.locations[code],
+                    None
+                    if current_manifest is None
+                    else current_manifest.locations.get(code),
+                )
+                for code, location in locations.items()
+            },
         )
+        _log_freshness(manifest, snapshot, now)
+
+        if not any(
+            location.feeds or location.plots for location in manifest.locations.values()
+        ):
+            result = PublishResult(
+                "skipped",
+                new_generation_id,
+                0,
+                0,
+                0,
+                _duration_ms(started_at),
+                reason="no location holds data",
+            )
+            logging.warning("No location holds data; nothing to publish")
+            return result
 
         if (
             current_manifest is not None

@@ -20,6 +20,7 @@ STRUCTURED_FIELDS = (
     "generation_id",
     "duration_ms",
     "record_count",
+    "age_seconds",
     "attempt_count",
     "incoming_count",
     "new_count",

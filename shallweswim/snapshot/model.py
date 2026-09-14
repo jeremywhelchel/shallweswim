@@ -139,11 +139,31 @@ class PlotSnapshot:
 
 
 @dataclasses.dataclass(frozen=True)
+class FeedFailure:
+    """A configured feed that held no data when the snapshot was built.
+
+    It records only what this run learned about the feed. Manifest assembly
+    resolves everything else against the base generation, requiring the base
+    entry's `source_identity` to match before carrying it forward.
+    """
+
+    source_identity: str
+    consecutive_failures: int
+    last_error: str | None
+    next_fetch_after: datetime.datetime | None
+
+
+@dataclasses.dataclass(frozen=True)
 class LocationSnapshot:
-    """One location's serving state, keyed the way the manager keys it."""
+    """One location's serving state, keyed the way the manager keys it.
+
+    Every configured feed appears exactly once: in `feeds` when it holds data
+    and in `failures` when it does not.
+    """
 
     feeds: dict[FeedName, FeedSnapshot]
     plots: dict[PlotName, PlotSnapshot]
+    failures: dict[FeedName, FeedFailure] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(frozen=True)

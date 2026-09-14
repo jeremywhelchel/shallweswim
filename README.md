@@ -509,7 +509,22 @@ content-addressed Parquet objects (one per served feed frame) and SVG objects
 `published/manifests/`, and finally the `published/current.json` pointer,
 replaced conditionally. A generation identical to the current one is not
 written. Nothing reads these objects yet; they exist so object sizes and
-publication cost are observed in production first. Publishing requires
+publication cost are observed in production first.
+
+Every configured feed of every enabled location is reported. A feed that
+fetched nothing this run keeps the entry the current generation published for
+the same source: the object, its fetch timestamp, and its record count stay as
+published, while the failure count accumulates and the last error and next
+retry become this run's, so a transient provider failure never drops
+last-known-good data from a generation. A plot this run did not produce is
+copied the same way, but only while the feed it was drawn from is still
+published. A feed the current generation never published, one whose source
+identity changed, and a feed or location that is no longer configured are
+simply absent. A run in which nothing can be referenced at all publishes
+nothing. After assembly the job logs one `snapshot.freshness` event per
+location and feed with `outcome` `success`, `carried`, or `absent` and the
+served frame's `age_seconds`, at INFO when the feed was fetched and WARNING
+when it was carried or absent. Publishing requires
 `SHALLWESWIM_ARCHIVE_READ_BUCKET`, set to the same bucket, so the historical
 feed restores past years from the archive instead of refetching them; a
 publishing run always uses the full historical range. A failed publish is
@@ -545,8 +560,9 @@ the one-time bucket commands and the
 [capture job runbook](infra/capture-job/README.md) for the job identity,
 deployment, scheduling, and validation steps. The operations dashboard includes
 archive merges by outcome, capture runs and snapshot publishes per hour by
-outcome, and new and revised observations per hour by source; bucket setup and
-job deployment are separate from applying monitoring Terraform.
+outcome, maximum published feed age by feed, and new and revised observations
+per hour by source; bucket setup and job deployment are separate from applying
+monitoring Terraform.
 
 #### Debugging CSPF Sandettie Historical Temperatures
 

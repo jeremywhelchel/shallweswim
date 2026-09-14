@@ -268,10 +268,26 @@ After the first scheduled runs:
    gcloud storage cat "gs://$SHALLWESWIM_ARCHIVE_BUCKET/published/current.json"
    ```
 
-6. The "Archive merges per hour by outcome" and "Snapshot publishes per hour by
-   outcome" charts on the `Shall We Swim Operations [Terraform]` dashboard show
-   the job's merges and publishes. Those charts are deliberately not restricted
-   to `cloud_run_revision`, so job series appear alongside any service series.
+6. Every configured feed reported its freshness: one `snapshot.freshness` event
+   per location and feed per run, with `outcome` `success` for a feed fetched
+   this run, `carried` for one whose last published entry the manifest carried
+   forward, and `absent` for one with nothing to serve. A growing `age_seconds`
+   on a `carried` feed is a feed stuck on a failing source, not a publication
+   problem; the publish event stays `success`.
+
+   ```bash
+   gcloud logging read \
+     'resource.type="cloud_run_job" AND resource.labels.job_name="shallweswim-capture" AND jsonPayload.component="snapshot" AND jsonPayload.operation="freshness"' \
+     --limit=40 \
+     --format='table(timestamp,severity,jsonPayload.location,jsonPayload.feed,jsonPayload.outcome,jsonPayload.age_seconds)'
+   ```
+
+7. The "Archive merges per hour by outcome", "Snapshot publishes per hour by
+   outcome", and "Snapshot feed age max by feed per hour" charts on the
+   `Shall We Swim Operations [Terraform]` dashboard show the job's merges,
+   publishes, and published feed ages. Those charts are deliberately not
+   restricted to `cloud_run_revision`, so job series appear alongside any
+   service series.
 
 Compare archived row counts with the live feeds for at least a week before
 anything reads the archive.

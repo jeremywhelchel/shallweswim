@@ -144,6 +144,7 @@ class MockCoopsApi(CoopsApi):
         self.live_temperature_error: Exception | None = None
         self.historic_temperature_error: Exception | None = None
         self.tides_error: Exception | None = None
+        self.currents_error: Exception | None = None
 
     async def tides(
         self, station: int, timezone: str, location_code: str = "unknown"
@@ -163,6 +164,8 @@ class MockCoopsApi(CoopsApi):
     ) -> pd.DataFrame:
         """Count prediction current requests; only a publishing run makes them."""
         self.currents_calls += 1
+        if self.currents_error:
+            raise self.currents_error
         index = pd.date_range(
             OBSERVATION_START, periods=4, freq="h", tz="UTC", name="time"
         )
@@ -637,6 +640,60 @@ def test_publish_run_with_one_failing_feed_is_partial_and_still_publishes(
         feeds.PlotName.HISTORIC_TEMPS_2MO,
         feeds.PlotName.HISTORIC_TEMPS_12MO,
     }
+
+
+def _freshness_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    """Return every structured per-feed snapshot freshness event."""
+    return [
+        record
+        for record in caplog.records
+        if getattr(record, "component", "") == "snapshot"
+        and getattr(record, "operation", "") == "freshness"
+    ]
+
+
+def test_publish_run_includes_a_location_whose_feeds_all_failed(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Every enabled location reaches the snapshot, even with nothing to serve."""
+    coops_client, nwis_client, store = _install_publish_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS, TEST_CONFIG_FULL]
+    )
+    # Every CO-OPS feed fails, so "nyc" has no data at all and "obs" keeps only
+    # its NWIS observational currents.
+    coops_client.live_temperature_error = RuntimeError("live temp boom")
+    coops_client.historic_temperature_error = RuntimeError("historic temp boom")
+    coops_client.tides_error = RuntimeError("tides boom")
+    coops_client.currents_error = RuntimeError("currents boom")
+
+    with caplog.at_level(logging.INFO):
+        exit_code = capture.main([])
+
+    assert exit_code == 0
+    assert nwis_client.currents_calls == 1
+    loaded = asyncio.run(load_current(SnapshotStore(store)))
+    assert loaded is not None
+    assert set(loaded.manifest.locations) == {"obs", "nyc"}
+    assert loaded.manifest.locations["nyc"].feeds == {}
+    assert loaded.manifest.locations["nyc"].plots == {}
+    assert set(loaded.manifest.locations["obs"].feeds) == {feeds.FeedName.CURRENTS}
+
+    events = {
+        (record.location, record.feed): record for record in _freshness_records(caplog)
+    }
+    assert len(events) == 2 * len(feeds.FeedName)
+    served = events[("obs", feeds.FeedName.CURRENTS)]
+    assert served.outcome == "success"
+    assert served.levelno == logging.INFO
+    assert served.age_seconds >= 0
+    assert {
+        record.outcome for (code, _feed), record in events.items() if code == "nyc"
+    } == {"absent"}
+    assert all(
+        record.levelno == logging.WARNING
+        for (code, _feed), record in events.items()
+        if code == "nyc"
+    )
 
 
 def test_publish_run_with_no_data_publishes_nothing(

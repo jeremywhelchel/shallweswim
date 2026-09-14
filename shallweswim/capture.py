@@ -230,9 +230,11 @@ async def _publish_locations(
     Locations run concurrently in the same managers the web service uses, so
     archive capture happens inside each feed's update as it does in the
     capture-only path. Plots are generated in a process pool and awaited before
-    the snapshot is built. Publication failure is isolated: `publish` has
-    already logged its failed event, so the run's outcome and exit code stay
-    those of the capture cycle.
+    the snapshot is built. Every enabled location is published, whether or not
+    its feeds fetched anything this run, so manifest assembly can carry the
+    last published entry of a failed feed forward. Publication failure is
+    isolated: `publish` has already logged its failed event, so the run's
+    outcome and exit code stay those of the capture cycle.
 
     Args:
         clients: Provider API clients keyed by provider name.
@@ -258,16 +260,14 @@ async def _publish_locations(
     # other accessor for them.
     results = [_location_counts(manager._feeds) for manager in managers]
 
+    # The publisher skips the run when the assembled manifest can reference
+    # nothing at all, so no location is dropped here.
     snapshot = Snapshot(
         locations={
             manager.config.code: build_location_snapshot(manager)
             for manager in managers
-            if manager.has_data
         }
     )
-    if not snapshot.locations:
-        logging.warning("No location holds data; nothing to publish")
-        return results, "skipped"
     store = SnapshotStore(
         await asyncio.to_thread(gcs_store, os.environ[ARCHIVE_BUCKET_ENV_VAR])
     )

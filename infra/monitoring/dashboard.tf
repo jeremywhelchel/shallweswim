@@ -313,6 +313,39 @@ resource "google_monitoring_dashboard" "operations" {
           }
         },
         {
+          xPos   = 6
+          yPos   = 24
+          width  = 6
+          height = 4
+          widget = {
+            title = "Snapshot feed age max by feed per hour"
+            xyChart = {
+              dataSets = [{
+                plotType       = "LINE"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.feed}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.snapshot_feed_age.name}\""
+                    # One hourly publish per feed and location makes the hour's
+                    # 99th percentile that hour's maximum published age.
+                    aggregation = {
+                      alignmentPeriod    = "3600s"
+                      perSeriesAligner   = "ALIGN_PERCENTILE_99"
+                      crossSeriesReducer = "REDUCE_MAX"
+                      groupByFields      = ["metric.label.feed"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "seconds"
+                scale = "LOG10"
+              }
+            }
+          }
+        },
+        {
           yPos   = 24
           width  = 6
           height = 4

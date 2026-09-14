@@ -25,12 +25,21 @@ locals {
     outcome = "EXTRACT(jsonPayload.outcome)"
   }
 
-  # One completion event per partition merge, one summary event per capture
-  # run, and one event per snapshot publish attempt. Several metrics extract
-  # different numbers from each of them.
-  archive_merge_filter    = "${local.application_log_filter}\njsonPayload.component=\"archive\"\njsonPayload.operation=\"merge\""
-  updater_run_filter      = "${local.application_log_filter}\njsonPayload.component=\"updater\"\njsonPayload.operation=\"run\""
-  snapshot_publish_filter = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"publish\""
+  freshness_labels = {
+    location = "EXTRACT(jsonPayload.location)"
+    feed     = "EXTRACT(jsonPayload.feed)"
+    outcome  = "EXTRACT(jsonPayload.outcome)"
+  }
+
+  # One completion event per partition merge, one summary event per capture run,
+  # one event per snapshot publish attempt, and one freshness event per location
+  # and configured feed per publish. Several metrics extract different numbers
+  # from each of them. A feed with nothing to serve reports outcome=absent and
+  # no age, so it contributes no freshness sample.
+  archive_merge_filter      = "${local.application_log_filter}\njsonPayload.component=\"archive\"\njsonPayload.operation=\"merge\""
+  updater_run_filter        = "${local.application_log_filter}\njsonPayload.component=\"updater\"\njsonPayload.operation=\"run\""
+  snapshot_publish_filter   = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"publish\""
+  snapshot_freshness_filter = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"freshness\""
 }
 
 resource "google_logging_metric" "feed_updates" {
@@ -402,6 +411,47 @@ resource "google_logging_metric" "snapshot_publish_duration" {
     outcome = "EXTRACT(jsonPayload.outcome)"
   }
 
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 20
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
+resource "google_logging_metric" "snapshot_feed_age" {
+  name            = "shallweswim_snapshot_feed_age_seconds"
+  description     = "Age of the feed frame each published generation serves, in seconds. Managed by Terraform."
+  filter          = local.snapshot_freshness_filter
+  value_extractor = "EXTRACT(jsonPayload.age_seconds)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "s"
+
+    labels {
+      key         = "location"
+      value_type  = "STRING"
+      description = "Configured swimming location code."
+    }
+    labels {
+      key         = "feed"
+      value_type  = "STRING"
+      description = "Semantic feed name."
+    }
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success or carried; absent carries no age."
+    }
+  }
+
+  label_extractors = local.freshness_labels
+
+  # Twenty doubling buckets from one second reach twelve days, past every
+  # per-feed threshold a carried-forward feed crosses.
   bucket_options {
     exponential_buckets {
       num_finite_buckets = 20

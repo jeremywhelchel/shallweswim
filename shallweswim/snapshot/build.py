@@ -5,6 +5,7 @@ import datetime
 from shallweswim.core import feeds
 from shallweswim.core.manager import LocationDataManager
 from shallweswim.snapshot.model import (
+    FeedFailure,
     FeedMetadata,
     FeedSnapshot,
     LocationSnapshot,
@@ -27,15 +28,18 @@ def _as_utc(timestamp: datetime.datetime) -> datetime.datetime:
 def build_location_snapshot(manager: LocationDataManager) -> LocationSnapshot:
     """Capture the serving state a manager currently holds.
 
-    Feeds without data are not published; every feed with data is published
-    with its served frame and status metadata, and every generated plot is
-    published with the fetch timestamp of the feed it was drawn from.
+    Every feed configured for the location is reported exactly once: one that
+    holds data with its served frame and status metadata, one that does not
+    with only what this run learned about the failure, so manifest assembly can
+    carry the last published entry forward. Feeds that are not configured for
+    the location are absent. Every generated plot is published with the fetch
+    timestamp of the feed it was drawn from.
 
     Args:
         manager: The location's data manager.
 
     Returns:
-        The location's feeds and plots ready for serialization.
+        The location's feeds, failures, and plots ready for serialization.
 
     Raises:
         ValueError: If the location timezone has no IANA name, or a plot exists
@@ -47,19 +51,34 @@ def build_location_snapshot(manager: LocationDataManager) -> LocationSnapshot:
 
     status = manager.status
     snapshot_feeds: dict[feeds.FeedName, FeedSnapshot] = {}
+    snapshot_failures: dict[feeds.FeedName, FeedFailure] = {}
     for feed_name in feeds.FeedName:
-        if not manager.has_feed_data(feed_name):
+        # The manager exposes no accessor for the feed objects themselves, and
+        # a feed's citation key and status are what a failure record holds.
+        feed = manager._feeds.get(feed_name)
+        if feed is None:
             continue
-        feed = manager._feeds[feed_name]
-        assert feed is not None
         feed_status = status.feeds[feed_name]
+        if not manager.has_feed_data(feed_name):
+            snapshot_failures[feed_name] = FeedFailure(
+                source_identity=feed.feed_config.citation_key,
+                consecutive_failures=feed_status.consecutive_failures,
+                last_error=feed_status.error,
+                next_fetch_after=(
+                    None
+                    if feed_status.next_fetch_after is None
+                    else _as_utc(feed_status.next_fetch_after)
+                ),
+            )
+            continue
         assert feed_status.fetch_timestamp is not None
         frame = manager.get_feed_values(feed_name)
         snapshot_feeds[feed_name] = FeedSnapshot(
             frame=frame,
             metadata=FeedMetadata(
                 # The feed's own citation key names what capture archives for
-                # it; the manager exposes no other accessor for it.
+                # it, and identifies the source a carried-forward entry must
+                # still match.
                 source_identity=feed.feed_config.citation_key,
                 fetch_timestamp=_as_utc(feed_status.fetch_timestamp),
                 next_fetch_after=(
@@ -92,4 +111,6 @@ def build_location_snapshot(manager: LocationDataManager) -> LocationSnapshot:
             feed_fetch_timestamp=snapshot_feeds[source_feed].metadata.fetch_timestamp,
         )
 
-    return LocationSnapshot(feeds=snapshot_feeds, plots=snapshot_plots)
+    return LocationSnapshot(
+        feeds=snapshot_feeds, plots=snapshot_plots, failures=snapshot_failures
+    )

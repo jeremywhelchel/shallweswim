@@ -311,6 +311,11 @@ Notes:
 
 ### Runtime And Deployment
 
+- Re-enable the GitHub continuous-deployment trigger (run by a Cloud
+  Scheduler job in `us-east4` every eight hours) once active development
+  returns to GitHub `main`. It was disabled on 2026-09-14 because active
+  development is not happening on GitHub, so the trigger would redeploy an
+  older `main` over work deployed with `build_and_deploy.sh`.
 - Evaluate Cloud Run second generation for performance, startup behavior, and
   operational simplicity. Compare with the current generation under a realistic
   startup and plotting workload before changing production.
@@ -328,12 +333,14 @@ Notes:
 - Reduce verbose logs that do not help diagnose data outages, retries, startup,
   or user-facing failures. Keep enough context for feed health and station
   debugging without making normal logs noisy.
-- The Terraform state bucket `shallweswim-terraform-state` is not readable by
-  the project owner or the local operator identity even though it lists under
-  the project; find which identity or project owns it, document it in
-  `infra/monitoring/README.md`, and document the impersonation path
-  (`impersonate_service_account` on the backend and provider) as the supported
-  way to run Terraform without a key file.
+- The Terraform state bucket (`SHALLWESWIM_TERRAFORM_STATE_BUCKET`) is not
+  readable by the project owner or the local operator identity even though it
+  lists under the project; find which identity or project owns it and document
+  it in `infra/monitoring/README.md`. Impersonating the Terraform service
+  account from the local operator identity (the `impersonate_service_account`
+  backend setting plus `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` for the provider)
+  reads state and plans successfully; document that as the supported way to
+  run Terraform without a key file.
 - Remove the temporary grants made for the 2026-09-13 deployment once no
   longer needed: `roles/iam.serviceAccountTokenCreator` for the local operator
   on `shallweswim-terraform`, and the local operator's `roles/storage.objectUser`

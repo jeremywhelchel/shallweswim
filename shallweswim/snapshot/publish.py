@@ -10,6 +10,11 @@ from the base generation, the generation the publisher observed when it
 started, and updates only the failure fields. The manifest then says both when
 the served frame was fetched and that its source is failing now, which the
 per-feed freshness event reports.
+
+A feed the run held, because its restored schedule said it was not due, keeps
+its base entry byte for byte, failure fields included, and its plots come with
+it. Holding is the normal state of a feed whose own interval is longer than
+the job cadence, so it is reported at INFO and counts as served.
 """
 
 import asyncio
@@ -34,9 +39,11 @@ from shallweswim.snapshot.serialize import frame_to_parquet
 from shallweswim.snapshot.store import PromotionConflictError, SnapshotStore, object_key
 
 # Bounded outcomes of the per-feed freshness event: the run fetched the feed,
-# the manifest carries its last published entry forward, or the feed is
+# the feed was not due so the manifest keeps its entry unchanged, the manifest
+# carries the last published entry of a failed feed forward, or the feed is
 # configured with nothing to serve.
 FRESHNESS_SUCCESS = "success"
+FRESHNESS_HELD = "held"
 FRESHNESS_CARRIED = "carried"
 FRESHNESS_ABSENT = "absent"
 
@@ -112,19 +119,22 @@ def _carry_forward(
 ) -> LocationManifest:
     """Fill one location's gaps from the base generation.
 
-    A failed feed keeps the entry the base generation published for the same
-    source, with this run's failure count added to the base entry's and this
-    run's error and scheduled retry replacing it. A plot this run did not
-    produce keeps the base generation's, whose `feed_fetch_timestamp` states
-    which feed state it shows, but only while the feed it was drawn from is
-    still in the assembled manifest; a plot never outlives its feed. Nothing is
-    carried for a feed the base generation lacks or published from a different
-    source, and a feed or location that is no longer configured is never
-    resurrected, because it is not in the snapshot at all.
+    A held feed keeps the base entry exactly as published: the run learned
+    nothing about it, so nothing about it changes. A failed feed keeps the
+    entry the base generation published for the same source, with this run's
+    failure count added to the base entry's and this run's error and scheduled
+    retry replacing it. A plot this run did not produce keeps the base
+    generation's, whose `feed_fetch_timestamp` states which feed state it
+    shows, but only while the feed it was drawn from is still in the assembled
+    manifest; a plot never outlives its feed. Nothing is carried for a feed the
+    base generation lacks or published from a different source, and a feed or
+    location that is no longer configured is never resurrected, because it is
+    not in the snapshot at all.
 
     Args:
         location: The feeds and plots this run produced for the location.
-        snapshot: The location's built serving state, holding its failures.
+        snapshot: The location's built serving state, holding its holds and
+            failures.
         base: The same location in the base generation, if it has one.
 
     Returns:
@@ -133,6 +143,11 @@ def _carry_forward(
     if base is None:
         return location
     feed_objects = dict(location.feeds)
+    for feed_name, hold in snapshot.holds.items():
+        base_feed = base.feeds.get(feed_name)
+        if base_feed is None or base_feed.source_identity != hold.source_identity:
+            continue
+        feed_objects[feed_name] = base_feed
     for feed_name, failure in snapshot.failures.items():
         base_feed = base.feeds.get(feed_name)
         if base_feed is None or base_feed.source_identity != failure.source_identity:
@@ -161,21 +176,28 @@ def _log_freshness(
 
     The event is emitted after assembly whether or not the generation is
     promoted, so a feed stuck on carried-forward data shows a growing age even
-    while nothing else about the snapshot changes.
+    while nothing else about the snapshot changes. A held feed is serving the
+    frame its own interval says is still current, so it is INFO like a fetched
+    one; only a failed or absent feed warns.
 
     Args:
         manifest: The assembled manifest, whose entries name the served frames.
-        snapshot: The built serving state, distinguishing fetched from carried.
+        snapshot: The built serving state, distinguishing fetched from held
+            from carried.
         now: The publication instant the ages are measured against.
     """
     for code, location in manifest.locations.items():
         built = snapshot.locations[code]
         for feed_name, feed_object in location.feeds.items():
-            fetched = feed_name in built.feeds
-            outcome = FRESHNESS_SUCCESS if fetched else FRESHNESS_CARRIED
+            if feed_name in built.feeds:
+                outcome = FRESHNESS_SUCCESS
+            elif feed_name in built.holds:
+                outcome = FRESHNESS_HELD
+            else:
+                outcome = FRESHNESS_CARRIED
             age_seconds = int((now - feed_object.fetch_timestamp).total_seconds())
             logging.log(
-                logging.INFO if fetched else logging.WARNING,
+                logging.WARNING if outcome == FRESHNESS_CARRIED else logging.INFO,
                 f"[{code}] {feed_name} freshness {outcome} (age {age_seconds}s)",
                 extra={
                     "component": "snapshot",
@@ -186,7 +208,7 @@ def _log_freshness(
                     "age_seconds": age_seconds,
                 },
             )
-        for feed_name in built.failures:
+        for feed_name in (*built.failures, *built.holds):
             if feed_name in location.feeds:
                 continue
             logging.warning(

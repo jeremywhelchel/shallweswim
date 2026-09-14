@@ -45,8 +45,9 @@ and not charted. No alert policy watches publication itself.
 
 Each publish also emits one `snapshot.freshness` event per location and feed,
 carrying the age of the frame that generation serves and an `outcome` of
-`success` (fetched this run), `carried` (the previous entry carried forward),
-or `absent` (configured with nothing to serve, and therefore no age).
+`success` (fetched this run), `held` (not yet due, entry kept unchanged),
+`carried` (the previous entry carried forward after a failure), or `absent`
+(configured with nothing to serve, and therefore no age).
 `shallweswim_snapshot_feed_age_seconds` is a distribution of those ages by
 location, feed, and outcome, charted as "Snapshot feed age max by feed per
 hour". It is the signal that a feed is stuck on carried-forward data: a

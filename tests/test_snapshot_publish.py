@@ -19,6 +19,7 @@ from tests.snapshot_fixtures import (
     RETRY_AT,
     SAMPLE_OBJECT_COUNT,
     feed_failure,
+    feed_hold,
     sample_snapshot,
 )
 
@@ -635,3 +636,105 @@ async def test_a_location_whose_feeds_all_failed_without_a_base_publishes_nothin
     events = _freshness(caplog)
     assert {record.outcome for record in events.values()} == {"absent"}
     assert set(events) == {name.value for name in FeedName}
+
+
+# =============================================================================
+# Feeds the run held because they were not due
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_held_feed_keeps_its_base_entry_and_plots_exactly(caplog) -> None:
+    objects = MemoryObjectStore()
+    store = SnapshotStore(objects)
+    first = await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+    base = await store.read_manifest(manifest_key(first.generation_id))
+    assert base is not None
+
+    # live_temps was not due this run; every other feed refetched.
+    held = sample_snapshot(holds={FeedName.LIVE_TEMPS: feed_hold(FeedName.LIVE_TEMPS)})
+    with caplog.at_level(logging.INFO):
+        result = await publish(store, held, run_id="run-2", now=LATER)
+
+    # Nothing about the held feed changed, so the generation is identical.
+    assert result.outcome == "unchanged"
+    manifest = await store.read_manifest(manifest_key(first.generation_id))
+    assert manifest is not None
+    assert (
+        manifest.locations["nyc"].feeds[FeedName.LIVE_TEMPS]
+        == (base.locations["nyc"].feeds[FeedName.LIVE_TEMPS])
+    )
+    assert manifest.locations["nyc"].plots == base.locations["nyc"].plots
+
+    events = _freshness(caplog)
+    live = events[FeedName.LIVE_TEMPS]
+    assert live.outcome == "held"
+    assert live.levelno == logging.INFO
+    assert live.age_seconds == int((LATER - FETCHED_AT).total_seconds())
+    assert events[FeedName.TIDES].outcome == "success"
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_holds_every_feed_publishes_nothing(caplog) -> None:
+    """The `unchanged` outcome becomes reachable once no feed is due."""
+    objects = MemoryObjectStore()
+    store = SnapshotStore(objects)
+    await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+    before = dict(objects._objects)
+
+    holds = {name: feed_hold(name) for name in FeedName}
+    with caplog.at_level(logging.INFO):
+        result = await publish(
+            store, sample_snapshot(holds=holds), run_id="run-2", now=LATER
+        )
+
+    assert result.outcome == "unchanged"
+    assert result.objects_written == 0
+    assert objects._objects == before
+    events = _freshness(caplog)
+    assert {record.outcome for record in events.values()} == {"held"}
+    assert all(record.levelno == logging.INFO for record in events.values())
+
+
+@pytest.mark.asyncio
+async def test_a_held_feed_the_base_never_published_is_absent(caplog) -> None:
+    store = SnapshotStore(MemoryObjectStore())
+    hold = {FeedName.LIVE_TEMPS: feed_hold(FeedName.LIVE_TEMPS)}
+    await publish(store, sample_snapshot(holds=hold), run_id="run-1", now=NOW)
+
+    with caplog.at_level(logging.INFO):
+        result = await publish(
+            store, sample_snapshot(holds=hold), run_id="run-2", now=LATER
+        )
+
+    # Nothing can be carried for it, so the second run has nothing new to say.
+    assert result.outcome == "unchanged"
+    assert await store.read_manifest(manifest_key(result.generation_id)) is None
+    live = _freshness(caplog)[FeedName.LIVE_TEMPS]
+    assert live.outcome == "absent"
+    assert live.levelno == logging.WARNING
+    assert not hasattr(live, "age_seconds")
+
+
+@pytest.mark.asyncio
+async def test_a_held_feed_whose_source_identity_differs_is_not_carried() -> None:
+    store = SnapshotStore(MemoryObjectStore())
+    await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+
+    result = await publish(
+        store,
+        sample_snapshot(
+            holds={
+                FeedName.LIVE_TEMPS: feed_hold(
+                    FeedName.LIVE_TEMPS, source_identity="coops:live_temps:9999999"
+                )
+            }
+        ),
+        run_id="run-2",
+        now=LATER,
+    )
+
+    manifest = await store.read_manifest(manifest_key(result.generation_id))
+    assert manifest is not None
+    assert FeedName.LIVE_TEMPS not in manifest.locations["nyc"].feeds
+    assert PlotName.LIVE_TEMPS not in manifest.locations["nyc"].plots

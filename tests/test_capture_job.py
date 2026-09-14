@@ -6,6 +6,7 @@ in-memory object store rather than mocked out.
 """
 
 import asyncio
+import datetime
 import logging
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -35,10 +36,17 @@ from shallweswim.core import feeds
 from shallweswim.core import manager as manager_module
 from shallweswim.core.manager import build_feeds
 from shallweswim.snapshot.load import load_current
-from shallweswim.snapshot.store import SnapshotStore
+from shallweswim.snapshot.model import (
+    CurrentPointer,
+    FeedObject,
+    LocationManifest,
+    Manifest,
+)
+from shallweswim.snapshot.store import CURRENT_KEY, SnapshotStore
 from shallweswim.types import TIDE_TYPE_CATEGORIES
 from shallweswim.util import utc_now
 from tests.conftest import TEST_CONFIG_FULL, TEST_CONFIG_OBSERVATION_CURRENTS
+from tests.snapshot_fixtures import fresh_manager
 
 # Fixed observation timestamps keep archived partition keys deterministic
 # regardless of when the suite runs, and avoid daylight-saving transitions.
@@ -552,30 +560,254 @@ def test_publish_run_writes_one_generation_with_every_feed_and_plot(
     assert summary.revised_count == 0
 
 
-def test_second_publish_run_reuses_every_object(
+def _manifest_entry(
+    feed: feeds.Feed,
+    *,
+    next_fetch_after: datetime.datetime | None,
+    source_identity: str | None = None,
+) -> FeedObject:
+    """A published entry for one feed, carrying only its schedule and source."""
+    return FeedObject(
+        key="published/objects/sha256-0.parquet",
+        size_bytes=1,
+        source_identity=source_identity or feed.feed_config.citation_key,
+        fetch_timestamp=datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC),
+        next_fetch_after=next_fetch_after,
+        expiration_seconds=600.0,
+        record_count=1,
+        consecutive_failures=0,
+        last_error=None,
+        timezone="US/Eastern",
+        historical=None,
+    )
+
+
+def _provider_calls(coops: MockCoopsApi, nwis: MockNwisApi) -> tuple[int, ...]:
+    """Every provider call count, to assert which feeds a run fetched."""
+    return (
+        coops.tides_calls,
+        coops.currents_calls,
+        coops.live_temperature_calls,
+        coops.historic_temperature_calls,
+        nwis.currents_calls,
+    )
+
+
+def _edit_published_feed(
+    store: MemoryObjectStore,
+    location: str,
+    feed_name: feeds.FeedName,
+    **updates: object,
+) -> None:
+    """Rewrite one feed entry of the published manifest the next run restores.
+
+    The manifest object is replaced in place, under the key the current
+    pointer already names, so the next run reads the edited schedule.
+    """
+    pointer = CurrentPointer.model_validate_json(store._objects[CURRENT_KEY])
+    manifest = Manifest.model_validate_json(store._objects[pointer.manifest_key])
+    location_manifest = manifest.locations[location]
+    feed_objects = dict(location_manifest.feeds)
+    feed_objects[feed_name] = feed_objects[feed_name].model_copy(update=updates)
+    locations = dict(manifest.locations)
+    locations[location] = location_manifest.model_copy(update={"feeds": feed_objects})
+    store._objects[pointer.manifest_key] = (
+        manifest.model_copy(update={"locations": locations}).model_dump_json().encode()
+    )
+
+
+def test_second_publish_run_holds_every_feed_and_changes_nothing(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Identical data republishes only a manifest, because fetch times differ."""
-    _, _, store = _install_publish_environment(
+    """The manifest is the schedule, so an immediate rerun fetches nothing."""
+    coops_client, nwis_client, store = _install_publish_environment(
         monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
     )
 
     assert capture.main([]) == 0
     objects_after_first = _published_keys(store, "published/objects/")
+    manifests_after_first = _published_keys(store, "published/manifests/")
+    calls_after_first = _provider_calls(coops_client, nwis_client)
     caplog.clear()
     with caplog.at_level(logging.INFO):
         assert capture.main([]) == 0
 
+    # No feed was due again, so no provider was contacted and the published
+    # generation is byte-identical: the `unchanged` outcome the design wants.
+    assert _provider_calls(coops_client, nwis_client) == calls_after_first
     assert _published_keys(store, "published/objects/") == objects_after_first
-    assert len(_published_keys(store, "published/manifests/")) == 2
+    assert _published_keys(store, "published/manifests/") == manifests_after_first
     (publish_event,) = _publish_records(caplog)
-    assert publish_event.outcome == "success"
-    assert publish_event.record_count == 0
+    assert publish_event.outcome == "unchanged"
+
+    events = {record.feed: record for record in _freshness_records(caplog)}
+    assert set(events) == {name.value for name in feeds.FeedName}
+    assert {record.outcome for record in events.values()} == {"held"}
+    assert all(record.levelno == logging.INFO for record in events.values())
+    assert all(record.age_seconds >= 0 for record in events.values())
+
+    summary = _summary_record(caplog)
+    assert summary.outcome == "success"
+    # A held feed counts as published; its rows belong to the run that fetched
+    # them, so this process reports none.
+    assert "4 of 4 feeds published; snapshot publish unchanged" in summary.getMessage()
+    assert summary.record_count == 0
+    assert summary.new_count == 0
+
+
+def test_a_due_feed_fetches_while_the_rest_are_held(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    coops_client, nwis_client, store = _install_publish_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
+    )
+
+    assert capture.main([]) == 0
+    base = asyncio.run(load_current(SnapshotStore(store)))
+    assert base is not None
+    calls_after_first = _provider_calls(coops_client, nwis_client)
+    # Live temperature came due; nothing else did.
+    _edit_published_feed(
+        store,
+        "obs",
+        feeds.FeedName.LIVE_TEMPS,
+        next_fetch_after=utc_now().replace(tzinfo=datetime.UTC)
+        - datetime.timedelta(minutes=1),
+    )
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        assert capture.main([]) == 0
+
+    assert coops_client.live_temperature_calls == calls_after_first[2] + 1
+    assert _provider_calls(coops_client, nwis_client)[:2] == calls_after_first[:2]
+    assert _provider_calls(coops_client, nwis_client)[3:] == calls_after_first[3:]
+
     loaded = asyncio.run(load_current(SnapshotStore(store)))
     assert loaded is not None
-    assert loaded.manifest.previous_generation_id is not None
-    assert loaded.manifest.generation_id != loaded.manifest.previous_generation_id
-    assert _summary_record(caplog).new_count == 0
+    assert loaded.manifest.generation_id != base.manifest.generation_id
+    held = loaded.manifest.locations["obs"].feeds[feeds.FeedName.HISTORIC_TEMPS]
+    assert held == base.manifest.locations["obs"].feeds[feeds.FeedName.HISTORIC_TEMPS]
+    # The held feed's plots come with its entry, unchanged.
+    for plot_name in (
+        feeds.PlotName.HISTORIC_TEMPS_2MO,
+        feeds.PlotName.HISTORIC_TEMPS_12MO,
+    ):
+        assert (
+            loaded.manifest.locations["obs"].plots[plot_name]
+            == (base.manifest.locations["obs"].plots[plot_name])
+        )
+    refetched = loaded.manifest.locations["obs"].feeds[feeds.FeedName.LIVE_TEMPS]
+    assert refetched.fetch_timestamp > (
+        base.manifest.locations["obs"].feeds[feeds.FeedName.LIVE_TEMPS].fetch_timestamp
+    )
+
+    events = {record.feed: record for record in _freshness_records(caplog)}
+    assert events[feeds.FeedName.LIVE_TEMPS].outcome == "success"
+    assert events[feeds.FeedName.HISTORIC_TEMPS].outcome == "held"
+    assert _summary_record(caplog).outcome == "success"
+
+
+def test_a_changed_source_identity_fetches_instead_of_holding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coops_client, nwis_client, store = _install_publish_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
+    )
+
+    assert capture.main([]) == 0
+    calls_after_first = _provider_calls(coops_client, nwis_client)
+    _edit_published_feed(
+        store, "obs", feeds.FeedName.LIVE_TEMPS, source_identity="coops:temp:9999999"
+    )
+
+    assert capture.main([]) == 0
+
+    # The entry no longer describes the configured source, so the feed is a
+    # fresh feed again and fetches; every other feed still holds.
+    assert coops_client.live_temperature_calls == calls_after_first[2] + 1
+    assert _provider_calls(coops_client, nwis_client)[3:] == calls_after_first[3:]
+
+
+def test_a_run_without_a_published_generation_fetches_everything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coops_client, nwis_client, store = _install_publish_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
+    )
+
+    assert capture.main([]) == 0
+    calls_after_first = _provider_calls(coops_client, nwis_client)
+    del store._objects[CURRENT_KEY]
+
+    assert capture.main([]) == 0
+
+    assert _provider_calls(coops_client, nwis_client) == tuple(
+        count * 2 for count in calls_after_first
+    )
+
+
+def test_full_history_run_ignores_the_published_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coops_client, nwis_client, _ = _install_publish_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
+    )
+
+    assert capture.main([]) == 0
+    calls_after_first = _provider_calls(coops_client, nwis_client)
+
+    assert capture.main(["--full-history"]) == 0
+
+    assert _provider_calls(coops_client, nwis_client) == tuple(
+        count * 2 for count in calls_after_first
+    )
+
+
+def test_restore_schedule_only_restores_matching_entries() -> None:
+    """A manifest entry restores a feed only while it names its source."""
+    manager = fresh_manager()
+    tides = manager._feeds[feeds.FeedName.TIDES]
+    live = manager._feeds[feeds.FeedName.LIVE_TEMPS]
+    currents = manager._feeds[feeds.FeedName.CURRENTS]
+    historic = manager._feeds[feeds.FeedName.HISTORIC_TEMPS]
+    assert tides is not None and live is not None
+    assert currents is not None and historic is not None
+    due = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.UTC)
+
+    capture.restore_schedule(
+        manager,
+        LocationManifest(
+            feeds={
+                # Restored: the entry names the feed's configured source.
+                feeds.FeedName.TIDES: _manifest_entry(tides, next_fetch_after=due),
+                # A never-refreshing feed keeps its None.
+                feeds.FeedName.LIVE_TEMPS: _manifest_entry(live, next_fetch_after=None),
+                # Published from another source, so it is not this feed's state.
+                feeds.FeedName.CURRENTS: _manifest_entry(
+                    currents, next_fetch_after=due, source_identity="coops:other:1"
+                ),
+            },
+            plots={},
+        ),
+    )
+
+    assert tides._next_fetch_after == due.replace(tzinfo=None)
+    assert live._next_fetch_after is None
+    assert currents._next_fetch_after is None
+    # A feed the manifest does not describe keeps its fresh-feed state.
+    assert historic._next_fetch_after is None
+    assert all(feed.is_expired for feed in (live, currents, historic))
+
+
+def test_restore_schedule_without_a_manifest_leaves_every_feed_due() -> None:
+    manager = fresh_manager()
+
+    capture.restore_schedule(manager, None)
+
+    for feed in manager._feeds.values():
+        assert feed is not None
+        assert feed._next_fetch_after is None
+        assert feed.is_expired
 
 
 def test_publish_failure_leaves_run_outcome_and_exit_code(

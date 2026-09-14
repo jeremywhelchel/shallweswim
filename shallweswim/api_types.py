@@ -385,6 +385,19 @@ class LocationStatus(BaseModel):
     feeds: dict[str, FeedStatus] = Field(
         ..., description="Dictionary mapping feed names to their FeedStatus objects."
     )
+    generation_id: str | None = Field(
+        None,
+        description=(
+            "Identifier of the published generation this instance serves. "
+            "Null while no generation is loaded."
+        ),
+    )
+    published_at: datetime.datetime | None = Field(
+        None, description="When the served generation was published (UTC)."
+    )
+    loaded_at: datetime.datetime | None = Field(
+        None, description="When this instance loaded the served generation (UTC)."
+    )
 
 
 class LocationSummary(BaseModel):

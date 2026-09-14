@@ -35,8 +35,9 @@ export interface paths {
          * Healthy Status
          * @description API endpoint for service health check (used by Cloud Run).
          *
-         *     Returns 200 if at least one location can serve data (fresh or stale).
-         *     Returns 503 only if NO location has any data available.
+         *     Returns 200 once a generation is loaded and at least one of its
+         *     locations can serve data (fresh or stale). Returns 503 while no
+         *     generation is loaded, or if NO location in it has any data.
          *
          *     This lenient check ensures single station outages don't mark the entire
          *     service unhealthy. For detailed per-feed health status, use /api/status.
@@ -65,8 +66,9 @@ export interface paths {
          * Healthy Status
          * @description API endpoint for service health check (used by Cloud Run).
          *
-         *     Returns 200 if at least one location can serve data (fresh or stale).
-         *     Returns 503 only if NO location has any data available.
+         *     Returns 200 once a generation is loaded and at least one of its
+         *     locations can serve data (fresh or stale). Returns 503 while no
+         *     generation is loaded, or if NO location in it has any data.
          *
          *     This lenient check ensures single station outages don't mark the entire
          *     service unhealthy. For detailed per-feed health status, use /api/status.
@@ -119,13 +121,11 @@ export interface paths {
         };
         /**
          * All Locations Status
-         * @description API endpoint that returns status information for all configured locations.
+         * @description API endpoint that returns status for every location of the generation.
          *
          *     Returns:
-         *         Dictionary mapping location codes to their status dictionaries
-         *
-         *     Raises:
-         *         HTTPException: If no locations are configured
+         *         Dictionary mapping location codes to their status dictionaries,
+         *         empty while no generation is loaded.
          */
         get: operations["all_locations_status_api_status_get"];
         put?: never;
@@ -317,7 +317,8 @@ export interface paths {
          *         Status dictionary for the specified location
          *
          *     Raises:
-         *         HTTPException: If the location is not configured
+         *         HTTPException: If the location is not configured, or the loaded
+         *             generation does not carry it.
          */
         get: operations["location_status_api__location__status_get"];
         put?: never;
@@ -1379,6 +1380,21 @@ export interface components {
             feeds: {
                 [key: string]: components["schemas"]["FeedStatus"];
             };
+            /**
+             * Generation Id
+             * @description Identifier of the published generation this instance serves. Null while no generation is loaded.
+             */
+            generation_id?: string | null;
+            /**
+             * Loaded At
+             * @description When this instance loaded the served generation (UTC).
+             */
+            loaded_at?: string | null;
+            /**
+             * Published At
+             * @description When the served generation was published (UTC).
+             */
+            published_at?: string | null;
         };
         /**
          * LocationSummary

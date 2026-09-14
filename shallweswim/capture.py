@@ -15,6 +15,12 @@ snapshot generation under ``published/`` in the archive bucket. Archive capture
 still happens inside each feed's update. The job never serves traffic or starts
 FastAPI. It is temporary: the Phase 4 updater command absorbs it.
 
+The current generation is also the job's persisted feed schedule: before each
+location's cycle the run restores every matching feed's next fetch time from
+the current manifest, so a feed that is not yet due is not fetched and its
+published entry and plots are carried forward. Each feed therefore keeps its
+own interval whatever the job cadence is.
+
 That publishing cycle, ``publish_locations``, has a second host:
 ``shallweswim.local`` runs it on a timer inside the web app's process against a
 local store. It therefore takes its process pool and its store locator as
@@ -46,8 +52,8 @@ from shallweswim.core.manager import (
     LocationDataManager,
     build_feeds,
 )
-from shallweswim.snapshot.build import build_location_snapshot
-from shallweswim.snapshot.model import Snapshot
+from shallweswim.snapshot.build import build_location_snapshot, is_held
+from shallweswim.snapshot.model import LocationManifest, Manifest, Snapshot
 from shallweswim.snapshot.publish import publish
 from shallweswim.snapshot.store import SnapshotStore
 from shallweswim.types import DataSourceType
@@ -181,6 +187,11 @@ def _location_counts(
 ) -> tuple[int, int, int, CaptureResult]:
     """Count one location's feeds after its serving cycle ran.
 
+    A feed the run held because it was not due counts as published: the
+    generation carries its entry forward, so its frame is still served. The row
+    count covers only the frames this process holds, because a held feed's rows
+    were counted by the run that fetched them.
+
     Args:
         location_feeds: The feeds a manager holds, None for unconfigured ones.
 
@@ -200,10 +211,64 @@ def _location_counts(
         if feed.has_data:
             published += 1
             record_count += len(feed.values)
+        elif is_held(feed):
+            published += 1
         if feed.last_capture is not None:
             new_count += feed.last_capture.new_count
             revised_count += feed.last_capture.revised_count
     return attempted, published, record_count, CaptureResult(new_count, revised_count)
+
+
+def restore_schedule(
+    manager: LocationDataManager, location_manifest: LocationManifest | None
+) -> None:
+    """Restore each feed's next fetch time from the current generation.
+
+    The published manifest is the job's persisted feed schedule. A fresh feed
+    is always due, so without this a bounded run refetches everything on every
+    execution; with it, each feed keeps its own expiration interval whatever
+    the job cadence is. A feed the manifest does not describe, or describes
+    from a different source, keeps its fresh-feed state and fetches.
+
+    Args:
+        manager: The location's freshly built data manager.
+        location_manifest: The location's entry in the current generation's
+            manifest, or None when there is no generation, no entry for this
+            location, or the run ignores the schedule.
+    """
+    if location_manifest is None:
+        return
+    for feed_name, feed in manager._feeds.items():
+        # The manager exposes no accessor for the feed objects themselves, and
+        # scheduling is deliberately private to the feed.
+        if feed is None:
+            continue
+        entry = location_manifest.feeds.get(feed_name)
+        if entry is None or entry.source_identity != feed.feed_config.citation_key:
+            continue
+        feed._next_fetch_after = (
+            None
+            if entry.next_fetch_after is None
+            # Feeds keep naive UTC; the manifest states the same instant.
+            else entry.next_fetch_after.astimezone(datetime.UTC).replace(tzinfo=None)
+        )
+
+
+async def _current_manifest(store: SnapshotStore) -> Manifest | None:
+    """Return the manifest of the generation that is current right now.
+
+    Args:
+        store: The snapshot store the run publishes into.
+
+    Returns:
+        The current manifest, or None when no generation is published or the
+        pointer names a manifest that is gone.
+    """
+    current = await store.read_current()
+    if current is None:
+        return None
+    pointer, _version = current
+    return await store.read_manifest(pointer.manifest_key)
 
 
 async def serve_location(manager: LocationDataManager) -> None:
@@ -236,17 +301,26 @@ async def publish_locations(
     *,
     pool: Executor,
     locator: str,
+    full_history: bool = False,
 ) -> tuple[list[tuple[int, int, int, CaptureResult]], str]:
     """Run every location's full serving cycle, then publish one snapshot.
 
     Locations run concurrently in the same managers the web service uses, so
     archive capture happens inside each feed's update as it does in the
-    capture-only path. Plots are generated in the caller's process pool and
-    awaited before the snapshot is built. Every enabled location is published,
-    whether or not its feeds fetched anything this run, so manifest assembly
-    can carry the last published entry of a failed feed forward. Publication
-    failure is isolated: `publish` has already logged its failed event, so the
-    run's outcome and exit code stay those of the capture cycle.
+    capture-only path. Each location's schedule is restored from the current
+    generation first, so only feeds that are due fetch and the rest keep the
+    entries and plots they already published. Plots are generated in the
+    caller's process pool and awaited before the snapshot is built. Every
+    enabled location is published, whether or not its feeds fetched anything
+    this run, so manifest assembly can carry the last published entry of a held
+    or failed feed forward. Publication failure is isolated: `publish` has
+    already logged its failed event, so the run's outcome and exit code stay
+    those of the capture cycle.
+
+    The base manifest is read once here for scheduling only. `publish` reads
+    the current pointer again for assembly and promotion, so a generation
+    another publisher promotes in between cannot make a carried-forward entry
+    disagree with the generation promotion is conditioned on.
 
     The pool and the store locator are parameters because this cycle has two
     hosts: this job, which creates a pool and reads the archive bucket from its
@@ -259,15 +333,23 @@ async def publish_locations(
         pool: Executor the plots run in; the caller owns its lifetime.
         locator: Store locator the generation is published into, as
             `archive.store.object_store` resolves it.
+        full_history: Whether to ignore the published schedule so every feed
+            fetches, for backfills and repairs.
 
     Returns:
         Each location's counts in the order of `_capture_location`, and the
         snapshot publish outcome for the run summary.
     """
+    store = SnapshotStore(await asyncio.to_thread(object_store, locator))
+    base = None if full_history else await _current_manifest(store)
     managers = [
         LocationDataManager(location_config, clients, pool)
         for location_config in config_lib.CONFIGS.values()
     ]
+    for manager in managers:
+        restore_schedule(
+            manager, None if base is None else base.locations.get(manager.config.code)
+        )
     await asyncio.gather(*(serve_location(manager) for manager in managers))
     await asyncio.gather(
         *(manager.wait_for_plots(PLOT_HARD_TIMEOUT) for manager in managers)
@@ -284,7 +366,6 @@ async def publish_locations(
             for manager in managers
         }
     )
-    store = SnapshotStore(await asyncio.to_thread(object_store, locator))
     try:
         result = await publish(
             store,
@@ -336,7 +417,8 @@ async def _run(*, full_history: bool, publish_snapshot: bool) -> int:
     Args:
         full_history: Whether to fetch the full configured historical
             temperature year range instead of only the current UTC year. The
-            publishing path always uses the full range.
+            publishing path always uses the full range, and takes the flag to
+            mean "ignore the published schedule", so every feed fetches.
         publish_snapshot: Whether to run the full serving cycle and publish a
             snapshot instead of updating only the archivable feeds.
 
@@ -364,6 +446,7 @@ async def _run(*, full_history: bool, publish_snapshot: bool) -> int:
                         run_id,
                         pool=pool,
                         locator=os.environ[ARCHIVE_BUCKET_ENV_VAR],
+                        full_history=full_history,
                     )
                 finally:
                     pool.shutdown(wait=True)
@@ -425,7 +508,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Fetch the full configured historical temperature year range "
             "instead of only the current UTC year. A publishing run "
-            f"({SNAPSHOT_PUBLISH_ENV_VAR}=1) always fetches the full range."
+            f"({SNAPSHOT_PUBLISH_ENV_VAR}=1) always fetches the full range, "
+            "and ignores the published schedule so every feed fetches."
         ),
     )
     return parser.parse_args(argv)

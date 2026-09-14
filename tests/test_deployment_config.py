@@ -1,13 +1,15 @@
 """Deployment manifests must keep the capture job the archive's only writer.
 
 The job is also the only snapshot publisher, so the publish switch and the
-archive read bucket it needs belong to the job manifest alone. The service
-gets one bucket variable, the read-only snapshot bucket that enables shadow
-mode, and the job never gets that one.
+archive read bucket it needs belong to the job manifest alone. The service gets
+one bucket variable, the read-only snapshot bucket it serves every request
+from, and the job never gets that one.
 """
 
 import re
 from pathlib import Path
+
+from shallweswim.snapshot.store import SNAPSHOT_READ_BUCKET_ENV_VAR
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE_YAML = (ROOT / "service.yaml").read_text()
@@ -51,7 +53,7 @@ def test_web_service_never_publishes_or_hydrates() -> None:
 
 
 def test_web_service_reads_snapshots_from_the_archive_bucket() -> None:
-    """Shadow mode reads the bucket the job publishes into, substituted alike."""
+    """The service reads the bucket the job publishes into, substituted alike."""
     assert SNAPSHOT_READ_BUCKET_VAR in _env_var_names(SERVICE_YAML)
     assert re.search(
         rf"name: {SNAPSHOT_READ_BUCKET_VAR}\s+value: \${{{ARCHIVE_BUCKET_VAR}}}",
@@ -65,6 +67,12 @@ def test_web_service_reads_snapshots_from_the_archive_bucket() -> None:
     )
     # Both deploy steps refuse to deploy an empty substitution.
     assert CLOUDBUILD_YAML.count('if [ -z "${_ARCHIVE_BUCKET}" ]; then') == 2
+
+
+def test_web_service_sets_the_variable_its_startup_requires() -> None:
+    """The service cannot start without it, so the manifest must name it exactly."""
+    assert SNAPSHOT_READ_BUCKET_VAR == SNAPSHOT_READ_BUCKET_ENV_VAR
+    assert SNAPSHOT_READ_BUCKET_VAR in _env_var_names(SERVICE_YAML)
 
 
 def test_capture_job_never_reads_snapshots() -> None:

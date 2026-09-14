@@ -168,16 +168,32 @@ class FeedFailure:
 
 
 @dataclasses.dataclass(frozen=True)
+class FeedHold:
+    """A configured feed the run did not fetch because it was not due.
+
+    Holding is not failing. The run restored the feed's scheduled fetch time
+    from the current generation, found it in the future, and never attempted a
+    fetch, so it learned nothing about the feed: the source identity is all
+    this record holds. Manifest assembly copies the base entry unchanged,
+    failure fields included, and the feed's plots follow it.
+    """
+
+    source_identity: str
+
+
+@dataclasses.dataclass(frozen=True)
 class LocationSnapshot:
     """One location's serving state, keyed the way the manager keys it.
 
-    Every configured feed appears exactly once: in `feeds` when it holds data
-    and in `failures` when it does not.
+    Every configured feed appears exactly once: in `feeds` when it holds data,
+    in `holds` when the run did not fetch it because it was not due, and in
+    `failures` when it was due and produced nothing.
     """
 
     feeds: dict[FeedName, FeedSnapshot]
     plots: dict[PlotName, PlotSnapshot]
     failures: dict[FeedName, FeedFailure] = dataclasses.field(default_factory=dict)
+    holds: dict[FeedName, FeedHold] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(frozen=True)

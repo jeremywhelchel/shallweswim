@@ -30,7 +30,7 @@ from shallweswim.config import (
 )
 from shallweswim.core.feeds import FEED_CURRENTS, FEED_TIDES
 from shallweswim.data import LocationDataManager
-from tests.helpers import create_test_app
+from tests.helpers import create_test_app, install_managers
 
 
 def create_nyc_config() -> LocationConfig:
@@ -99,7 +99,6 @@ def app_with_mock_manager() -> Any:
         for different test scenarios.
     """
     app = create_test_app()
-    app.state.data_managers = {}
     register_routes(app)
 
     mock_manager = MagicMock(spec=LocationDataManager)
@@ -110,7 +109,7 @@ def app_with_mock_manager() -> Any:
 
     with patch("shallweswim.config.get") as mock_get:
         mock_get.return_value = create_nyc_config()
-        app.state.data_managers["nyc"] = mock_manager
+        install_managers(app, {"nyc": mock_manager})
         yield app, mock_manager
 
 
@@ -491,43 +490,36 @@ def test_historic_temps_plot_invalid_period(app_with_mock_manager: Any) -> None:
 # =============================================================================
 
 
-def test_healthy_no_locations_returns_503() -> None:
-    """No locations configured → 503.
-
-    Service should be unhealthy if no locations are set up.
-    """
+def test_healthy_without_a_loaded_generation_returns_503() -> None:
+    """An instance that has loaded no generation has nothing to serve."""
     app = create_test_app()
-    app.state.data_managers = {}  # No locations
+    install_managers(app, {})  # No generation loaded
     register_routes(app)
 
     client = TestClient(app)
     response = client.get("/api/healthy")
 
     assert response.status_code == 503
-    assert "no locations configured" in response.json()["detail"]
+    assert "no published generation loaded" in response.json()["detail"]
 
 
-def test_status_no_locations_returns_500() -> None:
-    """No location managers for /api/status → 500.
-
-    The status endpoint is diagnostic. If no managers exist after startup, that
-    means app initialization failed, not that a requested resource is missing.
-    """
+def test_status_without_a_loaded_generation_is_empty() -> None:
+    """The status endpoint reports what is loaded, and nothing is."""
     app = create_test_app()
-    app.state.data_managers = {}
+    install_managers(app, {})
     register_routes(app)
 
     client = TestClient(app)
     response = client.get("/api/status")
 
-    assert response.status_code == 500
-    assert "no location data managers initialized" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.json() == {}
 
 
-def test_location_status_configured_location_missing_manager_returns_500() -> None:
-    """Configured location with no manager is an internal initialization error."""
+def test_location_status_absent_from_the_generation_returns_503() -> None:
+    """A configured location the loaded generation omits has no status."""
     app = create_test_app()
-    app.state.data_managers = {}
+    install_managers(app, {})
     register_routes(app)
 
     with patch("shallweswim.config.get") as mock_get:
@@ -535,8 +527,8 @@ def test_location_status_configured_location_missing_manager_returns_500() -> No
         client = TestClient(app)
         response = client.get("/api/nyc/status")
 
-    assert response.status_code == 500
-    assert "data manager missing" in response.json()["detail"]
+    assert response.status_code == 503
+    assert "temporarily unavailable" in response.json()["detail"]
 
 
 def test_healthy_no_location_has_data_returns_503() -> None:
@@ -545,7 +537,6 @@ def test_healthy_no_location_has_data_returns_503() -> None:
     Service should be unhealthy if no location can serve data.
     """
     app = create_test_app()
-    app.state.data_managers = {}
     register_routes(app)
 
     # Create two mock managers with no data
@@ -555,8 +546,7 @@ def test_healthy_no_location_has_data_returns_503() -> None:
     mock_manager2 = MagicMock(spec=LocationDataManager)
     mock_manager2.has_data = False
 
-    app.state.data_managers["nyc"] = mock_manager1
-    app.state.data_managers["sfo"] = mock_manager2
+    install_managers(app, {"nyc": mock_manager1, "sfo": mock_manager2})
 
     client = TestClient(app)
     response = client.get("/api/healthy")
@@ -575,7 +565,6 @@ def test_healthy_at_least_one_location_has_data_returns_200(
     mark the entire service unhealthy.
     """
     app = create_test_app()
-    app.state.data_managers = {}
     register_routes(app)
 
     # One location with data, one without
@@ -585,8 +574,9 @@ def test_healthy_at_least_one_location_has_data_returns_200(
     mock_manager_without_data = MagicMock(spec=LocationDataManager)
     mock_manager_without_data.has_data = False
 
-    app.state.data_managers["nyc"] = mock_manager_with_data
-    app.state.data_managers["sfo"] = mock_manager_without_data
+    install_managers(
+        app, {"nyc": mock_manager_with_data, "sfo": mock_manager_without_data}
+    )
 
     client = TestClient(app)
     with caplog.at_level(logging.INFO):
@@ -603,12 +593,11 @@ def test_healthy_at_least_one_location_has_data_returns_200(
 def test_health_alias_at_least_one_location_has_data_returns_200() -> None:
     """/api/health is an alias for /api/healthy."""
     app = create_test_app()
-    app.state.data_managers = {}
     register_routes(app)
 
     mock_manager = MagicMock(spec=LocationDataManager)
     mock_manager.has_data = True
-    app.state.data_managers["nyc"] = mock_manager
+    install_managers(app, {"nyc": mock_manager})
 
     client = TestClient(app)
     response = client.get("/api/health")
@@ -620,7 +609,6 @@ def test_health_alias_at_least_one_location_has_data_returns_200() -> None:
 def test_healthy_all_locations_have_data_returns_200() -> None:
     """All locations have data → 200 (healthy)."""
     app = create_test_app()
-    app.state.data_managers = {}
     register_routes(app)
 
     mock_manager1 = MagicMock(spec=LocationDataManager)
@@ -629,8 +617,7 @@ def test_healthy_all_locations_have_data_returns_200() -> None:
     mock_manager2 = MagicMock(spec=LocationDataManager)
     mock_manager2.has_data = True
 
-    app.state.data_managers["nyc"] = mock_manager1
-    app.state.data_managers["sfo"] = mock_manager2
+    install_managers(app, {"nyc": mock_manager1, "sfo": mock_manager2})
 
     client = TestClient(app)
     response = client.get("/api/healthy")

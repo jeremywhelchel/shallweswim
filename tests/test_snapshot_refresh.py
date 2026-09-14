@@ -1,24 +1,30 @@
-"""Shadow-mode loading and request-elected refresh on the web instance.
+"""Generation loading and request-elected refresh on the web instance.
 
-Shadow mode must be cheap and invisible: a check that finds nothing does no
-work, a check that finds a new generation reads only the objects the instance
-does not already hold, and neither a failure nor a slow bucket may affect
-serving. These tests drive `SnapshotState` over an object store that counts
-every read, with the module's clock replaced so intervals are exact.
+Loading must be cheap: a check that finds nothing does no work, a check that
+finds a new generation reads only the objects the instance does not already
+hold, and neither a failure nor a slow bucket may stop the instance from
+starting or from serving what it already holds. These tests drive
+`SnapshotState` over an object store that counts every read, with the module's
+clock replaced so intervals are exact, and then the app's own startup and
+request path over the same store.
 """
 
 import asyncio
 import datetime
 import logging
-from collections.abc import Iterator
-from types import SimpleNamespace
+from collections.abc import Iterator, Mapping
+from types import MappingProxyType, SimpleNamespace
 
+import aiohttp
+import fastapi
 import pytest
 from fastapi.testclient import TestClient
 
 from shallweswim import config as config_lib
+from shallweswim import data as data_lib
 from shallweswim import main as main_module
 from shallweswim.archive.store import MemoryObjectStore, StoredObject
+from shallweswim.core import manager as manager_module
 from shallweswim.core.feeds import FeedName
 from shallweswim.main import app
 from shallweswim.snapshot import refresh as refresh_module
@@ -189,6 +195,7 @@ async def test_check_waits_a_full_interval_after_a_failure(
         await state.check_and_refresh()
     assert len(objects.reads) == 1
     (event,) = _snapshot_events(caplog)
+    # A refresh failure, unlike the startup load, is only a warning.
     assert event.levelno == logging.WARNING
     assert event.outcome == "failed"
     assert event.generation_id is None
@@ -271,6 +278,7 @@ async def test_location_missing_from_the_bundle_has_no_manager(clock: Clock) -> 
 async def test_initial_load_failure_leaves_an_empty_state(
     clock: Clock, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """The instance has nothing to serve, so the failure is an ERROR."""
     objects = CountingObjectStore()
     objects.fail = True
     state = SnapshotState(SnapshotStore(objects))
@@ -280,9 +288,10 @@ async def test_initial_load_failure_leaves_an_empty_state(
 
     assert state.managers == {}
     assert state.generation_id is None
+    assert state.published_at is None
     assert state.loaded_at is None
     (event,) = _snapshot_events(caplog)
-    assert event.levelno == logging.WARNING
+    assert event.levelno == logging.ERROR
     assert event.outcome == "failed"
     assert not hasattr(event, "age_seconds")
 
@@ -301,19 +310,23 @@ async def test_initial_load_timeout_leaves_an_empty_state(clock: Clock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_shadow_mode_is_off_without_the_bucket_variable(
+async def test_startup_fails_without_the_bucket_variable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A web process with no store has nothing to serve, so it must not start."""
     monkeypatch.delenv(main_module.SNAPSHOT_READ_BUCKET_ENV_VAR, raising=False)
-    shadow = SimpleNamespace(state=SimpleNamespace())
+    started = SimpleNamespace(state=SimpleNamespace())
 
-    await main_module.start_snapshot_shadow(shadow)  # pyrefly: ignore
+    with pytest.raises(RuntimeError) as error:
+        await main_module.start_snapshot_serving(started)  # pyrefly: ignore
 
-    assert shadow.state.snapshot is None
+    message = str(error.value)
+    assert main_module.SNAPSHOT_READ_BUCKET_ENV_VAR in message
+    assert "python -m shallweswim.local" in message
 
 
 @pytest.mark.asyncio
-async def test_shadow_mode_loads_the_named_bucket(
+async def test_startup_loads_the_named_bucket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     objects = CountingObjectStore()
@@ -326,16 +339,16 @@ async def test_shadow_mode_loads_the_named_bucket(
         return objects
 
     monkeypatch.setattr(main_module, "object_store", fake_object_store)
-    shadow = SimpleNamespace(state=SimpleNamespace())
+    started = SimpleNamespace(state=SimpleNamespace())
 
-    await main_module.start_snapshot_shadow(shadow)  # pyrefly: ignore
+    await main_module.start_snapshot_serving(started)  # pyrefly: ignore
 
     assert locators == ["bundle-bucket"]
-    assert set(shadow.state.snapshot.managers) == {"nyc"}
+    assert set(started.state.snapshot.managers) == {"nyc"}
 
 
 @pytest.mark.asyncio
-async def test_shadow_mode_survives_an_unreachable_bucket(
+async def test_startup_survives_an_unreachable_bucket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Startup keeps going with the state in place and no generation loaded."""
@@ -343,30 +356,60 @@ async def test_shadow_mode_survives_an_unreachable_bucket(
     objects.fail = True
     monkeypatch.setenv(main_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
     monkeypatch.setattr(main_module, "object_store", lambda _locator: objects)
-    shadow = SimpleNamespace(state=SimpleNamespace())
+    started = SimpleNamespace(state=SimpleNamespace())
 
-    await main_module.start_snapshot_shadow(shadow)  # pyrefly: ignore
+    await main_module.start_snapshot_serving(started)  # pyrefly: ignore
 
-    assert shadow.state.snapshot.generation_id is None
-    assert shadow.state.snapshot.managers == {}
+    assert started.state.snapshot.generation_id is None
+    assert started.state.snapshot.managers == {}
+
+
+@pytest.mark.asyncio
+async def test_lifespan_constructs_no_manager_and_opens_no_client_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The web process holds no fetching stack: no manager, no HTTP session."""
+    objects = CountingObjectStore()
+    await publish(SnapshotStore(objects), sample_snapshot(), run_id="run-1", now=NOW)
+    monkeypatch.setenv(main_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
+    monkeypatch.setattr(main_module, "object_store", lambda _locator: objects)
+
+    def no_manager(*args: object, **kwargs: object) -> None:
+        raise AssertionError("The web lifespan constructed a LocationDataManager")
+
+    def no_session(*args: object, **kwargs: object) -> None:
+        raise AssertionError("The web lifespan opened an aiohttp ClientSession")
+
+    # Both the module that defines the manager and the compatibility shim that
+    # re-exports it, so neither import path can construct one unnoticed.
+    monkeypatch.setattr(manager_module, "LocationDataManager", no_manager)
+    monkeypatch.setattr(data_lib, "LocationDataManager", no_manager)
+    monkeypatch.setattr(aiohttp, "ClientSession", no_session)
+
+    lifespan_app = fastapi.FastAPI()
+    async with main_module.lifespan(lifespan_app):
+        assert set(lifespan_app.state.snapshot.managers) == {"nyc"}
+        assert not hasattr(lifespan_app.state, "data_managers")
+        assert not hasattr(lifespan_app.state, "http_session")
+    # The pool the on-demand detail plots run in is the one thing startup owns.
+    assert lifespan_app.state.process_pool is not None
 
 
 # =============================================================================
-# Middleware
+# Middleware and the request path
 # =============================================================================
 
 
 @pytest.fixture
 def served_app() -> Iterator[None]:
-    """The real app with empty managers and shadow mode off, restored after."""
-    app.state.data_managers = {}
+    """The real app with no generation loaded, restored afterwards."""
     app.state.snapshot = None
     yield
     app.state.snapshot = None
 
 
-def test_middleware_is_inactive_without_a_shadow_state(served_app: None) -> None:
-    """With shadow mode off the request path touches no snapshot code."""
+def test_middleware_is_inactive_without_a_serving_state(served_app: None) -> None:
+    """With no state installed the request path touches no snapshot code."""
     client = TestClient(app)
 
     response = client.get("/robots.txt")
@@ -379,6 +422,8 @@ def test_middleware_elects_a_request_to_refresh(served_app: None) -> None:
     checks: list[str] = []
 
     class RecordingState:
+        managers: Mapping[str, object] = MappingProxyType({})
+
         async def check_and_refresh(self) -> None:
             checks.append("checked")
 
@@ -389,3 +434,73 @@ def test_middleware_elects_a_request_to_refresh(served_app: None) -> None:
 
     assert response.status_code == 503
     assert checks == ["checked"]
+
+
+@pytest.mark.asyncio
+async def test_routes_serve_the_generation_the_last_refresh_loaded(
+    clock: Clock, served_app: None
+) -> None:
+    """Routes resolve managers per request, so a refresh reaches the next one."""
+    objects = CountingObjectStore()
+    store = SnapshotStore(objects)
+    await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+    state = SnapshotState(store)
+    await state.initial_load()
+    app.state.snapshot = state
+    client = TestClient(app)
+
+    first = client.get("/api/nyc/data/live_temps")
+    assert first.status_code == 200
+    first_temps = list(first.json().values())
+
+    await publish(store, sample_snapshot(live_offset=5.0), run_id="run-2", now=LATER)
+    # Still the first generation: nothing has elected a check yet.
+    assert client.get("/api/status").json()["nyc"]["generation_id"] == (
+        state.generation_id
+    )
+
+    clock.advance(refresh_module.CHECK_INTERVAL_SECONDS)
+    second = client.get("/api/nyc/data/live_temps")
+
+    assert second.status_code == 200
+    second_temps = list(second.json().values())
+    assert [row["water_temp"] for row in second_temps] == pytest.approx(
+        [row["water_temp"] + 5.0 for row in first_temps]
+    )
+
+
+@pytest.mark.asyncio
+async def test_health_and_status_follow_the_loaded_generation(
+    clock: Clock, served_app: None
+) -> None:
+    """Both endpoints answer from the generation, and from its absence."""
+    objects = CountingObjectStore()
+    store = SnapshotStore(objects)
+    state = SnapshotState(store)
+    await state.initial_load()
+    app.state.snapshot = state
+    client = TestClient(app)
+
+    assert client.get("/api/healthy").status_code == 503
+    assert client.get("/api/status").json() == {}
+    assert [
+        summary["has_data"]
+        for summary in client.get("/api/locations").json()
+        if summary["code"] == "nyc"
+    ] == [False]
+
+    await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+    await state.initial_load()
+
+    assert client.get("/api/healthy").status_code == 200
+    status_body = client.get("/api/status").json()
+    assert set(status_body) == {"nyc"}
+    assert status_body["nyc"]["generation_id"] == state.generation_id
+    assert status_body["nyc"]["published_at"] == NOW.isoformat().replace("+00:00", "Z")
+    assert status_body["nyc"]["loaded_at"] is not None
+    assert status_body["nyc"]["feeds"]
+    assert [
+        summary["has_data"]
+        for summary in client.get("/api/locations").json()
+        if summary["code"] == "nyc"
+    ] == [True]

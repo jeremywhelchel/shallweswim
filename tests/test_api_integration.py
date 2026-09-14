@@ -28,13 +28,15 @@ import pytest
 import pytest_asyncio
 
 from shallweswim import api, config
+from shallweswim.clients import create_api_clients
+from shallweswim.core.manager import LocationDataManager
 from shallweswim.types import (
     CurrentDirection,
     CurrentPhase,
     CurrentStrength,
     CurrentTrend,
 )
-from tests.helpers import create_test_app
+from tests.helpers import create_test_app, install_managers
 
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
@@ -65,31 +67,29 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
     # Create a dedicated FastAPI app for API testing only
     app = create_test_app(title="ShallWeSwim API Test App")
 
-    # Initialize app.state.data_managers
-    app.state.data_managers = {}
-    app.state.http_session = None  # Initialize state variable
-    app.state.process_pool = None  # Initialize state variable
-
     # Create a process pool for CPU-bound tasks (e.g., plotting)
     pool = ProcessPoolExecutor(max_workers=os.cpu_count())  # Match production config
     app.state.process_pool = pool  # Assign to app state
 
     # Create and manage the HTTP session within the fixture's scope
     async with aiohttp.ClientSession() as session:
-        app.state.http_session = session
-
-        # Initialize data for all test locations
-        # We set wait_for_data=False to allow individual locations to fail
-        # without blocking other tests. Per-location readiness is checked in tests.
-        await api.initialize_location_data(
-            location_codes=TEST_LOCATIONS,
-            app=app,  # Pass the app instance
-            wait_for_data=False,  # Don't block - check readiness per-location in tests
-        )
+        # The deployed web service fetches nothing; these tests validate the
+        # routes against live provider data, so they build the fetching
+        # managers themselves and serve them as the loaded generation.
+        clients = create_api_clients(session)
+        managers = {
+            code: LocationDataManager(
+                config.CONFIGS[code], clients=clients, process_pool=pool
+            )
+            for code in TEST_LOCATIONS
+        }
+        for manager in managers.values():
+            manager.start()
+        install_managers(app, managers)
 
         # Wait for all locations to become ready in parallel (longest pole)
         async def wait_for_location(location_code: str) -> None:
-            data_manager = app.state.data_managers[location_code]
+            data_manager = managers[location_code]
             try:
                 await asyncio.wait_for(
                     data_manager.wait_until_ready(timeout=15.0),
@@ -104,7 +104,7 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
         # Wait for fire-and-forget plot generation to complete.
         # Must happen in the fixture (not test functions) because the
         # module-scoped event loop drives process pool completion callbacks.
-        nyc_manager = app.state.data_managers.get("nyc")
+        nyc_manager = managers.get("nyc")
         if nyc_manager is not None:
             for _ in range(180):
                 has_live = nyc_manager.get_plot("live_temps") is not None
@@ -120,7 +120,7 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
         yield app
 
         # Clean up all data managers after tests are complete
-        for data_manager in app.state.data_managers.values():
+        for data_manager in managers.values():
             await data_manager.stop()
 
         # Shut down the process pool
@@ -304,7 +304,7 @@ async def test_conditions_api(test_app: fastapi.FastAPI, location_code: str) -> 
     assert location_config is not None, f"Config for {location_code} not found"
 
     # Gate: if the location has no data at all, skip/fail before hitting the API
-    data_manager = test_app.state.data_managers[location_code]
+    data_manager = test_app.state.snapshot.managers[location_code]
     if not data_manager.has_data:
         _handle_unavailable(
             location_code,
@@ -608,7 +608,7 @@ async def test_get_current_tide_plot_nyc_with_at(test_app: fastapi.FastAPI) -> N
 @pytest.mark.integration
 async def test_get_live_temps_plot_nyc(test_app: fastapi.FastAPI) -> None:
     """Test the GET /api/nyc/plots/live_temps endpoint."""
-    data_manager = test_app.state.data_managers["nyc"]
+    data_manager = test_app.state.snapshot.managers["nyc"]
     if data_manager.get_plot("live_temps") is None:
         pytest.skip("Live temps plot was not generated during fixture setup")
 
@@ -632,7 +632,7 @@ async def test_get_historic_temps_plot_nyc(
     test_app: fastapi.FastAPI, period: str
 ) -> None:
     """Test the GET /api/nyc/plots/historic_temps endpoint for different periods."""
-    data_manager = test_app.state.data_managers["nyc"]
+    data_manager = test_app.state.snapshot.managers["nyc"]
     plot_key = f"historic_temps_{period}"
     if data_manager.get_plot(plot_key) is None:
         pytest.skip(

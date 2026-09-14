@@ -66,30 +66,40 @@ under `/legacy`.
 
 ### Runtime Model
 
-The application is **fully stateless** with no database or persistent storage. On startup, each instance fetches historical data (~8 days) directly from external APIs and holds it in memory. This design was chosen for Cloud Run deployment simplicity - instances can scale to zero and spin back up without managing storage.
+The application has **two processes and one shared store**. A scheduled job
+fetches every configured feed from the external APIs, draws the plots, and
+publishes one immutable generation into object storage. The web service loads
+the current generation into memory and serves every request from it; it
+contacts no external API. There is no database: the store holds plain
+content-addressed objects, and the web service reads them.
 
 **Implications:**
 
-- Cold starts require fetching all data before serving (gated by `/api/healthy`)
-- Instance shutdown loses all data (automatically re-fetched on next startup)
-- Multiple instances don't share state (each fetches independently)
+- A cold start loads one published generation instead of fetching, and
+  `/api/healthy` gates readiness on having loaded one
+- Instance shutdown loses nothing: the generation is in the store
+- Every instance serves the same generation, and picks up a new one within a
+  check interval
+- Upstream availability and latency never reach a user request
 
 ### Request Flow
 
-**User requests** always serve cached or precomputed data (fast, no external calls):
+**User requests** always serve the loaded generation (fast, no external calls):
 
 ```text
-HTTP Request → API Handler → LocationDataManager → Feed / Derived Cache → Response
+HTTP Request → API Handler → Snapshot Manager → Loaded Frames / Plots → Response
 ```
 
-**Background tasks** refresh feeds and derived data on intervals (10 min to 24 hours):
+**The publishing job** refreshes each feed on its own interval (10 min to 24
+hours) and publishes what changed:
 
 ```text
-Background Task → Feed → ApiClient → External API → Update Cache
-Background Task → Derived Data Precompute → Update Derived Cache
+Scheduled Job → Feed → ApiClient → External API → Archive + Published Generation
+Web instance → elected request → load new generation → serve it
 ```
 
-Failed fetches leave data stale until the next successful refresh.
+A failed fetch leaves the last published frame in the generation, so the web
+serves stale data rather than none.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component documentation, coding standards, and error handling patterns.
 
@@ -143,23 +153,31 @@ the way the deployed service loads the job's.
   of refetching every configured year, so a restart is fast. Without it the
   store is in process memory and starts empty every run.
 - `--cadence MINUTES` sets how often the cycle runs, ten minutes by default,
-  which is the cadence the production job targets. The first cycle starts at
-  startup; before it finishes, the app serves its own fetched data.
+  which is the cadence the production job targets. The first cycle runs to
+  completion during startup and its generation is loaded before the server
+  accepts a request, so the first page already has data; later cycles fetch
+  only the feeds that are due, so the process fetches each feed once per
+  interval.
 - `--reload` is not supported here, because the store lives in this process.
-  Until cutover the web half still fetches for itself, so a local run fetches
-  twice.
 
 ```bash
 # Persist the archive and published generations between runs
 uv run python -m shallweswim.local --port=12345 --store-dir=.local-store
 ```
 
-To run only the web half, with its own fetching and no publishing, use the web
-entry point:
+The web half alone serves published generations and fetches nothing, so it
+needs a store to read and `SHALLWESWIM_SNAPSHOT_READ_BUCKET` is required:
 
 ```bash
-uv run python -m shallweswim.main --port=12345 --reload
+SHALLWESWIM_SNAPSHOT_READ_BUCKET="$PWD/.local-store" \
+  uv run python -m shallweswim.main --port=12345 --reload
 ```
+
+Without that variable it fails at startup with a message naming it. A locator
+containing `/` is a directory, `memory` is this process's memory, and a bare
+name is a bucket, so pass a path when you mean the `--store-dir` above. Use
+this to serve a store something else is publishing into; to publish and serve
+in one process, use `shallweswim.local`.
 
 ### Frontend App Development
 
@@ -535,7 +553,8 @@ that publishes nothing exits non-zero.
 
 ##### Published Snapshots
 
-The deployed job also publishes a serving snapshot after its capture cycle.
+The deployed job also publishes a serving snapshot after its capture cycle, and
+runs every ten minutes.
 `SHALLWESWIM_SNAPSHOT_PUBLISH=1` switches a run to the full serving cycle of
 every location, exactly as the web service runs it: all four feeds including
 tide and current predictions, derived frames, and plots in a process pool. It
@@ -547,8 +566,20 @@ replaced conditionally. A generation identical to the current one is not
 written. The web service reads these generations in shadow mode, described
 below, but still serves only its own fetched data.
 
-Every configured feed of every enabled location is reported. A feed that
-fetched nothing this run keeps the entry the current generation published for
+The current generation is also the job's feed schedule. Before running a
+location's cycle, the job restores each feed's next fetch time from the current
+manifest, for every entry that still names the feed's configured source. A feed
+that is not yet due is therefore not fetched — it is *held* — and the new
+manifest keeps its entry and its plots exactly as published. Each feed thus
+keeps its own interval whatever the job cadence is: live temperature every ten
+minutes, historical temperature every three hours, tide and current predictions
+daily. A feed that is due, that the manifest does not describe, or whose source
+identity changed fetches as a fresh feed does. `--full-history` skips
+restoration entirely, so every feed fetches. A run in which no feed was due
+publishes nothing new and reports `outcome=unchanged`.
+
+Every configured feed of every enabled location is reported. A feed that was
+due and fetched nothing keeps the entry the current generation published for
 the same source: the object, its fetch timestamp, and its record count stay as
 published, while the failure count accumulates and the last error and next
 retry become this run's, so a transient provider failure never drops
@@ -558,37 +589,48 @@ published. A feed the current generation never published, one whose source
 identity changed, and a feed or location that is no longer configured are
 simply absent. A run in which nothing can be referenced at all publishes
 nothing. After assembly the job logs one `snapshot.freshness` event per
-location and feed with `outcome` `success`, `carried`, or `absent` and the
-served frame's `age_seconds`, at INFO when the feed was fetched and WARNING
-when it was carried or absent. Publishing requires
+location and feed with `outcome` `success`, `held`, `carried`, or `absent` and
+the served frame's `age_seconds`, at INFO when the feed was fetched or held and
+WARNING when it was carried or absent. A held feed counts as published in the
+run summary, because the generation keeps serving its frame. Publishing requires
 `SHALLWESWIM_ARCHIVE_READ_BUCKET`, set to the same bucket, so the historical
 feed restores past years from the archive instead of refetching them; a
 publishing run always uses the full historical range. A failed publish is
 logged, does not change the run's outcome or exit code, and is named in the run
 summary. The web service sets neither variable.
 
-##### Shadow Mode: Reading Published Snapshots
+##### Serving From Published Snapshots
 
 `SHALLWESWIM_SNAPSHOT_READ_BUCKET` names the bucket whose `published/` prefix
-the app reads. Setting it enables shadow mode; unset, no snapshot code path is
-active and the app behaves exactly as it does without it. It is read-only:
-loading calls only the store's read operation, so the credential needs no more
-than `roles/storage.objectViewer` on the bucket. It is deliberately distinct
-from `SHALLWESWIM_ARCHIVE_BUCKET`, which enables writes, and from
-`SHALLWESWIM_ARCHIVE_READ_BUCKET`, which hydrates historical years; the
-deployed service sets only the snapshot read bucket, substituted from the same
-Cloud Build value as the job's bucket.
+the app reads, and it is required: the web service serves every request from
+the generation it has loaded and contacts no provider, so a process with no
+store has nothing to serve and fails at startup with a message naming the
+variable. It is read-only: loading calls only the store's read operation, so
+the credential needs no more than `roles/storage.objectViewer` on the bucket.
+It is deliberately distinct from `SHALLWESWIM_ARCHIVE_BUCKET`, which enables
+writes, and from `SHALLWESWIM_ARCHIVE_READ_BUCKET`, which hydrates historical
+years; the deployed service sets only the snapshot read bucket, substituted
+from the same Cloud Build value as the job's bucket.
 
 ```bash
 SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
   uv run python -m shallweswim.main --port=12345
 ```
 
-In shadow mode nothing on the user path changes: every response, health check,
-and status field still comes from the in-process fetching managers. The
-instance additionally loads the current generation at startup, bounded to 20
-seconds, and keeps it current. A startup failure or timeout is logged and the
-instance starts without a generation; readiness is unaffected.
+Every response, health check, and status field comes from the loaded
+generation. The instance loads the current one at startup, bounded to 20
+seconds, and keeps it current; the only work it does per request that is not a
+lookup is the on-demand tide and current detail plot, drawn in its process pool
+from the loaded frames. A startup failure or timeout is logged at ERROR and the
+instance starts anyway: `/api/healthy` answers 503 until an elected request
+loads a generation, the startup probe elects itself every check interval, and
+the platform restarts an instance that never becomes ready.
+
+`/api/status` reports the served generation alongside the per-feed status:
+`generation_id`, `published_at`, and `loaded_at` on each location, and an empty
+object while no generation is loaded. `/api/locations` reports `has_data` for
+the locations the generation carries, and a request for any other location
+answers 503.
 
 Refresh is request-piggybacked. An HTTP middleware runs on every request,
 health checks included: when 60 seconds have elapsed since the last check and
@@ -612,16 +654,15 @@ instance picking it up. An unchanged check logs nothing above DEBUG. There is
 no new route: the load events carry the platform's instance identity, which
 answers "is every instance loading the bundle" better than an endpoint can.
 
-To roll back, unset the variable and redeploy, or redeploy the previous
-revision; shadow mode cannot change a response.
+To roll back, route traffic to the previous revision, which fetches for itself.
+No store change is needed, and the job keeps publishing throughout.
 
 ##### Comparing The Published Bundle With A Local Fetch
 
-Shadow mode proves that instances can load and refresh the bundle. Whether
-serving *from* the bundle is equivalent to serving from in-process fetches is
-answered by a separate local command, because one local process can hold both
-sides in memory at once exactly as a production instance would. The command
-never runs in production:
+Whether serving from the bundle is equivalent to serving from in-process
+fetches is answered by a separate local command, because one local process can
+hold both sides in memory at once exactly as a production instance would. The
+command never runs in production:
 
 ```bash
 SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
@@ -668,15 +709,14 @@ temperature frames should agree on overlap except where a provider revised a
 reading between the two fetches; investigate every such mismatch rather than
 loosening the rule.
 
-##### Hydrating Local Historical Temperatures From The Archive
+##### Hydrating Historical Temperatures From The Archive
 
-Local development can read the archive instead of refetching every historical
-temperature year from the provider at startup. Set the read-only variable:
-
-```bash
-SHALLWESWIM_ARCHIVE_READ_BUCKET=shallweswim-archive \
-  uv run python -m shallweswim.main --port=12345
-```
+`SHALLWESWIM_ARCHIVE_READ_BUCKET` makes a fetching process read historical
+temperature years from the archive instead of refetching them from the
+provider. Only fetching processes hydrate: the capture job, which sets it in
+its manifest, and a local run, which points it at the same local store as
+`--store-dir`, so a second start is fast. The deployed web service fetches
+nothing, so it never hydrates and never sets it.
 
 `SHALLWESWIM_ARCHIVE_READ_BUCKET` is independent of
 `SHALLWESWIM_ARCHIVE_BUCKET`, which remains the only variable that enables

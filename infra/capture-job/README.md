@@ -10,6 +10,11 @@ same bucket. It starts no web server. Without the publish variable the job
 fetches only archivable feeds (live temperatures, historical temperatures, and
 observational currents) and generates no plots.
 
+A publishing run restores each feed's next fetch time from the generation that
+is current when it starts, so it fetches only the feeds that are due and leaves
+the rest on the entries and plots they already published. The published
+manifest is the job's persisted feed schedule.
+
 The job manifest sets three application variables:
 
 - `SHALLWESWIM_ARCHIVE_BUCKET`: the bucket capture writes to and snapshots
@@ -172,9 +177,11 @@ Run the scheduled cycle on demand and wait for it to finish:
 gcloud run jobs execute shallweswim-capture --region=us-east4 --wait
 ```
 
-The one-time historical backfill adds `--full-history`. It only matters for a
-capture-only run: a publishing run always fetches the full range, with past
-years hydrated from the archive. `gcloud run jobs
+The one-time historical backfill adds `--full-history`. A capture-only run then
+fetches every configured year instead of the current one; a publishing run
+already fetches the full range, with past years hydrated from the archive, and
+takes the flag to mean "ignore the published schedule", so every feed fetches
+whether or not it is due. `gcloud run jobs
 execute` accepts `--args` as a per-execution override: the comma-separated list
 replaces the container `args` for that execution only, leaving the job
 definition (and therefore every scheduled run) unchanged. The `command` stays
@@ -234,6 +241,37 @@ Scheduler policy is what prevents overlapping executions; correctness does not
 depend on it, because the archive merge path is conditional read-merge-write and
 tolerates an overlap.
 
+### Cutover: move the cadence to every ten minutes
+
+Cutover makes this job the only process that talks to providers, so the web
+service's freshness now depends on how often the job runs. Move the schedule to
+every ten minutes (the job name keeps its original `-hourly` suffix; renaming a
+scheduler job means deleting and recreating it):
+
+```bash
+gcloud scheduler jobs update http shallweswim-capture-hourly \
+  --project="$CLOUDSDK_CORE_PROJECT" \
+  --location=us-east4 \
+  --schedule="*/10 * * * *" \
+  --time-zone=Etc/UTC
+```
+
+This does not multiply provider traffic by six. The run restores each feed's
+next fetch time from the current generation's manifest, so a feed that is not
+due is not fetched: live temperature every ten minutes, historical temperature
+every three hours, tide and current predictions daily — the same rate one web
+instance generates today. A run in which no feed is due publishes nothing and
+logs `snapshot.publish` with `outcome=unchanged`.
+
+Deploy order: the web service revision that serves from the published
+generation goes first. Observe one refresh and the health check on the new
+revision, then change the cadence here. Rolling the web service back to a
+revision that fetches for itself needs no change to this job or its schedule;
+leaving the ten-minute cadence in place is harmless.
+
+`capture-job.yaml` is unchanged by cutover. The cadence is the only operator
+action.
+
 ## Validation
 
 After the first scheduled runs:
@@ -283,8 +321,11 @@ After the first scheduled runs:
 
 6. Every configured feed reported its freshness: one `snapshot.freshness` event
    per location and feed per run, with `outcome` `success` for a feed fetched
-   this run, `carried` for one whose last published entry the manifest carried
-   forward, and `absent` for one with nothing to serve. A growing `age_seconds`
+   this run, `held` for one that was not due, so the manifest keeps its entry
+   and plots unchanged, `carried` for one whose last published entry the
+   manifest carried forward after a failure, and `absent` for one with nothing
+   to serve. `held` is the ordinary state of a feed whose interval is longer
+   than the ten-minute cadence and is logged at INFO. A growing `age_seconds`
    on a `carried` feed is a feed stuck on a failing source, not a publication
    problem; the publish event stays `success`.
 

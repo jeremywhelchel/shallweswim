@@ -1,6 +1,6 @@
-"""Web-side shadow state: the loaded generation and its request-elected refresh.
+"""Web-side serving state: the loaded generation and its request-elected refresh.
 
-Shadow mode changes nothing the web serves. `SnapshotState` holds one loaded
+Everything the web serves comes from here. `SnapshotState` holds one loaded
 generation and the read-only per-location managers built from it, and an HTTP
 middleware elects one request per check interval to bring it up to date. The
 state is replaced, never mutated: a check that finds a new generation builds
@@ -25,7 +25,8 @@ from shallweswim.snapshot.store import SnapshotStore
 CHECK_INTERVAL_SECONDS = 60.0
 
 # The startup load is bounded so a slow or unreachable bucket cannot delay the
-# instance. In shadow mode the instance then starts with no generation.
+# instance. The instance then starts with no generation and serves nothing
+# until an elected request loads one.
 INITIAL_LOAD_TIMEOUT_SECONDS = 20.0
 
 _NO_MANAGERS: Mapping[str, SnapshotLocationManager] = MappingProxyType({})
@@ -48,14 +49,22 @@ class SnapshotState:
         """The loaded generation's id, or None while none is loaded."""
         return None if self._loaded is None else self._loaded.manifest.generation_id
 
-    async def initial_load(self, timeout: float = INITIAL_LOAD_TIMEOUT_SECONDS) -> None:
-        """Load the current generation once at startup, bounded by `timeout`.
+    @property
+    def published_at(self) -> datetime.datetime | None:
+        """When the loaded generation was published, or None without one."""
+        return None if self._loaded is None else self._loaded.manifest.published_at
 
-        A failure or timeout leaves the instance with no generation and does
-        not raise: in shadow mode nothing is served from it.
+    async def initial_load(self, timeout: float = INITIAL_LOAD_TIMEOUT_SECONDS) -> None:
+        """Load the current generation once, bounded by `timeout`.
+
+        A failure or timeout leaves the instance with the generation it already
+        held, if any, and does not raise: the instance starts anyway and an
+        elected request tries again a check interval later. The failure is
+        logged at ERROR rather than the refresh path's WARNING, because an
+        instance that has loaded no generation has nothing to serve.
         """
         async with self._lock:
-            await self._check(timeout)
+            await self._check(timeout, severity=logging.ERROR)
 
     async def check_and_refresh(self) -> None:
         """Check the pointer if the interval elapsed and no check is running.
@@ -74,11 +83,17 @@ class SnapshotState:
                 return
             await self._check(None)
 
-    async def _check(self, timeout: float | None) -> None:
+    async def _check(
+        self, timeout: float | None, severity: int = logging.WARNING
+    ) -> None:
         """Read the pointer and adopt a new generation, logging what it did.
 
         Every attempt, successful or not, schedules the next check a full
         interval later, so a failing bucket is not retried on every request.
+
+        Args:
+            timeout: Seconds to bound the load by, or None for no bound.
+            severity: Level a failed attempt is logged at.
         """
         started = time.monotonic()
         previous = self._loaded
@@ -92,12 +107,12 @@ class SnapshotState:
             loaded_at = datetime.datetime.now(datetime.UTC)
             managers = self._build_managers(loaded, loaded_at)
         except Exception as error:
-            # WARNING throughout shadow mode. At cutover the readiness-blocking
-            # startup load becomes ERROR, because an instance that loaded no
-            # generation then has nothing to serve; a failed refresh over an
-            # already loaded generation stays WARNING and pages through the
-            # bundle-age alert instead.
-            logging.warning(
+            # The readiness-blocking startup load is ERROR, because an instance
+            # that loaded no generation has nothing to serve; a failed refresh
+            # over an already loaded generation stays WARNING and pages through
+            # the bundle-age alert instead.
+            logging.log(
+                severity,
                 f"[snapshot] load failed: {error}",
                 extra=self._event("failed", started, age_seconds=None, record_count=0),
             )

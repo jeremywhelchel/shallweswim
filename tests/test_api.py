@@ -21,7 +21,7 @@ from freezegun import freeze_time
 from shallweswim import types as sw_types
 
 # Local imports
-from shallweswim.api import initialize_location_data, register_routes
+from shallweswim.api import register_routes
 from shallweswim.api.routes import app_source_citations
 from shallweswim.api_types import (
     FeedStatus,
@@ -39,14 +39,14 @@ from shallweswim.config import (
 from shallweswim.core.feeds import FEED_CURRENTS, FEED_TIDES
 from shallweswim.core.queries import DataUnavailableError
 from shallweswim.data import LocationDataManager
-from tests.helpers import assert_json_serializable, create_test_app
+from tests.helpers import assert_json_serializable, create_test_app, install_managers
 
 
 @pytest.fixture
 def app() -> FastAPI:
     """Create a FastAPI application for testing."""
     app_instance = create_test_app()
-    app_instance.state.data_managers = {}
+    install_managers(app_instance, {})
     register_routes(app_instance)
     return app_instance
 
@@ -212,16 +212,14 @@ def mock_data_managers(
                 "sfo": sf_config,
             }.get(code)
 
-            # Initialize and add data managers to the app state
-            app.state.data_managers = {}  # Ensure the dictionary exists
-            app.state.data_managers["nyc"] = nyc_data
-            app.state.data_managers["sfo"] = sf_data
+            # Serve the mock managers as the app's loaded generation
+            install_managers(app, {"nyc": nyc_data, "sfo": sf_data})
 
             yield {"nyc": nyc_config, "sfo": sf_config}
 
     finally:
         # Clean up state after tests
-        app.state.data_managers = {}
+        install_managers(app, {})
 
 
 def test_location_status_endpoint(
@@ -483,7 +481,7 @@ def test_get_location_conditions(
 ) -> None:
     """Test the /api/{location}/conditions endpoint with all data types present."""
     assert isinstance(test_client.app, FastAPI)  # Help mypy
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
 
     # --- 1. Define Mock Data ---
     mock_dt = datetime.datetime(2025, 5, 4, 12, 0, 0)
@@ -666,7 +664,7 @@ def test_conditions_endpoint_accepts_local_at_parameter(
 ) -> None:
     """The conditions API shifts tide and prediction current state for planner time."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
     mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
     mock_manager.get_current_temperature.return_value = sw_types.TemperatureReading(
         timestamp=datetime.datetime(2026, 5, 18, 13, 55, 0),
@@ -726,7 +724,7 @@ def test_planner_at_is_consistent_across_time_aware_endpoints(
 ) -> None:
     """Planner-aware endpoints resolve one location-local target time."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
     mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
     mock_manager.has_data = True
 
@@ -835,7 +833,7 @@ def test_tide_only_plot_endpoint_uses_tide_data(
 ) -> None:
     """Tide-only locations can render a detail plot without current data."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["sfo"]
+    mock_manager = test_client.app.state.snapshot.managers["sfo"]
     mock_dt = datetime.datetime(2026, 5, 18, 8, 30, 0)
     mock_manager.has_feed_data.side_effect = lambda feed_name: feed_name == FEED_TIDES
     mock_manager._feeds[FEED_TIDES] = MagicMock(
@@ -885,7 +883,7 @@ def test_conditions_endpoint_rejects_at_with_timezone_offset(
 ) -> None:
     """Planner condition times are location-local and reject explicit offsets."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
 
     response = test_client.get("/api/nyc/conditions", params={"at": at})
 
@@ -900,7 +898,7 @@ def test_conditions_endpoint_rejects_at_outside_prediction_window(
 ) -> None:
     """Planner condition times must stay within the supported prediction window."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
 
     response = test_client.get("/api/nyc/conditions?at=2026-05-19T14:01:00")
 
@@ -964,7 +962,7 @@ def test_get_location_conditions_missing_data(
     the API should fail immediately (fail fast and loud).
     """
     assert isinstance(test_client.app, FastAPI)  # Help mypy
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
 
     # --- Setup: Mock temperature data to raise an error ---
     # This simulates a case where temperature data is unavailable
@@ -974,39 +972,6 @@ def test_get_location_conditions_missing_data(
     # Expect a ValueError because the API should fail fast when data is missing
     with pytest.raises(ValueError):
         test_client.get("/api/nyc/conditions")
-
-
-@pytest.mark.asyncio
-async def test_initialize_location_data_missing_http_session() -> None:
-    """Startup initialization fails explicitly when HTTP session state is missing."""
-    app = create_test_app()
-    app.state.process_pool = MagicMock()
-
-    with pytest.raises(RuntimeError, match="HTTP session not found"):
-        await initialize_location_data(["nyc"], app)
-
-
-@pytest.mark.asyncio
-async def test_initialize_location_data_missing_process_pool() -> None:
-    """Startup initialization fails explicitly when process pool state is missing."""
-    app = create_test_app()
-    app.state.http_session = MagicMock()
-
-    with pytest.raises(RuntimeError, match="Process pool not found"):
-        await initialize_location_data(["nyc"], app)
-
-
-@pytest.mark.asyncio
-async def test_initialize_location_data_unknown_location() -> None:
-    """Startup initialization reports invalid location codes without assert."""
-    app = create_test_app()
-    app.state.http_session = MagicMock()
-    app.state.process_pool = MagicMock()
-
-    with patch("shallweswim.config.get") as mock_get:
-        mock_get.return_value = None
-        with pytest.raises(ValueError, match="Config for location 'bad' not found"):
-            await initialize_location_data(["bad"], app)
 
 
 def test_get_feed_data_success(
@@ -1019,7 +984,7 @@ def test_get_feed_data_success(
 
     # Get the mock data manager
     assert isinstance(test_client.app, FastAPI)  # Help mypy
-    mock_data_managers_dict = test_client.app.state.data_managers
+    mock_data_managers_dict = test_client.app.state.snapshot.managers
 
     mock_data_managers_dict["nyc"]._feeds[FEED_TIDES] = MagicMock(
         values=mock_feed_data, name=mock_feed_name
@@ -1060,10 +1025,10 @@ def test_get_feed_data_location_not_found(
     assert "Location 'invalid_loc' not found" in response.json()["detail"]
 
 
-def test_get_feed_data_configured_location_missing_manager_returns_500() -> None:
-    """Configured location with no data manager is an internal init error."""
+def test_get_feed_data_location_absent_from_the_generation_returns_503() -> None:
+    """A configured location the loaded generation omits has nothing to serve."""
     app = create_test_app()
-    app.state.data_managers = {}
+    install_managers(app, {})
     register_routes(app)
 
     config = LocationConfig(
@@ -1094,8 +1059,8 @@ def test_get_feed_data_configured_location_missing_manager_returns_500() -> None
         client = TestClient(app)
         response = client.get("/api/nyc/data/tides")
 
-    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert "data manager missing" in response.json()["detail"]
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert "temporarily unavailable" in response.json()["detail"]
 
 
 def test_get_feed_data_feed_not_found(
@@ -1104,7 +1069,7 @@ def test_get_feed_data_feed_not_found(
     """Test the feed data endpoint when the feed type is invalid for the location."""
     assert isinstance(test_client.app, FastAPI)  # Help mypy
     # Ensure the specific feed doesn't exist for the mock manager
-    mock_data_managers_dict = test_client.app.state.data_managers
+    mock_data_managers_dict = test_client.app.state.snapshot.managers
     # Safely remove 'badfeed' if it exists in _feeds
     if (
         hasattr(mock_data_managers_dict["nyc"], "_feeds")
@@ -1149,7 +1114,7 @@ def test_currents_endpoint_serializes_current_range(
 ) -> None:
     """Current prediction responses include optional slack-to-peak range context."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
     mock_dt = datetime.datetime(2025, 5, 4, 12, 0, 0)
     mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
         timestamp=mock_dt,
@@ -1199,7 +1164,7 @@ def test_currents_endpoint_accepts_local_at_parameter(
 ) -> None:
     """The currents API accepts local planner time and computes shift metadata."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
     mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
     mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
         timestamp=mock_dt,
@@ -1233,7 +1198,7 @@ def test_currents_endpoint_prefers_at_over_shift(
 ) -> None:
     """When both are present, at is the canonical effective time."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
     mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
     mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
         timestamp=mock_dt,
@@ -1267,7 +1232,7 @@ def test_currents_endpoint_rejects_at_with_timezone_offset(
 ) -> None:
     """Planner times are location-local and reject explicit offsets."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
 
     response = test_client.get("/api/nyc/currents", params={"at": at})
 
@@ -1282,7 +1247,7 @@ def test_currents_endpoint_rejects_at_outside_prediction_window(
 ) -> None:
     """Planner times must stay within the supported prediction window."""
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
 
     response = test_client.get("/api/nyc/currents?at=2026-05-19T14:01:00")
 
@@ -1331,7 +1296,7 @@ def test_currents_endpoint_returns_503_when_data_unavailable(
     from shallweswim.core.queries import DataUnavailableError
 
     assert isinstance(test_client.app, FastAPI)
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
 
     # Mock predict_flow_at_time to raise DataUnavailableError
     mock_manager.predict_flow_at_time.side_effect = DataUnavailableError(
@@ -1387,7 +1352,7 @@ def test_currents_endpoint_returns_503_when_chart_data_unavailable(
     with patch("shallweswim.config.get") as mock_get:
         mock_get.return_value = nyc_config_with_charts
 
-        mock_manager = app.state.data_managers["nyc"]
+        mock_manager = app.state.snapshot.managers["nyc"]
 
         # Mock predict_flow_at_time to succeed
         mock_dt = datetime.datetime(2025, 5, 4, 12, 0, 0)
@@ -1478,7 +1443,7 @@ def test_conditions_endpoint_handles_nan_in_current_data(
     """
     import numpy as np
 
-    mock_manager = test_client.app.state.data_managers["nyc"]
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
     mock_dt = datetime.datetime(2026, 3, 12, 7, 9, 44)
 
     # Mock temperature (required for the endpoint to work)

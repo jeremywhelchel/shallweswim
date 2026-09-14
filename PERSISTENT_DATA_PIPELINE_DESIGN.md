@@ -1509,7 +1509,10 @@ Measurements so far (2026-09-14, first day of shadow mode, hourly job):
   seconds, by an elected user request whose total latency was 1.2 seconds.
 - The local comparison command matched every feed for NYC and Boston except
   a few historic hourly rows per run that differ by 0.1°F and move between
-  runs; see `TODO.md`.
+  runs; see `TODO.md`. A later run across all eleven locations matched
+  everything except Cork's current hour, where Irish Lights serves a running
+  hourly average that changes until the hour closes, which the archive's
+  one-revised-row-per-hour pattern already showed.
 
 Exit criteria before cutover is deployed (revised 2026-09-14 from a week to
 what the evidence actually needs, since the mechanism proved itself on the
@@ -1595,8 +1598,8 @@ alone; ARCHITECTURE lists the three entry points and the store helper;
 
 #### Cutover Contract
 
-Status: contract; implementation pending. Requires the local entry point
-(above, implemented) and the shadow exit criteria.
+Status: implemented; production deployment pending the shadow exit criteria
+below. Requires the local entry point (above, implemented).
 
 End state: the web service serves every request from the loaded generation
 and never contacts a provider. The job is the only process that talks to
@@ -1604,7 +1607,7 @@ providers, runs every ten minutes, and fetches each feed no more often than
 the feed's own expiration interval. The local entry point runs both halves in
 one process, fetching once.
 
-Web service:
+Web service: (implemented)
 
 - The lifespan builds the store from `SHALLWESWIM_SNAPSHOT_READ_BUCKET` and
   runs the initial load. The variable is required: an unset variable is a
@@ -1643,7 +1646,7 @@ Web service:
   initial load, so the first request already has a generation and the
   process fetches once. Its cycle then continues on the cadence.
 
-Job:
+Job: (implemented)
 
 - The current generation's manifest is the persisted feed schedule. Before
   updating a feed, the job restores that feed's `next_fetch_after` from the

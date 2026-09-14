@@ -6,6 +6,7 @@ from shallweswim.core import feeds
 from shallweswim.core.manager import LocationDataManager
 from shallweswim.snapshot.model import (
     FeedFailure,
+    FeedHold,
     FeedMetadata,
     FeedSnapshot,
     LocationSnapshot,
@@ -25,15 +26,42 @@ def _as_utc(timestamp: datetime.datetime) -> datetime.datetime:
     return timestamp.replace(tzinfo=datetime.UTC)
 
 
+def is_held(feed: feeds.Feed) -> bool:
+    """Whether the run left this feed on the generation it was restored from.
+
+    A held feed holds no data in this process, carries a scheduled fetch time,
+    and has recorded no failure. In a bounded run that is exactly a feed whose
+    schedule `capture.restore_schedule` restored and whose `update()` then did
+    nothing because the feed was not yet due: a feed that has never attempted a
+    fetch in this process can only have a scheduled time from restoration, a
+    successful attempt leaves data, and a failed one leaves a failure count.
+    The run summary counts a held feed as published, because the generation it
+    was restored from keeps serving its frame.
+
+    Args:
+        feed: A configured feed after the run's serving cycle.
+
+    Returns:
+        True if the feed was not due and was never attempted this run.
+    """
+    return (
+        not feed.has_data
+        and feed._next_fetch_after is not None
+        and feed._fetch_timestamp is None
+        and feed._consecutive_failures == 0
+    )
+
+
 def build_location_snapshot(manager: LocationDataManager) -> LocationSnapshot:
     """Capture the serving state a manager currently holds.
 
     Every feed configured for the location is reported exactly once: one that
-    holds data with its served frame and status metadata, one that does not
-    with only what this run learned about the failure, so manifest assembly can
-    carry the last published entry forward. Feeds that are not configured for
-    the location are absent. Every generated plot is published with the fetch
-    timestamp of the feed it was drawn from.
+    holds data with its served frame and status metadata, one the run did not
+    fetch because it was not due as a hold, and one that was due and produced
+    nothing with only what this run learned about the failure, so manifest
+    assembly can carry the last published entry forward in either case. Feeds
+    that are not configured for the location are absent. Every generated plot
+    is published with the fetch timestamp of the feed it was drawn from.
 
     Args:
         manager: The location's data manager.
@@ -52,6 +80,7 @@ def build_location_snapshot(manager: LocationDataManager) -> LocationSnapshot:
     status = manager.status
     snapshot_feeds: dict[feeds.FeedName, FeedSnapshot] = {}
     snapshot_failures: dict[feeds.FeedName, FeedFailure] = {}
+    snapshot_holds: dict[feeds.FeedName, FeedHold] = {}
     for feed_name in feeds.FeedName:
         # The manager exposes no accessor for the feed objects themselves, and
         # a feed's citation key and status are what a failure record holds.
@@ -60,6 +89,11 @@ def build_location_snapshot(manager: LocationDataManager) -> LocationSnapshot:
             continue
         feed_status = status.feeds[feed_name]
         if not manager.has_feed_data(feed_name):
+            if is_held(feed):
+                snapshot_holds[feed_name] = FeedHold(
+                    source_identity=feed.feed_config.citation_key
+                )
+                continue
             snapshot_failures[feed_name] = FeedFailure(
                 source_identity=feed.feed_config.citation_key,
                 consecutive_failures=feed_status.consecutive_failures,
@@ -112,5 +146,8 @@ def build_location_snapshot(manager: LocationDataManager) -> LocationSnapshot:
         )
 
     return LocationSnapshot(
-        feeds=snapshot_feeds, plots=snapshot_plots, failures=snapshot_failures
+        feeds=snapshot_feeds,
+        plots=snapshot_plots,
+        failures=snapshot_failures,
+        holds=snapshot_holds,
     )

@@ -1,6 +1,11 @@
 """API handlers for ShallWeSwim application.
 
-This module contains FastAPI route handlers for the API endpoints and data management.
+This module contains FastAPI route handlers for the API endpoints.
+
+Every route serves the generation the instance has loaded: it resolves a
+location's manager from `app.state.snapshot` on each request, so the generation
+an elected request loads is visible to the next one. Nothing here contacts a
+provider.
 """
 
 # Standard library imports
@@ -11,16 +16,15 @@ import html
 import io
 import logging
 import urllib.parse
+from collections.abc import Mapping
 from typing import Literal
 
 # Third-party imports
-import aiohttp
 import fastapi
 from fastapi import HTTPException
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim import data as data_lib
 from shallweswim import types, util
 from shallweswim.api_types import (
     AppBootstrapLocation,
@@ -49,8 +53,6 @@ from shallweswim.api_types import (
     TideState,
     TransitRouteConfig,
 )
-from shallweswim.clients import create_api_clients
-from shallweswim.clients.base import BaseApiClient
 from shallweswim.core.feeds import (
     FEED_CURRENTS,
     FEED_LIVE_TEMPS,
@@ -63,7 +65,41 @@ from shallweswim.core.feeds import (
 from shallweswim.core.queries import DataUnavailableError
 from shallweswim.core.serving import LocationServing
 
-# Data store for location data will be stored in app.state.data_managers
+# The loaded generation lives in app.state.snapshot; see `serving_managers`.
+
+_NO_MANAGERS: Mapping[str, LocationServing] = {}
+
+
+def serving_managers(app: fastapi.FastAPI) -> Mapping[str, LocationServing]:
+    """Return the loaded generation's per-location managers.
+
+    Read on every request rather than captured once, so a generation an elected
+    request loads is served by the next request. The mapping is empty while no
+    generation is loaded, which every caller answers as unavailable data.
+    """
+    state = getattr(app.state, "snapshot", None)
+    return _NO_MANAGERS if state is None else state.managers
+
+
+def location_status_response(
+    app: fastapi.FastAPI, manager: LocationServing
+) -> LocationStatus:
+    """Stamp one location's per-feed status with the generation it came from.
+
+    The three generation fields are the same for every location of one
+    response: an instance serves one whole generation at a time. They are None
+    only when no generation is loaded, and then there is no manager to report.
+    """
+    state = getattr(app.state, "snapshot", None)
+    if state is None:
+        return manager.status
+    return manager.status.model_copy(
+        update={
+            "generation_id": state.generation_id,
+            "published_at": state.published_at,
+            "loaded_at": state.loaded_at,
+        }
+    )
 
 
 def validate_location(loc: str) -> config_lib.LocationConfig:
@@ -150,12 +186,23 @@ def resolve_location_context(
     app: fastapi.FastAPI,
     location: str,
 ) -> LocationRequestContext:
-    """Resolve shared location config and manager for API routes."""
+    """Resolve shared location config and manager for API routes.
+
+    Raises:
+        HTTPException: 404 if the location is not configured; 503 if the loaded
+            generation does not carry it or carries no data for it. Serving
+            stale data is deliberate: freshness is the publishing job's
+            business, and a user-facing route serves whatever it has.
+    """
     cfg = validate_location(location)
-    return LocationRequestContext(
-        cfg=cfg,
-        data_manager=app.state.data_managers[location],
-    )
+    data_manager = serving_managers(app).get(location)
+    if data_manager is None or not data_manager.has_data:
+        logging.warning(f"[{location}] No data available in the loaded generation")
+        raise HTTPException(
+            status_code=503,
+            detail=f"{cfg.name} data temporarily unavailable",
+        )
+    return LocationRequestContext(cfg=cfg, data_manager=data_manager)
 
 
 def resolve_location_time(
@@ -329,82 +376,6 @@ def api_conditions_current_info(
             )
 
     return api_current_info(current_info)
-
-
-async def initialize_location_data(
-    location_codes: list[str],
-    app: fastapi.FastAPI,
-    wait_for_data: bool = False,
-    timeout: float | None = 30.0,
-) -> dict[str, data_lib.LocationDataManager]:
-    """Initialize data for the specified locations.
-
-    This function handles initialization of LocationDataManager objects for the specified locations.
-    It can be used by both the main application and tests.
-
-    Args:
-        location_codes: List of location codes to initialize
-        app: FastAPI application instance
-        data_dict: Optional existing data dictionary to populate (creates new if None)
-        wait_for_data: Whether to wait for data to be loaded before returning
-        timeout: Maximum time in seconds to wait for data to be ready (None for no timeout)
-
-    Returns:
-        Dictionary mapping location codes to initialized LocationDataManager objects
-
-    Raises:
-        RuntimeError: If required app startup state is missing.
-        ValueError: If a requested location code is not configured.
-    """
-    # Retrieve the shared session from app state
-    if not hasattr(app.state, "http_session") or app.state.http_session is None:
-        raise RuntimeError("HTTP session not found in app state")
-    session: aiohttp.ClientSession = app.state.http_session
-
-    # Retrieve the process pool from app state
-    if not hasattr(app.state, "process_pool") or app.state.process_pool is None:
-        raise RuntimeError("Process pool not found in app state")
-    process_pool = app.state.process_pool
-
-    # Create API client instances using the shared session
-    api_clients: dict[str, BaseApiClient] = create_api_clients(session)
-
-    # Initialize app.state.data_managers if it doesn't exist yet
-    if not hasattr(app.state, "data_managers"):
-        # Create an empty dictionary that will be populated with LocationDataManager objects
-        app.state.data_managers = {}
-
-    # Initialize each location
-    for code in location_codes:
-        # Get location config
-        cfg = config_lib.get(code)
-        if cfg is None:
-            raise ValueError(f"Config for location '{code}' not found")
-
-        # Initialize data for this location, passing clients and process pool
-        app.state.data_managers[code] = data_lib.LocationDataManager(
-            cfg, clients=api_clients, process_pool=process_pool
-        )
-        app.state.data_managers[code].start()
-
-    # Optionally wait for data to be fully loaded
-    if wait_for_data:
-        logging.info(f"Waiting for data to be loaded (timeout: {timeout}s)")
-
-        # Create tasks for waiting on each location's data
-        wait_tasks = []
-        for code in location_codes:
-            logging.info(f"Waiting for {code} data to load...")
-            loc_data = app.state.data_managers[code]
-            wait_tasks.append(loc_data.wait_until_ready(timeout=timeout))
-
-        # Wait for all locations to be ready concurrently
-        # This will raise an exception immediately if any task fails
-        await asyncio.gather(*wait_tasks)
-
-    # Create a properly typed dictionary to return
-    result: dict[str, data_lib.LocationDataManager] = app.state.data_managers
-    return result
 
 
 def register_routes(app: fastapi.FastAPI) -> None:
@@ -618,10 +589,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Returns:
             SVG image response with live temperature visualization
         """
-        validate_location(location)
-
-        data_manager = app.state.data_managers[location]
-        plot_bytes = data_manager.get_plot(PLOT_LIVE_TEMPS)
+        ctx = resolve_location_context(app, location)
+        plot_bytes = ctx.data_manager.get_plot(PLOT_LIVE_TEMPS)
 
         if plot_bytes is None:
             raise HTTPException(
@@ -659,8 +628,8 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 detail=f"Invalid period '{period}'. Must be '2mo' or '12mo'.",
             )
 
-        data_manager = app.state.data_managers[location]
-        plot_bytes = data_manager.get_plot(plot_name)
+        ctx = resolve_location_context(app, location)
+        plot_bytes = ctx.data_manager.get_plot(plot_name)
 
         if plot_bytes is None:
             raise HTTPException(
@@ -820,8 +789,9 @@ def register_routes(app: fastapi.FastAPI) -> None:
     async def healthy_status() -> bool:
         """API endpoint for service health check (used by Cloud Run).
 
-        Returns 200 if at least one location can serve data (fresh or stale).
-        Returns 503 only if NO location has any data available.
+        Returns 200 once a generation is loaded and at least one of its
+        locations can serve data (fresh or stale). Returns 503 while no
+        generation is loaded, or if NO location in it has any data.
 
         This lenient check ensures single station outages don't mark the entire
         service unhealthy. For detailed per-feed health status, use /api/status.
@@ -830,62 +800,36 @@ def register_routes(app: fastapi.FastAPI) -> None:
             True if service can serve at least one location
             Status code 200 if healthy, 503 if not healthy
         """
-        # Check if data managers exist and are initialized
-        if not app.state.data_managers:
-            logging.warning("[api] No locations configured")
-            raise HTTPException(
-                status_code=503, detail="Service not healthy - no locations configured"
-            )
-
-        # Check if at least one location has data
-        locations_with_data = []
-
-        for loc_code, loc_data in app.state.data_managers.items():
-            if not loc_data:
-                logging.warning(f"[{loc_code}] Location not in data dictionary")
-                raise HTTPException(
-                    status_code=503,
-                    detail="Service not healthy - location data missing",
-                )
-
-            if loc_data.has_data:
-                locations_with_data.append(loc_code)
-
-        # Healthy if at least one location can serve data
-        if locations_with_data:
-            return True
-        else:
-            logging.warning(
-                "[/api/healthy] No location has data available. Raising 503."
-            )
+        managers = serving_managers(app)
+        if not managers:
+            logging.warning("[api] No published generation loaded")
             raise HTTPException(
                 status_code=503,
-                detail="Service not healthy - no location has data",
+                detail="Service not healthy - no published generation loaded",
             )
+
+        # Healthy if at least one location of the generation can serve data
+        if any(manager.has_data for manager in managers.values()):
+            return True
+
+        logging.warning("[/api/healthy] No location has data available. Raising 503.")
+        raise HTTPException(
+            status_code=503,
+            detail="Service not healthy - no location has data",
+        )
 
     @app.get("/api/status", response_model=dict[str, LocationStatus])
     async def all_locations_status() -> dict[str, LocationStatus]:
-        """API endpoint that returns status information for all configured locations.
+        """API endpoint that returns status for every location of the generation.
 
         Returns:
-            Dictionary mapping location codes to their status dictionaries
-
-        Raises:
-            HTTPException: If no locations are configured
+            Dictionary mapping location codes to their status dictionaries,
+            empty while no generation is loaded.
         """
-        # Missing manager state means startup/config initialization failed.
-        if not hasattr(app.state, "data_managers") or not app.state.data_managers:
-            logging.error("[api] No location data managers initialized")
-            raise HTTPException(
-                status_code=500,
-                detail="Internal server error - no location data managers initialized",
-            )
-
-        # Return status for each location
-        status_dict = {
-            code: manager.status for code, manager in app.state.data_managers.items()
+        return {
+            code: location_status_response(app, manager)
+            for code, manager in serving_managers(app).items()
         }
-        return status_dict
 
     @app.get("/api/locations", response_model=list[LocationSummary])
     async def list_locations() -> list[LocationSummary]:
@@ -897,14 +841,13 @@ def register_routes(app: fastapi.FastAPI) -> None:
         Returns:
             List of LocationSummary objects for all configured locations
         """
+        managers = serving_managers(app)
         locations = []
         for code, cfg in config_lib.CONFIGS.items():
-            # Check if location has data available
-            has_data = False
-            if code in app.state.data_managers:
-                manager = app.state.data_managers[code]
-                if manager is not None:
-                    has_data = manager.has_data
+            # A configured location the loaded generation does not carry has
+            # no data to offer, exactly as one whose feeds are all empty.
+            manager = managers.get(code)
+            has_data = manager is not None and manager.has_data
 
             locations.append(
                 LocationSummary(
@@ -930,25 +873,11 @@ def register_routes(app: fastapi.FastAPI) -> None:
             Status dictionary for the specified location
 
         Raises:
-            HTTPException: If the location is not configured
+            HTTPException: If the location is not configured, or the loaded
+                generation does not carry it.
         """
-        # Validate location exists
-        validate_location(location)
-
-        # Check if location data exists
-        if (
-            location not in app.state.data_managers
-            or not app.state.data_managers[location]
-        ):
-            logging.error(f"[{location}] Configured location missing data manager")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Internal server error - location '{location}' data manager missing",
-            )
-
-        # Return the status dictionary for this location
-        status_obj: LocationStatus = app.state.data_managers[location].status
-        return status_obj
+        ctx = resolve_location_context(app, location)
+        return location_status_response(app, ctx.data_manager)
 
     @app.get("/api/{location}/currents", response_model=CurrentsResponse)
     async def location_currents(
@@ -1073,32 +1002,12 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         Raises:
             HTTPException(404): If the location or feed is not configured.
-            HTTPException(503): If the feed is configured but data is unavailable.
-            HTTPException(500): If app state is missing a manager for a configured location.
+            HTTPException(503): If the feed is configured but data is
+                unavailable, or the loaded generation does not carry the
+                location.
         """
         try:
-            # Check if the location is configured.
-            if not config_lib.get(loc):
-                logging.warning(
-                    f"Location '{loc}' not found for feed '{feed_name}' request."
-                )
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Location '{loc}' not found",
-                )
-
-            if (
-                not hasattr(app.state, "data_managers")
-                or loc not in app.state.data_managers
-            ):
-                logging.error(
-                    f"Configured location '{loc}' has no data manager for feed '{feed_name}' request."
-                )
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Internal server error - location '{loc}' data manager missing",
-                )
-            location_data_manager = app.state.data_managers[loc]
+            location_data_manager = resolve_location_context(app, loc).data_manager
 
             # Check if feed exists for the location
             if not location_data_manager.has_feed(feed_name):

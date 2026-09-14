@@ -25,7 +25,6 @@ from typing import (
 )
 
 # Third-party imports
-import aiohttp
 import fastapi
 import uvicorn
 from fastapi import HTTPException, Request, Response, responses, templating
@@ -42,22 +41,42 @@ from shallweswim.snapshot.refresh import SnapshotState
 from shallweswim.snapshot.store import SNAPSHOT_READ_BUCKET_ENV_VAR, SnapshotStore
 
 
-async def start_snapshot_shadow(app: fastapi.FastAPI) -> None:
-    """Load the published snapshot bundle alongside the fetching managers.
+def snapshot_locator() -> str:
+    """Return the store locator the web service serves generations from.
 
-    Shadow mode proves the load and refresh mechanism in production; nothing
-    served reads the result. Startup is never blocked or failed by it: the
-    initial load is bounded and its failure leaves an empty state in place.
-
-    Args:
-        app: The FastAPI application, whose `state.snapshot` is set to the
-            shadow state, or to None when shadow mode is disabled.
+    Raises:
+        RuntimeError: If the variable is unset or empty. The web service serves
+            only what the publishing job published, so a process with no store
+            has nothing to serve and must not start.
     """
     locator = os.environ.get(SNAPSHOT_READ_BUCKET_ENV_VAR, "").strip()
     if not locator:
-        app.state.snapshot = None
-        return
-    logging.info(f"[snapshot] shadow mode reading published/ from {locator}")
+        raise RuntimeError(
+            f"{SNAPSHOT_READ_BUCKET_ENV_VAR} is not set. The web service serves "
+            "only the generations the publishing job publishes, so it cannot "
+            "start without a store to read them from. Set it to that store, or "
+            "run `python -m shallweswim.local` to publish and serve in one "
+            "process without a bucket."
+        )
+    return locator
+
+
+async def start_snapshot_serving(app: fastapi.FastAPI) -> None:
+    """Build the snapshot store and load the generation this instance serves.
+
+    A failed or timed-out initial load logs at ERROR and leaves the instance
+    with no generation: it starts anyway, answers 503 until an elected request
+    loads one, and the platform restarts it if that never happens.
+
+    Args:
+        app: The FastAPI application, whose `state.snapshot` is set to the
+            serving state.
+
+    Raises:
+        RuntimeError: If the read bucket variable is unset.
+    """
+    locator = snapshot_locator()
+    logging.info(f"[snapshot] serving published/ from {locator}")
     store = SnapshotStore(await asyncio.to_thread(object_store, locator))
     state = SnapshotState(store)
     app.state.snapshot = state
@@ -66,10 +85,12 @@ async def start_snapshot_shadow(app: fastapi.FastAPI) -> None:
 
 @contextlib.asynccontextmanager
 async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None]:
-    """Initialize data sources during application startup.
+    """Prepare the serving state during application startup.
 
-    This loads data for all configured locations and starts data collection.
-    It also creates the shared HTTP client session.
+    The web service contacts no provider: it loads the current published
+    generation and serves from it. The only thing it computes per request is
+    the on-demand tide and current detail plot, which is why the process pool
+    outlives startup.
 
     Args:
         app: The FastAPI application instance
@@ -77,42 +98,26 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None]:
     Yields:
         None when setup is complete
     """
-    # Create a process pool for CPU-bound tasks (e.g., plotting).
+    # Create a process pool for CPU-bound tasks (the on-demand detail plots).
     # Bound to CPU count to prevent over-subscription on the machine.
     pool = ProcessPoolExecutor(max_workers=os.cpu_count())
     app.state.process_pool = pool
 
-    async with aiohttp.ClientSession() as session:
-        # Store the shared session in app state
-        app.state.http_session = session
-
-        # Initialize data for all configured locations
-        await api.initialize_location_data(
-            location_codes=list(config.CONFIGS.keys()),
-            app=app,  # Pass the app instance
-            wait_for_data=False,  # Don't block app startup waiting for data
-        )
-
-        await start_snapshot_shadow(app)
+    try:
+        await start_snapshot_serving(app)
 
         yield  # Run the app
-
-        # Shutdown handling
+    finally:
         logging.info("-----------------------------------------------")
         logging.info("Shutting down app")
 
         pool.shutdown(wait=True)
 
-        # Stop all data managers to properly clean up background tasks
-        if hasattr(app.state, "data_managers"):
-            for location_code, data_manager in app.state.data_managers.items():
-                logging.info(f"Stopping data manager for {location_code}")
-                await data_manager.stop()
-
-        # Context manager exits here, closing the session
-
 
 app = fastapi.FastAPI(lifespan=lifespan)
+# Declared before any request can arrive, so routes and middleware always find
+# the attribute, whether or not the lifespan has run.
+app.state.snapshot = None
 app.add_middleware(SelectiveGZipMiddleware, minimum_size=1000)
 
 
@@ -183,10 +188,10 @@ async def redirect_trailing_slash_canonical_app_routes(
 
 
 @app.middleware("http")
-async def refresh_snapshot_shadow(
+async def refresh_snapshot(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
-    """Elect this request to refresh the shadow snapshot when one is due.
+    """Elect this request to refresh the loaded generation when one is due.
 
     Every request is a candidate, health checks included, because an idle
     instance must still notice a new generation. The elected request awaits the

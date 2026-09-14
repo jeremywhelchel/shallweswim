@@ -2,7 +2,7 @@
 
 This document describes the architectural patterns, coding standards, and design decisions for the "Shall We Swim Today?" project.
 
-**Architecture pattern**: Data aggregator (not a proxy). The app fetches data from multiple upstream APIs in background tasks, caches it in memory, and serves processed results. User requests never trigger external API calls.
+**Architecture pattern**: Data aggregator (not a proxy). A scheduled job fetches data from multiple upstream APIs, processes it, and publishes one immutable generation to a shared store; the web service loads a generation into memory and serves from it. User requests never trigger external API calls, and the web service holds no provider client at all.
 
 ## 1. Architectural Patterns
 
@@ -10,11 +10,11 @@ This document describes the architectural patterns, coding standards, and design
 
 ```text
 shallweswim/
-├── main.py              # App entry point, web UI routes, templates
+├── main.py              # Web service entry point, web UI routes, templates
 ├── capture.py           # One-shot bounded observation capture job entry point
 ├── local.py             # Local entry point: job cycle plus web app, one process
 ├── archive/             # Observation schemas, conditional stores, and merge writer
-├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher, incremental loader, read-only manager, web shadow state
+├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher, incremental loader, read-only manager, web serving state
 ├── api/                 # API layer
 │   ├── __init__.py      # Re-exports from routes
 │   └── routes.py        # JSON API routes (delegates to core/)
@@ -52,17 +52,23 @@ static/                  # CSS, JS, images
 
 Three entry points run this code:
 
-- `shallweswim.main` is the web service: it fetches, serves, and in shadow mode
-  loads published generations. Production runs it.
+- `shallweswim.main` is the web service: it loads published generations and
+  serves from them, and fetches nothing.
+  `SHALLWESWIM_SNAPSHOT_READ_BUCKET` is required, because a web process with no
+  store has nothing to serve; an unset variable fails startup with one message
+  naming it and pointing at `shallweswim.local`. Production runs it.
 - `shallweswim.capture` is the bounded job: one capture cycle, and with
-  `SHALLWESWIM_SNAPSHOT_PUBLISH=1` one published generation. Production runs it
-  on a schedule.
+  `SHALLWESWIM_SNAPSHOT_PUBLISH=1` one published generation. It is the only
+  process that contacts a provider. Production runs it on a schedule.
 - `shallweswim.local` is the clone-and-run local command: it runs the job's
   publishing cycle (`capture.publish_locations`) on a timer inside the web app's
   process, against a local store, and serves that app. It composes rather than
-  branches: it wraps the app's lifespan to start and cancel the updater task and
-  reuses the app's process pool and HTTP session, so `main.py` holds no local
-  mode. It runs the application object under uvicorn, not the factory string,
+  branches: it wraps the app's lifespan, and inside it runs the first cycle and
+  loads the generation that cycle published before the server accepts a
+  request, then starts the cadence task and cancels it at shutdown, so
+  `main.py` holds no local mode. The web app opens no HTTP session, so this
+  module opens the one the cycles fetch over; the pool they plot in is the
+  app's. It runs the application object under uvicorn, not the factory string,
   because the store lives in the process; `--reload` is therefore unsupported.
 
 Every store the application builds comes from `archive/store.py`'s
@@ -93,17 +99,22 @@ unconditionally, so a local run can never reach the operator's bucket.
 
 ### Data Flow
 
-**User requests** serve cached data or derived in-memory views (no external calls):
+**User requests** serve the loaded generation or derived in-memory views (no external calls):
 
 ```text
-API Handler → LocationDataManager → Feed / Derived Cache → Response
+API Handler → app.state.snapshot.managers → SnapshotLocationManager → Loaded Frames / Plots → Response
 ```
 
-**Background refresh** updates raw feeds and derived caches on intervals:
+Routes resolve the location's manager from `app.state.snapshot` on every
+request rather than from a mapping captured at startup, so the generation an
+elected request loads is served by the next one. A location the generation does
+not carry, or one whose manager holds no data, answers 503.
+
+**The publishing job** updates raw feeds and derived caches on intervals:
 
 ```text
-Background Task → Feed → ApiClient → External Service → Update Feed Cache
-Background Task → Derived Data Precompute → Update Derived Cache
+Scheduled Job → Feed → ApiClient → External Service → Update Feed Cache
+Scheduled Job → Derived Data Precompute → Published Generation
 ```
 
 Every client returns frames indexed by timezone-aware UTC instants, as does the
@@ -136,7 +147,7 @@ instead runs each location's full serving cycle through `LocationDataManager`
 the cycle, publishes every location's served frames, plots, and feed metadata as
 one immutable content-addressed generation under `published/` in the same
 bucket (`shallweswim/snapshot/`); publication failure is isolated from the run's
-outcome, and the web service reads the generations only in shadow mode, below.
+outcome, and the web service serves those generations, below.
 The builder reports every
 configured feed, as a served frame or as a failure, and manifest assembly
 resolves each failure against the generation the publisher observed at start:
@@ -158,23 +169,26 @@ expiry, health) from the manifest timestamps with the feed rules. It and
 Protocol, which is what the API routes are typed against, and the query
 functions read any `FeedData` (a `has_data` flag and a `values` frame), which a
 fetched feed and a loaded snapshot feed both provide.
-When `SHALLWESWIM_SNAPSHOT_READ_BUCKET` is set, which the deployed web service
-and local shadow runs do and the job never does, the web service runs in
-shadow mode: it fetches and serves exactly as it does without the variable, and
-additionally keeps a loaded generation current. The lifespan builds the store
-on a worker thread and runs one bounded startup load whose failure never fails
-startup, and an HTTP middleware elects one arriving request per 60-second
-interval to check `published/current.json` before its handler runs, skipping
-when a check is already in flight. `snapshot/load.py` loads incrementally:
+`SHALLWESWIM_SNAPSHOT_READ_BUCKET`, which the web service and local runs set
+and the job never does, names the store the web service serves from. Its
+lifespan builds the store on a worker thread, runs one bounded (20-second)
+startup load, and starts the instance whether or not that load succeeded; a
+failed startup load is logged at ERROR, because the instance then has nothing
+to serve, while a failed refresh over a loaded generation stays WARNING. The
+lifespan constructs no `LocationDataManager`, opens no client session, and
+starts no update loop; the process pool it does create serves only the
+on-demand detail plots. An HTTP middleware elects one arriving request per
+60-second interval to check `published/current.json` before its handler runs,
+skipping when a check is already in flight. `snapshot/load.py` loads
+incrementally:
 objects are content-addressed, so a key the process already holds is reused and
 only new keys are read, eight at a time, each checked against the size and key
 the manifest recorded and validated through its feed model.
 `snapshot/refresh.py` holds that generation and the `SnapshotLocationManager`s
 built from it, publishing them with one assignment of an immutable mapping so a
 request in flight during a swap finishes on one whole generation, and logs one
-`snapshot.load` event per load that does work. Routes keep reading
-`app.state.data_managers`; nothing user-facing reads the shadow state, which is
-what cutover changes.
+`snapshot.load` event per load that does work. That state is what every route
+reads; `app.state.data_managers` no longer exists.
 When `SHALLWESWIM_ARCHIVE_READ_BUCKET` is set, which local development and the
 publishing job do and the web service never does, the historical temperature
 feed first hydrates each
@@ -770,12 +784,15 @@ be tuned from production or local logs.
 
 ### Health Check (`/api/healthy`, `/api/health`)
 
-- Returns **200** if at least 1 location has data (fresh or stale)
-- Returns **503** only if NO location can serve any data
+- Returns **200** if a generation is loaded and at least 1 of its locations has
+  data (fresh or stale)
+- Returns **503** only if no generation is loaded, or NO location in it can
+  serve any data
 - Used by Cloud Run for routing decisions
 - Single station outages do NOT trigger 503
-- Missing/empty location manager state returns **503** here because the
-  health endpoint answers "can this instance serve traffic?"
+- An instance whose startup load failed answers **503** until an elected request
+  loads a generation, because the health endpoint answers "can this instance
+  serve traffic?"
 - Successful health and aggregate-status probes rely on platform-native request
   logs and do not emit duplicate application INFO events. Unhealthy states and
   internal status failures remain application WARNING or ERROR events.
@@ -798,9 +815,11 @@ be tuned from production or local logs.
   available, missing, fetched, and failed years
 - Use external monitoring (GCP Cloud Monitoring) to alert on stale data
 - Recommended: Alert if `is_healthy: false` persists > 30 minutes for critical feeds
-- Missing/empty location manager state returns **500** because `/api/status`
-  is diagnostic; no managers after startup indicates an internal
-  initialization/configuration bug, not an upstream station outage.
+- Each location also reports the generation it was served from:
+  `generation_id`, `published_at`, and `loaded_at`
+- The response is an empty object while no generation is loaded, which is what
+  an instance that has not loaded one has to report; `/api/healthy` is the
+  endpoint that calls that unhealthy.
 
 ## 6. Feed Lifecycle
 

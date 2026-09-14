@@ -446,7 +446,7 @@ resource "google_logging_metric" "snapshot_feed_age" {
     labels {
       key         = "outcome"
       value_type  = "STRING"
-      description = "One of success or carried; absent carries no age."
+      description = "One of success, held, or carried; absent carries no age."
     }
   }
 

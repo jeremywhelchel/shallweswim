@@ -301,7 +301,7 @@ implementation.
 | `shallweswim.plot.availability_latency` | Histogram, seconds | Submit-to-harvest latency, including scheduling or CPU starvation |
 | `shallweswim.snapshot.publish` | Counter | Changed/no-change/failure outcomes |
 | `shallweswim.snapshot.publish.duration` | Histogram, seconds | Publication cost |
-| `shallweswim.snapshot.feed.age` | Histogram, seconds | Age of the frame each published generation serves, by location, feed, and fetched/carried outcome |
+| `shallweswim.snapshot.feed.age` | Histogram, seconds | Age of the frame each published generation serves, by location, feed, and fetched/held/carried outcome |
 
 ### Web Metrics
 

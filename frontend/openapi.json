@@ -1323,6 +1323,44 @@
             "description": "Dictionary mapping feed names to their FeedStatus objects.",
             "title": "Feeds",
             "type": "object"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier of the published generation this instance serves. Null while no generation is loaded.",
+            "title": "Generation Id"
+          },
+          "loaded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When this instance loaded the served generation (UTC).",
+            "title": "Loaded At"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the served generation was published (UTC).",
+            "title": "Published At"
           }
         },
         "required": [
@@ -1726,7 +1764,7 @@
     },
     "/api/health": {
       "get": {
-        "description": "API endpoint for service health check (used by Cloud Run).\n\nReturns 200 if at least one location can serve data (fresh or stale).\nReturns 503 only if NO location has any data available.\n\nThis lenient check ensures single station outages don't mark the entire\nservice unhealthy. For detailed per-feed health status, use /api/status.\n\nReturns:\n    True if service can serve at least one location\n    Status code 200 if healthy, 503 if not healthy",
+        "description": "API endpoint for service health check (used by Cloud Run).\n\nReturns 200 once a generation is loaded and at least one of its\nlocations can serve data (fresh or stale). Returns 503 while no\ngeneration is loaded, or if NO location in it has any data.\n\nThis lenient check ensures single station outages don't mark the entire\nservice unhealthy. For detailed per-feed health status, use /api/status.\n\nReturns:\n    True if service can serve at least one location\n    Status code 200 if healthy, 503 if not healthy",
         "operationId": "healthy_status_api_health_get",
         "responses": {
           "200": {
@@ -1746,7 +1784,7 @@
     },
     "/api/healthy": {
       "get": {
-        "description": "API endpoint for service health check (used by Cloud Run).\n\nReturns 200 if at least one location can serve data (fresh or stale).\nReturns 503 only if NO location has any data available.\n\nThis lenient check ensures single station outages don't mark the entire\nservice unhealthy. For detailed per-feed health status, use /api/status.\n\nReturns:\n    True if service can serve at least one location\n    Status code 200 if healthy, 503 if not healthy",
+        "description": "API endpoint for service health check (used by Cloud Run).\n\nReturns 200 once a generation is loaded and at least one of its\nlocations can serve data (fresh or stale). Returns 503 while no\ngeneration is loaded, or if NO location in it has any data.\n\nThis lenient check ensures single station outages don't mark the entire\nservice unhealthy. For detailed per-feed health status, use /api/status.\n\nReturns:\n    True if service can serve at least one location\n    Status code 200 if healthy, 503 if not healthy",
         "operationId": "healthy_status_api_healthy_get",
         "responses": {
           "200": {
@@ -1789,7 +1827,7 @@
     },
     "/api/status": {
       "get": {
-        "description": "API endpoint that returns status information for all configured locations.\n\nReturns:\n    Dictionary mapping location codes to their status dictionaries\n\nRaises:\n    HTTPException: If no locations are configured",
+        "description": "API endpoint that returns status for every location of the generation.\n\nReturns:\n    Dictionary mapping location codes to their status dictionaries,\n    empty while no generation is loaded.",
         "operationId": "all_locations_status_api_status_get",
         "responses": {
           "200": {
@@ -2158,7 +2196,7 @@
     },
     "/api/{location}/status": {
       "get": {
-        "description": "API endpoint that returns status information for a specific location.\n\nArgs:\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    Status dictionary for the specified location\n\nRaises:\n    HTTPException: If the location is not configured",
+        "description": "API endpoint that returns status information for a specific location.\n\nArgs:\n    location: Location code (e.g., 'nyc')\n\nReturns:\n    Status dictionary for the specified location\n\nRaises:\n    HTTPException: If the location is not configured, or the loaded\n        generation does not carry it.",
         "operationId": "location_status_api__location__status_get",
         "parameters": [
           {

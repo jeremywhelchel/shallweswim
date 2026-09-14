@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -42,7 +42,9 @@ from shallweswim.core.feeds import (
     PLOT_HISTORIC_TEMPS_12MO,
     PLOT_LIVE_TEMPS,
 )
+from shallweswim.core.serving import LocationServing
 from shallweswim.main import app
+from tests.helpers import install_managers
 
 pytestmark = pytest.mark.browser
 
@@ -208,7 +210,8 @@ def react_stack_server(monkeypatch: pytest.MonkeyPatch) -> Generator[ReactStackS
         routes, "_create_tide_current_plot", fake_create_tide_current_plot
     )
     app.state.frontend_dist = str(frontend_dist)
-    app.state.data_managers = {"nyc": manager}
+    # The fake answers every call the routes make; it is not a full manager.
+    install_managers(app, {"nyc": cast(LocationServing, manager)})
     app.state.process_pool = executor
 
     port = _free_port()

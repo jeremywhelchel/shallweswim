@@ -18,6 +18,7 @@ from shallweswim.core.feeds import FeedName, PlotName
 from shallweswim.core.manager import LocationDataManager
 from shallweswim.snapshot.model import (
     FeedFailure,
+    FeedHold,
     FeedMetadata,
     FeedSnapshot,
     LocationSnapshot,
@@ -84,17 +85,22 @@ FRAMES = {
 }
 
 
+def fresh_manager() -> LocationDataManager:
+    """A manager for the full test location whose feeds have never updated."""
+    return LocationDataManager(
+        TEST_CONFIG_FULL,
+        clients={"coops": MagicMock(spec=CoopsApi)},
+        process_pool=MagicMock(spec=ProcessPoolExecutor),
+    )
+
+
 def seeded_manager() -> LocationDataManager:
     """A manager for the full test location whose real feeds hold FRAMES.
 
     Every feed looks as if it had just updated at FETCHED, the historical feed
     has a two-year cache, and every plot is present.
     """
-    manager = LocationDataManager(
-        TEST_CONFIG_FULL,
-        clients={"coops": MagicMock(spec=CoopsApi)},
-        process_pool=MagicMock(spec=ProcessPoolExecutor),
-    )
+    manager = fresh_manager()
     for feed_name, build in FRAMES.items():
         feed = manager._feeds[feed_name]
         assert feed is not None
@@ -131,6 +137,11 @@ def feed_failure(
     )
 
 
+def feed_hold(feed_name: FeedName, *, source_identity: str | None = None) -> FeedHold:
+    """A configured feed the run did not fetch because it was not due."""
+    return FeedHold(source_identity=source_identity or f"coops:{feed_name}:8518750")
+
+
 def feed_metadata(
     feed_name: FeedName,
     frame: pd.DataFrame,
@@ -155,11 +166,13 @@ def sample_snapshot(
     live_offset: float = 0.0,
     live_fetch_timestamp: datetime.datetime = FETCHED_AT,
     failures: dict[FeedName, FeedFailure] | None = None,
+    holds: dict[FeedName, FeedHold] | None = None,
 ) -> Snapshot:
     """One location with every feed and plot; ten distinct objects in all.
 
-    A feed named in `failures` is reported as the builder reports one that
-    produced no data: no frame, no plot drawn from it, and a failure record.
+    A feed named in `failures` or `holds` is reported as the builder reports
+    one that produced no data: no frame and no plot drawn from it, plus the
+    record saying whether the run learned a failure or never fetched it.
     """
     frames = {name: build() for name, build in FRAMES.items()}
     frames[FeedName.LIVE_TEMPS] = live_temps_frame(live_offset)
@@ -194,18 +207,23 @@ def sample_snapshot(
         ),
     }
     failed = failures or {}
+    held = holds or {}
+    unpublished = {*failed, *held}
     return Snapshot(
         locations={
             "nyc": LocationSnapshot(
                 feeds={
-                    name: feed for name, feed in feeds.items() if name not in failed
+                    name: feed
+                    for name, feed in feeds.items()
+                    if name not in unpublished
                 },
                 plots={
                     name: plot
                     for name, plot in plots.items()
-                    if plot.feed not in failed
+                    if plot.feed not in unpublished
                 },
                 failures=dict(failed),
+                holds=dict(held),
             )
         }
     )

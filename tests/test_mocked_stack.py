@@ -13,10 +13,12 @@ like startup race conditions, partial data, and recovery from failures.
 """
 
 import asyncio
+import contextlib
 import datetime
 import math
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from types import MappingProxyType
 from typing import Any
 from unittest.mock import patch
 
@@ -39,17 +41,35 @@ from tests.conftest import (
     TEST_CONFIG_OBSERVATION_CURRENTS,
     TEST_CONFIG_PREDICTION_NO_CHARTS,
 )
-from tests.helpers import create_test_app
+from tests.helpers import create_test_app, serve_manager
 
-
-def _mock_config_get(code: str):
-    """Mock config.get() to return our fake test configs."""
-    configs = {
+TEST_CONFIGS = MappingProxyType(
+    {
         TEST_CONFIG_FULL.code: TEST_CONFIG_FULL,
         TEST_CONFIG_OBSERVATION_CURRENTS.code: TEST_CONFIG_OBSERVATION_CURRENTS,
         TEST_CONFIG_PREDICTION_NO_CHARTS.code: TEST_CONFIG_PREDICTION_NO_CHARTS,
     }
-    return configs.get(code)
+)
+
+
+def _mock_config_get(code: str):
+    """Mock config.get() to return our fake test configs."""
+    return TEST_CONFIGS.get(code)
+
+
+@contextlib.contextmanager
+def _test_configs() -> Iterator[None]:
+    """Configure only the fake locations, for `get` and `CONFIGS` alike.
+
+    Loading a generation builds one manager per published location from
+    `config.CONFIGS`, so the mapping has to carry the same fake configs the
+    routes resolve through `config.get`.
+    """
+    with (
+        patch("shallweswim.config.get", _mock_config_get),
+        patch("shallweswim.config.CONFIGS", TEST_CONFIGS),
+    ):
+        yield
 
 
 # =============================================================================
@@ -235,15 +255,14 @@ class MockNdbcApi(NdbcApi):
 
 @pytest_asyncio.fixture
 async def mock_api_client() -> AsyncGenerator[TestClient]:
-    """Create test client with mock API clients.
+    """Create test client serving a generation published from mock API clients.
 
-    This fixture waits for all data to be loaded before yielding.
-    Use this for happy path tests where all data should be available.
+    This fixture waits for all data to be loaded, publishes it as a generation,
+    and loads that generation into the app, which is what the deployed service
+    serves. Use this for happy path tests where all data should be available.
     """
-    # Patch config.get to return our fake test configs
-    with patch("shallweswim.config.get", _mock_config_get):
+    with _test_configs():
         app = create_test_app()
-        app.state.data_managers = {}
         app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
@@ -259,13 +278,12 @@ async def mock_api_client() -> AsyncGenerator[TestClient]:
             # Create LocationDataManager with fake test config
             cfg = TEST_CONFIG_FULL
 
-            app.state.data_managers[cfg.code] = LocationDataManager(
+            manager = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            app.state.data_managers[cfg.code].start()
+            manager.start()
 
             # Wait for data to load (should be fast with mocks)
-            manager = app.state.data_managers[cfg.code]
             await manager.wait_until_ready(timeout=10.0)
 
             # Wait for fire-and-forget plot generation to complete.
@@ -280,6 +298,7 @@ async def mock_api_client() -> AsyncGenerator[TestClient]:
                     break
                 await asyncio.sleep(0.5)
 
+            await serve_manager(app, manager)
             api.register_routes(app)
 
             yield TestClient(app)
@@ -296,12 +315,13 @@ async def mock_api_client_with_controls() -> AsyncGenerator[
     """Create test client with controllable mock behavior.
 
     This fixture provides access to the mock client for test control.
+    The manager's loaded data is published as a generation and served. A test
+    that changes the manager publishes again with `serve_manager`.
+
     Returns tuple of (TestClient, MockCoopsApi, LocationDataManager, FastAPI).
     """
-    # Patch config.get to return our fake test configs
-    with patch("shallweswim.config.get", _mock_config_get):
+    with _test_configs():
         app = create_test_app()
-        app.state.data_managers = {}
         app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
@@ -321,12 +341,12 @@ async def mock_api_client_with_controls() -> AsyncGenerator[
             manager = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            app.state.data_managers[cfg.code] = manager
             manager.start()
 
             # Wait for data to load (should be fast with mocks)
             await manager.wait_until_ready(timeout=10.0)
 
+            await serve_manager(app, manager)
             api.register_routes(app)
 
             yield TestClient(app), mock_coops, manager, app
@@ -342,12 +362,13 @@ async def mock_api_client_no_wait() -> AsyncGenerator[
 ]:
     """Create test client WITHOUT waiting for data to load.
 
+    Nothing is published, so the app starts with no generation, as an instance
+    does before the job has published one.
+
     Use this for testing startup race conditions.
     """
-    # Patch config.get to return our fake test configs
-    with patch("shallweswim.config.get", _mock_config_get):
+    with _test_configs():
         app = create_test_app()
-        app.state.data_managers = {}
         app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
@@ -367,7 +388,6 @@ async def mock_api_client_no_wait() -> AsyncGenerator[
             manager = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            app.state.data_managers[cfg.code] = manager
 
             # DON'T start the manager yet - let tests control this
             api.register_routes(app)
@@ -579,7 +599,7 @@ async def test_partial_feeds_loaded(
 
     Emulates: The 500 bug scenario (has_data=True but specific feed empty).
     """
-    client, mock_coops, manager, _app = mock_api_client_no_wait
+    client, mock_coops, manager, app = mock_api_client_no_wait
 
     # Configure: tides works, temps fails
     mock_coops.should_fail_temperature = True
@@ -589,6 +609,9 @@ async def test_partial_feeds_loaded(
 
     # Wait a bit for tides to load (but temps will fail)
     await asyncio.sleep(1.0)
+
+    # Publish whatever the run produced, as the job would
+    await serve_manager(app, manager)
 
     response = client.get("/api/nyc/conditions")
 
@@ -616,7 +639,7 @@ async def test_all_feeds_expired_but_have_stale_data(
 
     Emulates: Extended API outage, system serves cached data.
     """
-    client, _mock_coops, manager, _app = mock_api_client_with_controls
+    client, _mock_coops, manager, app = mock_api_client_with_controls
 
     # Data is loaded (fixture waits for ready)
     assert manager.has_data is True
@@ -634,6 +657,9 @@ async def test_all_feeds_expired_but_have_stale_data(
     for feed in manager._feeds.values():
         if feed is not None:
             assert feed.is_expired is True
+
+    # Publish the expired state; the manifest carries the stale timestamps
+    await serve_manager(app, manager)
 
     # /conditions should still return 200 (serves stale data)
     response = client.get("/api/nyc/conditions")
@@ -663,7 +689,7 @@ async def test_station_unavailable_during_startup(
     Emulates: NOAA station maintenance.
     """
 
-    client, mock_coops, manager, _app = mock_api_client_no_wait
+    client, mock_coops, manager, app = mock_api_client_no_wait
 
     # Configure all feeds to fail
     mock_coops.should_fail_tides = True
@@ -676,6 +702,9 @@ async def test_station_unavailable_during_startup(
 
     # Wait for update attempt
     await asyncio.sleep(1.0)
+
+    # A run that fetched nothing publishes nothing to serve
+    await serve_manager(app, manager)
 
     # /conditions should return 503 (no data)
     response = client.get("/api/nyc/conditions")
@@ -696,10 +725,8 @@ async def test_recovery_after_failure() -> None:
     2. Service restarts (new manager) when station is back
     3. New manager loads data successfully
     """
-    # Patch config.get to return our fake test configs
-    with patch("shallweswim.config.get", _mock_config_get):
+    with _test_configs():
         app = create_test_app()
-        app.state.data_managers = {}
         app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
@@ -723,7 +750,6 @@ async def test_recovery_after_failure() -> None:
             manager1 = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            app.state.data_managers[cfg.code] = manager1
             manager1.start()
 
             api.register_routes(app)
@@ -731,6 +757,9 @@ async def test_recovery_after_failure() -> None:
 
             # Wait for initial (failed) fetch attempt
             await asyncio.sleep(1.0)
+
+            # A run that fetched nothing publishes nothing to serve
+            await serve_manager(app, manager1)
 
             # Should return 503 initially
             response = client.get("/api/nyc/conditions")
@@ -755,11 +784,11 @@ async def test_recovery_after_failure() -> None:
             manager2 = LocationDataManager(
                 cfg, clients=mock_clients2, process_pool=app.state.process_pool
             )
-            app.state.data_managers[cfg.code] = manager2
             manager2.start()
 
             # Wait for data to load
             await manager2.wait_until_ready(timeout=10.0)
+            await serve_manager(app, manager2)
 
             # Should now return 200
             response = client.get("/api/nyc/conditions")
@@ -785,7 +814,7 @@ async def test_plot_with_missing_currents(
 
     Emulates: Current station offline but tide station working.
     """
-    client, mock_coops, manager, _app = mock_api_client_no_wait
+    client, mock_coops, manager, app = mock_api_client_no_wait
 
     # Configure: tides works, currents fails
     mock_coops.should_fail_currents = True
@@ -795,6 +824,8 @@ async def test_plot_with_missing_currents(
 
     # Wait for tides to load
     await asyncio.sleep(1.0)
+
+    await serve_manager(app, manager)
 
     # Plot requires both tides AND currents
     response = client.get("/api/nyc/plots/current_tide")
@@ -810,14 +841,15 @@ async def test_feed_update_fails_during_refresh(
         TestClient, MockCoopsApi, LocationDataManager, FastAPI
     ],
 ) -> None:
-    """API failure during refresh - old data still served.
+    """Upstream failure after publication - the loaded generation still serves.
 
-    Emulates: NOAA outage during refresh window.
+    Emulates: NOAA outage during a refresh window. The web instance never
+    fetches, so an outage cannot take data away from it; it keeps serving the
+    generation it has loaded until a newer one replaces it.
     """
     client, mock_coops, manager, _app = mock_api_client_with_controls
 
-    # Data is loaded (fixture waits for ready)
-    # Verify we have data
+    # Data is loaded and published (fixture waits for ready)
     response = client.get("/api/nyc/conditions")
     assert response.status_code == 200
 
@@ -833,7 +865,8 @@ async def test_feed_update_fails_during_refresh(
         if feed is not None:
             feed._fetch_timestamp = old_time
 
-    # Let the update loop attempt to refresh (it will fail)
+    # Let the update loop attempt to refresh (it will fail); nothing new is
+    # published, so the served generation is untouched.
     await asyncio.sleep(1.0)
 
     # Old data should still be served
@@ -857,10 +890,8 @@ async def test_currents_endpoint_observation_source_returns_404() -> None:
     not PREDICTION type. The /currents endpoint only works with PREDICTION sources.
     Returns 404 (not 501) to avoid 5xx alerting.
     """
-    # Patch config.get to return our fake test configs
-    with patch("shallweswim.config.get", _mock_config_get):
+    with _test_configs():
         app = create_test_app()
-        app.state.data_managers = {}
         app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
@@ -876,11 +907,11 @@ async def test_currents_endpoint_observation_source_returns_404() -> None:
             manager = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            app.state.data_managers[cfg.code] = manager
             manager.start()
 
             try:
                 await manager.wait_until_ready(timeout=10.0)
+                await serve_manager(app, manager)
                 api.register_routes(app)
 
                 with TestClient(app) as client:
@@ -899,9 +930,8 @@ async def test_currents_endpoint_prediction_no_charts_returns_null_charts() -> N
     This location has PREDICTION-type currents (supports /currents endpoint) but
     has_static_charts=False, so legacy_chart and current_chart_filename should be null.
     """
-    with patch("shallweswim.config.get", _mock_config_get):
+    with _test_configs():
         app = create_test_app()
-        app.state.data_managers = {}
         app.state.process_pool = ThreadPoolExecutor()
 
         async with aiohttp.ClientSession() as session:
@@ -917,11 +947,11 @@ async def test_currents_endpoint_prediction_no_charts_returns_null_charts() -> N
             manager = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            app.state.data_managers[cfg.code] = manager
             manager.start()
 
             try:
                 await manager.wait_until_ready(timeout=10.0)
+                await serve_manager(app, manager)
                 api.register_routes(app)
 
                 with TestClient(app) as client:

@@ -2,9 +2,10 @@
 
 These tests drive the two halves the entry point composes. The job half is
 `capture.publish_locations` against a locator rather than a bucket; the web half
-is the app's shadow load, which must find exactly what the job half published.
-Mocked clients keep every run offline, and the store variables are set through
-the entry point's own helper so nothing here can reach the operator's bucket.
+is the app's own load, which must find exactly what the job half published, and
+must have found it before the first request arrives. Mocked clients keep every
+run offline, and the store variables are set through the entry point's own
+helper so nothing here can reach the operator's bucket.
 """
 
 import contextlib
@@ -80,20 +81,28 @@ class MockCoopsApi(CoopsApi):
     ) -> pd.DataFrame:
         """Return a day of hourly readings ending at the requested window end."""
         end = pd.Timestamp(str(end_date)).tz_localize("UTC").floor("h")
+        water_temp = 60.5
         if interval == "6-min":
             self.live_temperature_calls += 1
+            # Live readings move between cycles, as a real station's do, so a
+            # second cycle publishes a genuinely new generation.
+            water_temp += self.live_temperature_calls
         else:
             self.historic_temperature_calls += 1
             self.historic_years.append(end.year)
         index = pd.date_range(end=end, periods=24, freq="h", name="time")
-        return pd.DataFrame({"water_temp": [60.5] * len(index)}, index=index)
+        return pd.DataFrame({"water_temp": [water_temp] * len(index)}, index=index)
 
     async def tides(
         self, station: int, timezone: str, location_code: str = "unknown"
     ) -> pd.DataFrame:
         """Return a minimal high/low event frame around now."""
         index = pd.date_range(
-            utc_now().floor("h"), periods=4, freq="6h", tz="UTC", name="time"
+            pd.Timestamp(utc_now()).floor("h") - pd.Timedelta(hours=6),
+            periods=4,
+            freq="6h",
+            tz="UTC",
+            name="time",
         )
         return pd.DataFrame(
             {
@@ -131,9 +140,11 @@ def store_locator(monkeypatch: pytest.MonkeyPatch) -> Callable[[str], str]:
 @pytest.fixture
 def cycle_clients(monkeypatch: pytest.MonkeyPatch) -> MockCoopsApi:
     """Install one fake location and mocked clients, with plots stubbed out."""
-    monkeypatch.setattr(
-        config, "CONFIGS", MappingProxyType({HISTORY_CONFIG.code: HISTORY_CONFIG})
-    )
+    configs = MappingProxyType({HISTORY_CONFIG.code: HISTORY_CONFIG})
+    monkeypatch.setattr(config, "CONFIGS", configs)
+    # `config.get` reads the real mapping in its own module, so the routes need
+    # their own patch to resolve the fake location.
+    monkeypatch.setattr(config, "get", lambda code: configs.get(code.lower()))
     monkeypatch.setattr(
         manager_module, "_generate_live_temp_plot", lambda *args: b"<svg>live</svg>"
     )
@@ -145,12 +156,14 @@ def cycle_clients(monkeypatch: pytest.MonkeyPatch) -> MockCoopsApi:
     return MockCoopsApi()
 
 
-async def _run_cycle(client: MockCoopsApi, run_id: str, locator: str) -> str:
+async def _run_cycle(
+    client: MockCoopsApi, run_id: str, locator: str, *, full_history: bool = False
+) -> str:
     """Run one publishing cycle in a thread pool instead of a process pool."""
     clients: dict[str, BaseApiClient] = {"coops": client}
     with ThreadPoolExecutor() as pool:
         _, outcome = await capture.publish_locations(
-            clients, run_id, pool=pool, locator=locator
+            clients, run_id, pool=pool, locator=locator, full_history=full_history
         )
     return outcome
 
@@ -165,10 +178,10 @@ async def test_memory_cycle_publishes_a_generation_the_app_loads(
     outcome = await _run_cycle(cycle_clients, "run-memory", locator)
 
     assert outcome == "success"
-    shadow = SimpleNamespace(state=SimpleNamespace())
-    await main_module.start_snapshot_shadow(shadow)  # pyrefly: ignore
-    assert set(shadow.state.snapshot.managers) == {HISTORY_CONFIG.code}
-    assert shadow.state.snapshot.generation_id is not None
+    served = SimpleNamespace(state=SimpleNamespace())
+    await main_module.start_snapshot_serving(served)  # pyrefly: ignore
+    assert set(served.state.snapshot.managers) == {HISTORY_CONFIG.code}
+    assert served.state.snapshot.generation_id is not None
 
 
 @pytest.mark.asyncio
@@ -183,7 +196,13 @@ async def test_filesystem_store_persists_and_hydrates_the_second_cycle(
 
     assert await _run_cycle(cycle_clients, "run-one", locator) == "success"
     first_years = list(cycle_clients.historic_years)
-    assert await _run_cycle(cycle_clients, "run-two", locator) == "success"
+    # A second cycle one moment later would hold every feed on the schedule the
+    # first generation published, which says nothing about the archive, so this
+    # one ignores the schedule as a backfill does.
+    assert (
+        await _run_cycle(cycle_clients, "run-two", locator, full_history=True)
+        == "success"
+    )
 
     assert first_years == [LAST_YEAR, utc_now().year]
     # Only the current year reaches the provider again; last year hydrates.
@@ -195,9 +214,9 @@ async def test_filesystem_store_persists_and_hydrates_the_second_cycle(
     assert (root / "published" / "current.json").is_file()
     assert len(list((root / "published" / "manifests").glob("*.json"))) == 2
 
-    shadow = SimpleNamespace(state=SimpleNamespace())
-    await main_module.start_snapshot_shadow(shadow)  # pyrefly: ignore
-    assert set(shadow.state.snapshot.managers) == {HISTORY_CONFIG.code}
+    served = SimpleNamespace(state=SimpleNamespace())
+    await main_module.start_snapshot_serving(served)  # pyrefly: ignore
+    assert set(served.state.snapshot.managers) == {HISTORY_CONFIG.code}
 
 
 def _run_entry_point(
@@ -272,11 +291,19 @@ def test_lifespan_composition_runs_the_updater_between_startup_and_shutdown(
     monkeypatch.setattr(local.capture, "publish_locations", fake_publish)
     monkeypatch.setattr(local, "create_api_clients", lambda session: {})
 
+    loads: list[str] = []
+
+    class FakeSnapshotState:
+        """Stands in for the state the app's own lifespan builds."""
+
+        async def initial_load(self) -> None:
+            loads.append("load")
+
     @contextlib.asynccontextmanager
     async def app_lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None]:
         order.append("app start")
-        app.state.http_session = None
         app.state.process_pool = None
+        app.state.snapshot = FakeSnapshotState()
         yield
         order.append("app stop")
 
@@ -290,6 +317,8 @@ def test_lifespan_composition_runs_the_updater_between_startup_and_shutdown(
     task = app.state.local_updater
 
     assert order == ["app start", "cycle memory", "app stop"]
+    # The first generation is loaded before the server accepts a request.
+    assert loads == ["load"]
     assert task.cancelled()
 
 
@@ -300,3 +329,40 @@ def test_store_variables_are_the_three_the_stores_read() -> None:
         "SHALLWESWIM_ARCHIVE_READ_BUCKET",
         "SHALLWESWIM_SNAPSHOT_READ_BUCKET",
     )
+
+
+def test_first_request_is_served_from_the_first_published_generation(
+    cycle_clients: MockCoopsApi,
+    store_locator: Callable[[str], str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The composed lifespan publishes and loads before the server serves.
+
+    This is the whole point of the composition: the process fetches once, and
+    the first request already has a generation behind it rather than the 503
+    an instance answers before the job has published anything.
+    """
+    locator = store_locator(archive_store.MEMORY_LOCATOR)
+    monkeypatch.setattr(
+        local, "create_api_clients", lambda _session: {"coops": cycle_clients}
+    )
+    # The cycle's plot stubs are patched in this process, so the plots must run
+    # here rather than in a real process pool's workers.
+    monkeypatch.setattr(main_module, "ProcessPoolExecutor", ThreadPoolExecutor)
+
+    app = main_module.start_app()
+    original_lifespan = app.router.lifespan_context
+    local.install_updater(app, locator=locator, cadence_seconds=3600)
+    try:
+        with TestClient(app) as client:
+            conditions = client.get(f"/api/{HISTORY_CONFIG.code}/conditions")
+            status = client.get("/api/status")
+    finally:
+        app.router.lifespan_context = original_lifespan
+        app.state.snapshot = None
+
+    assert conditions.status_code == 200
+    assert conditions.json()["temperature"]["water_temp_f"] is not None
+    assert status.json()[HISTORY_CONFIG.code]["generation_id"] is not None
+    # One process, one fetch of each feed.
+    assert cycle_clients.live_temperature_calls == 1

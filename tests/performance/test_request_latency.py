@@ -36,7 +36,7 @@ from shallweswim.main import app as main_app
 from shallweswim.types import TIDE_TYPE_CATEGORIES
 from shallweswim.util import utc_now
 from tests.conftest import TEST_CONFIG_FULL
-from tests.helpers import create_test_app
+from tests.helpers import create_test_app, install_managers
 
 pytestmark = pytest.mark.performance
 
@@ -180,7 +180,7 @@ def performance_client(
     )
 
     app = create_test_app()
-    app.state.data_managers = {PERFORMANCE_CONFIG.code: performance_manager}
+    install_managers(app, {PERFORMANCE_CONFIG.code: performance_manager})
     register_routes(app)
 
     with TestClient(app) as client:

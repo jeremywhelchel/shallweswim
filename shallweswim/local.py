@@ -13,10 +13,14 @@ process only.
 
 The app itself is unchanged: ``main.start_app`` builds it, and the updater is
 composed around its lifespan rather than conditionally inside it. This module
-wraps ``app.router.lifespan_context``, so the app's own startup runs first and
-the updater task starts after it, with the HTTP session and process pool the
-app created already in ``app.state``; the wrapper cancels the task before the
-app's shutdown runs. ``main.py`` therefore has no notion of local mode.
+wraps ``app.router.lifespan_context`` and, inside it, does in order what a
+first run needs: the app's own startup (which finds an empty store and loads
+nothing), one publishing cycle, and one more load, so the first request already
+has a generation. The cycle then continues on the cadence, and the wrapper
+cancels it before the app's shutdown runs. The deployed web service opens no
+HTTP session, so this module opens the one the cycles fetch over; the process
+pool they plot in is the app's. ``main.py`` therefore has no notion of local
+mode.
 
 Uvicorn runs the application object in this process rather than the factory
 string, because the store, the published generations, and the loaded bundle all
@@ -33,6 +37,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 
+import aiohttp
 import fastapi
 import uvicorn
 
@@ -72,42 +77,61 @@ def apply_store_locator(locator: str) -> None:
         os.environ[name] = locator
 
 
-async def run_cycles(
-    app: fastapi.FastAPI, *, locator: str, cadence_seconds: float
+async def run_cycle(
+    app: fastapi.FastAPI, session: aiohttp.ClientSession, *, locator: str
 ) -> None:
-    """Run the job's publishing cycle immediately, then every cadence.
+    """Run one publishing cycle, logging a broken cycle rather than raising.
 
     The cycle is `capture.publish_locations`, unchanged: every location's full
     serving cycle, archive capture inside each feed update, plots, and one
-    published generation. It runs in the app's process pool and over the app's
-    HTTP session, so this process holds one of each.
-
-    A cycle that raises is logged at ERROR and the loop continues at the next
-    cadence; a cycle that overruns the cadence starts the next one immediately.
+    published generation. It plots in the app's process pool and fetches over
+    this module's HTTP session.
 
     Args:
-        app: The running application, whose state holds the process pool and
-            the HTTP session the cycle uses.
+        app: The running application, whose state holds the process pool.
+        session: The HTTP session the provider clients fetch over.
         locator: Store locator the generation is published into.
-        cadence_seconds: Seconds between the start of one cycle and the next.
     """
+    logging.info(f"[local] publishing cycle starting, store {locator}")
+    try:
+        await capture.publish_locations(
+            create_api_clients(session),
+            uuid.uuid4().hex,
+            pool=app.state.process_pool,
+            locator=locator,
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        # publish_locations isolates feed and publication failures itself,
+        # so reaching here means the cycle as a whole broke.
+        logging.error(f"[local] publishing cycle failed: {error}")
+
+
+async def run_cycles(
+    app: fastapi.FastAPI,
+    session: aiohttp.ClientSession,
+    *,
+    locator: str,
+    cadence_seconds: float,
+    since: float,
+) -> None:
+    """Keep publishing on the cadence after the first cycle, which already ran.
+
+    A cycle that overruns the cadence starts the next one immediately.
+
+    Args:
+        app: The running application, whose state holds the process pool.
+        session: The HTTP session the provider clients fetch over.
+        locator: Store locator the generations are published into.
+        cadence_seconds: Seconds between the start of one cycle and the next.
+        since: The monotonic instant the already-run first cycle started at.
+    """
+    started_at = since
     while True:
-        started_at = time.monotonic()
-        logging.info(f"[local] publishing cycle starting, store {locator}")
-        try:
-            await capture.publish_locations(
-                create_api_clients(app.state.http_session),
-                uuid.uuid4().hex,
-                pool=app.state.process_pool,
-                locator=locator,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:
-            # publish_locations isolates feed and publication failures itself,
-            # so reaching here means the cycle as a whole broke.
-            logging.error(f"[local] publishing cycle failed: {error}")
         await asyncio.sleep(max(0.0, cadence_seconds - (time.monotonic() - started_at)))
+        started_at = time.monotonic()
+        await run_cycle(app, session, locator=locator)
 
 
 def install_updater(
@@ -116,8 +140,10 @@ def install_updater(
     """Wrap the app's lifespan so the updater runs alongside it.
 
     The app's own lifespan is entered first and exited last, so the updater
-    starts only once the process pool and HTTP session exist and is cancelled
-    before they are torn down.
+    starts only once the process pool exists and is cancelled before it is torn
+    down. Between the two, the first cycle runs to completion and its
+    generation is loaded, so the server begins accepting requests with data
+    already in hand rather than answering the first ones with 503.
 
     Args:
         app: The application to wrap; its lifespan is replaced by the wrapper.
@@ -128,9 +154,20 @@ def install_updater(
 
     @contextlib.asynccontextmanager
     async def lifespan_with_updater(app: fastapi.FastAPI) -> AsyncGenerator[None]:
-        async with app_lifespan(app):
+        async with app_lifespan(app), aiohttp.ClientSession() as session:
+            started_at = time.monotonic()
+            await run_cycle(app, session, locator=locator)
+            # The app's own startup found an empty store on a first run; this
+            # load picks up what the cycle just published.
+            await app.state.snapshot.initial_load()
             task = asyncio.create_task(
-                run_cycles(app, locator=locator, cadence_seconds=cadence_seconds)
+                run_cycles(
+                    app,
+                    session,
+                    locator=locator,
+                    cadence_seconds=cadence_seconds,
+                    since=started_at,
+                )
             )
             # Visible state, so a stuck or stopped updater can be inspected.
             app.state.local_updater = task

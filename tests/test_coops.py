@@ -733,3 +733,73 @@ async def test_execute_request_keeps_station_no_data_unavailable_with_csv_header
 
     with pytest.raises(StationUnavailableError, match="No data was found"):
         await coops_client._execute_request("https://example.test", "test")
+
+
+# The production shape seen for NYC and SAN on 2026-09-14: a real CSV header,
+# then prose that never says "error", so only the parsed row reveals it.
+PROSE_ROW_UNDER_HEADER = f"Date Time, Prediction, Type\n{TRANSIENT_ERROR_BODY}\n"
+
+
+@pytest.mark.asyncio
+async def test_execute_request_retries_a_prose_row_under_a_csv_header(
+    coops_client: CoopsApi,
+) -> None:
+    """A prose rejection below a genuine CSV header is retryable, not terminal."""
+    cast(MagicMock, coops_client._session.get).return_value = BodyResponse(
+        PROSE_ROW_UNDER_HEADER
+    )
+
+    with pytest.raises(RetryableClientError) as excinfo:
+        await coops_client._execute_request("https://example.test", "test")
+
+    assert TRANSIENT_ERROR_BODY in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_request_with_retry_recovers_from_a_prose_row_under_a_csv_header(
+    coops_client: CoopsApi,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retry ladder turns that production body into a successful fetch."""
+    # Retry immediately: this test asserts classification, not backoff timing.
+    monkeypatch.setattr(coops_client, "INITIAL_RETRY_DELAY", 0.0)
+    cast(MagicMock, coops_client._session.get).side_effect = [
+        BodyResponse(PROSE_ROW_UNDER_HEADER),
+        BodyResponse(VALID_TIDE_CSV),
+    ]
+
+    df = await coops_client.request_with_retry(
+        "test", coops_client._execute_request, "https://example.test"
+    )
+
+    assert list(df.columns) == ["Date Time", " Prediction", " Type"]
+    assert len(df) == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_request_keeps_no_data_prose_row_unavailable(
+    coops_client: CoopsApi,
+) -> None:
+    """The same shape carrying the stable "no data" wording stays unavailable."""
+    cast(MagicMock, coops_client._session.get).return_value = BodyResponse(
+        "Date Time, Prediction, Type\n"
+        "No data was found. Please make sure the Datum input is valid.\n"
+    )
+
+    with pytest.raises(StationUnavailableError, match="No data was found"):
+        await coops_client._execute_request("https://example.test", "test")
+
+
+@pytest.mark.asyncio
+async def test_execute_request_parses_ordinary_tide_csv(
+    coops_client: CoopsApi,
+) -> None:
+    """An ordinary one-row tides response is unaffected by the row check."""
+    cast(MagicMock, coops_client._session.get).return_value = BodyResponse(
+        VALID_TIDE_CSV
+    )
+
+    df = await coops_client._execute_request("https://example.test", "test")
+
+    assert list(df.columns) == ["Date Time", " Prediction", " Type"]
+    assert df.iloc[0][" Type"] == "H"

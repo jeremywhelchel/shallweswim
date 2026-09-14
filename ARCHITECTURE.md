@@ -489,7 +489,7 @@ after a successful fetch, they do not refresh automatically.
   - Timeouts and connection errors
   - Broken protocol responses such as chunked transfer or content decoding errors
   - Retryable HTTP statuses: `429`, `500`, `502`, `503`, `504`
-  - CO-OPS `200` responses whose body is a NOAA error message instead of CSV,
+  - CO-OPS `200` responses that carry a NOAA error message instead of data, as the whole body or as a prose row under a CSV header,
     other than the stable "no data" answer, which stays
     `StationUnavailableError`
   - Automatically retried by `BaseApiClient.request_with_retry()`

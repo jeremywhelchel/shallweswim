@@ -267,14 +267,6 @@ Notes:
   prediction feed is stale when the requested time leaves the fetched window,
   an observation feed by the age of its latest observation. Decide with
   shadow-mode data, not before.
-- CO-OPS can answer a tide prediction request with HTTP 200, a CSV header
-  line, and then the prose "No Predictions data was found. Please make sure
-  the Datum input is valid." (seen for NYC and SAN on 2026-09-14 13:07 UTC). The error-body check passes it because the header
-  has commas, and the first-cell check looks for the word "error", which that
-  phrase lacks, so it surfaces as a terminal datetime-parse failure at ERROR
-  with no retry. Recognize the "data was found" phrase in the first cell as a
-  retryable error body like the prose form; carry-forward kept the previous
-  tides meanwhile.
 - First production run of `compare_snapshot` (2026-09-14, NYC): tides,
   currents, and live temperature match; historic temperature differed on 9
   of 137,651 hourly rows. Three were unit-test fixture rows that test runs

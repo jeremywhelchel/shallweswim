@@ -46,6 +46,11 @@ RESPONSE_DETAIL_CHARS = 200
 # product", which is an expected operational condition rather than a transient
 # failure. Other error bodies are transient often enough to be worth retrying.
 STATION_NO_DATA_MARKER = "no data"
+# Phrase shared by NOAA's no-data answers, including the ones that never say
+# "error" ("No Predictions data was found. Please make sure the Datum input is
+# valid."). Only the stable "no data" wording above is an expected condition;
+# the rest are transient rejections.
+NO_DATA_PROSE_MARKER = "data was found"
 
 # Temperature product types
 air_temperature = "air_temperature"
@@ -291,8 +296,9 @@ class CoopsApi(BaseApiClient):
 
         Raises:
             RetryableClientError: For transient network errors (connection,
-                timeout) and for a 200 response whose body is a NOAA error
-                message rather than CSV.
+                timeout) and for a 200 response that carries a NOAA error
+                message rather than data, whether as the whole body or as a
+                prose row under a CSV header.
             CoopsConnectionError: For non-retryable HTTP errors (e.g., status 404, 500).
             StationUnavailableError: When NOAA reports the station has no data.
             CoopsDataError: For errors parsing the response or API-level errors in data.
@@ -372,14 +378,29 @@ class CoopsApi(BaseApiClient):
         # NOAA returns errors in different formats:
         # 1. Single-column: {'Error': 'No data was found...'}
         # 2. Multi-column: 'Date Time, Water Temperature, X, N, R \n Error: No data was found...'
-        # Check if any cell in the first row contains an error message
+        # 3. A real CSV header followed by prose that never says "error":
+        #    'Date Time, Prediction, Type \n No Predictions data was found. ...'
+        # Form 3 is classified here rather than in `error_body_detail` because
+        # that check only asks whether a body is CSV-shaped at all, and this
+        # body is: its first line is a genuine header. Only the parsed row
+        # shows it carries prose instead of data, and `read_csv` pads the short
+        # prose line to the header's width, so the message lands in the first
+        # cell of a one-row frame.
         if len(df) >= 1:
-            # Check first column of first row for error message
-            first_cell = str(df.iloc[0, 0])
-            if "error" in first_cell.lower():
-                error_msg = first_cell
+            # Check the first row for an error message. A one-row frame is
+            # short enough to read whole, so a message that an embedded comma
+            # split across cells is still seen; the padding cells read_csv adds
+            # to a short row are empty and drop out.
+            first_row = (
+                " ".join(str(cell) for cell in df.iloc[0] if pd.notna(cell))
+                if len(df) == 1
+                else str(df.iloc[0, 0])
+            )
+            lowered = first_row.lower()
+            if "error" in lowered or NO_DATA_PROSE_MARKER in lowered:
+                error_msg = first_row
                 # Distinguish between "no data" (expected) and other errors (unexpected)
-                if STATION_NO_DATA_MARKER in first_cell.lower():
+                if STATION_NO_DATA_MARKER in lowered:
                     # Station has no data - expected operational condition
                     self.log(
                         f"NOAA CO-OPS station has no data for {url}: {error_msg}",
@@ -387,6 +408,13 @@ class CoopsApi(BaseApiClient):
                         location_code=location_code,
                     )
                     raise StationUnavailableError(error_msg)
+                elif NO_DATA_PROSE_MARKER in lowered:
+                    # A "<product> data was found" answer that is not the stable
+                    # "no data" one, classified like the same prose arriving as
+                    # an error body: a transient rejection worth retrying.
+                    raise RetryableClientError(
+                        f"NOAA CO-OPS returned an error row for {url}: {error_msg}"
+                    )
                 else:
                     # Other API error - unexpected, needs investigation
                     self.log(

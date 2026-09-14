@@ -170,6 +170,12 @@ Review the plan before every apply. The module now owns fourteen log-based
 metrics, one dashboard, and ten `[Terraform][Shadow]` alert policies with no
 notification channels. It does not change pre-Terraform monitoring.
 
+An apply that creates a log-based metric and, in the same run, alert policies
+that reference it can fail on the policies with "Cannot find metric(s)": the
+metric takes up to ten minutes to become visible to Cloud Monitoring after
+creation. The metric and everything else still apply. Wait ten minutes, plan
+again, and apply the remaining policies; nothing needs changing.
+
 ## Capture job shadow policies
 
 Six shadow policies watch the capture job, the first two following the dead-man

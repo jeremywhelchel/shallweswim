@@ -267,6 +267,14 @@ Notes:
   prediction feed is stale when the requested time leaves the fetched window,
   an observation feed by the age of its latest observation. Decide with
   shadow-mode data, not before.
+- CO-OPS can answer a tide prediction request with HTTP 200, a CSV header
+  line, and then the prose "No Predictions data was found. Please make sure
+  the Datum input is valid." (seen for NYC and SAN on 2026-09-14 13:07 UTC). The error-body check passes it because the header
+  has commas, and the first-cell check looks for the word "error", which that
+  phrase lacks, so it surfaces as a terminal datetime-parse failure at ERROR
+  with no retry. Recognize the "data was found" phrase in the first cell as a
+  retryable error body like the prose form; carry-forward kept the previous
+  tides meanwhile.
 - NWIS returns an empty body for years before a site's record begins (Austin
   2011 and 2012); the client reports it as a JSON parse error instead of
   station-unavailable, which logs at ERROR and lists the years as failed.
@@ -311,11 +319,13 @@ Notes:
 
 ### Runtime And Deployment
 
-- Re-enable the GitHub continuous-deployment trigger (run by a Cloud
-  Scheduler job in `us-east4` every eight hours) once active development
-  returns to GitHub `main`. It was disabled on 2026-09-14 because active
-  development is not happening on GitHub, so the trigger would redeploy an
-  older `main` over work deployed with `build_and_deploy.sh`.
+- Resume the GitHub continuous-deployment schedule once active development
+  returns to GitHub `main`. On 2026-09-14 the Cloud Build trigger was marked
+  disabled and, because a disabled trigger still runs when Cloud Scheduler
+  calls its run API (it deployed an older `main` twice over a
+  `build_and_deploy.sh` deploy), the Cloud Scheduler job in `us-east4` that
+  invokes it every eight hours was paused as well. Resuming means unpausing
+  the scheduler job and clearing the trigger's disabled flag.
 - Evaluate Cloud Run second generation for performance, startup behavior, and
   operational simplicity. Compare with the current generation under a realistic
   startup and plotting workload before changing production.

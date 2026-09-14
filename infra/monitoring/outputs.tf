@@ -19,5 +19,6 @@ output "logging_metric_names" {
     google_logging_metric.updater_run_duration.name,
     google_logging_metric.snapshot_publishes.name,
     google_logging_metric.snapshot_publish_duration.name,
+    google_logging_metric.snapshot_feed_age.name,
   ]
 }

@@ -30,8 +30,9 @@ by the web service. `SHALLWESWIM_ARCHIVE_BUCKET` (a bucket name without
 managed operations dashboard shows archive merges per hour by outcome, capture
 runs per hour by outcome, snapshot publishes per hour by outcome, maximum
 published feed age by feed per hour, new and revised observations per hour by
-source, and merge duration p95 by source per hour. The capture job runs hourly, so these tiles align on the hour rather than
-on five minutes. Failed merges are one colour of the hourly outcome stack
+source, and merge duration p95 by source per hour. The capture job runs every
+ten minutes; the tiles still total per hour so the bars stay readable. Failed
+merges are one colour of the hourly outcome stack
 instead of a separate tile; the archive merge failure shadow policy covers that
 signal.
 
@@ -185,7 +186,7 @@ dashboard's fourteen tiles, including the two MQL `sum_from` data sets. It
 cannot emulate Cloud Logging ingestion.
 
 Review the plan before every apply. The module now owns seventeen log-based
-metrics, one dashboard, and eleven `[Terraform][Shadow]` alert policies with no
+metrics, one dashboard, and twelve `[Terraform][Shadow]` alert policies with no
 notification channels. It does not change pre-Terraform monitoring.
 
 An apply that creates a log-based metric and, in the same run, alert policies
@@ -201,9 +202,11 @@ switch design in `OBSERVABILITY_DESIGN.md`:
 
 - **Capture job heartbeat**: a metric-absence condition on
   `shallweswim_updater_runs` restricted to `outcome` `success` or `partial`,
-  firing after 3 hours without either, which is three missed hourly runs. A
-  `partial` run still proves the job executed. Absence conditions evaluate only
-  a metric that has produced data, so this policy is trustworthy only once the
+  firing after 30 minutes without either, which is three missed ten-minute
+  runs. A `partial` run still proves the job executed. The web service serves
+  only what this job publishes, so this is the pipeline's dead-man switch and
+  the first shadow policy to promote. Absence conditions evaluate only a
+  metric that has produced data, so this policy is trustworthy only once the
   run counter has been populated by real runs.
 - **Archive merge failures**: a threshold condition on
   `shallweswim_archive_merges` with `outcome="failed"` over a one-hour
@@ -214,18 +217,25 @@ switch design in `OBSERVABILITY_DESIGN.md`:
   one-hour alignment. The thresholds come from the feed health rule, the
   expiration interval plus 15 minutes: 1500s for `live_temps`, 11700s for
   `historic_temps`, and 87300s for `tides` and `currents`. The metric is a
-  distribution, which has no maximum aligner, and the hourly job contributes
-  one sample per feed and location per hour, so the hour's 99th percentile is
-  that hour's maximum age. These thresholds are first guesses to be tuned on
-  the baseline.
+  distribution, which has no maximum aligner, and the ten-minute job
+  contributes six samples per feed and location per hour, so the hour's 99th
+  percentile is effectively that hour's maximum age. These thresholds are
+  first guesses to be tuned on the baseline.
 
-A seventh shadow policy, **Snapshot load lag**, watches the web service
-instead of the job: a threshold condition on
-`shallweswim_snapshot_load_lag_seconds` over a one-hour alignment, scoped to
-`resource.type = "cloud_run_revision"`. The threshold is 7200 seconds, one
-hourly capture job cadence plus the check interval, with margin; it tightens
-once the capture job moves to a ten-minute cadence. Like the snapshot
-freshness thresholds, this is a first guess to be tuned on the baseline.
+Two more shadow policies watch the web service instead of the job, both
+scoped to `resource.type = "cloud_run_revision"`:
+
+- **Snapshot load lag**: a threshold condition on
+  `shallweswim_snapshot_load_lag_seconds` over a one-hour alignment. The
+  threshold is 1800 seconds, three ten-minute cadences; the observed lag is
+  under a minute. It catches an instance whose refresh path is stuck. It
+  cannot catch a job that stopped publishing, because the lag is recorded
+  only when a load happens; the heartbeat above covers that.
+- **Snapshot load failures**: a threshold condition on
+  `shallweswim_snapshot_loads` with `outcome="failed"`, more than two in a
+  fifteen-minute alignment. A single failure retries a check interval later
+  while the instance keeps serving; repeated failures mean an instance cannot
+  read the store at all.
 
 Promotion is the same rule as the other shadow policies: review the policy's
 production behavior over a real baseline period, choose notification channels

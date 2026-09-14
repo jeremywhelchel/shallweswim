@@ -327,8 +327,8 @@ resource "google_monitoring_dashboard" "operations" {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
                     filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.snapshot_feed_age.name}\""
-                    # One hourly publish per feed and location makes the hour's
-                    # 99th percentile that hour's maximum published age.
+                    # Six publishes per feed and location an hour make the
+                    # hour's 99th percentile effectively its maximum age.
                     aggregation = {
                       alignmentPeriod    = "3600s"
                       perSeriesAligner   = "ALIGN_PERCENTILE_99"

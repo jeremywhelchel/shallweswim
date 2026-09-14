@@ -116,7 +116,7 @@ run "monitoring_plan" {
 
   assert {
     condition = (
-      google_monitoring_alert_policy.capture_job_heartbeat.conditions[0].condition_absent[0].duration == "10800s" &&
+      google_monitoring_alert_policy.capture_job_heartbeat.conditions[0].condition_absent[0].duration == "1800s" &&
       strcontains(
         google_monitoring_alert_policy.capture_job_heartbeat.conditions[0].condition_absent[0].filter,
         "resource.type = \"cloud_run_job\""
@@ -126,19 +126,31 @@ run "monitoring_plan" {
         "resource.type = \"cloud_run_job\""
       )
     )
-    error_message = "The capture job policies must watch the job resource with the reviewed 3 hour heartbeat window."
+    error_message = "The capture job policies must watch the job resource with the reviewed 30 minute heartbeat window."
   }
 
   assert {
     condition = (
-      google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].threshold_value == 7200 &&
+      google_monitoring_alert_policy.snapshot_load_failures.conditions[0].condition_threshold[0].threshold_value == 2 &&
+      google_monitoring_alert_policy.snapshot_load_failures.conditions[0].condition_threshold[0].aggregations[0].alignment_period == "900s" &&
+      strcontains(
+        google_monitoring_alert_policy.snapshot_load_failures.conditions[0].condition_threshold[0].filter,
+        "metric.label.outcome = \"failed\""
+      )
+    )
+    error_message = "The snapshot load failures policy must count failed loads over a fifteen minute window."
+  }
+
+  assert {
+    condition = (
+      google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].threshold_value == 1800 &&
       google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].aggregations[0].alignment_period == "3600s" &&
       strcontains(
         google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].filter,
         "resource.type = \"cloud_run_revision\""
       )
     )
-    error_message = "The snapshot load lag policy must watch the service resource with the reviewed 7200 second threshold over a one hour window."
+    error_message = "The snapshot load lag policy must watch the service resource with the reviewed 1800 second threshold over a one hour window."
   }
 
   assert {
@@ -217,6 +229,7 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.repeated_feed_failures,
         google_monitoring_alert_policy.plot_generation_failure,
         google_monitoring_alert_policy.snapshot_load_lag,
+        google_monitoring_alert_policy.snapshot_load_failures,
         google_monitoring_alert_policy.capture_job_heartbeat,
         google_monitoring_alert_policy.archive_merge_failures,
         ], values(google_monitoring_alert_policy.snapshot_feed_freshness)) : (

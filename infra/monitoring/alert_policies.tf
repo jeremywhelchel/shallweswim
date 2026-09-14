@@ -11,8 +11,8 @@ locals {
   # Per-feed-type snapshot freshness thresholds, in seconds, from the existing
   # feed health rule: the feed's expiration interval plus 15 minutes. A feed
   # whose published frame is older than its threshold is being carried forward
-  # across runs rather than refreshed. The capture job publishes hourly, so one
-  # hour of samples holds one value per feed and location.
+  # across runs rather than refreshed. The capture job publishes every ten
+  # minutes, so an hour of samples holds six values per feed and location.
   snapshot_freshness_thresholds = {
     live_temps     = 1500
     historic_temps = 11700
@@ -175,16 +175,16 @@ resource "google_monitoring_alert_policy" "snapshot_load_lag" {
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: the web service loaded a bundle generation whose publication lag exceeded 7200 seconds in the last hour, one hourly capture job cadence plus the check interval, with margin. This threshold tightens when the capture job moves to a ten minute cadence. This policy deliberately sends no notifications while its threshold is baselined."
+    content   = "Shadow policy: the web service loaded a bundle generation whose publication lag exceeded 1800 seconds in the last hour, three ten-minute capture job cadences; the observed lag is under a minute. This catches an instance whose refresh path is stuck, not a job that stopped publishing, which the capture job heartbeat catches. This policy deliberately sends no notifications while its threshold is baselined."
   }
 
   conditions {
-    display_name = "Snapshot load lag p99 > 7200s in 1h"
+    display_name = "Snapshot load lag p99 > 1800s in 1h"
 
     condition_threshold {
       filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.snapshot_load_lag.name}\" AND ${local.cloud_run_resource_filter}"
       comparison      = "COMPARISON_GT"
-      threshold_value = 7200
+      threshold_value = 1800
       duration        = "0s"
 
       # The metric is a distribution, which has no max aligner; the hour's
@@ -194,6 +194,41 @@ resource "google_monitoring_alert_policy" "snapshot_load_lag" {
         per_series_aligner   = "ALIGN_PERCENTILE_99"
         cross_series_reducer = "REDUCE_MAX"
         group_by_fields      = ["metric.label.outcome"]
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "snapshot_load_failures" {
+  display_name          = "[Terraform][Shadow] Snapshot load failures"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = []
+  severity              = "WARNING"
+  user_labels           = local.shadow_alert_labels
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Shadow policy: the web service logged three or more failed bundle loads within fifteen minutes. A single failure retries a check interval later and the instance keeps serving its loaded generation; repeated failures mean an instance cannot read the store at all. The load lag policy catches slowness, this catches inability. This policy deliberately sends no notifications while its threshold is baselined."
+  }
+
+  conditions {
+    display_name = "At least 3 failed snapshot loads in 15m"
+
+    condition_threshold {
+      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.snapshot_loads.name}\" AND ${local.cloud_run_resource_filter} AND metric.label.outcome = \"failed\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 2
+      duration        = "0s"
+
+      aggregations {
+        alignment_period     = "900s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
       }
 
       trigger {
@@ -213,18 +248,18 @@ resource "google_monitoring_alert_policy" "capture_job_heartbeat" {
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: the hourly capture job reported no success or partial run summary for 3 hours, which is three missed runs. A partial run still proves the job executed. This dead-man policy deliberately sends no notifications while its window is baselined; it can only fire once the metric has produced data, so confirm the run counter is populated before trusting its silence."
+    content   = "Shadow policy: the ten-minute capture job reported no success or partial run summary for 30 minutes, which is three missed runs. A partial run still proves the job executed. The web service serves only what this job publishes, so this is the pipeline's dead-man switch and the first shadow policy to promote. It deliberately sends no notifications while its window is baselined; it can only fire once the metric has produced data, so confirm the run counter is populated before trusting its silence."
   }
 
   conditions {
-    display_name = "No successful or partial capture run in 3h"
+    display_name = "No successful or partial capture run in 30m"
 
     condition_absent {
       filter   = "metric.type = \"${local.metric_prefix}/${google_logging_metric.updater_runs.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.outcome = one_of(\"success\", \"partial\")"
-      duration = "10800s"
+      duration = "1800s"
 
       aggregations {
-        alignment_period     = "3600s"
+        alignment_period     = "600s"
         per_series_aligner   = "ALIGN_SUM"
         cross_series_reducer = "REDUCE_SUM"
       }
@@ -296,9 +331,9 @@ resource "google_monitoring_alert_policy" "snapshot_feed_freshness" {
       threshold_value = each.value
       duration        = "0s"
 
-      # The metric is a distribution, which has no max aligner; with one hourly
-      # publish per feed and location, the hour's 99th percentile is that
-      # hour's maximum sample.
+      # The metric is a distribution, which has no max aligner; with six
+      # publishes per feed and location an hour, the hour's 99th percentile is
+      # effectively that hour's maximum sample.
       aggregations {
         alignment_period     = "3600s"
         per_series_aligner   = "ALIGN_PERCENTILE_99"

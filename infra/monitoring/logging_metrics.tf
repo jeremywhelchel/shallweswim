@@ -444,9 +444,12 @@ resource "google_logging_metric" "snapshot_feed_age" {
       description = "Semantic feed name."
     }
     labels {
-      key         = "outcome"
-      value_type  = "STRING"
-      description = "One of success, held, or carried; absent carries no age."
+      key        = "outcome"
+      value_type = "STRING"
+      # Label descriptions are immutable on a log-based metric: changing this
+      # string replaces the metric and erases its history. The outcome set is
+      # documented in README.md; it now includes held.
+      description = "One of success or carried; absent carries no age."
     }
   }
 

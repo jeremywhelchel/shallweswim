@@ -14,6 +14,11 @@ from typing import Literal
 from shallweswim.archive.store import ObjectStore, VersionConflictError
 from shallweswim.snapshot.model import CurrentPointer, Manifest
 
+# The bucket whose `published/` prefix a reader loads generations from. The web
+# service sets it to enable shadow mode; the comparison command requires it. It
+# is read-only and distinct from the archive write and hydration variables.
+SNAPSHOT_READ_BUCKET_ENV_VAR = "SHALLWESWIM_SNAPSHOT_READ_BUCKET"
+
 OBJECTS_PREFIX = "published/objects"
 MANIFESTS_PREFIX = "published/manifests"
 CURRENT_KEY = "published/current.json"

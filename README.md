@@ -508,8 +508,8 @@ content-addressed Parquet objects (one per served feed frame) and SVG objects
 (one per plot) under `published/objects/`, a manifest under
 `published/manifests/`, and finally the `published/current.json` pointer,
 replaced conditionally. A generation identical to the current one is not
-written. Nothing reads these objects yet; they exist so object sizes and
-publication cost are observed in production first.
+written. The web service reads these generations in shadow mode, described
+below, but still serves only its own fetched data.
 
 Every configured feed of every enabled location is reported. A feed that
 fetched nothing this run keeps the entry the current generation published for
@@ -530,6 +530,107 @@ feed restores past years from the archive instead of refetching them; a
 publishing run always uses the full historical range. A failed publish is
 logged, does not change the run's outcome or exit code, and is named in the run
 summary. The web service sets neither variable.
+
+##### Shadow Mode: Reading Published Snapshots
+
+`SHALLWESWIM_SNAPSHOT_READ_BUCKET` names the bucket whose `published/` prefix
+the app reads. Setting it enables shadow mode; unset, no snapshot code path is
+active and the app behaves exactly as it does without it. It is read-only:
+loading calls only the store's read operation, so the credential needs no more
+than `roles/storage.objectViewer` on the bucket. It is deliberately distinct
+from `SHALLWESWIM_ARCHIVE_BUCKET`, which enables writes, and from
+`SHALLWESWIM_ARCHIVE_READ_BUCKET`, which hydrates historical years; the
+deployed service sets only the snapshot read bucket, substituted from the same
+Cloud Build value as the job's bucket.
+
+```bash
+SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
+  uv run python -m shallweswim.main --port=12345
+```
+
+In shadow mode nothing on the user path changes: every response, health check,
+and status field still comes from the in-process fetching managers. The
+instance additionally loads the current generation at startup, bounded to 20
+seconds, and keeps it current. A startup failure or timeout is logged and the
+instance starts without a generation; readiness is unaffected.
+
+Refresh is request-piggybacked. An HTTP middleware runs on every request,
+health checks included: when 60 seconds have elapsed since the last check and
+no check is in flight, that request is elected and awaits the check before its
+handler runs, and concurrent requests proceed immediately. A check reads
+`published/current.json`. If it names the loaded generation, nothing else
+happens. If it names a new one, the instance reads that manifest and only the
+objects whose content-addressed keys it does not already hold, eight at a time,
+validates every frame through its feed model, builds the read-only per-location
+managers, and swaps them in with one assignment, so a request running during
+the swap finishes on the generation it started with. A location the generation
+does not carry simply has no manager. A failed check schedules the next one a
+full interval later, never sooner. The app never lists `published/manifests/`
+and never deletes anything.
+
+Each load that does work logs one structured event with
+`component=snapshot operation=load`, `outcome` `success` or `failed`, the
+`generation_id`, `duration_ms`, `record_count` as the objects read, and
+`age_seconds` as the lag between the job publishing the generation and this
+instance picking it up. An unchanged check logs nothing above DEBUG. There is
+no new route: the load events carry the platform's instance identity, which
+answers "is every instance loading the bundle" better than an endpoint can.
+
+To roll back, unset the variable and redeploy, or redeploy the previous
+revision; shadow mode cannot change a response.
+
+##### Comparing The Published Bundle With A Local Fetch
+
+Shadow mode proves that instances can load and refresh the bundle. Whether
+serving *from* the bundle is equivalent to serving from in-process fetches is
+answered by a separate local command, because one local process can hold both
+sides in memory at once exactly as a production instance would. The command
+never runs in production:
+
+```bash
+SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
+  uv run python -m shallweswim.scripts.compare_snapshot
+
+# One location, at a chosen local instant
+SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
+  uv run python -m shallweswim.scripts.compare_snapshot \
+  --location nyc --at 2026-06-01T04:00:00
+```
+
+It fetches every enabled location from the providers exactly as the web service
+does, loads the current generation from the read bucket, and asks both sides the
+same questions at one location-local instant (now, or `--at`, applied as each
+location's own local time). It hydrates nothing: `SHALLWESWIM_ARCHIVE_BUCKET`
+and `SHALLWESWIM_ARCHIVE_READ_BUCKET` are removed from the run's environment
+even when `.env` sets them, so the legacy side is a pure provider fetch that
+writes nothing. Only the viewer credential is needed:
+`roles/storage.objectViewer` on the bucket, the same grant shadow mode uses. A
+missing `SHALLWESWIM_SNAPSHOT_READ_BUCKET` fails as a usage error before any
+upstream request.
+
+The report is one table per location, then the differing rows. Each configured
+feed gets one outcome: `missing` (only the legacy side has data, expected while
+the job's own fetch of that feed fails), `extra` (only the bundle has data,
+expected when the local fetch failed), `absent` (neither side has data),
+`disjoint` (both have data but share no timestamp, so the bundle is too stale to
+compare), `mismatch`, or `match`. Alongside it: how many timestamps the two
+sides share, how many of those differ, the largest absolute difference, each
+side's first and last timestamp, and the lag between the two latest timestamps,
+which is the bundle's lag for that feed. Float columns agree within a relative
+tolerance of 1e-6 and every other column must agree exactly; a mismatch also
+lists the first 20 differing rows with both values. A feed mismatches when a
+derived answer differs even if its rows agree: `get_tide_info_at_time` and
+`predict_tide_at_time` for tides, `predict_flow_at_time` for prediction
+currents, and `get_current_temperature` for live temperature when both frames
+end at the same timestamp. Each location also reports which plots exist on each
+side; plot bytes are not compared, because the two sides draw different fetch
+windows.
+
+The command exits 0 only when every feed is `match`, `extra`, or `absent`, so it
+can run in a loop for days and its exit status is the verdict. Historical
+temperature frames should agree on overlap except where a provider revised a
+reading between the two fetches; investigate every such mismatch rather than
+loosening the rule.
 
 ##### Hydrating Local Historical Temperatures From The Archive
 

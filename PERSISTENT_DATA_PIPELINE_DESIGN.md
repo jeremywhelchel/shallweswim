@@ -1340,7 +1340,7 @@ memory. The job is the only process that talks to providers.
 
 #### Shadow Mode Contract
 
-Status: contract; implementation pending.
+Status: the web half is implemented; each part below carries its own marker.
 
 In shadow mode a web instance keeps fetching and serving exactly as today,
 and additionally loads the bundle and keeps it current. Nothing on the user
@@ -1354,7 +1354,7 @@ the production bundle holds both sides in memory exactly as a production
 instance would. The comparison therefore never runs in production, and the
 web service carries no code that cutover would delete.
 
-Configuration:
+Configuration (implemented in `main.py`, `service.yaml`, and `cloudbuild.yaml`):
 
 - `SHALLWESWIM_SNAPSHOT_READ_BUCKET` names the bucket whose `published/`
   prefix the web reads. Setting it enables shadow mode; unset, no snapshot
@@ -1374,7 +1374,8 @@ Configuration:
   comparison command runs.
 
 Serving state from a generation (implemented in `snapshot/manager.py` and
-`core/serving.py`; not yet wired into the web service):
+`core/serving.py`; built and held by the shadow state, and read by nothing
+until cutover):
 
 - A read-only per-location manager (`SnapshotLocationManager`) is
   constructed from a loaded generation: the location's frames, plot bytes,
@@ -1396,7 +1397,8 @@ Serving state from a generation (implemented in `snapshot/manager.py` and
   rules, so bundle-served data has the same health semantics. In shadow mode
   this status is not exposed through `/api/status`.
 
-Loading and refresh:
+Loading and refresh (implemented in `snapshot/load.py`, `snapshot/refresh.py`,
+and the `main.py` lifespan and middleware):
 
 - Startup: the lifespan loads the current generation with a bounded timeout
   of 20 seconds. In shadow mode a failure or timeout is logged and the
@@ -1431,7 +1433,9 @@ Loading and refresh:
   because a sustained failure pages through the bundle-age alert rather than
   through log lines.
 
-Comparison (a local command, never production):
+Comparison (a local command, never production; implemented in
+`shallweswim/scripts/compare_snapshot.py`, with the pure comparison core unit
+tested and the fetch-and-load plumbing exercised only by running it):
 
 - `uv run python -m shallweswim.scripts.compare_snapshot` runs in a process
   that builds the legacy managers exactly as the web service does (fetching
@@ -1446,6 +1450,8 @@ Comparison (a local command, never production):
     forward.
   - `extra`: the bundle has data and the legacy manager has none. Expected
     when the local fetch failed.
+  - `absent`: neither side has data for a configured feed. Expected only
+    for a source that is down on both paths.
   - `disjoint`: both have data and their indexes share no timestamp; the
     bundle is too stale to compare.
   - `mismatch`: on the shared timestamps any value differs (floats compared
@@ -1469,7 +1475,7 @@ Comparison (a local command, never production):
   known divergences of the archive-hydration path (NDBC's first year, CO-OPS
   fall-back rows) are expected to show up here and are decided then.
 
-Visibility: no new route. The load events carry the platform's instance
+Visibility (implemented): no new route. The load events carry the platform's instance
 identity, which answers "is every instance loading the bundle" better than
 an endpoint can, because the load balancer sends a request to one arbitrary
 instance. At cutover `/api/status` gains the loaded generation id and load
@@ -1486,8 +1492,8 @@ fetching from the web; any job change beyond carry-forward; a filesystem
 snapshot store for the web, which is the local entry point's concern; and
 garbage collection of old generations.
 
-Rollback: unset the variable and redeploy, or redeploy the previous revision.
-Shadow mode cannot change a response.
+Rollback (implemented): unset the variable and redeploy, or redeploy the
+previous revision. Shadow mode cannot change a response.
 
 Exit criteria before the cutover contract is written:
 

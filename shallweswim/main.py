@@ -8,6 +8,7 @@ data to help determine if swimming conditions are favorable.
 
 # Standard library imports
 import argparse
+import asyncio
 import contextlib
 import datetime
 import json
@@ -33,9 +34,34 @@ from fastapi import HTTPException, Request, Response, responses, templating
 from shallweswim import api, canonical, config
 
 # Local imports
+from shallweswim.archive.store import gcs_store
 from shallweswim.assets import AssetManager, FingerprintStaticFiles, load_asset_manifest
 from shallweswim.compression import SelectiveGZipMiddleware
 from shallweswim.logging_utils import setup_logging
+from shallweswim.snapshot.refresh import SnapshotState
+from shallweswim.snapshot.store import SNAPSHOT_READ_BUCKET_ENV_VAR, SnapshotStore
+
+
+async def start_snapshot_shadow(app: fastapi.FastAPI) -> None:
+    """Load the published snapshot bundle alongside the fetching managers.
+
+    Shadow mode proves the load and refresh mechanism in production; nothing
+    served reads the result. Startup is never blocked or failed by it: the
+    initial load is bounded and its failure leaves an empty state in place.
+
+    Args:
+        app: The FastAPI application, whose `state.snapshot` is set to the
+            shadow state, or to None when shadow mode is disabled.
+    """
+    bucket = os.environ.get(SNAPSHOT_READ_BUCKET_ENV_VAR, "").strip()
+    if not bucket:
+        app.state.snapshot = None
+        return
+    logging.info(f"[snapshot] shadow mode reading published/ from {bucket}")
+    store = SnapshotStore(await asyncio.to_thread(gcs_store, bucket))
+    state = SnapshotState(store)
+    app.state.snapshot = state
+    await state.initial_load()
 
 
 @contextlib.asynccontextmanager
@@ -66,6 +92,8 @@ async def lifespan(app: fastapi.FastAPI) -> AsyncGenerator[None]:
             app=app,  # Pass the app instance
             wait_for_data=False,  # Don't block app startup waiting for data
         )
+
+        await start_snapshot_shadow(app)
 
         yield  # Run the app
 
@@ -150,6 +178,23 @@ async def redirect_trailing_slash_canonical_app_routes(
     )
     if redirect_url:
         return responses.RedirectResponse(redirect_url, status_code=301)
+
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def refresh_snapshot_shadow(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Elect this request to refresh the shadow snapshot when one is due.
+
+    Every request is a candidate, health checks included, because an idle
+    instance must still notice a new generation. The elected request awaits the
+    check before its handler runs; concurrent requests proceed immediately.
+    """
+    state = getattr(request.app.state, "snapshot", None)
+    if state is not None:
+        await state.check_and_refresh()
 
     return await call_next(request)
 

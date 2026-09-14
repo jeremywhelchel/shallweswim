@@ -200,8 +200,11 @@ def _location_counts(
     return attempted, published, record_count, CaptureResult(new_count, revised_count)
 
 
-async def _serve_location(manager: LocationDataManager) -> None:
+async def serve_location(manager: LocationDataManager) -> None:
     """Run one location's serving cycle to completion.
+
+    The comparison command (`scripts/compare_snapshot.py`) reuses this so its
+    legacy side is exactly the state the publisher publishes from.
 
     A feed whose update raises has already logged the failure at ERROR and
     scheduled its retry a minute out, so re-entering the cycle skips it and
@@ -250,7 +253,7 @@ async def _publish_locations(
             LocationDataManager(location_config, clients, pool)
             for location_config in config_lib.CONFIGS.values()
         ]
-        await asyncio.gather(*(_serve_location(manager) for manager in managers))
+        await asyncio.gather(*(serve_location(manager) for manager in managers))
         await asyncio.gather(
             *(manager.wait_for_plots(PLOT_HARD_TIMEOUT) for manager in managers)
         )

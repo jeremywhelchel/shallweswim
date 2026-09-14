@@ -21,14 +21,24 @@ The job manifest sets three application variables:
   instead of refetching them; a publishing run always uses the full historical
   range. It is required whenever publishing is enabled.
 
-`service.yaml` sets none of them.
+`service.yaml` sets none of them. It sets one bucket variable of its own,
+`SHALLWESWIM_SNAPSHOT_READ_BUCKET`, substituted from the same placeholder, which
+only reads the generations this job publishes.
 
 **The invariant: this job is the only production writer to the archive.** The
 web runtime identity `shallweswim-runtime@shallweswim.iam.gserviceaccount.com`
-receives no binding on the archive bucket, and `service.yaml` never sets
-`SHALLWESWIM_ARCHIVE_BUCKET`, so the multi-instance web service cannot write
-archive objects even accidentally. Keep it that way: enabling capture in the web
-service would reintroduce concurrent writers from every serving instance.
+holds `roles/storage.objectViewer` on the archive bucket and nothing more, and
+`service.yaml` never sets `SHALLWESWIM_ARCHIVE_BUCKET`, so the multi-instance
+web service can read published generations but cannot write archive objects even
+accidentally. Keep it that way: enabling capture in the web service would
+reintroduce concurrent writers from every serving instance.
+
+```bash
+gcloud storage buckets add-iam-policy-binding \
+  "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
+  --member="serviceAccount:shallweswim-runtime@shallweswim.iam.gserviceaccount.com" \
+  --role=roles/storage.objectViewer
+```
 
 Bucket creation and the log-based metrics and dashboard that observe this job
 live in [`../monitoring/README.md`](../monitoring/README.md). This file owns the
@@ -112,9 +122,12 @@ gcloud storage buckets add-iam-policy-binding \
   --role=roles/storage.objectViewer
 ```
 
+The web runtime identity takes the same read-only grant so the service can load
+published generations in shadow mode (see the invariant above for the command).
+
 Do not grant `shallweswim-capture` anything else, do not grant the web runtime
-identity any archive bucket role, and do not leave any local identity holding a
-write role on the bucket.
+identity any role on the archive bucket beyond `roles/storage.objectViewer`, and
+do not leave any local identity holding a write role on the bucket.
 
 ## Continuous build trigger
 

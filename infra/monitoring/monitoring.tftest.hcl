@@ -25,6 +25,9 @@ run "monitoring_plan" {
         google_logging_metric.snapshot_publishes,
         google_logging_metric.snapshot_publish_duration,
         google_logging_metric.snapshot_feed_age,
+        google_logging_metric.snapshot_loads,
+        google_logging_metric.snapshot_load_duration,
+        google_logging_metric.snapshot_load_lag,
       ] : strcontains(metric.filter, "resource.labels.service_name=\"shallweswim\"")
     ])
     error_message = "Every metric must be scoped to the configured Cloud Run service."
@@ -47,6 +50,9 @@ run "monitoring_plan" {
         google_logging_metric.snapshot_publishes,
         google_logging_metric.snapshot_publish_duration,
         google_logging_metric.snapshot_feed_age,
+        google_logging_metric.snapshot_loads,
+        google_logging_metric.snapshot_load_duration,
+        google_logging_metric.snapshot_load_lag,
       ] : strcontains(metric.filter, "resource.labels.job_name=\"shallweswim-capture\"")
     ])
     error_message = "Every metric must also match the capture job, which is the archive's only production writer."
@@ -64,7 +70,10 @@ run "monitoring_plan" {
       length(google_logging_metric.updater_run_duration.metric_descriptor[0].labels) == 1 &&
       length(google_logging_metric.snapshot_publishes.metric_descriptor[0].labels) == 1 &&
       length(google_logging_metric.snapshot_publish_duration.metric_descriptor[0].labels) == 1 &&
-      length(google_logging_metric.snapshot_feed_age.metric_descriptor[0].labels) == 3
+      length(google_logging_metric.snapshot_feed_age.metric_descriptor[0].labels) == 3 &&
+      length(google_logging_metric.snapshot_loads.metric_descriptor[0].labels) == 1 &&
+      length(google_logging_metric.snapshot_load_duration.metric_descriptor[0].labels) == 1 &&
+      length(google_logging_metric.snapshot_load_lag.metric_descriptor[0].labels) == 1
     )
     error_message = "Metric label sets must remain bounded by the reviewed contracts."
   }
@@ -79,7 +88,9 @@ run "monitoring_plan" {
       google_logging_metric.snapshot_publish_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
       google_logging_metric.archive_merge_new_rows.value_extractor == "EXTRACT(jsonPayload.new_count)" &&
       google_logging_metric.archive_merge_revised_rows.value_extractor == "EXTRACT(jsonPayload.revised_count)" &&
-      google_logging_metric.snapshot_feed_age.value_extractor == "EXTRACT(jsonPayload.age_seconds)"
+      google_logging_metric.snapshot_feed_age.value_extractor == "EXTRACT(jsonPayload.age_seconds)" &&
+      google_logging_metric.snapshot_load_duration.value_extractor == "EXTRACT(jsonPayload.duration_ms)" &&
+      google_logging_metric.snapshot_load_lag.value_extractor == "EXTRACT(jsonPayload.age_seconds)"
     )
     error_message = "Distribution metrics must extract the reviewed numeric JSON fields."
   }
@@ -93,12 +104,14 @@ run "monitoring_plan" {
         google_logging_metric.archive_merge_revised_rows,
         google_logging_metric.archive_merge_duration,
         google_logging_metric.snapshot_feed_age,
+        google_logging_metric.snapshot_loads,
+        google_logging_metric.snapshot_load_lag,
         ] : strcontains(
         google_monitoring_dashboard.operations.dashboard_json,
         "${local.metric_prefix}/${metric.name}"
       )
     ])
-    error_message = "The operations dashboard must show the capture run, snapshot publish, snapshot freshness, and archive row metrics."
+    error_message = "The operations dashboard must show the capture run, snapshot publish, snapshot freshness, snapshot load, and archive row metrics."
   }
 
   assert {
@@ -114,6 +127,18 @@ run "monitoring_plan" {
       )
     )
     error_message = "The capture job policies must watch the job resource with the reviewed 3 hour heartbeat window."
+  }
+
+  assert {
+    condition = (
+      google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].threshold_value == 7200 &&
+      google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].aggregations[0].alignment_period == "3600s" &&
+      strcontains(
+        google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].filter,
+        "resource.type = \"cloud_run_revision\""
+      )
+    )
+    error_message = "The snapshot load lag policy must watch the service resource with the reviewed 7200 second threshold over a one hour window."
   }
 
   assert {
@@ -161,7 +186,7 @@ run "monitoring_plan" {
 
   assert {
     condition = (
-      length(jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles) == 12 &&
+      length(jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles) == 14 &&
       alltrue([
         for title in [
           "Archive merges per hour by outcome",
@@ -169,6 +194,8 @@ run "monitoring_plan" {
           "Snapshot feed age max by feed per hour",
           "New observations per hour by source (estimated)",
           "Revised observations per hour by source (estimated)",
+          "Snapshot loads per hour by outcome",
+          "Snapshot load lag p99 per hour",
           ] : contains([
             for tile in jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles :
             tile.widget.title
@@ -179,7 +206,7 @@ run "monitoring_plan" {
         strcontains(tile.widget.title, "Failed archive merges")
       ])
     )
-    error_message = "The dashboard must keep twelve tiles, fold failed merges into the hourly outcome stack, and mark the estimated observation counts."
+    error_message = "The dashboard must keep fourteen tiles, fold failed merges into the hourly outcome stack, and mark the estimated observation counts."
   }
 
   assert {
@@ -189,6 +216,7 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.live_plot_availability_latency,
         google_monitoring_alert_policy.repeated_feed_failures,
         google_monitoring_alert_policy.plot_generation_failure,
+        google_monitoring_alert_policy.snapshot_load_lag,
         google_monitoring_alert_policy.capture_job_heartbeat,
         google_monitoring_alert_policy.archive_merge_failures,
         ], values(google_monitoring_alert_policy.snapshot_feed_freshness)) : (

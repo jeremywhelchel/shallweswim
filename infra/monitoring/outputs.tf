@@ -20,5 +20,8 @@ output "logging_metric_names" {
     google_logging_metric.snapshot_publishes.name,
     google_logging_metric.snapshot_publish_duration.name,
     google_logging_metric.snapshot_feed_age.name,
+    google_logging_metric.snapshot_loads.name,
+    google_logging_metric.snapshot_load_duration.name,
+    google_logging_metric.snapshot_load_lag.name,
   ]
 }

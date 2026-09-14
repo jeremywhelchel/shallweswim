@@ -372,6 +372,70 @@ resource "google_monitoring_dashboard" "operations" {
               }
             }
           }
+        },
+        {
+          yPos   = 28
+          width  = 6
+          height = 4
+          widget = {
+            title = "Snapshot loads per hour by outcome"
+            xyChart = {
+              dataSets = [{
+                plotType       = "STACKED_BAR"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.outcome}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.snapshot_loads.name}\" AND resource.type=\"cloud_run_revision\""
+                    aggregation = {
+                      alignmentPeriod    = "3600s"
+                      perSeriesAligner   = "ALIGN_SUM"
+                      crossSeriesReducer = "REDUCE_SUM"
+                      groupByFields      = ["metric.label.outcome"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "loads / hour"
+                scale = "LINEAR"
+              }
+            }
+          }
+        },
+        {
+          xPos   = 6
+          yPos   = 28
+          width  = 6
+          height = 4
+          widget = {
+            title = "Snapshot load lag p99 per hour"
+            xyChart = {
+              dataSets = [{
+                plotType       = "LINE"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.outcome}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.snapshot_load_lag.name}\" AND resource.type=\"cloud_run_revision\""
+                    # The metric is a distribution, which has no max aligner;
+                    # p99 over the hour approximates that hour's maximum load
+                    # lag, the same convention as the snapshot feed age tile.
+                    aggregation = {
+                      alignmentPeriod    = "3600s"
+                      perSeriesAligner   = "ALIGN_PERCENTILE_99"
+                      crossSeriesReducer = "REDUCE_MAX"
+                      groupByFields      = ["metric.label.outcome"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "seconds"
+                scale = "LOG10"
+              }
+            }
+          }
         }
       ]
     }

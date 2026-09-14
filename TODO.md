@@ -275,6 +275,17 @@ Notes:
   with no retry. Recognize the "data was found" phrase in the first cell as a
   retryable error body like the prose form; carry-forward kept the previous
   tides meanwhile.
+- First production run of `compare_snapshot` (2026-09-14, NYC): tides,
+  currents, and live temperature match; historic temperature differs on 9 of
+  137,651 hourly rows. Three rows (2025-06-01 12:00 to 14:00 UTC) hold values
+  the provider does not return today and carry `retrieved_at` 2026-09-14
+  01:30 UTC, which is no job execution, so a local process with the
+  temporary write grant merged them; the values look like the same day's
+  readings shifted by a few hours. Six rows in March and April 2022 differ by
+  0.1°F between the 2026-09-13 backfill and today's provider fetch. Find the
+  01:30 writer, decide whether those rows are revised back by a re-fetch of
+  2025, explain the 0.1°F rows, and downgrade the local operator to
+  `objectViewer` so local runs cannot write the production archive.
 - NWIS returns an empty body for years before a site's record begins (Austin
   2011 and 2012); the client reports it as a JSON parse error instead of
   station-unavailable, which logs at ERROR and lists the years as failed.

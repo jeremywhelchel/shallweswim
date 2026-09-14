@@ -6,9 +6,10 @@ substitutions:
   _REGION: "us-east4"
   _SERVICE_NAME: "shallweswim"
   _IMAGE_NAME: "${_REGION}-docker.pkg.dev/${PROJECT_ID}/gcr/${_SERVICE_NAME}"
-  # Installation-local archive bucket for the capture job. Empty by default so
-  # the repository never hard-codes a bucket name; build_and_deploy.sh supplies
-  # it from SHALLWESWIM_ARCHIVE_BUCKET and the deploy step fails if it is empty.
+  # Installation-local archive bucket for the capture job, and for the
+  # service's read-only snapshot shadow mode. Empty by default so the
+  # repository never hard-codes a bucket name; build_and_deploy.sh supplies it
+  # from SHALLWESWIM_ARCHIVE_BUCKET and both deploy steps fail if it is empty.
   _ARCHIVE_BUCKET: ""
 
 serviceAccount: "projects/shallweswim/serviceAccounts/shallweswim-ci@shallweswim.iam.gserviceaccount.com"
@@ -37,7 +38,16 @@ steps:
     args:
       - -c
       - |
-        sed "s|\$${IMAGE_TAG}|${BUILD_ID}|g" service.yaml > service-substituted.yaml
+        set -euo pipefail
+        if [ -z "${_ARCHIVE_BUCKET}" ]; then
+          echo "ERROR: _ARCHIVE_BUCKET substitution is empty." >&2
+          echo "Set SHALLWESWIM_ARCHIVE_BUCKET in the operator environment (see .env.example)" >&2
+          echo "and deploy with ./build_and_deploy.sh, which passes it as _ARCHIVE_BUCKET." >&2
+          exit 1
+        fi
+        sed -e "s|\$${IMAGE_TAG}|${BUILD_ID}|g" \
+            -e "s|\$${SHALLWESWIM_ARCHIVE_BUCKET}|${_ARCHIVE_BUCKET}|g" \
+            service.yaml > service-substituted.yaml
         gcloud run services replace service-substituted.yaml --region=${_REGION}
 
   # Replace the capture job after the service deploy so the job never runs a

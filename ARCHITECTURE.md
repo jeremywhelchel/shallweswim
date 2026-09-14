@@ -13,7 +13,7 @@ shallweswim/
 ├── main.py              # App entry point, web UI routes, templates
 ├── capture.py           # One-shot bounded observation capture job entry point
 ├── archive/             # Observation schemas, conditional stores, and merge writer
-├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher, read-only manager
+├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher, incremental loader, read-only manager, web shadow state
 ├── api/                 # API layer
 │   ├── __init__.py      # Re-exports from routes
 │   └── routes.py        # JSON API routes (delegates to core/)
@@ -107,7 +107,8 @@ instead runs each location's full serving cycle through `LocationDataManager`
 the cycle, publishes every location's served frames, plots, and feed metadata as
 one immutable content-addressed generation under `published/` in the same
 bucket (`shallweswim/snapshot/`); publication failure is isolated from the run's
-outcome, and nothing reads the generations yet. The builder reports every
+outcome, and the web service reads the generations only in shadow mode, below.
+The builder reports every
 configured feed, as a served frame or as a failure, and manifest assembly
 resolves each failure against the generation the publisher observed at start:
 an entry published for the same `citation_key` is carried forward unchanged
@@ -127,8 +128,24 @@ expiry, health) from the manifest timestamps with the feed rules. It and
 `LocationDataManager` both satisfy `core/serving.py`'s `LocationServing`
 Protocol, which is what the API routes are typed against, and the query
 functions read any `FeedData` (a `has_data` flag and a `values` frame), which a
-fetched feed and a loaded snapshot feed both provide. Nothing wires the
-snapshot manager into the web service yet; that is the shadow-mode step.
+fetched feed and a loaded snapshot feed both provide.
+When `SHALLWESWIM_SNAPSHOT_READ_BUCKET` is set, which the deployed web service
+and local shadow runs do and the job never does, the web service runs in
+shadow mode: it fetches and serves exactly as it does without the variable, and
+additionally keeps a loaded generation current. The lifespan builds the store
+on a worker thread and runs one bounded startup load whose failure never fails
+startup, and an HTTP middleware elects one arriving request per 60-second
+interval to check `published/current.json` before its handler runs, skipping
+when a check is already in flight. `snapshot/load.py` loads incrementally:
+objects are content-addressed, so a key the process already holds is reused and
+only new keys are read, eight at a time, each checked against the size and key
+the manifest recorded and validated through its feed model.
+`snapshot/refresh.py` holds that generation and the `SnapshotLocationManager`s
+built from it, publishing them with one assignment of an immutable mapping so a
+request in flight during a swap finishes on one whole generation, and logs one
+`snapshot.load` event per load that does work. Routes keep reading
+`app.state.data_managers`; nothing user-facing reads the shadow state, which is
+what cutover changes.
 When `SHALLWESWIM_ARCHIVE_READ_BUCKET` is set, which local development and the
 publishing job do and the web service never does, the historical temperature
 feed first hydrates each

@@ -16,9 +16,11 @@ created. Existing log entries are not backfilled.
 The metric filters match structured events from both the Cloud Run service and
 the `shallweswim-capture` Cloud Run Job, so the capture job's feed-update,
 `archive.merge`, `snapshot.publish`, `snapshot.freshness`, and run summary
-events feed the same metrics and dashboard as the web service. The feed and
-plot alert policies stay scoped to the service resource type; the six capture
-job policies below are scoped to `resource.type = "cloud_run_job"` instead.
+events feed the same metrics and dashboard as the web service, and the web
+service's own `snapshot.load` events feed a matching pair of metrics. The
+feed, plot, and snapshot load alert policies stay scoped to the service
+resource type; the six capture job policies below are scoped to
+`resource.type = "cloud_run_job"` instead.
 
 ## Observation archive setup
 
@@ -49,6 +51,20 @@ or `absent` (configured with nothing to serve, and therefore no age).
 location, feed, and outcome, charted as "Snapshot feed age max by feed per
 hour". It is the signal that a feed is stuck on carried-forward data: a
 publish stays `success` while the age grows run after run.
+
+The web service itself emits one `snapshot.load` event per bundle load or
+refresh that does work, with `outcome` `success` or `failed`, `duration_ms`,
+`record_count` as the number of objects read, `generation_id`, and
+`age_seconds` as the age of the loaded generation's publication time at load,
+the lag between the job publishing and this instance picking it up. Unlike
+the job-side snapshot metrics, these events come from
+`resource.type = "cloud_run_revision"` alone. `shallweswim_snapshot_loads`
+counts those events by outcome for the "Snapshot loads per hour by outcome"
+tile, `shallweswim_snapshot_load_duration_ms` records their duration, and
+`shallweswim_snapshot_load_lag_seconds` is a distribution of `age_seconds`
+charted as "Snapshot load lag p99 per hour"; the same lag distribution backs
+the `snapshot_load_lag` shadow policy, the signal that pages for sustained
+refresh failure once the web depends on the bundle.
 
 Merges are value-aware, so a repeated fetch of unchanged readings reports
 `outcome=unchanged` and writes nothing. The `new_rows` and `revised_rows`
@@ -162,12 +178,13 @@ terraform -chdir=infra/monitoring test
 
 This test pins service and job scoping, bounded label counts, numeric
 extractors, the capture job policies' resource scope and heartbeat window, the
-dashboard ownership marker, the per-feed snapshot freshness thresholds, and the
-dashboard's twelve tiles, including the two MQL `sum_from` data sets. It cannot
-emulate Cloud Logging ingestion.
+snapshot load lag policy's resource scope and threshold, the dashboard
+ownership marker, the per-feed snapshot freshness thresholds, and the
+dashboard's fourteen tiles, including the two MQL `sum_from` data sets. It
+cannot emulate Cloud Logging ingestion.
 
-Review the plan before every apply. The module now owns fourteen log-based
-metrics, one dashboard, and ten `[Terraform][Shadow]` alert policies with no
+Review the plan before every apply. The module now owns seventeen log-based
+metrics, one dashboard, and eleven `[Terraform][Shadow]` alert policies with no
 notification channels. It does not change pre-Terraform monitoring.
 
 An apply that creates a log-based metric and, in the same run, alert policies
@@ -201,6 +218,14 @@ switch design in `OBSERVABILITY_DESIGN.md`:
   that hour's maximum age. These thresholds are first guesses to be tuned on
   the baseline.
 
+A seventh shadow policy, **Snapshot load lag**, watches the web service
+instead of the job: a threshold condition on
+`shallweswim_snapshot_load_lag_seconds` over a one-hour alignment, scoped to
+`resource.type = "cloud_run_revision"`. The threshold is 7200 seconds, one
+hourly capture job cadence plus the check interval, with margin; it tightens
+once the capture job moves to a ten-minute cadence. Like the snapshot
+freshness thresholds, this is a first guess to be tuned on the baseline.
+
 Promotion is the same rule as the other shadow policies: review the policy's
 production behavior over a real baseline period, choose notification channels
 explicitly, and remove the `[Shadow]` marker in a separately reviewed change.
@@ -219,8 +244,8 @@ the proposed API operations. The GCP integration test is a controlled apply:
 
 1. Confirm the apply creates only the expected resources listed in the plan.
 2. Generate or wait for new feed, plot, merge, snapshot publish, snapshot
-   freshness, and capture run events. Metrics do not backfill.
-3. Verify the fourteen metrics appear with bounded labels and the dashboard
+   freshness, snapshot load, and capture run events. Metrics do not backfill.
+3. Verify the seventeen metrics appear with bounded labels and the dashboard
    charts populate after several minutes.
 4. Compare metric counts with a Cloud Logging query over the same interval.
 5. Confirm shadow policies have no notification channels before applying them.

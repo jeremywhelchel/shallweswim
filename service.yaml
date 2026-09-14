@@ -1,6 +1,15 @@
 # Cloud Run service configuration
 # Deploy with: gcloud run services replace service.yaml --region=us-east4
-# NOTE: ${IMAGE_TAG} is substituted by envsubst during Cloud Build
+# NOTE: ${IMAGE_TAG} and ${SHALLWESWIM_ARCHIVE_BUCKET} are substituted by
+# Cloud Build (see cloudbuild.yaml) before the file is applied, exactly as they
+# are for capture-job.yaml.
+# SHALLWESWIM_SNAPSHOT_READ_BUCKET is a read-only variable: it enables shadow
+# mode, in which this service loads the generations the capture job publishes
+# under published/ and keeps them current, while continuing to fetch and serve
+# as before. The service still never sets SHALLWESWIM_ARCHIVE_BUCKET (writes),
+# SHALLWESWIM_ARCHIVE_READ_BUCKET (archive hydration), or
+# SHALLWESWIM_SNAPSHOT_PUBLISH; the capture job remains the only writer.
+# Rollback is removing this variable and redeploying.
 # Docs: https://cloud.google.com/run/docs/reference/yaml/v1
 apiVersion: serving.knative.dev/v1
 kind: Service
@@ -23,6 +32,8 @@ spec:
           env:
             - name: SHALLWESWIM_LOG_FORMAT
               value: json
+            - name: SHALLWESWIM_SNAPSHOT_READ_BUCKET
+              value: ${SHALLWESWIM_ARCHIVE_BUCKET}
             - name: USGS_WATERDATA_API_KEY
               valueFrom:
                 secretKeyRef:

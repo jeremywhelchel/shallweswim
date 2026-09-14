@@ -32,14 +32,16 @@ locals {
   }
 
   # One completion event per partition merge, one summary event per capture run,
-  # one event per snapshot publish attempt, and one freshness event per location
-  # and configured feed per publish. Several metrics extract different numbers
-  # from each of them. A feed with nothing to serve reports outcome=absent and
-  # no age, so it contributes no freshness sample.
+  # one event per snapshot publish attempt, one freshness event per location
+  # and configured feed per publish, and one event per bundle load attempt by
+  # the web service. Several metrics extract different numbers from each of
+  # them. A feed with nothing to serve reports outcome=absent and no age, so
+  # it contributes no freshness sample.
   archive_merge_filter      = "${local.application_log_filter}\njsonPayload.component=\"archive\"\njsonPayload.operation=\"merge\""
   updater_run_filter        = "${local.application_log_filter}\njsonPayload.component=\"updater\"\njsonPayload.operation=\"run\""
   snapshot_publish_filter   = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"publish\""
   snapshot_freshness_filter = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"freshness\""
+  snapshot_load_filter      = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"load\""
 }
 
 resource "google_logging_metric" "feed_updates" {
@@ -452,6 +454,92 @@ resource "google_logging_metric" "snapshot_feed_age" {
 
   # Twenty doubling buckets from one second reach twelve days, past every
   # per-feed threshold a carried-forward feed crosses.
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 20
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
+resource "google_logging_metric" "snapshot_loads" {
+  name        = "shallweswim_snapshot_loads"
+  description = "Completed bundle load attempts by bounded outcome. Managed by Terraform."
+  filter      = local.snapshot_load_filter
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success or failed."
+    }
+  }
+
+  label_extractors = {
+    outcome = "EXTRACT(jsonPayload.outcome)"
+  }
+}
+
+resource "google_logging_metric" "snapshot_load_duration" {
+  name            = "shallweswim_snapshot_load_duration_ms"
+  description     = "Bundle load attempt duration in milliseconds. Managed by Terraform."
+  filter          = local.snapshot_load_filter
+  value_extractor = "EXTRACT(jsonPayload.duration_ms)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "ms"
+
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success or failed."
+    }
+  }
+
+  label_extractors = {
+    outcome = "EXTRACT(jsonPayload.outcome)"
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 20
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
+resource "google_logging_metric" "snapshot_load_lag" {
+  name            = "shallweswim_snapshot_load_lag_seconds"
+  description     = "Age of the loaded generation's publication time at load, in seconds. Managed by Terraform."
+  filter          = local.snapshot_load_filter
+  value_extractor = "EXTRACT(jsonPayload.age_seconds)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "s"
+
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success or failed."
+    }
+  }
+
+  label_extractors = {
+    outcome = "EXTRACT(jsonPayload.outcome)"
+  }
+
+  # Same exponential buckets as snapshot_feed_age: twenty doublings from one
+  # second reach well past any plausible load lag.
   bucket_options {
     exponential_buckets {
       num_finite_buckets = 20

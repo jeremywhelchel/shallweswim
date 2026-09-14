@@ -165,6 +165,44 @@ resource "google_monitoring_alert_policy" "plot_generation_failure" {
   }
 }
 
+resource "google_monitoring_alert_policy" "snapshot_load_lag" {
+  display_name          = "[Terraform][Shadow] Snapshot load lag"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = []
+  severity              = "WARNING"
+  user_labels           = local.shadow_alert_labels
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Shadow policy: the web service loaded a bundle generation whose publication lag exceeded 7200 seconds in the last hour, one hourly capture job cadence plus the check interval, with margin. This threshold tightens when the capture job moves to a ten minute cadence. This policy deliberately sends no notifications while its threshold is baselined."
+  }
+
+  conditions {
+    display_name = "Snapshot load lag p99 > 7200s in 1h"
+
+    condition_threshold {
+      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.snapshot_load_lag.name}\" AND ${local.cloud_run_resource_filter}"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 7200
+      duration        = "0s"
+
+      # The metric is a distribution, which has no max aligner; the hour's
+      # 99th percentile approximates that hour's maximum load lag.
+      aggregations {
+        alignment_period     = "3600s"
+        per_series_aligner   = "ALIGN_PERCENTILE_99"
+        cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["metric.label.outcome"]
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+}
+
 resource "google_monitoring_alert_policy" "capture_job_heartbeat" {
   display_name          = "[Terraform][Shadow] Capture job heartbeat"
   combiner              = "OR"

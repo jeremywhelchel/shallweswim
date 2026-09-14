@@ -28,6 +28,7 @@ run "monitoring_plan" {
         google_logging_metric.snapshot_loads,
         google_logging_metric.snapshot_load_duration,
         google_logging_metric.snapshot_load_lag,
+        google_logging_metric.snapshot_gcs,
       ] : strcontains(metric.filter, "resource.labels.service_name=\"shallweswim\"")
     ])
     error_message = "Every metric must be scoped to the configured Cloud Run service."
@@ -53,6 +54,7 @@ run "monitoring_plan" {
         google_logging_metric.snapshot_loads,
         google_logging_metric.snapshot_load_duration,
         google_logging_metric.snapshot_load_lag,
+        google_logging_metric.snapshot_gcs,
       ] : strcontains(metric.filter, "resource.labels.job_name=\"shallweswim-capture\"")
     ])
     error_message = "Every metric must also match the capture job, which is the archive's only production writer."
@@ -73,7 +75,8 @@ run "monitoring_plan" {
       length(google_logging_metric.snapshot_feed_age.metric_descriptor[0].labels) == 3 &&
       length(google_logging_metric.snapshot_loads.metric_descriptor[0].labels) == 1 &&
       length(google_logging_metric.snapshot_load_duration.metric_descriptor[0].labels) == 1 &&
-      length(google_logging_metric.snapshot_load_lag.metric_descriptor[0].labels) == 1
+      length(google_logging_metric.snapshot_load_lag.metric_descriptor[0].labels) == 1 &&
+      length(google_logging_metric.snapshot_gcs.metric_descriptor[0].labels) == 1
     )
     error_message = "Metric label sets must remain bounded by the reviewed contracts."
   }
@@ -106,12 +109,13 @@ run "monitoring_plan" {
         google_logging_metric.snapshot_feed_age,
         google_logging_metric.snapshot_loads,
         google_logging_metric.snapshot_load_lag,
+        google_logging_metric.snapshot_gcs,
         ] : strcontains(
         google_monitoring_dashboard.operations.dashboard_json,
         "${local.metric_prefix}/${metric.name}"
       )
     ])
-    error_message = "The operations dashboard must show the capture run, snapshot publish, snapshot freshness, snapshot load, and archive row metrics."
+    error_message = "The operations dashboard must show the capture run, snapshot publish, snapshot freshness, snapshot load, snapshot collection, and archive row metrics."
   }
 
   assert {
@@ -198,7 +202,7 @@ run "monitoring_plan" {
 
   assert {
     condition = (
-      length(jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles) == 14 &&
+      length(jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles) == 15 &&
       alltrue([
         for title in [
           "Archive merges per hour by outcome",
@@ -208,6 +212,7 @@ run "monitoring_plan" {
           "Revised observations per hour by source (estimated)",
           "Snapshot loads per hour by outcome",
           "Snapshot load lag p99 per hour",
+          "Snapshot collections per hour by outcome",
           ] : contains([
             for tile in jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles :
             tile.widget.title
@@ -218,7 +223,7 @@ run "monitoring_plan" {
         strcontains(tile.widget.title, "Failed archive merges")
       ])
     )
-    error_message = "The dashboard must keep fourteen tiles, fold failed merges into the hourly outcome stack, and mark the estimated observation counts."
+    error_message = "The dashboard must keep fifteen tiles, fold failed merges into the hourly outcome stack, and mark the estimated observation counts."
   }
 
   assert {

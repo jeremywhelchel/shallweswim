@@ -14,7 +14,7 @@ shallweswim/
 ├── capture.py           # One-shot bounded observation capture job entry point
 ├── local.py             # Local entry point: job cycle plus web app, one process
 ├── archive/             # Observation schemas, conditional stores, and merge writer
-├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher, incremental loader, read-only manager, web serving state
+├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher, generation collector, incremental loader, read-only manager, web serving state
 ├── api/                 # API layer
 │   ├── __init__.py      # Re-exports from routes
 │   └── routes.py        # JSON API routes (delegates to core/)
@@ -74,7 +74,13 @@ Three entry points run this code:
 Every store the application builds comes from `archive/store.py`'s
 `object_store(locator)`: a bare name is a GCS bucket (with the per-bucket client
 cache), a locator containing `/` is a `FilesystemObjectStore` rooted there, and
-the literal `memory` is one process-wide `MemoryObjectStore`. The four
+the literal `memory` is one process-wide `MemoryObjectStore`. The `ObjectStore`
+protocol is four operations - `read`, `compare_and_swap`, `list(prefix)`
+returning each key with a timezone-aware creation time, and `delete(key)`,
+which an absent key satisfies - and all three implementations answer them
+identically: memory records write times, the filesystem reports modification
+times and skips its dot-named locks and temporaries, and GCS reports
+`time_created` and tolerates a `NotFound` delete. The four
 environment-driven sites - archive capture, historical hydration, the snapshot
 publisher, and the web loader - call that helper and differ in nothing else, so
 a locator kind is never a code path. `shallweswim.local` sets
@@ -148,6 +154,14 @@ the cycle, publishes every location's served frames, plots, and feed metadata as
 one immutable content-addressed generation under `published/` in the same
 bucket (`shallweswim/snapshot/`); publication failure is isolated from the run's
 outcome, and the web service serves those generations, below.
+`snapshot/gc.py` then sweeps once per run, isolated the same way: it keeps the
+generation the current pointer names whatever its age and every generation
+published inside `RETAINED_GENERATION_AGE`, deletes the other manifests, and
+deletes only objects that no retained manifest references and that are older
+than `OBJECT_SAFETY_AGE`, because content addressing means a new generation may
+reference an old object. It deletes nothing it did not list in the same run,
+keeps every object when a retained manifest will not parse, never touches
+`archive/`, and logs one `snapshot.gc` event instead of raising.
 The builder reports every
 configured feed, as a served frame or as a failure, and manifest assembly
 resolves each failure against the generation the publisher observed at start:

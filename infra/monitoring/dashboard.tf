@@ -436,6 +436,36 @@ resource "google_monitoring_dashboard" "operations" {
               }
             }
           }
+        },
+        {
+          yPos   = 32
+          width  = 6
+          height = 4
+          widget = {
+            title = "Snapshot collections per hour by outcome"
+            xyChart = {
+              dataSets = [{
+                plotType       = "STACKED_BAR"
+                targetAxis     = "Y1"
+                legendTemplate = "$${metric.labels.outcome}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.snapshot_gcs.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "3600s"
+                      perSeriesAligner   = "ALIGN_SUM"
+                      crossSeriesReducer = "REDUCE_SUM"
+                      groupByFields      = ["metric.label.outcome"]
+                    }
+                  }
+                }
+              }]
+              yAxis = {
+                label = "collections / hour"
+                scale = "LINEAR"
+              }
+            }
+          }
         }
       ]
     }

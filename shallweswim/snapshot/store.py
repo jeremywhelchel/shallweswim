@@ -11,7 +11,7 @@ implementations.
 import hashlib
 from typing import Literal
 
-from shallweswim.archive.store import ObjectStore, VersionConflictError
+from shallweswim.archive.store import ListedObject, ObjectStore, VersionConflictError
 from shallweswim.snapshot.model import CurrentPointer, Manifest
 
 # The bucket whose `published/` prefix a reader loads generations from. The web
@@ -57,6 +57,22 @@ class SnapshotStore:
         if stored is None:
             return None
         return Manifest.model_validate_json(stored.data)
+
+    async def list_manifests(self) -> list[ListedObject]:
+        """Return every published manifest key with its creation time.
+
+        The current pointer lives beside the manifests prefix rather than
+        under it, so it is never in this listing.
+        """
+        return await self._store.list(MANIFESTS_PREFIX)
+
+    async def list_objects(self) -> list[ListedObject]:
+        """Return every published object key with its creation time."""
+        return await self._store.list(OBJECTS_PREFIX)
+
+    async def delete(self, key: str) -> None:
+        """Remove one published manifest or object; an absent key is fine."""
+        await self._store.delete(key)
 
     async def read_object(self, key: str) -> bytes | None:
         """Return one object's bytes, or None if it is absent."""

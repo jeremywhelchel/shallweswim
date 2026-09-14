@@ -842,6 +842,67 @@ def test_publish_failure_leaves_run_outcome_and_exit_code(
     assert [r for r in caplog.records if r.levelno == logging.ERROR] == [publish_event]
 
 
+def _gc_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    """Return every structured generation collection event."""
+    return [
+        record
+        for record in caplog.records
+        if getattr(record, "component", "") == "snapshot"
+        and getattr(record, "operation", "") == "gc"
+    ]
+
+
+def test_publish_run_sweeps_generations_after_publishing(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Every publishing run ends with one collection over what it published."""
+    _, _, store = _install_publish_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
+    )
+
+    with caplog.at_level(logging.INFO):
+        assert capture.main([]) == 0
+
+    (gc_event,) = _gc_records(caplog)
+    assert gc_event.levelno == logging.INFO
+    assert gc_event.outcome == "success"
+    # This run's own generation is current and its objects are seconds old, so
+    # the sweep examines everything and deletes nothing.
+    assert gc_event.record_count == 0
+    assert len(_published_keys(store, "published/manifests/")) == 1
+    assert _published_keys(store, "published/objects/")
+
+
+def test_sweep_failure_leaves_the_run_outcome_and_the_generation_unchanged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A broken listing is the sweep's failure alone, like a failed publish."""
+    _, _, store = _install_publish_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
+    )
+
+    async def failing_list(prefix: str) -> list[object]:
+        raise RuntimeError("bucket listing refused")
+
+    monkeypatch.setattr(store, "list", failing_list)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = capture.main([])
+
+    assert exit_code == 0
+    summary = _summary_record(caplog)
+    assert summary.outcome == "success"
+    assert summary.levelno == logging.INFO
+    (publish_event,) = _publish_records(caplog)
+    assert publish_event.outcome == "success"
+    # The generation the run published is untouched and still loadable.
+    assert asyncio.run(load_current(SnapshotStore(store))) is not None
+    (gc_event,) = _gc_records(caplog)
+    assert gc_event.levelno == logging.ERROR
+    assert gc_event.outcome == "failed"
+    assert [r for r in caplog.records if r.levelno == logging.ERROR] == [gc_event]
+
+
 def test_publish_run_with_one_failing_feed_is_partial_and_still_publishes(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

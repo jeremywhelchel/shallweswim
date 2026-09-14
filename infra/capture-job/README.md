@@ -15,6 +15,15 @@ is current when it starts, so it fetches only the feeds that are due and leaves
 the rest on the entries and plots they already published. The published
 manifest is the job's persisted feed schedule.
 
+Each run also collects the generations its publication superseded. It deletes
+manifests under `published/manifests/` older than 24 hours, unless the current
+pointer names them, and then objects under `published/objects/` that no
+retained manifest references and that were created more than an hour ago.
+`published/current.json` is never deleted. **The sweep never deletes anything
+under `archive/`: normalized observations are retained indefinitely, and no
+lifecycle rule on this bucket deletes them either.** A failed sweep logs one
+`snapshot.gc` event at ERROR and leaves the run's outcome and exit code alone.
+
 The job manifest sets three application variables:
 
 - `SHALLWESWIM_ARCHIVE_BUCKET`: the bucket capture writes to and snapshots
@@ -336,7 +345,20 @@ After the first scheduled runs:
      --format='table(timestamp,severity,jsonPayload.location,jsonPayload.feed,jsonPayload.outcome,jsonPayload.age_seconds)'
    ```
 
-7. The "Archive merges per hour by outcome", "Snapshot publishes per hour by
+7. The generations are being collected: one `snapshot.gc` event per publishing
+   run, `record_count` being the objects that run deleted. A steady state has
+   roughly one day of manifests under `published/manifests/`.
+
+   ```bash
+   gcloud logging read \
+     'resource.type="cloud_run_job" AND resource.labels.job_name="shallweswim-capture" AND jsonPayload.component="snapshot" AND jsonPayload.operation="gc"' \
+     --limit=10 \
+     --format='table(timestamp,severity,jsonPayload.outcome,jsonPayload.duration_ms,jsonPayload.record_count)'
+
+   gcloud storage ls "gs://$SHALLWESWIM_ARCHIVE_BUCKET/published/manifests/"
+   ```
+
+8. The "Archive merges per hour by outcome", "Snapshot publishes per hour by
    outcome", and "Snapshot feed age max by feed per hour" charts on the
    `Shall We Swim Operations [Terraform]` dashboard show the job's merges,
    publishes, and published feed ages. Those charts are deliberately not

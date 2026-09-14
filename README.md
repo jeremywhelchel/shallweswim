@@ -599,6 +599,21 @@ publishing run always uses the full historical range. A failed publish is
 logged, does not change the run's outcome or exit code, and is named in the run
 summary. The web service sets neither variable.
 
+After publishing, each run sweeps the generations that publication superseded.
+The generation the current pointer names is kept whatever its age, as is every
+generation published in the last 24 hours — the rollback window, and the window
+a slow instance could still be loading from. The manifests of older generations
+are deleted; `published/current.json` never is. Objects are content-addressed
+and shared between generations, so the sweep deletes an object only when no
+retained manifest references it and it was created more than an hour ago; that
+safety window protects a publisher that has written a generation's objects but
+has not promoted it yet. The sweep deletes nothing it did not list in that same
+run, never touches the `archive/` prefix, and logs one `snapshot.gc` event with
+`outcome` `success` or `failed` and the objects deleted as `record_count`. Like
+a failed publish, a failed sweep changes neither the run's outcome nor its exit
+code. The local entry point's cycle sweeps too, so a store directory does not
+grow without bound.
+
 ##### Serving From Published Snapshots
 
 `SHALLWESWIM_SNAPSHOT_READ_BUCKET` names the bucket whose `published/` prefix

@@ -83,9 +83,10 @@ async def run_cycle(
     """Run one publishing cycle, logging a broken cycle rather than raising.
 
     The cycle is `capture.publish_locations`, unchanged: every location's full
-    serving cycle, archive capture inside each feed update, plots, and one
-    published generation. It plots in the app's process pool and fetches over
-    this module's HTTP session.
+    serving cycle, archive capture inside each feed update, plots, one
+    published generation, and one sweep of the generations it superseded, so a
+    store directory does not grow without bound. It plots in the app's process
+    pool and fetches over this module's HTTP session.
 
     Args:
         app: The running application, whose state holds the process pool.

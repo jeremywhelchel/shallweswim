@@ -15,9 +15,9 @@ created. Existing log entries are not backfilled.
 
 The metric filters match structured events from both the Cloud Run service and
 the `shallweswim-capture` Cloud Run Job, so the capture job's feed-update,
-`archive.merge`, `snapshot.publish`, `snapshot.freshness`, and run summary
-events feed the same metrics and dashboard as the web service, and the web
-service's own `snapshot.load` events feed a matching pair of metrics. The
+`archive.merge`, `snapshot.publish`, `snapshot.freshness`, `snapshot.gc`, and
+run summary events feed the same metrics and dashboard as the web service, and
+the web service's own `snapshot.load` events feed a matching pair of metrics. The
 feed, plot, and snapshot load alert policies stay scoped to the service
 resource type; the six capture job policies below are scoped to
 `resource.type = "cloud_run_job"` instead.
@@ -28,10 +28,11 @@ The observation archive is written by the scheduled Cloud Run capture job, not
 by the web service. `SHALLWESWIM_ARCHIVE_BUCKET` (a bucket name without
 `gs://`) names the bucket the job writes to; `service.yaml` never sets it. The
 managed operations dashboard shows archive merges per hour by outcome, capture
-runs per hour by outcome, snapshot publishes per hour by outcome, maximum
-published feed age by feed per hour, new and revised observations per hour by
-source, and merge duration p95 by source per hour. The capture job runs every
-ten minutes; the tiles still total per hour so the bars stay readable. Failed
+runs per hour by outcome, snapshot publishes per hour by outcome, snapshot
+collections per hour by outcome, maximum published feed age by feed per hour,
+new and revised observations per hour by source, and merge duration p95 by
+source per hour. The capture job runs every ten minutes; the tiles still total
+per hour so the bars stay readable. Failed
 merges are one colour of the hourly outcome stack
 instead of a separate tile; the archive merge failure shadow policy covers that
 signal.
@@ -43,6 +44,16 @@ The job also publishes a serving snapshot each run and emits one
 "Snapshot publishes per hour by outcome" tile shows the counter. The event's
 `record_count` is the number of objects written, which is exact in the event
 and not charted. No alert policy watches publication itself.
+
+After publishing, each run sweeps the generations publication superseded and
+emits one `snapshot.gc` event with `outcome` `success` or `failed`,
+`duration_ms`, and `record_count` as the number of published objects it
+deleted. `shallweswim_snapshot_gcs` counts those events by outcome for the
+"Snapshot collections per hour by outcome" tile. The sweep deletes manifests
+older than the retention window and the objects no retained manifest
+references; it never deletes archive observations, and no alert policy watches
+it. A `failed` collection is logged at ERROR because nothing else notices a
+store that stopped accepting deletes.
 
 Each publish also emits one `snapshot.freshness` event per location and feed,
 carrying the age of the frame that generation serves and an `outcome` of
@@ -182,10 +193,10 @@ This test pins service and job scoping, bounded label counts, numeric
 extractors, the capture job policies' resource scope and heartbeat window, the
 snapshot load lag policy's resource scope and threshold, the dashboard
 ownership marker, the per-feed snapshot freshness thresholds, and the
-dashboard's fourteen tiles, including the two MQL `sum_from` data sets. It
+dashboard's fifteen tiles, including the two MQL `sum_from` data sets. It
 cannot emulate Cloud Logging ingestion.
 
-Review the plan before every apply. The module now owns seventeen log-based
+Review the plan before every apply. The module now owns eighteen log-based
 metrics, one dashboard, and twelve `[Terraform][Shadow]` alert policies with no
 notification channels. It does not change pre-Terraform monitoring.
 
@@ -255,8 +266,9 @@ the proposed API operations. The GCP integration test is a controlled apply:
 
 1. Confirm the apply creates only the expected resources listed in the plan.
 2. Generate or wait for new feed, plot, merge, snapshot publish, snapshot
-   freshness, snapshot load, and capture run events. Metrics do not backfill.
-3. Verify the seventeen metrics appear with bounded labels and the dashboard
+   freshness, snapshot load, snapshot collection, and capture run events.
+   Metrics do not backfill.
+3. Verify the eighteen metrics appear with bounded labels and the dashboard
    charts populate after several minutes.
 4. Compare metric counts with a Cloud Logging query over the same interval.
 5. Confirm shadow policies have no notification channels before applying them.

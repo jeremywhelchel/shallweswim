@@ -42,6 +42,7 @@ locals {
   snapshot_publish_filter   = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"publish\""
   snapshot_freshness_filter = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"freshness\""
   snapshot_load_filter      = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"load\""
+  snapshot_gc_filter        = "${local.application_log_filter}\njsonPayload.component=\"snapshot\"\njsonPayload.operation=\"gc\""
 }
 
 resource "google_logging_metric" "feed_updates" {
@@ -383,6 +384,28 @@ resource "google_logging_metric" "snapshot_publishes" {
       key         = "outcome"
       value_type  = "STRING"
       description = "One of success, unchanged, or failed."
+    }
+  }
+
+  label_extractors = {
+    outcome = "EXTRACT(jsonPayload.outcome)"
+  }
+}
+
+resource "google_logging_metric" "snapshot_gcs" {
+  name        = "shallweswim_snapshot_gcs"
+  description = "Completed generation collections by bounded outcome. Managed by Terraform."
+  filter      = local.snapshot_gc_filter
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "outcome"
+      value_type  = "STRING"
+      description = "One of success or failed."
     }
   }
 

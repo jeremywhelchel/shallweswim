@@ -17,6 +17,7 @@ at memory without any code knowing it is not a bucket.
 from __future__ import annotations
 
 import asyncio
+import datetime
 
 # The first-class filesystem target is Unix; fcntl provides inter-process locks.
 import fcntl
@@ -44,6 +45,14 @@ class StoredObject:
     version: str
 
 
+@dataclass(frozen=True)
+class ListedObject:
+    """One key a listing found, and when the store says it was created."""
+
+    key: str
+    created_at: datetime.datetime
+
+
 class VersionConflictError(Exception):
     """The object no longer has the version expected by the caller."""
 
@@ -69,6 +78,14 @@ class ObjectStore(Protocol):
         """Create if absent or replace only the expected current version."""
         ...
 
+    async def list(self, prefix: str) -> list[ListedObject]:
+        """Return every object under `prefix` with its creation time."""
+        ...
+
+    async def delete(self, key: str) -> None:
+        """Remove one object; an absent key is not an error."""
+        ...
+
 
 def _validate_key(key: str) -> PurePosixPath:
     path = PurePosixPath(key)
@@ -88,10 +105,17 @@ def _content_version(data: bytes) -> str:
 
 
 class MemoryObjectStore:
-    """Concurrent in-memory object store for tests and local composition."""
+    """Concurrent in-memory object store for tests and local composition.
+
+    `_created` records when each key was last written, which is this store's
+    answer to a listing's creation time, as a replaced GCS object's
+    `time_created` and a rewritten file's modification time both are. A test
+    that needs an aged object overwrites the entry for its key.
+    """
 
     def __init__(self) -> None:
         self._objects: dict[str, bytes] = {}
+        self._created: dict[str, datetime.datetime] = {}
         self._lock = asyncio.Lock()
 
     async def read(self, key: str) -> StoredObject | None:
@@ -116,7 +140,23 @@ class MemoryObjectStore:
             if current_version != expected_version:
                 raise VersionConflictError(key)
             self._objects[key] = data
+            self._created[key] = datetime.datetime.now(datetime.UTC)
             return _content_version(data)
+
+    async def list(self, prefix: str) -> list[ListedObject]:
+        _validate_key(prefix)
+        async with self._lock:
+            return [
+                ListedObject(key=key, created_at=self._created[key])
+                for key in sorted(self._objects)
+                if key.startswith(prefix)
+            ]
+
+    async def delete(self, key: str) -> None:
+        _validate_key(key)
+        async with self._lock:
+            self._objects.pop(key, None)
+            self._created.pop(key, None)
 
 
 class FilesystemObjectStore:
@@ -191,6 +231,40 @@ class FilesystemObjectStore:
                     temporary_path.unlink(missing_ok=True)
             return _content_version(data)
 
+    async def list(self, prefix: str) -> list[ListedObject]:
+        return await asyncio.to_thread(self._list_sync, prefix)
+
+    def _list_sync(self, prefix: str) -> list[ListedObject]:
+        """List one directory tree, dot-files excluded.
+
+        The lock directory and the partially written temporaries CAS creates
+        are both dot-named, and neither is an object, so a listing skips every
+        name that starts with a dot. A prefix naming no directory lists
+        nothing, as an empty bucket prefix does.
+        """
+        base = self._root.joinpath(*_validate_key(prefix).parts)
+        if not base.is_dir():
+            return []
+        listed = []
+        for path in sorted(base.rglob("*")):
+            if path.name.startswith(".") or not path.is_file():
+                continue
+            listed.append(
+                ListedObject(
+                    key=str(PurePosixPath(*path.relative_to(self._root).parts)),
+                    created_at=datetime.datetime.fromtimestamp(
+                        path.stat().st_mtime, datetime.UTC
+                    ),
+                )
+            )
+        return listed
+
+    async def delete(self, key: str) -> None:
+        await asyncio.to_thread(self._delete_sync, key)
+
+    def _delete_sync(self, key: str) -> None:
+        self._path(key).unlink(missing_ok=True)
+
 
 class GcsObjectStore:
     """GCS adapter using generation preconditions without event-loop blocking."""
@@ -259,6 +333,36 @@ class GcsObjectStore:
         if blob.generation is None:
             raise RuntimeError(f"GCS write returned no generation: {key}")
         return str(blob.generation)
+
+    async def list(self, prefix: str) -> list[ListedObject]:
+        _validate_key(prefix)
+        return await asyncio.to_thread(self._list_sync, prefix)
+
+    def _list_sync(self, prefix: str) -> list[ListedObject]:
+        listed = []
+        for blob in self._bucket.list_blobs(prefix=prefix):
+            if blob.time_created is None:
+                raise RuntimeError(f"GCS object has no creation time: {blob.name}")
+            listed.append(
+                ListedObject(
+                    key=blob.name,
+                    created_at=blob.time_created.astimezone(datetime.UTC),
+                )
+            )
+        return listed
+
+    async def delete(self, key: str) -> None:
+        _validate_key(key)
+        await asyncio.to_thread(self._delete_sync, key)
+
+    def _delete_sync(self, key: str) -> None:
+        from google.api_core import exceptions as google_exceptions
+
+        try:
+            self._bucket.blob(key).delete()
+        except google_exceptions.NotFound:
+            # Another sweep, or a retry of this one, already removed it.
+            pass
 
 
 @cache

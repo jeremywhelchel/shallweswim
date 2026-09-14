@@ -753,10 +753,11 @@ object referenced by a retained manifest.
 
 ### Generation Garbage Collection Contract
 
-Status: contract; implementation pending. On 2026-09-14, before any
-collection, the published prefix held 497 MB in 1,249 objects across 27
-hourly generations; at the ten-minute cadence a run adds a small generation
-every ten minutes, so object count is the reason to collect, not cost.
+Status: implemented in `shallweswim/snapshot/gc.py`, run by the publishing
+cycle. On 2026-09-14, before any collection, the published prefix held 497 MB
+in 1,249 objects across 27 hourly generations; at the ten-minute cadence a run
+adds a small generation every ten minutes, so object count is the reason to
+collect, not cost.
 
 Retention:
 
@@ -796,6 +797,12 @@ message naming manifests deleted and objects examined. A log-based counter
 by outcome and one dashboard tile follow in Terraform. A failed collection
 logs at ERROR: it means the store misbehaved or the sweep's own invariant
 failed, and nothing else will notice.
+
+One departure from the sketch above, taken for safety: a manifest the sweep
+cannot parse is retained, as stated below, and because its object references
+are then unknown that run deletes manifests but no objects at all. Otherwise a
+corrupted current manifest — which a publisher would also have failed on —
+would make the live generation's objects look unreachable.
 
 Safety, pinned by tests:
 

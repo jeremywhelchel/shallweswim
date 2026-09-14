@@ -1,6 +1,8 @@
 """Conditional object-store contract tests."""
 
 import asyncio
+import datetime
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +15,7 @@ from shallweswim.archive.store import (
     FilesystemObjectStore,
     GcsObjectStore,
     MemoryObjectStore,
+    ObjectStore,
     VersionConflictError,
     object_store,
 )
@@ -160,6 +163,105 @@ async def test_gcs_store_maps_create_and_precondition_conflict() -> None:
         await store.compare_and_swap("objects/hash", expected_version=None, data=b"x")
 
     blob.upload_from_string.assert_called_once_with(b"x", if_generation_match=0)
+
+
+async def _seed_listing(store: ObjectStore, aged_at: datetime.datetime) -> None:
+    """Write two objects under one prefix and one under another."""
+    for key in ("published/objects/one", "published/objects/two", "published/other"):
+        await store.compare_and_swap(key, expected_version=None, data=key.encode())
+    if isinstance(store, MemoryObjectStore):
+        store._created["published/objects/one"] = aged_at
+    else:
+        assert isinstance(store, FilesystemObjectStore)
+        path = Path(store._root) / "published/objects/one"
+        os.utime(path, (aged_at.timestamp(), aged_at.timestamp()))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store_kind", ["memory", "filesystem"])
+async def test_store_lists_and_deletes_identically(store_kind: str, tmp_path) -> None:
+    """The listing is prefix-scoped, timezone-aware, and delete is idempotent."""
+    store: ObjectStore = (
+        MemoryObjectStore()
+        if store_kind == "memory"
+        else FilesystemObjectStore(tmp_path)
+    )
+    aged_at = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.UTC)
+    await _seed_listing(store, aged_at)
+
+    listed = await store.list("published/objects")
+
+    assert [entry.key for entry in listed] == [
+        "published/objects/one",
+        "published/objects/two",
+    ]
+    ages = {entry.key: entry.created_at for entry in listed}
+    assert ages["published/objects/one"] == aged_at
+    assert ages["published/objects/two"].tzinfo is not None
+    assert ages["published/objects/two"] > aged_at
+
+    await store.delete("published/objects/one")
+    # Deleting what is already gone is not an error; nor is listing a prefix
+    # that never existed.
+    await store.delete("published/objects/one")
+
+    assert [entry.key for entry in await store.list("published/objects")] == [
+        "published/objects/two"
+    ]
+    assert await store.read("published/objects/one") is None
+    assert await store.read("published/other") is not None
+    assert await store.list("published/absent") == []
+
+
+@pytest.mark.asyncio
+async def test_filesystem_listing_skips_locks_and_partial_writes(tmp_path) -> None:
+    """Only objects are listed: the lock directory and temporaries are dot-named."""
+    store = FilesystemObjectStore(tmp_path)
+    await store.compare_and_swap(
+        "published/objects/one", expected_version=None, data=b"one"
+    )
+    partial = tmp_path / "published/objects/.one.tmp12345"
+    partial.write_bytes(b"partial")
+
+    assert [entry.key for entry in await store.list("published")] == [
+        "published/objects/one"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_gcs_store_lists_creation_times_and_deletes() -> None:
+    from google.api_core import exceptions as google_exceptions
+
+    client = MagicMock()
+    bucket = client.bucket.return_value
+    created_at = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.UTC)
+    blob = MagicMock(time_created=created_at)
+    # MagicMock resolves `name` through the constructor, not an attribute.
+    blob.name = "published/objects/one"
+    bucket.list_blobs.return_value = [blob]
+    store = GcsObjectStore("archive-bucket", client=client)
+
+    listed = await store.list("published/objects")
+    await store.delete("published/objects/one")
+
+    assert [(entry.key, entry.created_at) for entry in listed] == [
+        ("published/objects/one", created_at)
+    ]
+    bucket.list_blobs.assert_called_once_with(prefix="published/objects")
+    bucket.blob.return_value.delete.assert_called_once_with()
+
+    # A key another sweep already removed is not an error.
+    bucket.blob.return_value.delete.side_effect = google_exceptions.NotFound("gone")
+    await store.delete("published/objects/one")
+
+
+@pytest.mark.asyncio
+async def test_list_and_delete_reject_nonportable_keys(tmp_path) -> None:
+    for store in (MemoryObjectStore(), FilesystemObjectStore(tmp_path)):
+        with pytest.raises(ValueError, match="Invalid object key"):
+            await store.list("../escape")
+        with pytest.raises(ValueError, match="Invalid object key"):
+            await store.delete("/absolute")
 
 
 def test_object_store_resolves_every_locator_kind(

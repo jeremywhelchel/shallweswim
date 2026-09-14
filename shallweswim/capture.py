@@ -11,9 +11,11 @@ When ``SHALLWESWIM_SNAPSHOT_PUBLISH=1`` the job is also the snapshot publisher:
 it runs the full serving cycle of every location through the same
 ``LocationDataManager`` the web service uses, including tide and prediction
 feeds, derived frames, and plots in a process pool, and then publishes one
-snapshot generation under ``published/`` in the archive bucket. Archive capture
-still happens inside each feed's update. The job never serves traffic or starts
-FastAPI. It is temporary: the Phase 4 updater command absorbs it.
+snapshot generation under ``published/`` in the archive bucket and sweeps the
+generations that publication superseded. Archive capture still happens inside
+each feed's update, and the sweep never touches archive partitions. The job
+never serves traffic or starts FastAPI. It is temporary: the Phase 4 updater
+command absorbs it.
 
 The current generation is also the job's persisted feed schedule: before each
 location's cycle the run restores every matching feed's next fetch time from
@@ -53,6 +55,7 @@ from shallweswim.core.manager import (
     build_feeds,
 )
 from shallweswim.snapshot.build import build_location_snapshot, is_held
+from shallweswim.snapshot.gc import collect_generations
 from shallweswim.snapshot.model import LocationManifest, Manifest, Snapshot
 from shallweswim.snapshot.publish import publish
 from shallweswim.snapshot.store import SnapshotStore
@@ -317,6 +320,12 @@ async def publish_locations(
     already logged its failed event, so the run's outcome and exit code stay
     those of the capture cycle.
 
+    One generation sweep (`snapshot.gc.collect_generations`) follows
+    publication, whatever its outcome, and is isolated the same way: it deletes
+    the manifests of generations older than the retention window and the
+    objects no retained manifest references, logs its own event, and never
+    changes this run's outcome.
+
     The base manifest is read once here for scheduling only. `publish` reads
     the current pointer again for assembly and promotion, so a generation
     another publisher promotes in between cannot make a carried-forward entry
@@ -366,6 +375,7 @@ async def publish_locations(
             for manager in managers
         }
     )
+    outcome = "failed"
     try:
         result = await publish(
             store,
@@ -373,11 +383,17 @@ async def publish_locations(
             run_id=run_id,
             now=datetime.datetime.now(datetime.UTC),
         )
+        outcome = result.outcome
     except Exception:
         # publish() logged the failed event before raising; the capture cycle
         # already ran, so the run keeps its own outcome.
-        return results, "failed"
-    return results, result.outcome
+        pass
+    # The sweep runs whatever publication did, because a failed publication is
+    # exactly when superseded generations are most likely to have piled up. It
+    # logs its own event and returns rather than raising, so like publication
+    # it cannot change the run's outcome.
+    await collect_generations(store, now=datetime.datetime.now(datetime.UTC))
+    return results, outcome
 
 
 def _summary_fields(

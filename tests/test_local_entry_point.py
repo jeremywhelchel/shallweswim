@@ -9,6 +9,8 @@ helper so nothing here can reach the operator's bucket.
 """
 
 import contextlib
+import datetime
+import json
 import os
 import threading
 from collections.abc import AsyncGenerator, Callable, Iterator
@@ -216,6 +218,45 @@ async def test_filesystem_store_persists_and_hydrates_the_second_cycle(
 
     served = SimpleNamespace(state=SimpleNamespace())
     await main_module.start_snapshot_serving(served)  # pyrefly: ignore
+    assert set(served.state.snapshot.managers) == {HISTORY_CONFIG.code}
+
+
+@pytest.mark.asyncio
+async def test_a_second_cycle_sweeps_the_generation_it_supersedes(
+    cycle_clients: MockCoopsApi,
+    store_locator: Callable[[str], str],
+    tmp_path: Path,
+) -> None:
+    """A store directory does not grow without bound: old manifests are swept."""
+    root = tmp_path / "store"
+    locator = store_locator(str(root))
+    manifests = root / "published" / "manifests"
+
+    assert await _run_cycle(cycle_clients, "run-one", locator) == "success"
+    (first_manifest,) = list(manifests.glob("*.json"))
+    # Age the first generation past the retention window without waiting a day.
+    # Only its published_at decides retention, so the rest is left as published.
+    published = json.loads(first_manifest.read_text())
+    published["published_at"] = (
+        datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=3)
+    ).isoformat()
+    first_manifest.write_text(json.dumps(published))
+
+    # A backfill cycle ignores the published schedule, so it fetches and
+    # publishes a second generation that supersedes the first.
+    assert (
+        await _run_cycle(cycle_clients, "run-two", locator, full_history=True)
+        == "success"
+    )
+
+    remaining = list(manifests.glob("*.json"))
+    assert first_manifest not in remaining
+    assert len(remaining) == 1
+    # The current pointer still names a generation the app can serve, and no
+    # object was swept: they are all inside the one-hour safety window.
+    served = SimpleNamespace(state=SimpleNamespace())
+    await main_module.start_snapshot_serving(served)  # pyrefly: ignore
+    assert served.state.snapshot.generation_id is not None
     assert set(served.state.snapshot.managers) == {HISTORY_CONFIG.code}
 
 

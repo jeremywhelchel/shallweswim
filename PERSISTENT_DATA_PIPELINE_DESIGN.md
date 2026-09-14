@@ -1160,7 +1160,14 @@ Phase 5.
 
 ### Phase 2: Define and Publish Snapshots
 
-Status: contract; implementation pending.
+Status: implemented; the hourly job has published a generation after every
+run since 2026-09-13. Observed so far: a bundle of about 21 MiB in 56
+objects and a manifest of about 21 KB per generation. Because the job is a
+fresh process, every feed refetches on every run and its fetch timestamp
+changes, so the `unchanged` outcome is not reachable until the updater
+persists feed state (Phase 4); every run writes a new manifest plus whichever
+objects changed. The carry-forward rule below is the one remaining publisher
+change before anything reads the bundle.
 
 Phase 2 makes serving state serializable and publishes it from the capture
 job so object sizes, publication cost, and manifest semantics are observed in
@@ -1251,13 +1258,259 @@ every configured feed type, including the historical frame and categorical
 tide types. Garbage collection of old generations is Phase 3 scope; Phase 2
 retains everything so its growth is measurable.
 
+#### Carry-Forward of Failed Feeds
+
+Status: contract; implementation pending. Required before any web server
+reads the bundle.
+
+Today a generation omits any feed that failed during that run, so one
+transient provider failure removes last-known-good data from the bundle even
+though the web process would have kept serving its previous frame. The
+builder therefore reports every configured feed of every enabled location,
+either as a served frame or as a failure. A failure records only what the
+run learned: the consecutive failure count, the sanitized last error, and the
+scheduled retry. A location is present in the snapshot even when every one of
+its feeds failed. Feeds that are not configured for a location are absent,
+as today.
+
+Manifest assembly resolves each failed feed against the generation the
+publisher observed when it started, the base generation:
+
+- If the base generation has an entry for that feed whose `source_identity`
+  equals the feed's configured `citation_key`, the new manifest copies that
+  entry. Object key, size, fetch timestamp, record count, timezone,
+  expiration, and historical diagnostics stay exactly as published, so the
+  last-known-good frame keeps serving. Only the failure fields change:
+  `consecutive_failures` becomes the base entry's count plus this run's,
+  `last_error` becomes this run's error, and `next_fetch_after` this run's
+  scheduled retry. The manifest thereby says both "the served frame was
+  fetched at time X" and "the source is failing now", the distinction the
+  archive section requires.
+- If the base generation has no such entry, because the feed never succeeded
+  or its source identity changed, the feed is omitted, as today.
+- A plot absent from this run's build is copied from the base generation when
+  present there, whether its source feed was carried forward or was refreshed
+  but its plot did not complete in time. The copied `feed_fetch_timestamp`
+  states which feed state the plot shows.
+- A location or feed that is no longer configured is dropped. Configuration
+  is authoritative and carry-forward never resurrects it.
+- Carry-forward has no age limit. Retention is separate from alerting and
+  from presentation, which the next paragraphs cover; keeping last-known-good
+  data is cheap and losing it is irreversible.
+
+Freshness is monitored from the manifest. After assembly, and whether or not
+a new generation is promoted, the job emits one event per location and feed,
+`component=snapshot operation=freshness` with `location`, `feed`,
+`outcome=success|carried|absent`, and `age_seconds` as the age of the served
+frame's fetch timestamp (a new approved numeric log field). A feed stuck on
+carried-forward data therefore shows a growing age. A log-based metric and a
+shadow alert with a per-feed-type threshold follow in Terraform; the
+thresholds start from the existing health rule (expiration interval plus 15
+minutes) and are tuned on the baseline before any policy notifies.
+
+Whether the site keeps displaying stale data is a presentation policy,
+decided per feed type with shadow data rather than guessed here. Two notions
+of staleness apply: a prediction feed (tides, prediction currents) is stale
+only when the requested time falls outside the fetched window, not by fetch
+age; an observation feed (live temperature, observation currents) is stale by
+the age of its latest observation. That decision is tracked in `TODO.md` and
+is not a precondition for shadow mode.
+
+Carried-forward metadata differs from the base entry, so a repeatedly failing
+feed publishes a new manifest every run without writing any object; that is
+the small-manifest case the snapshot model already allows. The `unchanged`
+rule and conditional promotion are untouched, and assembly uses the same base
+the publisher read for promotion, so a concurrent publisher cannot make a
+carried-forward entry refer to a generation other than the one promotion is
+conditioned on.
+
+The first generation published after this change carries forward from
+whatever the current generation holds; nothing needs migrating, and the
+schema version stays 1 because no manifest field changes.
+
 ### Phase 3: Read-Only Web Mode
 
-- Add readiness-blocking snapshot load and request-piggybacked generation
-  refresh to the web process.
-- Run it in shadow/validation mode against existing manager results.
-- Compare API responses, freshness, and plots.
-- Switch production serving to snapshot-backed state with rollback available.
+Two slices. The first, shadow mode, has its contract below; the second,
+cutover, is outlined and receives its own contract once shadow data exists.
+
+End state after both: web servers hold no upstream clients and no feed
+objects. Each instance loads the current bundle generation before it is
+ready, refreshes it on an elected request, and answers every API request from
+memory. The job is the only process that talks to providers.
+
+#### Shadow Mode Contract
+
+Status: contract; implementation pending.
+
+In shadow mode a web instance keeps fetching and serving exactly as today,
+and additionally loads the bundle, keeps it current, and periodically compares
+what the bundle would answer against what the instance is answering. Nothing
+on the user path changes: every response, health check, and status field
+still comes from the in-process managers. Shadow mode exists to prove, in
+production, that bundle-backed serving is equivalent and that the refresh
+mechanism works on request-scaled CPU, before serving depends on either.
+
+Configuration:
+
+- `SHALLWESWIM_SNAPSHOT_READ_BUCKET` names the bucket whose `published/`
+  prefix the web reads. Setting it enables shadow mode; unset, no snapshot
+  code path is active and the web behaves as today. It is deliberately
+  distinct from `SHALLWESWIM_ARCHIVE_READ_BUCKET` (archive hydration, which
+  the web never does) and from `SHALLWESWIM_ARCHIVE_BUCKET` (writes, which
+  the web never does). `service.yaml` sets it through the same Cloud Build
+  substitution as the job's bucket, and the deployment-manifest test pins
+  that the web sets this variable and neither of the other two.
+- The web runtime identity gains `roles/storage.objectViewer` on the bucket.
+  The runbook invariant that only the job writes is unchanged; the runbook
+  gains the read grant. Reads use the existing GCS adapter, every call on a
+  worker thread.
+- Local development sets the same variable in `.env` to shadow against the
+  production bundle with the viewer credential. That is the first validation
+  step and happens before the service is deployed.
+
+Serving state from a generation:
+
+- A read-only per-location manager (`SnapshotLocationManager`, name
+  provisional) is constructed from a loaded generation: the location's
+  frames, plot bytes, and manifest metadata. It computes the derived tide and
+  current prediction frames once at construction; there is nothing to
+  invalidate because the object is immutable and a new generation constructs
+  new managers.
+- It exposes the same route-facing surface as `LocationDataManager`:
+  `has_data`, `has_feed`, `has_feed_data`, `get_feed_values`, `get_plot`,
+  `status`, and the query methods. Routes are typed against one Protocol
+  covering that surface, so at cutover the object behind
+  `app.state.data_managers` changes and the routes do not. The query
+  functions in `core/queries.py` accept any mapping from feed name to an
+  object exposing `has_data` and `values`, which a feed and a snapshot feed
+  both provide. That is the whole generalization, and this slice is its
+  second use.
+- Its `status` derives `age_seconds`, `is_expired`, and `is_healthy` from
+  the manifest's fetch timestamp, expiration, and retry time with the feed
+  rules, so bundle-served data has the same health semantics. In shadow mode
+  this status is not exposed through `/api/status`.
+
+Loading and refresh:
+
+- Startup: the lifespan loads the current generation with a bounded timeout
+  of 20 seconds. In shadow mode a failure or timeout is logged and the
+  instance starts without a generation; readiness is unaffected. At cutover
+  the same load gates readiness.
+- Refresh is request-piggybacked, as the runtime-components section
+  requires. An HTTP middleware runs on every request, health checks
+  included: if the check interval (60 seconds) has elapsed since the last
+  check and no check is in flight, that request is elected and awaits the
+  check before its handler runs. Concurrent requests skip the check and
+  proceed. A failed check schedules the next one a full interval later,
+  never sooner.
+- A check reads `current.json`. Same generation as loaded: nothing else
+  happens and nothing is logged above DEBUG. New generation: read its
+  manifest, read only the objects whose keys are not already held (objects
+  are content-addressed, so a held key is the same bytes) with bounded
+  concurrency of 8, validate every frame through its feed model, construct
+  the new managers, and swap them in with one assignment. Requests running
+  during the swap finish on the generation they started with.
+- The web never lists `published/manifests/` and never deletes anything.
+- One structured event per load or refresh that does work:
+  `component=snapshot operation=load outcome=success|failed`,
+  `generation_id`, `duration_ms`, and `record_count` as the number of objects
+  read. Severity follows one rule, ERROR means a human needs to look now,
+  and the rule is the long-term one from the start: a startup that cannot
+  load any generation is ERROR once the web depends on the bundle (nothing
+  to serve) and WARNING during shadow, the only interim downgrade; a failed
+  refresh while a generation is already loaded is WARNING permanently,
+  because a sustained failure pages through the bundle-age alert rather than
+  through log lines.
+
+Comparison:
+
+- Runs on an elected request every comparison interval (10 minutes), after
+  the check, for every configured location, with one location-local `now`
+  shared by both sides. It is memory-only work bounded by feed size.
+- Per configured feed, one event `component=snapshot
+  operation=shadow_compare` with `location`, `feed`, `outcome`,
+  `record_count`, and `lag_seconds`:
+  - `missing`: the instance has data and the bundle has none. Expected only
+    while the job's own fetch of that feed fails and nothing is carried
+    forward.
+  - `extra`: the bundle has data and the instance has none. Expected when the
+    instance's fetch failed or after a restart.
+  - `disjoint`: both have data and their indexes share no timestamp; the
+    bundle is too stale to compare.
+  - `mismatch`: on the shared timestamps any value differs (floats compared
+    with a relative tolerance of 1e-6, other columns exactly), or a derived
+    answer differs: `get_tide_info_at_time(now)` and
+    `predict_tide_at_time(now)` for tide feeds, `predict_flow_at_time(now)`
+    for prediction current feeds, and `get_current_temperature()` for live
+    temperature when both frames end at the same timestamp.
+  - `match`: everything above agreed. `record_count` is the number of shared
+    timestamps compared.
+  - `lag_seconds` is the instance's fetch timestamp minus the bundle's,
+    negative when the bundle is fresher. It is a new approved numeric log
+    field. It is expected to sit between zero and one job cadence plus the
+    check interval; this slice records the value and does not judge it.
+- Per location, one event `component=snapshot operation=shadow_compare_plots`
+  with `location`, `outcome` (`match` or `mismatch`), and `record_count` as
+  the plots present on both sides. Plot bytes are not compared, because the
+  two sides draw different fetch windows.
+- `match` and `extra` log at INFO, every other outcome at WARNING; a
+  mismatch never pages, it is reviewed on the dashboard. Expected volume is
+  about 4,000 events per day across all locations and feeds.
+- Historical temperature frames should agree on overlap except where a
+  provider revised a reading between the two fetches. Every such mismatch is
+  investigated once; a recurring source-specific pattern is recorded in
+  `TODO.md` before cutover rather than tolerated by loosening the rule.
+
+Visibility: no new route. The load events carry the platform's instance
+identity, which answers "is every instance loading the bundle" better than
+an endpoint can, because the load balancer sends a request to one arbitrary
+instance. At cutover `/api/status` gains the loaded generation id and load
+time, since it must describe bundle state then anyway.
+
+Observability: Terraform adds log-based metrics on `snapshot.load` outcomes
+and duration and on `shadow_compare` outcomes, plus one dashboard tile for
+each, and a shadow alert on the age of the loaded generation, which is the
+signal that pages for sustained refresh failure after cutover. The existing
+shadow alert set is promoted separately.
+
+Out of scope for this slice: any change to what the web serves; removing
+fetching from the web; any job change beyond carry-forward; a filesystem
+snapshot store for the web, which is the local entry point's concern; and
+garbage collection of old generations.
+
+Rollback: unset the variable and redeploy, or redeploy the previous revision.
+Shadow mode cannot change a response.
+
+Exit criteria before the cutover contract is written:
+
+- Seven days of production shadow with every load outcome `success`.
+- No `mismatch` events other than explained provider revisions, and every
+  `missing` explained by a job-side feed failure that predates the bundle.
+- Cold load duration, elected-request refresh duration, and the
+  `lag_seconds` distribution per feed measured and recorded in this document.
+
+#### Local Entry Point (outline)
+
+Before cutover, `shallweswim.local` must exist, because cutover removes
+fetching from the web service and a fresh clone must keep working with no
+bucket. One process constructs an in-memory (or filesystem) object store,
+runs the job's update cycle against it, fetching the configured history from
+the providers exactly as the web service does today, and then serves from
+that store. No environment variable selects the store: both halves share the
+store object in process. This is the open-source clone-and-run path, and the
+only difference from production is the extra history the production archive
+has accumulated beyond what providers still expose.
+
+#### Cutover (outline)
+
+Requires the local entry point above. Web serving switches to the bundle: `app.state.data_managers` holds the
+snapshot managers, the initial load gates readiness and its failure becomes
+ERROR, `/api/healthy` reports whether a generation is loaded, and
+`/api/status` reports the manifest metadata plus the loaded generation id
+and load time. The fetching manager, the provider clients, the background loop,
+feed-driven plotting, and shadow comparison leave the web runtime path;
+on-demand tide and current plots stay. Job cadence moves to ten minutes under
+the freshness budget above. A separate contract precedes implementation.
 
 ### Phase 4: Scheduled Job
 
@@ -1293,6 +1546,21 @@ requires stronger migration and equivalence validation.
   manifests reuse unchanged content-addressed objects.
 - Web instances keep serving an old generation while a new one is incomplete or
   invalid.
+- The builder records a configured feed without data as a failure; assembly
+  carries the base entry forward with accumulated failures and this run's
+  error, copies an absent plot, and carries nothing when the base lacks the
+  feed, its source identity differs, or the feed is no longer configured.
+- Every run emits one freshness event per configured feed, with the carried
+  outcome and the served frame's age for a carried-forward feed.
+- A snapshot manager answers every route-facing query identically to a
+  feed-backed manager holding the same frames.
+- A refresh reads only objects not already held, a failed check waits a full
+  interval, concurrent requests never duplicate a check, and a request in
+  flight during a swap finishes on one whole generation.
+- Each shadow comparison outcome is produced by exactly the condition that
+  defines it, including the float tolerance and the derived-answer checks.
+- The web deployment manifest sets the snapshot read bucket and never the
+  archive write or hydration variables.
 - Manifest checks coalesce under concurrent requests and do not depend on idle
   background CPU.
 - Concurrent publishers cannot move `current.json` backward.

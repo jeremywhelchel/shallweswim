@@ -261,6 +261,12 @@ Notes:
   web servers read snapshots, the publisher should carry forward the previous
   generation's object and metadata for a feed with no new data, so a transient
   provider failure never removes last-known-good data from serving.
+- Decide, per feed type, when stale data stops being shown. Carry-forward
+  keeps last-known-good data in the bundle without limit and the freshness
+  metric alerts on its age; whether the site still displays it is open. A
+  prediction feed is stale when the requested time leaves the fetched window,
+  an observation feed by the age of its latest observation. Decide with
+  shadow-mode data, not before.
 - NWIS returns an empty body for years before a site's record begins (Austin
   2011 and 2012); the client reports it as a JSON parse error instead of
   station-unavailable, which logs at ERROR and lists the years as failed.

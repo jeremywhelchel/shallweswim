@@ -751,6 +751,71 @@ command. Object-store lifecycle policies remain useful for abandoned temporary
 uploads and old noncurrent pointer versions, but must never be able to delete an
 object referenced by a retained manifest.
 
+### Generation Garbage Collection Contract
+
+Status: contract; implementation pending. On 2026-09-14, before any
+collection, the published prefix held 497 MB in 1,249 objects across 27
+hourly generations; at the ten-minute cadence a run adds a small generation
+every ten minutes, so object count is the reason to collect, not cost.
+
+Retention:
+
+- The current generation is kept unconditionally.
+- Every generation published within the last 24 hours is kept
+  (`RETAINED_GENERATION_AGE`, a named constant). That is the rollback window
+  and the window a slow instance could still be loading from.
+- Older manifests are deleted. `current.json` is never deleted.
+- An object is deleted only when no retained manifest references it and it
+  is older than a one-hour safety window (`OBJECT_SAFETY_AGE`). The window
+  protects a publisher that has written objects for a generation it has not
+  promoted yet; publication takes under two minutes.
+
+Where and when it runs:
+
+- Inside the job's publishing cycle, after publication, every run. It is
+  bounded, one listing of manifests and one of objects, and its failure is
+  isolated exactly like publication: the run's outcome and exit code are the
+  capture cycle's. The local entry point runs it too, so a store directory
+  does not grow without bound.
+- It reads the current pointer first and treats that generation as retained
+  whatever its age, then lists manifests and keeps those inside the retention
+  window, then lists objects and deletes those unreferenced by any retained
+  manifest and older than the safety window. It never deletes anything it did
+  not list in that same run.
+
+Store interface: the object store protocol gains `list(prefix)` returning
+each key with its creation time, and `delete(key)`, implemented by the
+memory, filesystem, and GCS stores alike so the portability principle holds
+(the memory store records insertion time; the filesystem store uses the
+file's modification time). A delete of a key that no longer exists is not an
+error.
+
+Event: one per run, `component=snapshot operation=gc`, `outcome` in
+`success|failed`, `duration_ms`, `record_count` as objects deleted, and the
+message naming manifests deleted and objects examined. A log-based counter
+by outcome and one dashboard tile follow in Terraform. A failed collection
+logs at ERROR: it means the store misbehaved or the sweep's own invariant
+failed, and nothing else will notice.
+
+Safety, pinned by tests:
+
+- No object referenced by the current generation or any retained manifest is
+  ever deleted, including objects the current generation reuses from an older
+  one.
+- An unreferenced object younger than the safety window survives; the same
+  object older than it is deleted once no retained manifest names it.
+- A publisher that wrote objects and a manifest but has not promoted yet loses
+  nothing to a sweep that runs in between: its manifest is inside the
+  retention window and its objects inside the safety window.
+- A manifest older than the window that is still current is kept.
+- The three store implementations list and delete identically.
+- A store failure during the sweep leaves the run outcome unchanged and
+  produces one failed gc event.
+
+Out of scope: archive partitions, which are never deleted; lifecycle rules on
+the bucket, which stay off; a standalone maintenance command, which is not
+needed while the job runs the sweep every ten minutes.
+
 ## Storage Options
 
 ### Cloud Storage

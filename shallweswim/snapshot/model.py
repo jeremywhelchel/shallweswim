@@ -123,10 +123,24 @@ class CurrentPointer(_ManifestModel):
 
 @dataclasses.dataclass(frozen=True)
 class FeedSnapshot:
-    """A served frame and the manifest metadata describing it."""
+    """A served frame and the manifest metadata describing it.
+
+    It satisfies `core.serving.FeedData`, so the query functions read a loaded
+    snapshot feed exactly as they read a fetched feed.
+    """
 
     frame: pd.DataFrame
     metadata: FeedMetadata
+
+    @property
+    def has_data(self) -> bool:
+        """Always True: a snapshot feed exists only when its frame does."""
+        return True
+
+    @property
+    def values(self) -> pd.DataFrame:
+        """The served frame."""
+        return self.frame
 
 
 @dataclasses.dataclass(frozen=True)

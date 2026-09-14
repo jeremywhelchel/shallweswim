@@ -1,56 +1,23 @@
 """Building a location snapshot from a manager holding real feeds."""
 
 import datetime
-from concurrent.futures import ProcessPoolExecutor
-from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
 from shallweswim.archive.store import MemoryObjectStore
 from shallweswim.clients.base import StationUnavailableError
-from shallweswim.clients.coops import CoopsApi
 from shallweswim.core import feeds
-from shallweswim.core.manager import LocationDataManager
 from shallweswim.snapshot.build import build_location_snapshot
 from shallweswim.snapshot.load import load_current
 from shallweswim.snapshot.model import Snapshot
 from shallweswim.snapshot.publish import publish
 from shallweswim.snapshot.store import SnapshotStore
-from tests.conftest import TEST_CONFIG_FULL
-from tests.snapshot_fixtures import FRAMES
-
-FETCHED = datetime.datetime(2026, 6, 1, 12, 0, 5)
-
-
-def _manager() -> LocationDataManager:
-    """A manager whose real feeds hold data as if they had just updated."""
-    manager = LocationDataManager(
-        TEST_CONFIG_FULL,
-        clients={"coops": MagicMock(spec=CoopsApi)},
-        process_pool=MagicMock(spec=ProcessPoolExecutor),
-    )
-    for feed_name, build in FRAMES.items():
-        feed = manager._feeds[feed_name]
-        assert feed is not None
-        feed._data = build()
-        feed._fetch_timestamp = FETCHED
-        feed._schedule_after_success(FETCHED)
-    historic = manager._feeds[feeds.FeedName.HISTORIC_TEMPS]
-    assert isinstance(historic, feeds.HistoricalTempsFeed)
-    historic._last_required_years = (2025, 2026)
-    historic._year_cache = {2025: historic.values, 2026: historic.values}
-    historic._last_fetched_years = (2026,)
-    manager._plots = {
-        feeds.PlotName.LIVE_TEMPS: b"<svg>live</svg>",
-        feeds.PlotName.HISTORIC_TEMPS_2MO: b"<svg>2mo</svg>",
-        feeds.PlotName.HISTORIC_TEMPS_12MO: b"<svg>12mo</svg>",
-    }
-    return manager
+from tests.snapshot_fixtures import FETCHED, seeded_manager
 
 
 def test_builder_captures_every_feed_and_plot() -> None:
-    manager = _manager()
+    manager = seeded_manager()
     tides = manager._feeds[feeds.FeedName.TIDES]
     assert tides is not None
     tides._last_error = StationUnavailableError("station 1234567 returned no data")
@@ -105,7 +72,7 @@ def test_builder_captures_every_feed_and_plot() -> None:
 
 
 def test_builder_records_a_configured_feed_without_data_as_a_failure() -> None:
-    manager = _manager()
+    manager = seeded_manager()
     currents = manager._feeds[feeds.FeedName.CURRENTS]
     assert currents is not None
     currents._data = None
@@ -132,7 +99,7 @@ def test_builder_records_a_configured_feed_without_data_as_a_failure() -> None:
 
 
 def test_builder_reports_a_location_whose_feeds_all_failed() -> None:
-    manager = _manager()
+    manager = seeded_manager()
     for feed_name in feeds.FeedName:
         feed = manager._feeds[feed_name]
         assert feed is not None
@@ -147,7 +114,7 @@ def test_builder_reports_a_location_whose_feeds_all_failed() -> None:
 
 
 def test_builder_rejects_a_plot_whose_feed_has_no_data() -> None:
-    manager = _manager()
+    manager = seeded_manager()
     live = manager._feeds[feeds.FeedName.LIVE_TEMPS]
     assert live is not None
     live._data = None
@@ -158,7 +125,7 @@ def test_builder_rejects_a_plot_whose_feed_has_no_data() -> None:
 
 @pytest.mark.asyncio
 async def test_built_snapshot_publishes_and_loads_equivalently() -> None:
-    manager = _manager()
+    manager = seeded_manager()
     snapshot = Snapshot(locations={"nyc": build_location_snapshot(manager)})
     store = SnapshotStore(MemoryObjectStore())
 

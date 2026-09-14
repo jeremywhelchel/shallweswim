@@ -5,6 +5,7 @@ about temperature, tides, and currents.
 """
 
 import datetime
+from collections.abc import Mapping
 from typing import Any, cast
 
 import numpy as np
@@ -17,6 +18,7 @@ from shallweswim.core.feeds import (
     FEED_LIVE_TEMPS,
     FEED_TIDES,
 )
+from shallweswim.core.serving import FeedData
 from shallweswim.types import (
     CurrentDirection,
     CurrentInfo,
@@ -65,12 +67,13 @@ TIDE_CURVE_FREQUENCY = "60s"
 
 
 def get_feed_data(
-    feeds_dict: dict[feeds.FeedName, feeds.Feed | None], feed_name: feeds.FeedName
+    feeds_dict: Mapping[feeds.FeedName, FeedData | None], feed_name: feeds.FeedName
 ) -> pd.DataFrame:
     """Get data from a feed, raising if unavailable.
 
     Args:
-        feeds_dict: Dictionary mapping feed names to Feed objects
+        feeds_dict: Mapping from feed names to served feeds (fetched feeds or
+            loaded snapshot feeds), None for unconfigured ones
         feed_name: The name of the feed to get data from
 
     Returns:
@@ -80,7 +83,7 @@ def get_feed_data(
         DataUnavailableError: If the feed data is not available
     """
     feed = feeds_dict.get(feed_name)
-    if feed is None or feed._data is None:
+    if feed is None or not feed.has_data:
         raise DataUnavailableError(f"Feed '{feed_name}' data not available")
     return feed.values
 
@@ -600,7 +603,7 @@ def _current_range_from_segment_context(
 
 
 def get_current_temperature(
-    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
+    feeds_dict: Mapping[feeds.FeedName, FeedData | None],
 ) -> TemperatureReading:
     """Get the most recent water temperature reading.
 
@@ -608,7 +611,7 @@ def get_current_temperature(
     The temperature is rounded to 1 decimal place for consistency.
 
     Args:
-        feeds_dict: Dictionary mapping feed names to Feed objects
+        feeds_dict: Mapping from feed names to served feeds
 
     Returns:
         A TemperatureReading object containing:
@@ -633,7 +636,7 @@ def get_current_temperature(
 
 
 def get_tide_info_at_time(
-    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
+    feeds_dict: Mapping[feeds.FeedName, FeedData | None],
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
 ) -> TideInfo:
@@ -644,7 +647,7 @@ def get_tide_info_at_time(
     in the location's timezone.
 
     Args:
-        feeds_dict: Dictionary mapping feed names to Feed objects
+        feeds_dict: Mapping from feed names to served feeds
         config: Location configuration
         t: Target local time, defaults to current local time
 
@@ -690,7 +693,7 @@ def get_tide_info_at_time(
 
 
 def get_chart_info(
-    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
+    feeds_dict: Mapping[feeds.FeedName, FeedData | None],
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
 ) -> LegacyChartInfo:
@@ -701,7 +704,7 @@ def get_chart_info(
     chart display system.
 
     Args:
-        feeds_dict: Dictionary mapping feed names to Feed objects
+        feeds_dict: Mapping from feed names to served feeds
         config: Location configuration
         t: The time to generate chart info for, defaults to current time in location's timezone
 
@@ -753,7 +756,7 @@ def get_chart_info(
 
 
 def get_current_flow_info(
-    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
+    feeds_dict: Mapping[feeds.FeedName, FeedData | None],
 ) -> CurrentInfo:
     """Get the latest observed current information.
 
@@ -761,7 +764,7 @@ def get_current_flow_info(
     This returns actual observed data, not predictions.
 
     Args:
-        feeds_dict: Dictionary mapping feed names to Feed objects
+        feeds_dict: Mapping from feed names to served feeds
 
     Returns:
         A CurrentInfo object containing the timestamp, magnitude, and source type
@@ -891,7 +894,7 @@ def predict_flow_from_precomputed_frame(
 
 
 def predict_flow_at_time(
-    feeds_dict: dict[feeds.FeedName, feeds.Feed | None],
+    feeds_dict: Mapping[feeds.FeedName, FeedData | None],
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
 ) -> CurrentInfo:

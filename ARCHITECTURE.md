@@ -13,7 +13,7 @@ shallweswim/
 ├── main.py              # App entry point, web UI routes, templates
 ├── capture.py           # One-shot bounded observation capture job entry point
 ├── archive/             # Observation schemas, conditional stores, and merge writer
-├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher
+├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher, read-only manager
 ├── api/                 # API layer
 │   ├── __init__.py      # Re-exports from routes
 │   └── routes.py        # JSON API routes (delegates to core/)
@@ -24,6 +24,7 @@ shallweswim/
 │   ├── __init__.py
 │   ├── manager.py       # LocationDataManager - coordinates feeds
 │   ├── queries.py       # Query functions (temp, tide, current info)
+│   ├── serving.py       # FeedData and LocationServing Protocols the routes and queries read through
 │   ├── updater.py       # Background update helpers
 │   └── feeds.py         # Feed classes with caching/expiration
 ├── clients/             # External API clients
@@ -118,6 +119,16 @@ publishes a manifest and no object. After assembly, and whether or not the
 generation is promoted, the job logs one `snapshot.freshness` event per
 location and feed with the served frame's `age_seconds` and a bounded
 `success`, `carried`, or `absent` outcome.
+A loaded generation can already serve: `snapshot/manager.py` builds a
+read-only `SnapshotLocationManager` per location from the manifest entry,
+restored frames, and plot bytes, computes the derived tide and current
+prediction frames once at construction, and derives each feed's status (age,
+expiry, health) from the manifest timestamps with the feed rules. It and
+`LocationDataManager` both satisfy `core/serving.py`'s `LocationServing`
+Protocol, which is what the API routes are typed against, and the query
+functions read any `FeedData` (a `has_data` flag and a `values` frame), which a
+fetched feed and a loaded snapshot feed both provide. Nothing wires the
+snapshot manager into the web service yet; that is the shadow-mode step.
 When `SHALLWESWIM_ARCHIVE_READ_BUCKET` is set, which local development and the
 publishing job do and the web service never does, the historical temperature
 feed first hydrates each

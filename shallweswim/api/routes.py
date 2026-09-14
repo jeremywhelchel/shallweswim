@@ -61,6 +61,7 @@ from shallweswim.core.feeds import (
     PlotName,
 )
 from shallweswim.core.queries import DataUnavailableError
+from shallweswim.core.serving import LocationServing
 
 # Data store for location data will be stored in app.state.data_managers
 
@@ -129,7 +130,7 @@ class LocationRequestContext:
     """Location request context after validating the location code."""
 
     cfg: config_lib.LocationConfig
-    data_manager: data_lib.LocationDataManager
+    data_manager: LocationServing
 
 
 @dataclasses.dataclass(frozen=True)
@@ -137,7 +138,7 @@ class ResolvedLocationTime:
     """Location request context after validating planner time parameters."""
 
     cfg: config_lib.LocationConfig
-    data_manager: data_lib.LocationDataManager
+    data_manager: LocationServing
     time_query: util.EffectiveTimeQuery
 
     @property
@@ -209,7 +210,7 @@ def api_tide_state(tide_state: types.TideState | None) -> TideState | None:
 
 
 def api_tide_info_at_time(
-    data_manager: data_lib.LocationDataManager,
+    data_manager: LocationServing,
     timestamp: datetime.datetime,
 ) -> TideInfo:
     """Build tide API data for one location-local timestamp."""
@@ -245,7 +246,7 @@ def api_current_info(
 
 def api_temperature_info(
     cfg: config_lib.LocationConfig,
-    data_manager: data_lib.LocationDataManager,
+    data_manager: LocationServing,
 ) -> TemperatureInfo | None:
     """Build observed temperature data for the conditions endpoint."""
     if not (

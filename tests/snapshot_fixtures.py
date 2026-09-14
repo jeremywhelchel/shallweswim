@@ -6,11 +6,16 @@ and the columns each Pandera model requires.
 
 import datetime
 import math
+from concurrent.futures import ProcessPoolExecutor
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
 
+from shallweswim.clients.coops import CoopsApi
+from shallweswim.core import feeds
 from shallweswim.core.feeds import FeedName, PlotName
+from shallweswim.core.manager import LocationDataManager
 from shallweswim.snapshot.model import (
     FeedFailure,
     FeedMetadata,
@@ -20,8 +25,11 @@ from shallweswim.snapshot.model import (
     Snapshot,
 )
 from shallweswim.types import TIDE_TYPE_CATEGORIES
+from tests.conftest import TEST_CONFIG_FULL
 
 FETCHED_AT = datetime.datetime(2026, 6, 1, 12, 0, 5, tzinfo=datetime.UTC)
+# The same instant as the naive UTC clock the feeds keep.
+FETCHED = FETCHED_AT.replace(tzinfo=None)
 RETRY_AT = datetime.datetime(2026, 9, 13, 16, 10, 0, tzinfo=datetime.UTC)
 
 
@@ -74,6 +82,36 @@ FRAMES = {
     FeedName.TIDES: tides_frame,
     FeedName.CURRENTS: currents_frame,
 }
+
+
+def seeded_manager() -> LocationDataManager:
+    """A manager for the full test location whose real feeds hold FRAMES.
+
+    Every feed looks as if it had just updated at FETCHED, the historical feed
+    has a two-year cache, and every plot is present.
+    """
+    manager = LocationDataManager(
+        TEST_CONFIG_FULL,
+        clients={"coops": MagicMock(spec=CoopsApi)},
+        process_pool=MagicMock(spec=ProcessPoolExecutor),
+    )
+    for feed_name, build in FRAMES.items():
+        feed = manager._feeds[feed_name]
+        assert feed is not None
+        feed._data = build()
+        feed._fetch_timestamp = FETCHED
+        feed._schedule_after_success(FETCHED)
+    historic = manager._feeds[feeds.FeedName.HISTORIC_TEMPS]
+    assert isinstance(historic, feeds.HistoricalTempsFeed)
+    historic._last_required_years = (2025, 2026)
+    historic._year_cache = {2025: historic.values, 2026: historic.values}
+    historic._last_fetched_years = (2026,)
+    manager._plots = {
+        feeds.PlotName.LIVE_TEMPS: b"<svg>live</svg>",
+        feeds.PlotName.HISTORIC_TEMPS_2MO: b"<svg>2mo</svg>",
+        feeds.PlotName.HISTORIC_TEMPS_12MO: b"<svg>12mo</svg>",
+    }
+    return manager
 
 
 def feed_failure(

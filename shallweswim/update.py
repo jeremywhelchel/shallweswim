@@ -1,6 +1,6 @@
 """One-shot bounded capture job for the durable observation archive.
 
-This module is the job entry point (``uv run python -m shallweswim.capture``).
+This module is the job entry point (``uv run python -m shallweswim.update``).
 It fetches every archivable feed once in a short-lived process so the existing
 capture hook writes the observations to the archive. It is distinct from
 ``shallweswim.archive.capture``, which is that hook: the hook merges one feed's
@@ -14,8 +14,7 @@ feeds, derived frames, and plots in a process pool, and then publishes one
 snapshot generation under ``published/`` in the archive bucket and sweeps the
 generations that publication superseded. Archive capture still happens inside
 each feed's update, and the sweep never touches archive partitions. The job
-never serves traffic or starts FastAPI. It is temporary: the Phase 4 updater
-command absorbs it.
+never serves traffic or starts FastAPI.
 
 The current generation is also the job's persisted feed schedule: before each
 location's cycle the run restores every matching feed's next fetch time from
@@ -515,7 +514,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         Parsed arguments namespace.
     """
     parser = argparse.ArgumentParser(
-        prog="python -m shallweswim.capture",
+        prog="python -m shallweswim.update",
         description="Fetch archivable feeds once so observations enter the archive.",
     )
     parser.add_argument(

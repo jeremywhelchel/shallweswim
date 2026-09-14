@@ -107,7 +107,7 @@ def test_service_and_capture_job_use_distinct_identities() -> None:
 def test_capture_job_runs_the_capture_entry_point() -> None:
     """The job overrides the image command rather than starting the web app."""
     assert 'command: ["python"]' in CAPTURE_JOB_YAML
-    assert '"-m", "shallweswim.capture"' in CAPTURE_JOB_YAML
+    assert '"-m", "shallweswim.update"' in CAPTURE_JOB_YAML
 
 
 def test_service_and_capture_job_share_one_substituted_image() -> None:

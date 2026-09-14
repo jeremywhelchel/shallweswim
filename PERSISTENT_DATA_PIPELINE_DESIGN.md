@@ -1075,7 +1075,7 @@ observational currents in the archive"; local commits, not yet pushed):
 - Temperature and observational-currents capture, UTC conversion with
   daylight-saving handling, overlap/correction/deduplication behavior — all
   covered by unit tests. Prediction feeds never archive.
-- The bounded `shallweswim.capture` entry point, the Cloud Run Job and Cloud
+- The bounded `shallweswim.update` entry point, the Cloud Run Job and Cloud
   Build definitions, the operator runbook for the dedicated job identities and
   schedule, and job-inclusive log-based metric filters, per the contract below.
 
@@ -1096,13 +1096,9 @@ live feeds before anything reads the archive.
 The job is an ordinary bounded command with no dependency on a job-runner API:
 
 ```bash
-uv run python -m shallweswim.capture              # scheduled run
-uv run python -m shallweswim.capture --full-history  # one-time backfill
+uv run python -m shallweswim.update              # scheduled run
+uv run python -m shallweswim.update --full-history  # one-time backfill
 ```
-
-It is a temporary entry point. The `shallweswim.update` command absorbs
-it once snapshot publication exists; `shallweswim.capture` then retires rather
-than becoming a second long-lived updater.
 
 Scope and behavior:
 
@@ -1636,11 +1632,11 @@ Store selection:
 Process model:
 
 - The entry point builds the FastAPI app through `start_app` with the same
-  command-line options as `shallweswim.main` (host, port, frontend paths),
+  command-line options as `shallweswim.web` (host, port, frontend paths),
   and runs it with uvicorn in-process. `--reload` is not supported, because
   the store lives in the process.
 - A lifespan task runs the job cycle: the publishing path of
-  `shallweswim.capture` (every location's serving cycle, capture, plots, and
+  `shallweswim.update` (every location's serving cycle, capture, plots, and
   one generation published into the store) once at startup and then every
   `--cadence` minutes, default ten, the production cadence the design
   targets. The cycle reuses the job's code unchanged; the only new plumbing
@@ -1654,8 +1650,9 @@ Process model:
 - Readiness and health are the web service's. Before the first cycle
   publishes, the legacy managers answer as they do today.
 
-Out of scope: any change to production entry points or manifests; retiring
-`shallweswim.capture` into `shallweswim.update`, which stays with cutover.
+Out of scope: any change to production entry points or manifests. Renaming
+the bounded job module — `capture`, under the `shallweswim` package — to
+`shallweswim.update` happened later, after cutover.
 
 Tests: the store helper resolves each locator kind and returns one shared
 memory store per process; the local cycle publishes a generation into a
@@ -1665,7 +1662,7 @@ than fetching; the entry point ignores bucket variables from the
 environment.
 
 Documentation: README's local development section makes this the
-recommended command and keeps `shallweswim.main` for running the web half
+recommended command and keeps `shallweswim.web` for running the web half
 alone; ARCHITECTURE lists the three entry points and the store helper;
 `.env.example` notes that the local entry point needs none of its variables.
 
@@ -1766,9 +1763,7 @@ Deployment and rollback:
 - Deploy order: web service first, observe one refresh and the health check
   on the new revision, then the scheduler cadence.
 
-Deferred to follow-up slices, not part of cutover: renaming `shallweswim.main`
-to `shallweswim.web` and folding `shallweswim.capture` into
-`shallweswim.update` as the design names them; garbage collection of old
+Deferred to follow-up slices, not part of cutover: garbage collection of old
 generations, which should follow cutover soon (on 2026-09-14 the published
 prefix held 27 generations and 497 MB against a 17 MB archive, growing about
 20 MB per generation; keeping the active generation plus a day of

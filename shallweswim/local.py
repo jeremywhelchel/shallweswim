@@ -11,7 +11,7 @@ disk, so a second start hydrates history from the archive instead of refetching
 every configured year; the default ``memory`` locator keeps them in this
 process only.
 
-The app itself is unchanged: ``main.start_app`` builds it, and the updater is
+The app itself is unchanged: ``web.start_app`` builds it, and the updater is
 composed around its lifespan rather than conditionally inside it. This module
 wraps ``app.router.lifespan_context`` and, inside it, does in order what a
 first run needs: the app's own startup (which finds an empty store and loads
@@ -19,7 +19,7 @@ nothing), one publishing cycle, and one more load, so the first request already
 has a generation. The cycle then continues on the cadence, and the wrapper
 cancels it before the app's shutdown runs. The deployed web service opens no
 HTTP session, so this module opens the one the cycles fetch over; the process
-pool they plot in is the app's. ``main.py`` therefore has no notion of local
+pool they plot in is the app's. ``web.py`` therefore has no notion of local
 mode.
 
 Uvicorn runs the application object in this process rather than the factory
@@ -41,8 +41,8 @@ import aiohttp
 import fastapi
 import uvicorn
 
-from shallweswim import capture
-from shallweswim import main as main_module
+from shallweswim import update
+from shallweswim import web as web_module
 from shallweswim.archive.store import MEMORY_LOCATOR
 from shallweswim.clients import create_api_clients
 from shallweswim.logging_utils import setup_logging
@@ -56,8 +56,8 @@ DEFAULT_CADENCE_MINUTES = 10
 # archive writes, the historical feed's hydration reads, and the web half's
 # published generations.
 STORE_ENV_VARS = (
-    capture.ARCHIVE_BUCKET_ENV_VAR,
-    capture.ARCHIVE_READ_BUCKET_ENV_VAR,
+    update.ARCHIVE_BUCKET_ENV_VAR,
+    update.ARCHIVE_READ_BUCKET_ENV_VAR,
     SNAPSHOT_READ_BUCKET_ENV_VAR,
 )
 
@@ -82,7 +82,7 @@ async def run_cycle(
 ) -> None:
     """Run one publishing cycle, logging a broken cycle rather than raising.
 
-    The cycle is `capture.publish_locations`, unchanged: every location's full
+    The cycle is `update.publish_locations`, unchanged: every location's full
     serving cycle, archive capture inside each feed update, plots, one
     published generation, and one sweep of the generations it superseded, so a
     store directory does not grow without bound. It plots in the app's process
@@ -95,7 +95,7 @@ async def run_cycle(
     """
     logging.info(f"[local] publishing cycle starting, store {locator}")
     try:
-        await capture.publish_locations(
+        await update.publish_locations(
             create_api_clients(session),
             uuid.uuid4().hex,
             pool=app.state.process_pool,
@@ -206,7 +206,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--frontend-dist",
         type=str,
-        default=str(main_module.DEFAULT_FRONTEND_DIST),
+        default=str(web_module.DEFAULT_FRONTEND_DIST),
         help="Path to built frontend app output directory",
     )
     parser.add_argument(
@@ -266,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
         f"serving on {args.host}:{args.port}"
     )
 
-    app = main_module.start_app(
+    app = web_module.start_app(
         asset_manifest=args.asset_manifest,
         frontend_dist=args.frontend_dist,
         require_frontend_dist=args.require_frontend_dist,

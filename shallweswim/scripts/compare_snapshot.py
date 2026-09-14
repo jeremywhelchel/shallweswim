@@ -38,10 +38,6 @@ import pandas as pd
 from shallweswim import config as config_lib
 from shallweswim import logging_utils
 from shallweswim.archive.store import object_store
-
-# The job's serving cycle, reused rather than restated: the legacy side must be
-# the state the publisher itself would have published from.
-from shallweswim.capture import serve_location
 from shallweswim.clients import create_api_clients
 from shallweswim.core.feeds import FeedName, PlotName
 from shallweswim.core.manager import PLOT_HARD_TIMEOUT, LocationDataManager
@@ -51,6 +47,10 @@ from shallweswim.snapshot.manager import SnapshotLocationManager
 from shallweswim.snapshot.model import LocationManifest
 from shallweswim.snapshot.store import SNAPSHOT_READ_BUCKET_ENV_VAR, SnapshotStore
 from shallweswim.types import DataSourceType
+
+# The job's serving cycle, reused rather than restated: the legacy side must be
+# the state the publisher itself would have published from.
+from shallweswim.update import serve_location
 
 # Archive variables the comparison run must not act on; see `_isolate_legacy`.
 ARCHIVE_BUCKET_ENV_VAR = "SHALLWESWIM_ARCHIVE_BUCKET"

@@ -170,7 +170,7 @@ needs a store to read and `SHALLWESWIM_SNAPSHOT_READ_BUCKET` is required:
 
 ```bash
 SHALLWESWIM_SNAPSHOT_READ_BUCKET="$PWD/.local-store" \
-  uv run python -m shallweswim.main --port=12345 --reload
+  uv run python -m shallweswim.web --port=12345 --reload
 ```
 
 Without that variable it fails at startup with a message naming it. A locator
@@ -261,7 +261,7 @@ The application is hosted on Google Cloud Run:
 ```
 
 The observation capture job is a separate bounded entry point
-(`python -m shallweswim.capture`) deployed from the same image as a Cloud Run
+(`python -m shallweswim.update`) deployed from the same image as a Cloud Run
 Job and triggered by Cloud Scheduler instead of running inside the web
 service. See the [capture job runbook](infra/capture-job/README.md).
 
@@ -536,11 +536,11 @@ service. The job fetches every archivable feed once and exits:
 ```bash
 # Scheduled run: current historical year only
 SHALLWESWIM_ARCHIVE_BUCKET=my-archive-bucket \
-  uv run python -m shallweswim.capture
+  uv run python -m shallweswim.update
 
 # One-time backfill of every configured historical year
 SHALLWESWIM_ARCHIVE_BUCKET=my-archive-bucket \
-  uv run python -m shallweswim.capture --full-history
+  uv run python -m shallweswim.update --full-history
 ```
 
 In this capture-only mode the job fetches only live temperatures, historical
@@ -629,7 +629,7 @@ from the same Cloud Build value as the job's bucket.
 
 ```bash
 SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
-  uv run python -m shallweswim.main --port=12345
+  uv run python -m shallweswim.web --port=12345
 ```
 
 Every response, health check, and status field comes from the loaded
@@ -928,7 +928,7 @@ Paste this into a WordPress Custom HTML block:
 ```
 
 Build with `corepack pnpm@10.18.3 --dir frontend build`, then run
-`uv run python -m shallweswim.main --port=12345` and open
+`uv run python -m shallweswim.web --port=12345` and open
 `http://localhost:12345/nyc/embed`. Other configured location codes work too.
 
 This baseline uses a fixed iframe height; leave scrolling enabled for larger

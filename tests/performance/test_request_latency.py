@@ -32,9 +32,9 @@ from shallweswim.core.queries import (
     prepare_current_prediction_frame,
     prepare_tide_prediction_frame,
 )
-from shallweswim.main import app as main_app
 from shallweswim.types import TIDE_TYPE_CATEGORIES
 from shallweswim.util import utc_now
+from shallweswim.web import app as web_app
 from tests.conftest import TEST_CONFIG_FULL
 from tests.helpers import create_test_app, install_managers
 
@@ -193,38 +193,34 @@ def performance_html_client(tmp_path: Path) -> Generator[TestClient]:
     dist = tmp_path / "dist"
     _write_fake_frontend_dist(dist)
 
-    original_frontend_dist = getattr(main_app.state, "frontend_dist", None)
-    original_frontend_index_cache = getattr(
-        main_app.state, "frontend_index_cache", None
-    )
-    original_frontend_shell_cache = getattr(
-        main_app.state, "frontend_shell_cache", None
-    )
-    main_app.state.frontend_dist = str(dist)
-    if hasattr(main_app.state, "frontend_index_cache"):
-        del main_app.state.frontend_index_cache
-    if hasattr(main_app.state, "frontend_shell_cache"):
-        del main_app.state.frontend_shell_cache
+    original_frontend_dist = getattr(web_app.state, "frontend_dist", None)
+    original_frontend_index_cache = getattr(web_app.state, "frontend_index_cache", None)
+    original_frontend_shell_cache = getattr(web_app.state, "frontend_shell_cache", None)
+    web_app.state.frontend_dist = str(dist)
+    if hasattr(web_app.state, "frontend_index_cache"):
+        del web_app.state.frontend_index_cache
+    if hasattr(web_app.state, "frontend_shell_cache"):
+        del web_app.state.frontend_shell_cache
 
-    client = TestClient(main_app)
+    client = TestClient(web_app)
     try:
         yield client
     finally:
         client.close()
         if original_frontend_dist is None:
-            del main_app.state.frontend_dist
+            del web_app.state.frontend_dist
         else:
-            main_app.state.frontend_dist = original_frontend_dist
+            web_app.state.frontend_dist = original_frontend_dist
         if original_frontend_index_cache is None:
-            if hasattr(main_app.state, "frontend_index_cache"):
-                del main_app.state.frontend_index_cache
+            if hasattr(web_app.state, "frontend_index_cache"):
+                del web_app.state.frontend_index_cache
         else:
-            main_app.state.frontend_index_cache = original_frontend_index_cache
+            web_app.state.frontend_index_cache = original_frontend_index_cache
         if original_frontend_shell_cache is None:
-            if hasattr(main_app.state, "frontend_shell_cache"):
-                del main_app.state.frontend_shell_cache
+            if hasattr(web_app.state, "frontend_shell_cache"):
+                del web_app.state.frontend_shell_cache
         else:
-            main_app.state.frontend_shell_cache = original_frontend_shell_cache
+            web_app.state.frontend_shell_cache = original_frontend_shell_cache
 
 
 def _measure(

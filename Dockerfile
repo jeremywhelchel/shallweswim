@@ -46,4 +46,4 @@ RUN --mount=type=cache,target=/opt/uv-cache/ \
 RUN python -m shallweswim.scripts.generate_asset_manifest
 
 # Run the web service on container startup with asset manifest
-CMD ["python", "-m", "shallweswim.main", "--asset-manifest=shallweswim/static/asset-manifest.json", "--frontend-dist=frontend/dist", "--require-frontend-dist", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "shallweswim.web", "--asset-manifest=shallweswim/static/asset-manifest.json", "--frontend-dist=frontend/dist", "--require-frontend-dist", "--host", "0.0.0.0", "--port", "8080"]

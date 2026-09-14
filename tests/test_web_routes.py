@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 from markupsafe import escape
 
 from shallweswim import canonical, config
-from shallweswim import main as main_module
-from shallweswim.main import app, start_app
+from shallweswim import web as web_module
+from shallweswim.web import app, start_app
 
 
 def _escaped(value: str) -> str:
@@ -16,16 +16,16 @@ def _escaped(value: str) -> str:
 
 def test_create_app_configures_logging_in_uvicorn_server_process(monkeypatch) -> None:
     events: list[str] = []
-    monkeypatch.setattr(main_module, "setup_logging", lambda: events.append("logging"))
+    monkeypatch.setattr(web_module, "setup_logging", lambda: events.append("logging"))
     monkeypatch.setattr(
-        main_module,
+        web_module,
         "start_app",
-        lambda **_kwargs: events.append("start") or main_module.app,
+        lambda **_kwargs: events.append("start") or web_module.app,
     )
 
-    result = main_module.create_app()
+    result = web_module.create_app()
 
-    assert result is main_module.app
+    assert result is web_module.app
     assert events == ["logging", "start"]
 
 
@@ -134,7 +134,7 @@ def test_non_app_trailing_slash_paths_are_not_collapsed_by_app_canonicalizer(
     path: str,
 ) -> None:
     """Only duplicate root app page paths get the app canonicalizer."""
-    from shallweswim.main import duplicate_app_trailing_slash_redirect_url
+    from shallweswim.web import duplicate_app_trailing_slash_redirect_url
 
     assert duplicate_app_trailing_slash_redirect_url(path, query="") is None
 
@@ -308,16 +308,16 @@ def test_app_shell_cache_reuses_rendered_route_html(tmp_path, monkeypatch) -> No
     _write_fake_frontend_dist(dist)
 
     render_calls = 0
-    import shallweswim.main as main
+    import shallweswim.web as web
 
-    original_render = main._render_frontend_shell
+    original_render = web._render_frontend_shell
 
     def counting_render(*args, **kwargs):
         nonlocal render_calls
         render_calls += 1
         return original_render(*args, **kwargs)
 
-    monkeypatch.setattr(main, "_render_frontend_shell", counting_render)
+    monkeypatch.setattr(web, "_render_frontend_shell", counting_render)
 
     client = TestClient(app)
     original_frontend_dist = getattr(app.state, "frontend_dist", None)

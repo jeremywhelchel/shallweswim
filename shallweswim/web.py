@@ -1001,7 +1001,7 @@ if __name__ == "__main__":
 
     # Run the application with uvicorn
     uvicorn.run(
-        "shallweswim.main:create_app",
+        "shallweswim.web:create_app",
         host=_parsed_args.host,
         port=_parsed_args.port,
         log_level="info",

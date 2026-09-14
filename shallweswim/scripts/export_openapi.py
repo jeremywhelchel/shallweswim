@@ -4,7 +4,7 @@ import json
 import sys
 from typing import Any
 
-from shallweswim.main import app
+from shallweswim.web import app
 
 
 def main() -> None:

@@ -1,6 +1,6 @@
 """One-shot capture job behavior over mocked clients and a memory archive.
 
-These tests exercise ``shallweswim.capture`` through the real capture hook
+These tests exercise ``shallweswim.update`` through the real capture hook
 (``shallweswim.archive.capture``) so archived keys and rows are asserted from an
 in-memory object store rather than mocked out.
 """
@@ -20,7 +20,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from shallweswim import capture, config
+from shallweswim import config, update
 from shallweswim.archive import store as archive_store
 from shallweswim.archive.observations import (
     CURRENTS_UNIT,
@@ -104,7 +104,7 @@ def clear_store_cache() -> Iterator[None]:
 def setup_logging_mock(monkeypatch: pytest.MonkeyPatch) -> Mock:
     """Replace job logging setup, which would otherwise drop caplog handlers."""
     mock = Mock(return_value="console")
-    monkeypatch.setattr(capture.logging_utils, "setup_logging", mock)
+    monkeypatch.setattr(update.logging_utils, "setup_logging", mock)
     return mock
 
 
@@ -237,7 +237,7 @@ def _install_job_environment(
     coops_client = MockCoopsApi()
     nwis_client = MockNwisApi()
     clients: dict[str, BaseApiClient] = {"coops": coops_client, "nwis": nwis_client}
-    monkeypatch.setattr(capture, "create_api_clients", lambda session: clients)
+    monkeypatch.setattr(update, "create_api_clients", lambda session: clients)
     store = MemoryObjectStore()
     monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     return coops_client, nwis_client, store
@@ -260,10 +260,10 @@ def _archived_rows(store: MemoryObjectStore, key: str, unit: str) -> pd.DataFram
 
 
 def test_run_outcome_counts() -> None:
-    assert capture.run_outcome(0, 0) == "success"
-    assert capture.run_outcome(3, 3) == "success"
-    assert capture.run_outcome(1, 3) == "partial"
-    assert capture.run_outcome(0, 3) == "failed"
+    assert update.run_outcome(0, 0) == "success"
+    assert update.run_outcome(3, 3) == "success"
+    assert update.run_outcome(1, 3) == "partial"
+    assert update.run_outcome(0, 3) == "failed"
 
 
 def test_run_captures_observations_and_skips_predictions(
@@ -276,7 +276,7 @@ def test_run_captures_observations_and_skips_predictions(
     )
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 0
     setup_logging_mock.assert_called_once()
@@ -310,7 +310,7 @@ def test_default_run_limits_history_to_current_year(
     assert full_feed.start_year == 2024
     assert full_feed.end_year == utc_now().year
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
     assert coops_client.historic_temperature_calls == 1
 
 
@@ -321,7 +321,7 @@ def test_full_history_flag_fetches_configured_range(
         monkeypatch, [MULTI_YEAR_HISTORY_CONFIG]
     )
 
-    assert capture.main(["--full-history"]) == 0
+    assert update.main(["--full-history"]) == 0
     assert coops_client.historic_temperature_calls == utc_now().year - 2024 + 1
 
 
@@ -331,7 +331,7 @@ def test_past_history_range_is_skipped_without_failing(
     coops_client, _, _ = _install_job_environment(monkeypatch, [RETIRED_HISTORY_CONFIG])
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 0
     assert coops_client.historic_temperature_calls == 0
@@ -352,7 +352,7 @@ def test_one_failing_feed_leaves_run_partial(
     coops_client.live_temperature_error = RuntimeError("live temp boom")
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 0
     assert nwis_client.currents_calls == 1
@@ -381,7 +381,7 @@ def test_all_feeds_failing_is_a_failed_run(
     nwis_client.currents_error = RuntimeError("currents boom")
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 1
     summary = _summary_record(caplog)
@@ -397,12 +397,12 @@ def test_missing_bucket_fails_before_any_client(
 ) -> None:
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "")
     client_factory = Mock()
-    monkeypatch.setattr(capture, "create_api_clients", client_factory)
+    monkeypatch.setattr(update, "create_api_clients", client_factory)
     session_factory = Mock()
-    monkeypatch.setattr(capture.aiohttp, "ClientSession", session_factory)
+    monkeypatch.setattr(update.aiohttp, "ClientSession", session_factory)
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 1
     client_factory.assert_not_called()
@@ -422,7 +422,7 @@ def test_summary_event_fields_and_run_id(
     monkeypatch.setenv("CLOUD_RUN_EXECUTION", "shallweswim-capture-abcde")
 
     with caplog.at_level(logging.INFO):
-        assert capture.main([]) == 0
+        assert update.main([]) == 0
 
     summary = _summary_record(caplog)
     assert summary.component == "updater"
@@ -443,10 +443,10 @@ def test_identical_second_run_archives_no_new_or_revised_rows(
     """Re-fetching the same observations overlaps instead of rewriting them."""
     _install_job_environment(monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS])
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
     caplog.clear()
     with caplog.at_level(logging.INFO):
-        assert capture.main([]) == 0
+        assert update.main([]) == 0
 
     summary = _summary_record(caplog)
     assert summary.outcome == "success"
@@ -479,7 +479,7 @@ def _install_publish_environment(
     coops_client, nwis_client, store = _install_job_environment(monkeypatch, configs)
     monkeypatch.setenv("SHALLWESWIM_SNAPSHOT_PUBLISH", "1")
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", "test-archive")
-    monkeypatch.setattr(capture, "ProcessPoolExecutor", ThreadPoolExecutor)
+    monkeypatch.setattr(update, "ProcessPoolExecutor", ThreadPoolExecutor)
     monkeypatch.setattr(
         manager_module, "_generate_live_temp_plot", lambda *args: b"<svg>live</svg>"
     )
@@ -514,7 +514,7 @@ def test_publish_run_writes_one_generation_with_every_feed_and_plot(
     monkeypatch.setenv("CLOUD_RUN_EXECUTION", "shallweswim-capture-pub01")
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 0
     # The full serving cycle fetches the prediction feeds the capture-only
@@ -624,13 +624,13 @@ def test_second_publish_run_holds_every_feed_and_changes_nothing(
         monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
     )
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
     objects_after_first = _published_keys(store, "published/objects/")
     manifests_after_first = _published_keys(store, "published/manifests/")
     calls_after_first = _provider_calls(coops_client, nwis_client)
     caplog.clear()
     with caplog.at_level(logging.INFO):
-        assert capture.main([]) == 0
+        assert update.main([]) == 0
 
     # No feed was due again, so no provider was contacted and the published
     # generation is byte-identical: the `unchanged` outcome the design wants.
@@ -662,7 +662,7 @@ def test_a_due_feed_fetches_while_the_rest_are_held(
         monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
     )
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
     base = asyncio.run(load_current(SnapshotStore(store)))
     assert base is not None
     calls_after_first = _provider_calls(coops_client, nwis_client)
@@ -676,7 +676,7 @@ def test_a_due_feed_fetches_while_the_rest_are_held(
     )
     caplog.clear()
     with caplog.at_level(logging.INFO):
-        assert capture.main([]) == 0
+        assert update.main([]) == 0
 
     assert coops_client.live_temperature_calls == calls_after_first[2] + 1
     assert _provider_calls(coops_client, nwis_client)[:2] == calls_after_first[:2]
@@ -714,13 +714,13 @@ def test_a_changed_source_identity_fetches_instead_of_holding(
         monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
     )
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
     calls_after_first = _provider_calls(coops_client, nwis_client)
     _edit_published_feed(
         store, "obs", feeds.FeedName.LIVE_TEMPS, source_identity="coops:temp:9999999"
     )
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
 
     # The entry no longer describes the configured source, so the feed is a
     # fresh feed again and fetches; every other feed still holds.
@@ -735,11 +735,11 @@ def test_a_run_without_a_published_generation_fetches_everything(
         monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
     )
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
     calls_after_first = _provider_calls(coops_client, nwis_client)
     del store._objects[CURRENT_KEY]
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
 
     assert _provider_calls(coops_client, nwis_client) == tuple(
         count * 2 for count in calls_after_first
@@ -753,10 +753,10 @@ def test_full_history_run_ignores_the_published_schedule(
         monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
     )
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
     calls_after_first = _provider_calls(coops_client, nwis_client)
 
-    assert capture.main(["--full-history"]) == 0
+    assert update.main(["--full-history"]) == 0
 
     assert _provider_calls(coops_client, nwis_client) == tuple(
         count * 2 for count in calls_after_first
@@ -774,7 +774,7 @@ def test_restore_schedule_only_restores_matching_entries() -> None:
     assert currents is not None and historic is not None
     due = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.UTC)
 
-    capture.restore_schedule(
+    update.restore_schedule(
         manager,
         LocationManifest(
             feeds={
@@ -802,7 +802,7 @@ def test_restore_schedule_only_restores_matching_entries() -> None:
 def test_restore_schedule_without_a_manifest_leaves_every_feed_due() -> None:
     manager = fresh_manager()
 
-    capture.restore_schedule(manager, None)
+    update.restore_schedule(manager, None)
 
     for feed in manager._feeds.values():
         assert feed is not None
@@ -826,7 +826,7 @@ def test_publish_failure_leaves_run_outcome_and_exit_code(
     monkeypatch.setattr(store, "compare_and_swap", failing_compare_and_swap)
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 0
     assert _published_keys(store, "published/") == []
@@ -861,7 +861,7 @@ def test_publish_run_sweeps_generations_after_publishing(
     )
 
     with caplog.at_level(logging.INFO):
-        assert capture.main([]) == 0
+        assert update.main([]) == 0
 
     (gc_event,) = _gc_records(caplog)
     assert gc_event.levelno == logging.INFO
@@ -887,7 +887,7 @@ def test_sweep_failure_leaves_the_run_outcome_and_the_generation_unchanged(
     monkeypatch.setattr(store, "list", failing_list)
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 0
     summary = _summary_record(caplog)
@@ -912,7 +912,7 @@ def test_publish_run_with_one_failing_feed_is_partial_and_still_publishes(
     coops_client.live_temperature_error = RuntimeError("live temp boom")
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 0
     # The feed after the failing one in the cycle still ran.
@@ -960,7 +960,7 @@ def test_publish_run_includes_a_location_whose_feeds_all_failed(
     coops_client.currents_error = RuntimeError("currents boom")
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 0
     assert nwis_client.currents_calls == 1
@@ -1001,7 +1001,7 @@ def test_publish_run_with_no_data_publishes_nothing(
     nwis_client.currents_error = RuntimeError("currents boom")
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 1
     assert _published_keys(store, "published/") == []
@@ -1018,12 +1018,12 @@ def test_publish_mode_requires_read_bucket_before_any_client(
     monkeypatch.setenv("SHALLWESWIM_SNAPSHOT_PUBLISH", "1")
     monkeypatch.delenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", raising=False)
     client_factory = Mock()
-    monkeypatch.setattr(capture, "create_api_clients", client_factory)
+    monkeypatch.setattr(update, "create_api_clients", client_factory)
     session_factory = Mock()
-    monkeypatch.setattr(capture.aiohttp, "ClientSession", session_factory)
+    monkeypatch.setattr(update.aiohttp, "ClientSession", session_factory)
 
     with caplog.at_level(logging.INFO):
-        exit_code = capture.main([])
+        exit_code = update.main([])
 
     assert exit_code == 1
     client_factory.assert_not_called()
@@ -1045,9 +1045,9 @@ def test_publish_disabled_keeps_the_capture_only_path(
         monkeypatch.setenv("SHALLWESWIM_SNAPSHOT_PUBLISH", publish_flag)
     monkeypatch.delenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", raising=False)
     pool_factory = Mock()
-    monkeypatch.setattr(capture, "ProcessPoolExecutor", pool_factory)
+    monkeypatch.setattr(update, "ProcessPoolExecutor", pool_factory)
 
-    assert capture.main([]) == 0
+    assert update.main([]) == 0
 
     assert coops_client.tides_calls == 0
     assert coops_client.currents_calls == 0

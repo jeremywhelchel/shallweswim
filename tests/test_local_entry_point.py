@@ -1,7 +1,7 @@
 """The local entry point: one process publishing into a local store, serving it.
 
 These tests drive the two halves the entry point composes. The job half is
-`capture.publish_locations` against a locator rather than a bucket; the web half
+`update.publish_locations` against a locator rather than a bucket; the web half
 is the app's own load, which must find exactly what the job half published, and
 must have found it before the first request arrives. Mocked clients keep every
 run offline, and the store variables are set through the entry point's own
@@ -26,8 +26,8 @@ import pytest
 import pytz
 from fastapi.testclient import TestClient
 
-from shallweswim import capture, config, local
-from shallweswim import main as main_module
+from shallweswim import config, local, update
+from shallweswim import web as web_module
 from shallweswim.archive import store as archive_store
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
@@ -164,7 +164,7 @@ async def _run_cycle(
     """Run one publishing cycle in a thread pool instead of a process pool."""
     clients: dict[str, BaseApiClient] = {"coops": client}
     with ThreadPoolExecutor() as pool:
-        _, outcome = await capture.publish_locations(
+        _, outcome = await update.publish_locations(
             clients, run_id, pool=pool, locator=locator, full_history=full_history
         )
     return outcome
@@ -181,7 +181,7 @@ async def test_memory_cycle_publishes_a_generation_the_app_loads(
 
     assert outcome == "success"
     served = SimpleNamespace(state=SimpleNamespace())
-    await main_module.start_snapshot_serving(served)  # pyrefly: ignore
+    await web_module.start_snapshot_serving(served)  # pyrefly: ignore
     assert set(served.state.snapshot.managers) == {HISTORY_CONFIG.code}
     assert served.state.snapshot.generation_id is not None
 
@@ -217,7 +217,7 @@ async def test_filesystem_store_persists_and_hydrates_the_second_cycle(
     assert len(list((root / "published" / "manifests").glob("*.json"))) == 2
 
     served = SimpleNamespace(state=SimpleNamespace())
-    await main_module.start_snapshot_serving(served)  # pyrefly: ignore
+    await web_module.start_snapshot_serving(served)  # pyrefly: ignore
     assert set(served.state.snapshot.managers) == {HISTORY_CONFIG.code}
 
 
@@ -255,7 +255,7 @@ async def test_a_second_cycle_sweeps_the_generation_it_supersedes(
     # The current pointer still names a generation the app can serve, and no
     # object was swept: they are all inside the one-hour safety window.
     served = SimpleNamespace(state=SimpleNamespace())
-    await main_module.start_snapshot_serving(served)  # pyrefly: ignore
+    await web_module.start_snapshot_serving(served)  # pyrefly: ignore
     assert served.state.snapshot.generation_id is not None
     assert set(served.state.snapshot.managers) == {HISTORY_CONFIG.code}
 
@@ -267,7 +267,7 @@ def _run_entry_point(
     installed: dict[str, object] = {}
     monkeypatch.setattr(local, "setup_logging", lambda: "console")
     monkeypatch.setattr(
-        local.main_module, "start_app", lambda **kwargs: fastapi.FastAPI()
+        local.web_module, "start_app", lambda **kwargs: fastapi.FastAPI()
     )
     monkeypatch.setattr(
         local,
@@ -329,7 +329,7 @@ def test_lifespan_composition_runs_the_updater_between_startup_and_shutdown(
         cycled.set()
         return [], "success"
 
-    monkeypatch.setattr(local.capture, "publish_locations", fake_publish)
+    monkeypatch.setattr(local.update, "publish_locations", fake_publish)
     monkeypatch.setattr(local, "create_api_clients", lambda session: {})
 
     loads: list[str] = []
@@ -389,9 +389,9 @@ def test_first_request_is_served_from_the_first_published_generation(
     )
     # The cycle's plot stubs are patched in this process, so the plots must run
     # here rather than in a real process pool's workers.
-    monkeypatch.setattr(main_module, "ProcessPoolExecutor", ThreadPoolExecutor)
+    monkeypatch.setattr(web_module, "ProcessPoolExecutor", ThreadPoolExecutor)
 
-    app = main_module.start_app()
+    app = web_module.start_app()
     original_lifespan = app.router.lifespan_context
     local.install_updater(app, locator=locator, cadence_seconds=3600)
     try:

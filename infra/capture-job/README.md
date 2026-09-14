@@ -1,7 +1,7 @@
 # Observation Capture Job
 
 The Cloud Run Job defined by [`capture-job.yaml`](../../capture-job.yaml) runs
-`python -m shallweswim.capture` on a schedule. It writes normalized
+`python -m shallweswim.update` on a schedule. It writes normalized
 observations to the private archive bucket and, because the job definition sets
 `SHALLWESWIM_SNAPSHOT_PUBLISH=1`, it also runs the full serving cycle of every
 location (tide and prediction feeds included), generates plots in a process
@@ -14,6 +14,13 @@ A publishing run restores each feed's next fetch time from the generation that
 is current when it starts, so it fetches only the feeds that are due and leaves
 the rest on the entries and plots they already published. The published
 manifest is the job's persisted feed schedule.
+
+The Cloud Run job name (`shallweswim-capture`), the scheduler job
+(`shallweswim-capture-hourly`), and the service accounts
+(`shallweswim-capture`, `shallweswim-capture-invoker`) all keep their
+historical `capture` naming below even though the module the job now runs is
+`shallweswim.update`; renaming those deployed resources is a separate,
+disruptive action this rename does not take.
 
 Each run also collects the generations its publication superseded. It deletes
 manifests under `published/manifests/` older than 24 hours, unless the current
@@ -198,7 +205,7 @@ definition (and therefore every scheduled run) unchanged. The `command` stays
 
 ```bash
 gcloud run jobs execute shallweswim-capture --region=us-east4 --wait \
-  --args="-m,shallweswim.capture,--full-history"
+  --args="-m,shallweswim.update,--full-history"
 ```
 
 A per-execution override is used deliberately in preference to

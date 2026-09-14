@@ -336,9 +336,6 @@ Notes:
   active generation and a day of predecessors with a reachability-aware
   sweep as the design describes; the cost is cents, the object count is the
   reason.
-- Rename `shallweswim.main` to `shallweswim.web` and fold `shallweswim.capture`
-  into `shallweswim.update`, the names the design doc uses, updating the
-  manifests, runbook, and docs in the same change.
 - Resume the GitHub continuous-deployment schedule once active development
   returns to GitHub `main`. On 2026-09-14 the Cloud Build trigger was marked
   disabled and, because a disabled trigger still runs when Cloud Scheduler

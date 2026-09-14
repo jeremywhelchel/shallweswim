@@ -10,8 +10,8 @@ This document describes the architectural patterns, coding standards, and design
 
 ```text
 shallweswim/
-├── main.py              # Web service entry point, web UI routes, templates
-├── capture.py           # One-shot bounded observation capture job entry point
+├── web.py               # Web service entry point, web UI routes, templates
+├── update.py            # One-shot bounded observation capture job entry point
 ├── local.py             # Local entry point: job cycle plus web app, one process
 ├── archive/             # Observation schemas, conditional stores, and merge writer
 ├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher, generation collector, incremental loader, read-only manager, web serving state
@@ -52,21 +52,21 @@ static/                  # CSS, JS, images
 
 Three entry points run this code:
 
-- `shallweswim.main` is the web service: it loads published generations and
+- `shallweswim.web` is the web service: it loads published generations and
   serves from them, and fetches nothing.
   `SHALLWESWIM_SNAPSHOT_READ_BUCKET` is required, because a web process with no
   store has nothing to serve; an unset variable fails startup with one message
   naming it and pointing at `shallweswim.local`. Production runs it.
-- `shallweswim.capture` is the bounded job: one capture cycle, and with
+- `shallweswim.update` is the bounded job: one capture cycle, and with
   `SHALLWESWIM_SNAPSHOT_PUBLISH=1` one published generation. It is the only
   process that contacts a provider. Production runs it on a schedule.
 - `shallweswim.local` is the clone-and-run local command: it runs the job's
-  publishing cycle (`capture.publish_locations`) on a timer inside the web app's
+  publishing cycle (`update.publish_locations`) on a timer inside the web app's
   process, against a local store, and serves that app. It composes rather than
   branches: it wraps the app's lifespan, and inside it runs the first cycle and
   loads the generation that cycle published before the server accepts a
   request, then starts the cadence task and cancels it at shutdown, so
-  `main.py` holds no local mode. The web app opens no HTTP session, so this
+  `web.py` holds no local mode. The web app opens no HTTP session, so this
   module opens the one the cycles fetch over; the pool they plot in is the
   app's. It runs the application object under uvicorn, not the factory string,
   because the store lives in the process; `--reload` is therefore unsupported.
@@ -135,7 +135,7 @@ that step passes a naive frame through unchanged.
 When `SHALLWESWIM_ARCHIVE_BUCKET` is set, successful temperature updates and
 successful observational currents updates also merge observations into the
 private GCS archive. Production sets that variable only for the bounded capture
-job (`shallweswim/capture.py`), never for the web service, so the web runtime
+job (`shallweswim/update.py`), never for the web service, so the web runtime
 never writes to the archive. The job builds feeds through the same
 `core.manager.build_feeds()` builder the web manager uses, updates each
 archivable feed once, and exits. Live feeds publish and schedule before capture; historical

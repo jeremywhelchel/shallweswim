@@ -29,7 +29,7 @@ spec:
           containers:
             - image: us-east4-docker.pkg.dev/shallweswim/gcr/shallweswim:${IMAGE_TAG}
               command: ["python"]
-              args: ["-m", "shallweswim.capture"]
+              args: ["-m", "shallweswim.update"]
               env:
                 - name: SHALLWESWIM_LOG_FORMAT
                   value: json

@@ -43,7 +43,7 @@ from shallweswim.core.feeds import (
     PLOT_LIVE_TEMPS,
 )
 from shallweswim.core.serving import LocationServing
-from shallweswim.main import app
+from shallweswim.web import app
 from tests.helpers import install_managers
 
 pytestmark = pytest.mark.browser

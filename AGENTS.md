@@ -16,9 +16,9 @@ uv run ruff check .                      # Linting
 uv run ruff format --check .             # Formatting check
 uv run pyrefly check .                   # Type checking
 uv run pre-commit run --all-files        # Fast local hook subset
-uv run python -m shallweswim.main --port=12345  # Web app alone (needs SHALLWESWIM_SNAPSHOT_READ_BUCKET)
+uv run python -m shallweswim.web --port=12345   # Web app alone (needs SHALLWESWIM_SNAPSHOT_READ_BUCKET)
 uv run python -m shallweswim.local --port=12345 # Run locally (job cycle + web app)
-uv run python -m shallweswim.capture     # One-shot archive capture job (needs SHALLWESWIM_ARCHIVE_BUCKET)
+uv run python -m shallweswim.update      # One-shot archive capture job (needs SHALLWESWIM_ARCHIVE_BUCKET)
 uv run playwright install chromium       # Only if browser tests report missing Chromium
 ```
 
@@ -46,7 +46,7 @@ Publishing job: updater → Feed → ApiClient → External Service → publishe
 
 ```text
 shallweswim/
-├── main.py           # App entry, web UI routes
+├── web.py            # App entry, web UI routes
 ├── api/              # JSON API routes
 │   └── routes.py     # Route handlers (delegates to core/)
 ├── config/           # Configuration
@@ -137,5 +137,5 @@ Required `.env` variables: `CLOUDSDK_CORE_PROJECT`, `GOOGLE_APPLICATION_CREDENTI
 ## Before Implementing
 
 - Check existing patterns in similar code before writing new code
-- New locations: start with `NEW_LOCATION.md`. If existing source clients are enough, keep the change config-focused in `config/locations.py`; do not edit route/main/feed code or add tests that duplicate ordinary config values. If a new upstream client/feed is needed, follow `NEW_DATA_FEED.md` first.
+- New locations: start with `NEW_LOCATION.md`. If existing source clients are enough, keep the change config-focused in `config/locations.py`; do not edit route/web/feed code or add tests that duplicate ordinary config values. If a new upstream client/feed is needed, follow `NEW_DATA_FEED.md` first.
 - CPU-bound work (plotting): Must use process pool, not async

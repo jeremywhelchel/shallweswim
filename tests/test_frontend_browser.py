@@ -30,7 +30,7 @@ from playwright.sync_api import (
 from playwright.sync_api import Error as PlaywrightError
 
 from shallweswim import canonical, config
-from shallweswim.main import templates
+from shallweswim.web import templates
 
 pytestmark = pytest.mark.browser
 

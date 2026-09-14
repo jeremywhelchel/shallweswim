@@ -22,15 +22,15 @@ from fastapi.testclient import TestClient
 
 from shallweswim import config as config_lib
 from shallweswim import data as data_lib
-from shallweswim import main as main_module
+from shallweswim import web as web_module
 from shallweswim.archive.store import MemoryObjectStore, StoredObject
 from shallweswim.core import manager as manager_module
 from shallweswim.core.feeds import FeedName
-from shallweswim.main import app
 from shallweswim.snapshot import refresh as refresh_module
 from shallweswim.snapshot.publish import publish
 from shallweswim.snapshot.refresh import SnapshotState
 from shallweswim.snapshot.store import CURRENT_KEY, OBJECTS_PREFIX, SnapshotStore
+from shallweswim.web import app
 from tests.snapshot_fixtures import SAMPLE_OBJECT_COUNT, sample_snapshot
 
 NOW = datetime.datetime(2026, 6, 1, 12, 30, tzinfo=datetime.UTC)
@@ -314,14 +314,14 @@ async def test_startup_fails_without_the_bucket_variable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A web process with no store has nothing to serve, so it must not start."""
-    monkeypatch.delenv(main_module.SNAPSHOT_READ_BUCKET_ENV_VAR, raising=False)
+    monkeypatch.delenv(web_module.SNAPSHOT_READ_BUCKET_ENV_VAR, raising=False)
     started = SimpleNamespace(state=SimpleNamespace())
 
     with pytest.raises(RuntimeError) as error:
-        await main_module.start_snapshot_serving(started)  # pyrefly: ignore
+        await web_module.start_snapshot_serving(started)  # pyrefly: ignore
 
     message = str(error.value)
-    assert main_module.SNAPSHOT_READ_BUCKET_ENV_VAR in message
+    assert web_module.SNAPSHOT_READ_BUCKET_ENV_VAR in message
     assert "python -m shallweswim.local" in message
 
 
@@ -331,17 +331,17 @@ async def test_startup_loads_the_named_bucket(
 ) -> None:
     objects = CountingObjectStore()
     await publish(SnapshotStore(objects), sample_snapshot(), run_id="run-1", now=NOW)
-    monkeypatch.setenv(main_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
+    monkeypatch.setenv(web_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
     locators: list[str] = []
 
     def fake_object_store(locator: str) -> CountingObjectStore:
         locators.append(locator)
         return objects
 
-    monkeypatch.setattr(main_module, "object_store", fake_object_store)
+    monkeypatch.setattr(web_module, "object_store", fake_object_store)
     started = SimpleNamespace(state=SimpleNamespace())
 
-    await main_module.start_snapshot_serving(started)  # pyrefly: ignore
+    await web_module.start_snapshot_serving(started)  # pyrefly: ignore
 
     assert locators == ["bundle-bucket"]
     assert set(started.state.snapshot.managers) == {"nyc"}
@@ -354,11 +354,11 @@ async def test_startup_survives_an_unreachable_bucket(
     """Startup keeps going with the state in place and no generation loaded."""
     objects = CountingObjectStore()
     objects.fail = True
-    monkeypatch.setenv(main_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
-    monkeypatch.setattr(main_module, "object_store", lambda _locator: objects)
+    monkeypatch.setenv(web_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
+    monkeypatch.setattr(web_module, "object_store", lambda _locator: objects)
     started = SimpleNamespace(state=SimpleNamespace())
 
-    await main_module.start_snapshot_serving(started)  # pyrefly: ignore
+    await web_module.start_snapshot_serving(started)  # pyrefly: ignore
 
     assert started.state.snapshot.generation_id is None
     assert started.state.snapshot.managers == {}
@@ -371,8 +371,8 @@ async def test_lifespan_constructs_no_manager_and_opens_no_client_session(
     """The web process holds no fetching stack: no manager, no HTTP session."""
     objects = CountingObjectStore()
     await publish(SnapshotStore(objects), sample_snapshot(), run_id="run-1", now=NOW)
-    monkeypatch.setenv(main_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
-    monkeypatch.setattr(main_module, "object_store", lambda _locator: objects)
+    monkeypatch.setenv(web_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
+    monkeypatch.setattr(web_module, "object_store", lambda _locator: objects)
 
     def no_manager(*args: object, **kwargs: object) -> None:
         raise AssertionError("The web lifespan constructed a LocationDataManager")
@@ -387,7 +387,7 @@ async def test_lifespan_constructs_no_manager_and_opens_no_client_session(
     monkeypatch.setattr(aiohttp, "ClientSession", no_session)
 
     lifespan_app = fastapi.FastAPI()
-    async with main_module.lifespan(lifespan_app):
+    async with web_module.lifespan(lifespan_app):
         assert set(lifespan_app.state.snapshot.managers) == {"nyc"}
         assert not hasattr(lifespan_app.state, "data_managers")
         assert not hasattr(lifespan_app.state, "http_session")

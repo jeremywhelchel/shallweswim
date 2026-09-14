@@ -1009,7 +1009,7 @@ observational currents in the archive"; local commits, not yet pushed):
 
 **Deployment sequencing revision (2026-09-12):** capture will NOT be enabled in
 the multi-instance web service. Instead, the first production writer is an
-isolated bounded one-shot capture job — a miniature of the Phase 4 updater —
+isolated bounded one-shot capture job — a miniature of the scheduled updater the cutover contract completes —
 running on a schedule under a dedicated job identity with access to only the
 archive bucket. The web runtime identity gets no archive access, and the web
 service never sets `SHALLWESWIM_ARCHIVE_BUCKET`. The capture hook is
@@ -1028,7 +1028,7 @@ uv run python -m shallweswim.capture              # scheduled run
 uv run python -m shallweswim.capture --full-history  # one-time backfill
 ```
 
-It is a temporary entry point. The Phase 4 `shallweswim.update` command absorbs
+It is a temporary entry point. The `shallweswim.update` command absorbs
 it once snapshot publication exists; `shallweswim.capture` then retires rather
 than becoming a second long-lived updater.
 
@@ -1165,9 +1165,9 @@ run since 2026-09-13. Observed so far: a bundle of about 21 MiB in 56
 objects and a manifest of about 21 KB per generation. Because the job is a
 fresh process, every feed refetches on every run and its fetch timestamp
 changes, so the `unchanged` outcome is not reachable until the updater
-persists feed state (Phase 4); every run writes a new manifest plus whichever
-objects changed. The carry-forward rule below is implemented and deploys with
-the next build.
+persists feed state (the cutover contract makes the manifest that state);
+every run writes a new manifest plus whichever objects changed. The
+carry-forward rule below is implemented and deployed.
 
 Phase 2 makes serving state serializable and publishes it from the capture
 job so object sizes, publication cost, and manifest semantics are observed in
@@ -1248,7 +1248,8 @@ location (all feeds, including tide and prediction feeds, which archive
 capture alone skips) with the historical range set to the full configured
 years and `SHALLWESWIM_ARCHIVE_READ_BUCKET` set, so past years hydrate from
 the archive and only the current year and any missing years reach the
-provider. Hourly cadence is inherited from the job; Phase 4 revisits it.
+provider. Hourly cadence is inherited from the job; the cutover contract moves it to
+ten minutes.
 
 Serialization and loading live in one module with a `Snapshot` model, a
 `SnapshotStore` protocol with memory, filesystem, and GCS implementations
@@ -1510,14 +1511,17 @@ Measurements so far (2026-09-14, first day of shadow mode, hourly job):
   a few historic hourly rows per run that differ by 0.1°F and move between
   runs; see `TODO.md`.
 
-Exit criteria before the cutover contract is written:
+Exit criteria before cutover is deployed (revised 2026-09-14 from a week to
+what the evidence actually needs, since the mechanism proved itself on the
+first day and the cutover build takes as long as the remaining wait):
 
-- Seven days of production shadow with every load outcome `success`.
-- The local comparison run at least daily over that week with no `mismatch`
-  other than explained provider revisions and every `missing` explained by a
-  job-side feed failure that predates the bundle.
+- Forty-eight hours of production shadow with every load outcome `success`
+  and the load lag alert never firing.
+- One local comparison across every configured location with no `mismatch`
+  other than the moving 0.1°F historic rows recorded in `TODO.md`, and every
+  `missing` explained by a job-side feed failure that predates the bundle.
 - Cold load duration, elected-request refresh duration, and the load lag
-  distribution measured and recorded in this document.
+  distribution measured and recorded in this document (done above).
 
 #### Local Entry Point Contract
 
@@ -1589,24 +1593,122 @@ recommended command and keeps `shallweswim.main` for running the web half
 alone; ARCHITECTURE lists the three entry points and the store helper;
 `.env.example` notes that the local entry point needs none of its variables.
 
-#### Cutover (outline)
+#### Cutover Contract
 
-Requires the local entry point above. Web serving switches to the bundle: `app.state.data_managers` holds the
-snapshot managers, the initial load gates readiness and its failure becomes
-ERROR, `/api/healthy` reports whether a generation is loaded, and
-`/api/status` reports the manifest metadata plus the loaded generation id
-and load time. The fetching manager, the provider clients, the background loop,
-feed-driven plotting, and shadow comparison leave the web runtime path;
-on-demand tide and current plots stay. Job cadence moves to ten minutes under
-the freshness budget above. A separate contract precedes implementation.
+Status: contract; implementation pending. Requires the local entry point
+(above, implemented) and the shadow exit criteria.
 
-### Phase 4: Scheduled Job
+End state: the web service serves every request from the loaded generation
+and never contacts a provider. The job is the only process that talks to
+providers, runs every ten minutes, and fetches each feed no more often than
+the feed's own expiration interval. The local entry point runs both halves in
+one process, fetching once.
 
-- Extract one bounded update cycle from the existing orchestration.
-- Deploy the shared image with the updater entry point as a scheduled bounded
-  execution (a Cloud Run Job in the GCP reference deployment).
-- Disable the web process's background acquisition after successful validation.
-- Remove plot watchdog behavior that is no longer relevant to the web tier.
+Web service:
+
+- The lifespan builds the store from `SHALLWESWIM_SNAPSHOT_READ_BUCKET` and
+  runs the initial load. The variable is required: an unset variable is a
+  configuration error that fails startup with one clear message, because a
+  web process with no store has nothing to serve (`shallweswim.local` is the
+  way to run without a bucket). A failed or timed-out initial load logs at
+  ERROR, the instance starts anyway, and readiness stays false until an
+  elected request loads a generation; the startup probe keeps electing
+  itself every check interval, and the platform restarts an instance that
+  never becomes ready. The 20-second bound stays: without the fetching
+  stack's startup contention the measured cold load is a few seconds.
+- Routes resolve a location from the shadow state's current managers on
+  every request, never from a dict captured at startup, so a refresh is
+  visible to the next request. A location the generation does not carry, or
+  one whose manager has no data, answers 503 exactly as today's
+  `has_data` check does. `app.state.data_managers` is removed.
+- `/api/healthy` returns 200 when a generation is loaded and at least one
+  location has data, and 503 otherwise, with the same lenient
+  one-station-down semantics as today. `/api/status` keeps its shape: per
+  location, per feed, the status derived from the manifest by the snapshot
+  manager, plus three additive optional fields on the location status:
+  `generation_id`, `published_at`, and `loaded_at`. `/api/locations`'
+  `has_data` follows the loaded generation.
+- On-demand tide and current detail plots stay request-driven in the web's
+  process pool, drawn from the loaded frames; nothing else plots in the web.
+- The fetching stack leaves the web runtime path: `initialize_location_data`,
+  the manager start and stop calls, the provider clients and HTTP session,
+  the background update loop, feed-driven plot generation and its watchdog.
+  The modules stay in the package for the job and the local entry point. A
+  test asserts the web app's lifespan constructs no `LocationDataManager`
+  and opens no client session.
+- Severity follows the rule already stated: the readiness-blocking initial
+  load failure is ERROR; a failed refresh over a loaded generation stays
+  WARNING and pages through the load lag alert.
+- Local entry point: the first publishing cycle runs before the app's
+  initial load, so the first request already has a generation and the
+  process fetches once. Its cycle then continues on the cadence.
+
+Job:
+
+- The current generation's manifest is the persisted feed schedule. Before
+  updating a feed, the job restores that feed's `next_fetch_after` from the
+  current generation when the entry's `source_identity` matches the feed's
+  `citation_key`; a feed that is not yet due is not fetched, and manifest
+  assembly carries its entry forward unchanged, plots included, with a
+  freshness outcome of `held`. A feed that is due, has no entry, or changed
+  identity fetches as today. This keeps each feed at its own interval under
+  any job cadence: live temperature every ten minutes, historical
+  temperature every three hours, tide and current predictions daily, which
+  is the provider load one web instance generates today.
+- Cadence moves to every ten minutes (`*/10 * * * *`), the design's target.
+  With the live feed due on every run, worst-case live temperature age is
+  provider lag plus one cadence plus publication plus one check interval,
+  about seventeen minutes, inside the freshness alert's twenty-five. The
+  job timeout stays at twenty minutes and overlap remains safe by conditional
+  promotion; a run normally takes under two minutes.
+- The `unchanged` publish outcome becomes reachable only when no feed was
+  due, which the live feed prevents; a run with nothing new still publishes
+  a manifest, as today.
+- `--full-history` keeps its meaning: every configured year is fetched
+  regardless of schedule, for backfills and repairs.
+- This schedule decides whether a feed is fetched, not how much is asked
+  for. Fetching only what is new since the last archived observation, with an
+  overlap window for revised readings, is the later "incremental fetching"
+  step; it builds on the same manifest bookkeeping and is not part of
+  cutover. Today past historic years already come from the archive, the
+  live feed's 24-hour window is its overlap, and the current historic year
+  is the one fetch incremental reading would shrink.
+
+Deployment and rollback:
+
+- `service.yaml` keeps the read bucket variable; `capture-job.yaml` is
+  unchanged except the scheduler cadence, which is an operator action in the
+  runbook. The web identity keeps read-only access. Memory and CPU limits
+  stay until measured on the new path.
+- Rollback is traffic back to the previous revision, which still fetches for
+  itself, and needs no store change. The job keeps publishing throughout.
+- Deploy order: web service first, observe one refresh and the health check
+  on the new revision, then the scheduler cadence.
+
+Deferred to follow-up slices, not part of cutover: renaming `shallweswim.main`
+to `shallweswim.web` and folding `shallweswim.capture` into
+`shallweswim.update` as the design names them; garbage collection of old
+generations, which should follow cutover soon (on 2026-09-14 the published
+prefix held 27 generations and 497 MB against a 17 MB archive, growing about
+20 MB per generation; keeping the active generation plus a day of
+predecessors is roughly 50 MB steady state); the stale-data display policy;
+resource limit tuning.
+
+Tests: routes read the current managers after a refresh, not the startup
+mapping; health and status reflect the loaded generation and its absence;
+the lifespan opens no client session and starts no manager; a missing read
+bucket fails startup with the documented message; the job restores the
+schedule from the manifest and holds a feed that is not due, carrying its
+entry and plots forward with the `held` outcome; a due feed and a changed
+identity still fetch; `--full-history` ignores the schedule; the local entry
+point serves its first request from its own first generation.
+
+Documentation: README (what the web service does and does not do, the
+required variable, the job cadence, and the local command fetching once),
+ARCHITECTURE (the request path from the loaded generation, the job as the
+only provider client), the capture job runbook (cadence change and rollback),
+`infra/monitoring/README.md` if any threshold changes, and this document's
+runtime component descriptions where they still describe the fetching web.
 
 ### Phase 5: Use the Archive for Incremental Fetching
 

@@ -19,6 +19,7 @@ from shallweswim.scripts.compare_snapshot import (
     FeedComparison,
     FeedOutcome,
     LocationComparison,
+    _answers_equal,
     _parse_args,
     compare_location,
     exit_code,
@@ -30,7 +31,17 @@ from shallweswim.snapshot.manager import SnapshotLocationManager
 from shallweswim.snapshot.model import FeedSnapshot, Snapshot
 from shallweswim.snapshot.publish import publish
 from shallweswim.snapshot.store import SnapshotStore
-from shallweswim.types import TIDE_TYPE_CATEGORIES
+from shallweswim.types import (
+    TIDE_TYPE_CATEGORIES,
+    CurrentDirection,
+    CurrentInfo,
+    CurrentPhase,
+    CurrentRange,
+    CurrentRangePoint,
+    CurrentStrength,
+    CurrentTrend,
+    DataSourceType,
+)
 from tests.conftest import TEST_CONFIG_FULL
 from tests.snapshot_fixtures import (
     feed_failure,
@@ -376,3 +387,36 @@ def test_at_must_be_a_naive_local_timestamp(monkeypatch: pytest.MonkeyPatch) -> 
     with pytest.raises(SystemExit) as error:
         _parse_args(["--at", "2026-06-01T04:00:00+00:00"])
     assert error.value.code == 2
+
+
+def test_derived_answers_tolerate_float_noise() -> None:
+    """Float noise in the last bits is the same answer; a real change is not."""
+
+    def info(magnitude: float, pct: float) -> CurrentInfo:
+        return CurrentInfo(
+            timestamp=LOCAL_T,
+            source_type=DataSourceType.PREDICTION,
+            magnitude=magnitude,
+            direction=CurrentDirection.FLOODING,
+            phase=CurrentPhase.FLOOD,
+            strength=CurrentStrength.LIGHT,
+            trend=CurrentTrend.EASING,
+            magnitude_pct=pct,
+            state_description="light flood and easing",
+            range=CurrentRange(
+                slack=CurrentRangePoint(
+                    timestamp=LOCAL_T, magnitude=0.19, units="kt", phase=None
+                ),
+                peak=CurrentRangePoint(
+                    timestamp=LOCAL_T, magnitude=1.16, units="kt", phase=None
+                ),
+            ),
+        )
+
+    assert _answers_equal(
+        info(0.23166497306068015, 0.19966304238166077),
+        info(0.2316649730606802, 0.19966304238166083),
+    )
+    assert not _answers_equal(info(0.2316, 0.1996), info(0.2317, 0.1996))
+    assert _answers_equal((1.0, "a"), (1.0000000001, "a"))
+    assert not _answers_equal((1.0, "a"), (1.0, "b"))

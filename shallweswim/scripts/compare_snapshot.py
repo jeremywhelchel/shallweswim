@@ -24,6 +24,7 @@ import asyncio
 import dataclasses
 import datetime
 import logging
+import math
 import os
 import sys
 from collections.abc import Callable, Sequence
@@ -283,6 +284,36 @@ def _compare_frames(legacy: pd.DataFrame, bundle: pd.DataFrame) -> _FrameDiffere
     )
 
 
+def _answers_equal(left: object, right: object) -> bool:
+    """Whether two derived answers agree, floats within `FLOAT_RTOL`.
+
+    Answers are dataclasses of scalars, enums, datetimes, and nested
+    dataclasses. Two floats that differ only in their last bits, which the same
+    arithmetic over frames that round-trip through Parquet can produce, are the
+    same answer; everything else must be equal exactly.
+    """
+    if isinstance(left, float) and isinstance(right, float):
+        return math.isclose(left, right, rel_tol=FLOAT_RTOL, abs_tol=0.0) or (
+            math.isnan(left) and math.isnan(right)
+        )
+    if dataclasses.is_dataclass(left) and not isinstance(left, type):
+        if type(left) is not type(right):
+            return False
+        return all(
+            _answers_equal(getattr(left, field.name), getattr(right, field.name))
+            for field in dataclasses.fields(left)
+        )
+    if isinstance(left, (tuple, list)) and isinstance(right, (tuple, list)):
+        return len(left) == len(right) and all(
+            _answers_equal(a, b) for a, b in zip(left, right, strict=True)
+        )
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(
+            _answers_equal(left[key], right[key]) for key in left
+        )
+    return left == right
+
+
 def _answer(
     serving: LocationServing, call: Callable[[LocationServing], object]
 ) -> object:
@@ -381,7 +412,7 @@ def _compare_feed(
     ):
         legacy_answer = _answer(legacy, call)
         bundle_answer = _answer(bundle, call)
-        if legacy_answer != bundle_answer:
+        if not _answers_equal(legacy_answer, bundle_answer):
             derived.append(
                 DerivedDifference(name, str(legacy_answer), str(bundle_answer))
             )

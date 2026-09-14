@@ -124,11 +124,42 @@ cd shallweswim
 # Install dependencies, including the default dev group
 uv sync
 
-# Run the development server
-uv run python -m shallweswim.main --port=12345 --reload
+# Run the publishing job and the web app in one process
+uv run python -m shallweswim.local --port=12345
 ```
 
 Then visit <http://localhost:12345> in your browser.
+
+`shallweswim.local` is the recommended local command. It needs no bucket and no
+credentials: it points the three store variables
+(`SHALLWESWIM_ARCHIVE_BUCKET`, `SHALLWESWIM_ARCHIVE_READ_BUCKET`,
+`SHALLWESWIM_SNAPSHOT_READ_BUCKET`) at one local store, overriding whatever the
+shell or `.env` holds, runs the publishing job's cycle against that store, and
+serves the web app from the same process, which loads each published generation
+the way the deployed service loads the job's.
+
+- `--store-dir PATH` keeps the archive and the published generations in a
+  directory. The next start hydrates historical years from that archive instead
+  of refetching every configured year, so a restart is fast. Without it the
+  store is in process memory and starts empty every run.
+- `--cadence MINUTES` sets how often the cycle runs, ten minutes by default,
+  which is the cadence the production job targets. The first cycle starts at
+  startup; before it finishes, the app serves its own fetched data.
+- `--reload` is not supported here, because the store lives in this process.
+  Until cutover the web half still fetches for itself, so a local run fetches
+  twice.
+
+```bash
+# Persist the archive and published generations between runs
+uv run python -m shallweswim.local --port=12345 --store-dir=.local-store
+```
+
+To run only the web half, with its own fetching and no publishing, use the web
+entry point:
+
+```bash
+uv run python -m shallweswim.main --port=12345 --reload
+```
 
 ### Frontend App Development
 
@@ -475,6 +506,11 @@ original retrieval times. Historical years are archived in UTC at the provider's
 native cadence, before the hourly serving resample, so both folds of a
 daylight-saving fall-back hour reach the archive. Prediction feeds, including
 tide and NOAA CO-OPS currents predictions, are excluded.
+
+Each of the three store variables holds a store *locator*, not only a bucket
+name: a bare name is a GCS bucket, a value containing `/` is a directory, and
+`memory` is a store in the running process. `shallweswim.local` uses that to
+run without any bucket; nothing else changes with the locator kind.
 
 Production capture runs from a scheduled one-shot job rather than the web
 service. The job fetches every archivable feed once and exits:

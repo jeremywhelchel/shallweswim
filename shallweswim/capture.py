@@ -14,6 +14,12 @@ feeds, derived frames, and plots in a process pool, and then publishes one
 snapshot generation under ``published/`` in the archive bucket. Archive capture
 still happens inside each feed's update. The job never serves traffic or starts
 FastAPI. It is temporary: the Phase 4 updater command absorbs it.
+
+That publishing cycle, ``publish_locations``, has a second host:
+``shallweswim.local`` runs it on a timer inside the web app's process against a
+local store. It therefore takes its process pool and its store locator as
+parameters; this module's ``_run`` supplies the pool it creates and the bucket
+its environment names.
 """
 
 import argparse
@@ -24,14 +30,14 @@ import os
 import sys
 import time
 import uuid
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Executor, ProcessPoolExecutor
 
 import aiohttp
 
 from shallweswim import config as config_lib
 from shallweswim import logging_utils
 from shallweswim.archive.capture import CaptureResult
-from shallweswim.archive.store import gcs_store
+from shallweswim.archive.store import object_store
 from shallweswim.clients import create_api_clients
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.core import feeds
@@ -224,41 +230,48 @@ async def serve_location(manager: LocationDataManager) -> None:
             manager.log(f"Error in serving cycle: {error}", level=logging.ERROR)
 
 
-async def _publish_locations(
+async def publish_locations(
     clients: dict[str, BaseApiClient],
     run_id: str,
+    *,
+    pool: Executor,
+    locator: str,
 ) -> tuple[list[tuple[int, int, int, CaptureResult]], str]:
     """Run every location's full serving cycle, then publish one snapshot.
 
     Locations run concurrently in the same managers the web service uses, so
     archive capture happens inside each feed's update as it does in the
-    capture-only path. Plots are generated in a process pool and awaited before
-    the snapshot is built. Every enabled location is published, whether or not
-    its feeds fetched anything this run, so manifest assembly can carry the
-    last published entry of a failed feed forward. Publication failure is
-    isolated: `publish` has already logged its failed event, so the run's
-    outcome and exit code stay those of the capture cycle.
+    capture-only path. Plots are generated in the caller's process pool and
+    awaited before the snapshot is built. Every enabled location is published,
+    whether or not its feeds fetched anything this run, so manifest assembly
+    can carry the last published entry of a failed feed forward. Publication
+    failure is isolated: `publish` has already logged its failed event, so the
+    run's outcome and exit code stay those of the capture cycle.
+
+    The pool and the store locator are parameters because this cycle has two
+    hosts: this job, which creates a pool and reads the archive bucket from its
+    environment, and `shallweswim.local`, which runs the same cycle inside the
+    web app against the app's pool and a local store.
 
     Args:
         clients: Provider API clients keyed by provider name.
         run_id: Identifier correlating this run with platform execution logs.
+        pool: Executor the plots run in; the caller owns its lifetime.
+        locator: Store locator the generation is published into, as
+            `archive.store.object_store` resolves it.
 
     Returns:
         Each location's counts in the order of `_capture_location`, and the
         snapshot publish outcome for the run summary.
     """
-    pool = ProcessPoolExecutor(max_workers=os.cpu_count())
-    try:
-        managers = [
-            LocationDataManager(location_config, clients, pool)
-            for location_config in config_lib.CONFIGS.values()
-        ]
-        await asyncio.gather(*(serve_location(manager) for manager in managers))
-        await asyncio.gather(
-            *(manager.wait_for_plots(PLOT_HARD_TIMEOUT) for manager in managers)
-        )
-    finally:
-        pool.shutdown(wait=True)
+    managers = [
+        LocationDataManager(location_config, clients, pool)
+        for location_config in config_lib.CONFIGS.values()
+    ]
+    await asyncio.gather(*(serve_location(manager) for manager in managers))
+    await asyncio.gather(
+        *(manager.wait_for_plots(PLOT_HARD_TIMEOUT) for manager in managers)
+    )
     # The feeds themselves carry the capture counts; the manager exposes no
     # other accessor for them.
     results = [_location_counts(manager._feeds) for manager in managers]
@@ -271,9 +284,7 @@ async def _publish_locations(
             for manager in managers
         }
     )
-    store = SnapshotStore(
-        await asyncio.to_thread(gcs_store, os.environ[ARCHIVE_BUCKET_ENV_VAR])
-    )
+    store = SnapshotStore(await asyncio.to_thread(object_store, locator))
     try:
         result = await publish(
             store,
@@ -346,7 +357,16 @@ async def _run(*, full_history: bool, publish_snapshot: bool) -> int:
         async with aiohttp.ClientSession() as session:
             clients = create_api_clients(session)
             if publish_snapshot:
-                results, publish_outcome = await _publish_locations(clients, run_id)
+                pool = ProcessPoolExecutor(max_workers=os.cpu_count())
+                try:
+                    results, publish_outcome = await publish_locations(
+                        clients,
+                        run_id,
+                        pool=pool,
+                        locator=os.environ[ARCHIVE_BUCKET_ENV_VAR],
+                    )
+                finally:
+                    pool.shutdown(wait=True)
                 publish_note = f"; snapshot publish {publish_outcome}"
             else:
                 results = await asyncio.gather(

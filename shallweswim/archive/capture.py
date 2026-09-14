@@ -13,7 +13,7 @@ from shallweswim.archive.observations import (
     partition_key,
     validate_source_identity,
 )
-from shallweswim.archive.store import gcs_store
+from shallweswim.archive.store import object_store
 
 
 @dataclasses.dataclass(frozen=True)
@@ -66,7 +66,7 @@ def _partitions(
 
 
 async def capture_observations(
-    bucket: str,
+    locator: str,
     *,
     frame: pd.DataFrame,
     source_identity: str,
@@ -80,6 +80,10 @@ async def capture_observations(
     The frame arrives as the client returned it, indexed by timezone-aware UTC
     instants. Returns the rows this fetch added and revised, which the calling
     feed keeps for the capture job's run summary.
+
+    Args:
+        locator: The archive store locator, as `archive.store.object_store`
+            resolves it: a bucket name, a filesystem path, or `memory`.
     """
     partitions = await asyncio.to_thread(
         _partitions,
@@ -92,7 +96,7 @@ async def capture_observations(
     )
     if not partitions:
         return CaptureResult(0, 0)
-    store = await asyncio.to_thread(gcs_store, bucket)
+    store = await asyncio.to_thread(object_store, locator)
     new_count = 0
     revised_count = 0
     for key, incoming in partitions:

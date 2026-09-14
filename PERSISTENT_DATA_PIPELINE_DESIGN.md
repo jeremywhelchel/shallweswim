@@ -1495,6 +1495,21 @@ garbage collection of old generations.
 Rollback (implemented): unset the variable and redeploy, or redeploy the
 previous revision. Shadow mode cannot change a response.
 
+Measurements so far (2026-09-14, first day of shadow mode, hourly job):
+
+- Cold load on a fresh instance: the 20-second startup bound was exceeded
+  while the legacy stack was still fetching fifteen years of history and
+  drawing plots on the same CPU; the first elected request two minutes later
+  loaded 58 objects (22 MB) in 18.5 seconds. The same load from a
+  developer machine takes 2.4 seconds, so the cost is startup contention
+  with the fetching stack, which cutover removes.
+- Warm refresh: the next generation was picked up 64 seconds after
+  publication (60-second check interval), 46 changed objects loaded in 1.2
+  seconds, by an elected user request whose total latency was 1.2 seconds.
+- The local comparison command matched every feed for NYC and Boston except
+  a few historic hourly rows per run that differ by 0.1°F and move between
+  runs; see `TODO.md`.
+
 Exit criteria before the cutover contract is written:
 
 - Seven days of production shadow with every load outcome `success`.
@@ -1506,9 +1521,9 @@ Exit criteria before the cutover contract is written:
 
 #### Local Entry Point Contract
 
-Status: contract; implementation pending. Required before cutover, because
-cutover removes fetching from the web service and a fresh clone must keep
-working with no bucket and no credentials.
+Status: implemented. Required before cutover, because cutover removes fetching
+from the web service and a fresh clone must keep working with no bucket and no
+credentials.
 
 `uv run python -m shallweswim.local` is the clone-and-run command. One
 process runs the job's cycle against a local object store and serves the web

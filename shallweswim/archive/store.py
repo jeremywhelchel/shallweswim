@@ -1,4 +1,18 @@
-"""Provider-neutral conditional byte-object storage."""
+"""Provider-neutral conditional byte-object storage.
+
+Every store the application reads or writes is named by one locator string,
+resolved by `object_store`:
+
+- a bare name, such as `shallweswim-archive`, is a GCS bucket
+- a locator containing `/`, such as `./local-store` or `/tmp/swim`, is a
+  `FilesystemObjectStore` rooted at that path
+- the literal `memory` is one process-wide `MemoryObjectStore`
+
+The environment variables that select a store (`SHALLWESWIM_ARCHIVE_BUCKET`,
+`SHALLWESWIM_ARCHIVE_READ_BUCKET`, `SHALLWESWIM_SNAPSHOT_READ_BUCKET`) carry a
+locator, so the local entry point can point every one of them at a directory or
+at memory without any code knowing it is not a bucket.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +30,10 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from google.cloud import storage
+
+
+# The locator naming the process-wide in-memory store.
+MEMORY_LOCATOR = "memory"
 
 
 @dataclass(frozen=True)
@@ -251,3 +269,33 @@ def gcs_store(bucket: str) -> GcsObjectStore:
     one process holds at most one client per bucket.
     """
     return GcsObjectStore(bucket)
+
+
+@cache
+def memory_store() -> MemoryObjectStore:
+    """Return the one in-memory store this process shares.
+
+    The local entry point writes and reads the same store from one process, so
+    the `memory` locator must resolve to a single instance rather than a new
+    empty store per call.
+    """
+    return MemoryObjectStore()
+
+
+def object_store(locator: str) -> ObjectStore:
+    """Resolve one store locator to the store it names.
+
+    Args:
+        locator: `memory` for the process-wide in-memory store, a path
+            containing `/` for a filesystem store rooted there, or a bare name
+            for a GCS bucket.
+
+    Returns:
+        The store the locator names. GCS stores and the memory store are cached
+        per process; a filesystem store holds no connection to reuse.
+    """
+    if locator == MEMORY_LOCATOR:
+        return memory_store()
+    if "/" in locator:
+        return FilesystemObjectStore(locator)
+    return gcs_store(locator)

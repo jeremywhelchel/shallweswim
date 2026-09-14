@@ -3,15 +3,18 @@
 import asyncio
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from shallweswim.archive import store as store_module
 from shallweswim.archive.store import (
     FilesystemObjectStore,
     GcsObjectStore,
     MemoryObjectStore,
     VersionConflictError,
+    object_store,
 )
 
 
@@ -157,3 +160,32 @@ async def test_gcs_store_maps_create_and_precondition_conflict() -> None:
         await store.compare_and_swap("objects/hash", expected_version=None, data=b"x")
 
     blob.upload_from_string.assert_called_once_with(b"x", if_generation_match=0)
+
+
+def test_object_store_resolves_every_locator_kind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One locator string names a bucket, a directory, or process memory."""
+    constructed: list[str] = []
+    monkeypatch.setattr(
+        store_module,
+        "GcsObjectStore",
+        lambda bucket: constructed.append(bucket) or MagicMock(),
+    )
+    store_module.gcs_store.cache_clear()
+    store_module.memory_store.cache_clear()
+
+    filesystem = object_store(str(tmp_path / "local-store"))
+    memory = object_store("memory")
+    again = object_store("memory")
+    object_store("archive-bucket")
+
+    assert isinstance(filesystem, FilesystemObjectStore)
+    assert isinstance(memory, MemoryObjectStore)
+    # One process-wide memory store, or the local entry point's job half would
+    # publish into a store its web half never reads.
+    assert again is memory
+    assert constructed == ["archive-bucket"]
+
+    store_module.gcs_store.cache_clear()
+    store_module.memory_store.cache_clear()

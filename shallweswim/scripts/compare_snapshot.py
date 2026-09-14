@@ -37,7 +37,7 @@ import pandas as pd
 
 from shallweswim import config as config_lib
 from shallweswim import logging_utils
-from shallweswim.archive.store import gcs_store
+from shallweswim.archive.store import object_store
 
 # The job's serving cycle, reused rather than restated: the legacy side must be
 # the state the publisher itself would have published from.
@@ -668,7 +668,7 @@ async def _run(
     """
     _isolate_legacy()
     legacy = await _fetch_legacy(configs)
-    store = SnapshotStore(await asyncio.to_thread(gcs_store, bucket))
+    store = SnapshotStore(await asyncio.to_thread(object_store, bucket))
     loaded = await load_current(store)
     if loaded is None:
         logging.error(f"No published generation in {bucket}")

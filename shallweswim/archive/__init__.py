@@ -25,6 +25,7 @@ from shallweswim.archive.store import (
     StoredObject,
     VersionConflictError,
     gcs_store,
+    object_store,
 )
 
 __all__ = [
@@ -47,6 +48,7 @@ __all__ = [
     "hydrate_year",
     "normalize_archive_frame",
     "normalize_observations",
+    "object_store",
     "partition_key",
     "read_observations",
     "validate_source_identity",

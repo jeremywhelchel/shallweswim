@@ -12,6 +12,7 @@ This document describes the architectural patterns, coding standards, and design
 shallweswim/
 ├── main.py              # App entry point, web UI routes, templates
 ├── capture.py           # One-shot bounded observation capture job entry point
+├── local.py             # Local entry point: job cycle plus web app, one process
 ├── archive/             # Observation schemas, conditional stores, and merge writer
 ├── snapshot/            # Serving snapshot model, Parquet/SVG objects, manifests, publisher, incremental loader, read-only manager, web shadow state
 ├── api/                 # API layer
@@ -46,6 +47,34 @@ static/                  # CSS, JS, images
 ```
 
 **Backwards compatibility**: Top-level shim files (`api.py`, `config.py`, `data.py`, `feeds.py`) re-export from the new locations for import compatibility.
+
+### Entry Points And Store Locators
+
+Three entry points run this code:
+
+- `shallweswim.main` is the web service: it fetches, serves, and in shadow mode
+  loads published generations. Production runs it.
+- `shallweswim.capture` is the bounded job: one capture cycle, and with
+  `SHALLWESWIM_SNAPSHOT_PUBLISH=1` one published generation. Production runs it
+  on a schedule.
+- `shallweswim.local` is the clone-and-run local command: it runs the job's
+  publishing cycle (`capture.publish_locations`) on a timer inside the web app's
+  process, against a local store, and serves that app. It composes rather than
+  branches: it wraps the app's lifespan to start and cancel the updater task and
+  reuses the app's process pool and HTTP session, so `main.py` holds no local
+  mode. It runs the application object under uvicorn, not the factory string,
+  because the store lives in the process; `--reload` is therefore unsupported.
+
+Every store the application builds comes from `archive/store.py`'s
+`object_store(locator)`: a bare name is a GCS bucket (with the per-bucket client
+cache), a locator containing `/` is a `FilesystemObjectStore` rooted there, and
+the literal `memory` is one process-wide `MemoryObjectStore`. The four
+environment-driven sites - archive capture, historical hydration, the snapshot
+publisher, and the web loader - call that helper and differ in nothing else, so
+a locator kind is never a code path. `shallweswim.local` sets
+`SHALLWESWIM_ARCHIVE_BUCKET`, `SHALLWESWIM_ARCHIVE_READ_BUCKET`, and
+`SHALLWESWIM_SNAPSHOT_READ_BUCKET` in its own process to one locator,
+unconditionally, so a local run can never reach the operator's bucket.
 
 ### Modular Design
 

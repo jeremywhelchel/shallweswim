@@ -34,7 +34,7 @@ from shallweswim.archive.observations import (
     TEMPERATURE_UNIT,
     TEMPERATURE_VALUE_COLUMN,
 )
-from shallweswim.archive.store import gcs_store
+from shallweswim.archive.store import object_store
 from shallweswim.clients import coops, cspf, irish_lights, marine_institute, ndbc, nwis
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
@@ -559,14 +559,14 @@ class Feed(BaseModel, abc.ABC):
         once per update, so a feed that captures several frames - one per
         freshly fetched year - reports their sum rather than only the last.
         """
-        bucket = os.environ.get("SHALLWESWIM_ARCHIVE_BUCKET")
-        if not bucket:
+        locator = os.environ.get("SHALLWESWIM_ARCHIVE_BUCKET")
+        if not locator:
             return
         started_at = time.monotonic()
         try:
             self._record_capture(
                 await capture_observations(
-                    bucket,
+                    locator,
                     frame=frame,
                     source_identity=self.feed_config.citation_key,
                     measurement=measurement,
@@ -1851,8 +1851,8 @@ class HistoricalTempsFeed(CompositeFeed):
         Args:
             required_years: The complete configured historical year range.
         """
-        bucket = os.environ.get("SHALLWESWIM_ARCHIVE_READ_BUCKET")
-        if not bucket:
+        locator = os.environ.get("SHALLWESWIM_ARCHIVE_READ_BUCKET")
+        if not locator:
             return
         current_year = self._current_historical_year()
         candidate_years = [
@@ -1864,7 +1864,7 @@ class HistoricalTempsFeed(CompositeFeed):
         if not candidate_years:
             return
 
-        store = await asyncio.to_thread(gcs_store, bucket)
+        store = await asyncio.to_thread(object_store, locator)
         read_slots = asyncio.Semaphore(ARCHIVE_HYDRATION_CONCURRENCY)
 
         async def read_year(year: int) -> pd.DataFrame | None:

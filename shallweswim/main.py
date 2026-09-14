@@ -34,7 +34,7 @@ from fastapi import HTTPException, Request, Response, responses, templating
 from shallweswim import api, canonical, config
 
 # Local imports
-from shallweswim.archive.store import gcs_store
+from shallweswim.archive.store import object_store
 from shallweswim.assets import AssetManager, FingerprintStaticFiles, load_asset_manifest
 from shallweswim.compression import SelectiveGZipMiddleware
 from shallweswim.logging_utils import setup_logging
@@ -53,12 +53,12 @@ async def start_snapshot_shadow(app: fastapi.FastAPI) -> None:
         app: The FastAPI application, whose `state.snapshot` is set to the
             shadow state, or to None when shadow mode is disabled.
     """
-    bucket = os.environ.get(SNAPSHOT_READ_BUCKET_ENV_VAR, "").strip()
-    if not bucket:
+    locator = os.environ.get(SNAPSHOT_READ_BUCKET_ENV_VAR, "").strip()
+    if not locator:
         app.state.snapshot = None
         return
-    logging.info(f"[snapshot] shadow mode reading published/ from {bucket}")
-    store = SnapshotStore(await asyncio.to_thread(gcs_store, bucket))
+    logging.info(f"[snapshot] shadow mode reading published/ from {locator}")
+    store = SnapshotStore(await asyncio.to_thread(object_store, locator))
     state = SnapshotState(store)
     app.state.snapshot = state
     await state.initial_load()

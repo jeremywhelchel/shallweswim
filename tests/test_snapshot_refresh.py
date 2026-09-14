@@ -319,18 +319,18 @@ async def test_shadow_mode_loads_the_named_bucket(
     objects = CountingObjectStore()
     await publish(SnapshotStore(objects), sample_snapshot(), run_id="run-1", now=NOW)
     monkeypatch.setenv(main_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
-    buckets: list[str] = []
+    locators: list[str] = []
 
-    def fake_gcs_store(bucket: str) -> CountingObjectStore:
-        buckets.append(bucket)
+    def fake_object_store(locator: str) -> CountingObjectStore:
+        locators.append(locator)
         return objects
 
-    monkeypatch.setattr(main_module, "gcs_store", fake_gcs_store)
+    monkeypatch.setattr(main_module, "object_store", fake_object_store)
     shadow = SimpleNamespace(state=SimpleNamespace())
 
     await main_module.start_snapshot_shadow(shadow)  # pyrefly: ignore
 
-    assert buckets == ["bundle-bucket"]
+    assert locators == ["bundle-bucket"]
     assert set(shadow.state.snapshot.managers) == {"nyc"}
 
 
@@ -342,7 +342,7 @@ async def test_shadow_mode_survives_an_unreachable_bucket(
     objects = CountingObjectStore()
     objects.fail = True
     monkeypatch.setenv(main_module.SNAPSHOT_READ_BUCKET_ENV_VAR, "bundle-bucket")
-    monkeypatch.setattr(main_module, "gcs_store", lambda _bucket: objects)
+    monkeypatch.setattr(main_module, "object_store", lambda _locator: objects)
     shadow = SimpleNamespace(state=SimpleNamespace())
 
     await main_module.start_snapshot_shadow(shadow)  # pyrefly: ignore

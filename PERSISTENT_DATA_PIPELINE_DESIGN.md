@@ -1341,7 +1341,8 @@ memory. The job is the only process that talks to providers.
 
 #### Shadow Mode Contract
 
-Status: the web half is implemented; each part below carries its own marker.
+Status: implemented and superseded by cutover; shadow mode ran from 15:12 to
+19:39 UTC on 2026-09-14.
 
 In shadow mode a web instance keeps fetching and serving exactly as today,
 and additionally loads the bundle and keeps it current. Nothing on the user
@@ -1598,8 +1599,13 @@ alone; ARCHITECTURE lists the three entry points and the store helper;
 
 #### Cutover Contract
 
-Status: implemented; production deployment pending the shadow exit criteria
-below. Requires the local entry point (above, implemented).
+Status: implemented and deployed on 2026-09-14 at 19:39 UTC (web) and
+19:42 UTC (ten-minute cadence). The first ten-minute run fetched only the
+ten live temperature feeds and held the other twenty, published in 22
+seconds, and the web service loaded it 28 seconds later in 0.6 seconds; live
+temperature age on the site fell from 33 minutes to about 3.5 minutes. The
+cold load on the new revision, with no fetching stack competing for CPU, took
+1.8 seconds.
 
 End state: the web service serves every request from the loaded generation
 and never contacts a provider. The job is the only process that talks to

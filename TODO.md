@@ -334,6 +334,19 @@ Notes:
 
 ### Runtime And Deployment
 
+- Tighten the snapshot load lag shadow alert for the ten-minute job cadence:
+  its 7200-second threshold was sized for the hourly job; the observed lag is
+  under a minute, so something like 1800 seconds pages on a real stall
+  without firing on a slow run.
+- Garbage-collect old published generations. Nothing deletes them yet: on
+  2026-09-14 the published prefix held 497 MB across 27 hourly generations,
+  and the ten-minute cadence adds a small generation every run. Keep the
+  active generation and a day of predecessors with a reachability-aware
+  sweep as the design describes; the cost is cents, the object count is the
+  reason.
+- Rename `shallweswim.main` to `shallweswim.web` and fold `shallweswim.capture`
+  into `shallweswim.update`, the names the design doc uses, updating the
+  manifests, runbook, and docs in the same change.
 - Resume the GitHub continuous-deployment schedule once active development
   returns to GitHub `main`. On 2026-09-14 the Cloud Build trigger was marked
   disabled and, because a disabled trigger still runs when Cloud Scheduler

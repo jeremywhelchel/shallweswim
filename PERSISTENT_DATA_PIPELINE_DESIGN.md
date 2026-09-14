@@ -1343,12 +1343,16 @@ memory. The job is the only process that talks to providers.
 Status: contract; implementation pending.
 
 In shadow mode a web instance keeps fetching and serving exactly as today,
-and additionally loads the bundle, keeps it current, and periodically compares
-what the bundle would answer against what the instance is answering. Nothing
-on the user path changes: every response, health check, and status field
-still comes from the in-process managers. Shadow mode exists to prove, in
-production, that bundle-backed serving is equivalent and that the refresh
-mechanism works on request-scaled CPU, before serving depends on either.
+and additionally loads the bundle and keeps it current. Nothing on the user
+path changes: every response, health check, and status field still comes
+from the in-process managers. Shadow mode exists to prove, in production,
+that the refresh mechanism works on request-scaled CPU and to measure how
+far behind the job an instance runs. Whether bundle-backed serving is
+equivalent to today's serving is answered separately by a local comparison
+command (below), because a local process running the legacy stack against
+the production bundle holds both sides in memory exactly as a production
+instance would. The comparison therefore never runs in production, and the
+web service carries no code that cutover would delete.
 
 Configuration:
 
@@ -1366,13 +1370,15 @@ Configuration:
   worker thread.
 - Local development sets the same variable in `.env` to shadow against the
   production bundle with the viewer credential. That is the first validation
-  step and happens before the service is deployed.
+  step and happens before the service is deployed, and it is where the
+  comparison command runs.
 
-Serving state from a generation:
+Serving state from a generation (implemented in `snapshot/manager.py` and
+`core/serving.py`; not yet wired into the web service):
 
-- A read-only per-location manager (`SnapshotLocationManager`, name
-  provisional) is constructed from a loaded generation: the location's
-  frames, plot bytes, and manifest metadata. It computes the derived tide and
+- A read-only per-location manager (`SnapshotLocationManager`) is
+  constructed from a loaded generation: the location's frames, plot bytes,
+  and manifest metadata. It computes the derived tide and
   current prediction frames once at construction; there is nothing to
   invalidate because the object is immutable and a new generation constructs
   new managers.
@@ -1414,7 +1420,10 @@ Loading and refresh:
 - One structured event per load or refresh that does work:
   `component=snapshot operation=load outcome=success|failed`,
   `generation_id`, `duration_ms`, and `record_count` as the number of objects
-  read. Severity follows one rule, ERROR means a human needs to look now,
+  read, and `age_seconds` as the age of the loaded generation's
+  `published_at` at load time, which is the lag between the job publishing
+  and this instance picking it up. Severity follows one rule, ERROR means a
+  human needs to look now,
   and the rule is the long-term one from the start: a startup that cannot
   load any generation is ERROR once the web depends on the bundle (nothing
   to serve) and WARNING during shadow, the only interim downgrade; a failed
@@ -1422,19 +1431,21 @@ Loading and refresh:
   because a sustained failure pages through the bundle-age alert rather than
   through log lines.
 
-Comparison:
+Comparison (a local command, never production):
 
-- Runs on an elected request every comparison interval (10 minutes), after
-  the check, for every configured location, with one location-local `now`
-  shared by both sides. It is memory-only work bounded by feed size.
-- Per configured feed, one event `component=snapshot
-  operation=shadow_compare` with `location`, `feed`, `outcome`,
-  `record_count`, and `lag_seconds`:
-  - `missing`: the instance has data and the bundle has none. Expected only
-    while the job's own fetch of that feed fails and nothing is carried
+- `uv run python -m shallweswim.scripts.compare_snapshot` runs in a process
+  that builds the legacy managers exactly as the web service does (fetching
+  from the providers, hydrating nothing) and loads the current generation
+  from `SHALLWESWIM_SNAPSHOT_READ_BUCKET`, then compares the two for every
+  configured location at one location-local instant shared by both sides,
+  and prints a report. It exits non-zero when any feed mismatches, so it can
+  run in a loop for days and its exit status is the verdict.
+- Per configured feed, the report states one outcome and its numbers:
+  - `missing`: the legacy manager has data and the bundle has none. Expected
+    only while the job's own fetch of that feed fails and nothing is carried
     forward.
-  - `extra`: the bundle has data and the instance has none. Expected when the
-    instance's fetch failed or after a restart.
+  - `extra`: the bundle has data and the legacy manager has none. Expected
+    when the local fetch failed.
   - `disjoint`: both have data and their indexes share no timestamp; the
     bundle is too stale to compare.
   - `mismatch`: on the shared timestamps any value differs (floats compared
@@ -1442,24 +1453,21 @@ Comparison:
     answer differs: `get_tide_info_at_time(now)` and
     `predict_tide_at_time(now)` for tide feeds, `predict_flow_at_time(now)`
     for prediction current feeds, and `get_current_temperature()` for live
-    temperature when both frames end at the same timestamp.
-  - `match`: everything above agreed. `record_count` is the number of shared
-    timestamps compared.
-  - `lag_seconds` is the instance's fetch timestamp minus the bundle's,
-    negative when the bundle is fresher. It is a new approved numeric log
-    field. It is expected to sit between zero and one job cadence plus the
-    check interval; this slice records the value and does not judge it.
-- Per location, one event `component=snapshot operation=shadow_compare_plots`
-  with `location`, `outcome` (`match` or `mismatch`), and `record_count` as
-  the plots present on both sides. Plot bytes are not compared, because the
-  two sides draw different fetch windows.
-- `match` and `extra` log at INFO, every other outcome at WARNING; a
-  mismatch never pages, it is reviewed on the dashboard. Expected volume is
-  about 4,000 events per day across all locations and feeds.
+    temperature when both frames end at the same timestamp. The report lists
+    the differing rows with both values.
+  - `match`: everything above agreed.
+  - Alongside the outcome: the number of shared timestamps compared, the
+    number that differ and the largest difference, each side's first and
+    last timestamp, and the gap between the two latest timestamps, which is
+    the bundle's lag for that feed.
+- Per location, which plots exist on each side. Plot bytes are not compared,
+  because the two sides draw different fetch windows.
 - Historical temperature frames should agree on overlap except where a
   provider revised a reading between the two fetches. Every such mismatch is
   investigated once; a recurring source-specific pattern is recorded in
-  `TODO.md` before cutover rather than tolerated by loosening the rule.
+  `TODO.md` before cutover rather than tolerated by loosening the rule. The
+  known divergences of the archive-hydration path (NDBC's first year, CO-OPS
+  fall-back rows) are expected to show up here and are decided then.
 
 Visibility: no new route. The load events carry the platform's instance
 identity, which answers "is every instance loading the bundle" better than
@@ -1467,9 +1475,9 @@ an endpoint can, because the load balancer sends a request to one arbitrary
 instance. At cutover `/api/status` gains the loaded generation id and load
 time, since it must describe bundle state then anyway.
 
-Observability: Terraform adds log-based metrics on `snapshot.load` outcomes
-and duration and on `shadow_compare` outcomes, plus one dashboard tile for
-each, and a shadow alert on the age of the loaded generation, which is the
+Observability: Terraform adds log-based metrics on `snapshot.load` outcomes,
+duration, and lag (`age_seconds`), one dashboard tile for outcomes and one
+for lag, and a shadow alert on the lag of the loaded generation, which is the
 signal that pages for sustained refresh failure after cutover. The existing
 shadow alert set is promoted separately.
 
@@ -1484,10 +1492,11 @@ Shadow mode cannot change a response.
 Exit criteria before the cutover contract is written:
 
 - Seven days of production shadow with every load outcome `success`.
-- No `mismatch` events other than explained provider revisions, and every
-  `missing` explained by a job-side feed failure that predates the bundle.
-- Cold load duration, elected-request refresh duration, and the
-  `lag_seconds` distribution per feed measured and recorded in this document.
+- The local comparison run at least daily over that week with no `mismatch`
+  other than explained provider revisions and every `missing` explained by a
+  job-side feed failure that predates the bundle.
+- Cold load duration, elected-request refresh duration, and the load lag
+  distribution measured and recorded in this document.
 
 #### Local Entry Point (outline)
 
@@ -1557,8 +1566,9 @@ requires stronger migration and equivalence validation.
 - A refresh reads only objects not already held, a failed check waits a full
   interval, concurrent requests never duplicate a check, and a request in
   flight during a swap finishes on one whole generation.
-- Each shadow comparison outcome is produced by exactly the condition that
-  defines it, including the float tolerance and the derived-answer checks.
+- Each comparison outcome of the local command is produced by exactly the
+  condition that defines it, including the float tolerance and the
+  derived-answer checks, and the command exits non-zero on any mismatch.
 - The web deployment manifest sets the snapshot read bucket and never the
   archive write or hydration variables.
 - Manifest checks coalesce under concurrent requests and do not depend on idle

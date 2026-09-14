@@ -134,8 +134,27 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+# Tests must never reach the operator's buckets. Developer shells and the
+# sandbox load `.env`, which names the production archive, and a feed update
+# with fixture data would merge that fixture into the real archive (this
+# happened on 2026-09-14). Every bucket variable is removed before collection,
+# in this process, so capture, hydration, and snapshot loading stay off unless
+# a test sets the variable itself with monkeypatch.
+OPERATOR_BUCKET_ENV_VARS = (
+    "SHALLWESWIM_ARCHIVE_BUCKET",
+    "SHALLWESWIM_ARCHIVE_READ_BUCKET",
+    "SHALLWESWIM_SNAPSHOT_READ_BUCKET",
+)
+
+
 def pytest_configure(config: pytest.Config) -> None:
-    """Configure custom pytest markers."""
+    """Configure custom pytest markers and isolate the operator environment.
+
+    The bucket variables are stripped here, before any test module is
+    imported, so no fixture-driven feed update can reach a real archive.
+    """
+    for name in OPERATOR_BUCKET_ENV_VARS:
+        os.environ.pop(name, None)
     config.addinivalue_line(
         "markers", "integration: mark test as hitting live external API services"
     )

@@ -368,8 +368,9 @@ Notes:
   run Terraform without a key file.
 - Remove the temporary grants made for the 2026-09-13 deployment once no
   longer needed: `roles/iam.serviceAccountTokenCreator` for the local operator
-  on `shallweswim-terraform`, and the local operator's `roles/storage.objectUser`
-  on the archive bucket (downgrade to `objectViewer` for Phase 1b reads).
+  on `shallweswim-terraform` (still used to run Terraform from the sandbox)
+  and `roles/run.developer` on the project. The local operator's archive
+  bucket role was downgraded to `objectViewer` on 2026-09-14.
 - Consider enabling object versioning on the archive bucket as a safety net
   against a defective merge rewriting a partition; retention would need a
   matching lifecycle rule for noncurrent versions.

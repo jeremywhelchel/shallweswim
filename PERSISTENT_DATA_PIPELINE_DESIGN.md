@@ -1504,17 +1504,75 @@ Exit criteria before the cutover contract is written:
 - Cold load duration, elected-request refresh duration, and the load lag
   distribution measured and recorded in this document.
 
-#### Local Entry Point (outline)
+#### Local Entry Point Contract
 
-Before cutover, `shallweswim.local` must exist, because cutover removes
-fetching from the web service and a fresh clone must keep working with no
-bucket. One process constructs an in-memory (or filesystem) object store,
-runs the job's update cycle against it, fetching the configured history from
-the providers exactly as the web service does today, and then serves from
-that store. No environment variable selects the store: both halves share the
-store object in process. This is the open-source clone-and-run path, and the
-only difference from production is the extra history the production archive
-has accumulated beyond what providers still expose.
+Status: contract; implementation pending. Required before cutover, because
+cutover removes fetching from the web service and a fresh clone must keep
+working with no bucket and no credentials.
+
+`uv run python -m shallweswim.local` is the clone-and-run command. One
+process runs the job's cycle against a local object store and serves the web
+app from that same store. A developer gets the providers' full configured
+history, plots, and every route, exactly as production serves them; the only
+thing missing is the extra history the production archive has accumulated
+beyond what the providers still expose.
+
+Store selection:
+
+- One helper resolves every store locator the application reads:
+  `object_store(locator)` in `archive/store.py`. A bare name is a GCS bucket,
+  as today; a path containing a slash is a `FilesystemObjectStore` rooted
+  there; the literal `memory` is one process-wide `MemoryObjectStore`. The
+  four places that build a store from an environment variable (capture,
+  hydration, the publisher, the web loader) call this helper and change in no
+  other way. The GCS branch keeps the per-bucket client cache. This is the
+  filesystem store becoming the real portability target the Portability
+  Principle promises, and the local entry point is its second use.
+- The local entry point sets, in its own process, the three variables
+  (`SHALLWESWIM_ARCHIVE_BUCKET`, `SHALLWESWIM_ARCHIVE_READ_BUCKET`,
+  `SHALLWESWIM_SNAPSHOT_READ_BUCKET`) to the same locator, so every store the
+  job half writes is the store the web half reads. The default locator is
+  `memory`; `--store-dir PATH` selects a filesystem store, which persists the
+  archive and generations across restarts so the second start hydrates
+  history from disk instead of refetching fifteen years. Nothing is read
+  from the operator's `.env`: the entry point overrides those three
+  variables unconditionally, and never points at a bucket.
+
+Process model:
+
+- The entry point builds the FastAPI app through `start_app` with the same
+  command-line options as `shallweswim.main` (host, port, frontend paths),
+  and runs it with uvicorn in-process. `--reload` is not supported, because
+  the store lives in the process.
+- A lifespan task runs the job cycle: the publishing path of
+  `shallweswim.capture` (every location's serving cycle, capture, plots, and
+  one generation published into the store) once at startup and then every
+  `--cadence` minutes, default ten, the production cadence the design
+  targets. The cycle reuses the job's code unchanged; the only new plumbing
+  is calling it with the process's store locator instead of the job's
+  environment. Its process pool is the app's pool.
+- The web half is exactly the web service in shadow mode: it loads the
+  generation the first cycle publishes and refreshes on elected requests.
+  Until cutover the legacy fetching managers still serve, so the local
+  process fetches twice; that duplication ends with cutover and is accepted
+  meanwhile because the entry point must exist first.
+- Readiness and health are the web service's. Before the first cycle
+  publishes, the legacy managers answer as they do today.
+
+Out of scope: any change to production entry points or manifests; retiring
+`shallweswim.capture` into `shallweswim.update`, which stays with cutover.
+
+Tests: the store helper resolves each locator kind and returns one shared
+memory store per process; the local cycle publishes a generation into a
+memory store from mocked clients and the app loads it; a filesystem store
+survives a restart and the second cycle hydrates history from it rather
+than fetching; the entry point ignores bucket variables from the
+environment.
+
+Documentation: README's local development section makes this the
+recommended command and keeps `shallweswim.main` for running the web half
+alone; ARCHITECTURE lists the three entry points and the store helper;
+`.env.example` notes that the local entry point needs none of its variables.
 
 #### Cutover (outline)
 

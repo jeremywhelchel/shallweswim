@@ -1145,6 +1145,8 @@ _CONFIG_LIST = [
                     "The Battery is at the southern tip of Manhattan, not "
                     "Brighton Beach."
                 ),
+                # Earliest year the provider holds, from the 2026-09-15 backfill.
+                start_year=1997,
             )
         ),
         tide_source=CoopsTideFeedConfig(
@@ -1237,6 +1239,8 @@ _CONFIG_LIST = [
             CoopsTempFeedConfig(
                 station=9410230,
                 name="La Jolla, CA",
+                # Earliest year the provider holds, from the 2026-09-15 backfill.
+                start_year=1993,
             )
         ),
         tide_source=CoopsTideFeedConfig(
@@ -1277,6 +1281,8 @@ _CONFIG_LIST = [
                     "south of Loggerhead Park; actual temperature may vary at your "
                     "entry point along the coast."
                 ),
+                # Earliest year the provider holds, from the 2026-09-15 backfill.
+                start_year=2010,
             )
         ),
         tide_source=CoopsTideFeedConfig(
@@ -1387,6 +1393,8 @@ _CONFIG_LIST = [
                     "San Francisco Bar Buoy is outside the Golden Gate; "
                     "Aquatic Park is sheltered inside the bay."
                 ),
+                # Earliest year the provider holds, from the 2026-09-15 backfill.
+                start_year=2007,
             )
         ),
         tide_source=CoopsTideFeedConfig(
@@ -1466,6 +1474,8 @@ _CONFIG_LIST = [
                 site_no="08155500",
                 parameter_cd="00010",
                 name="Barton Springs",
+                # Earliest year the provider holds, from the 2026-09-15 backfill.
+                start_year=2007,
             )
         ),
         presentation=LocationPresentationConfig(
@@ -1494,6 +1504,8 @@ _CONFIG_LIST = [
                 display_note=(
                     "Boston Approach Lighted Buoy is about 16 nautical miles offshore."
                 ),
+                # Earliest year the provider holds, from the 2026-09-15 backfill.
+                start_year=1984,
             )
         ),
         tide_source=CoopsTideFeedConfig(
@@ -1526,6 +1538,8 @@ _CONFIG_LIST = [
                 display_note=(
                     "Temperature uses Tacoma station data, not an Alki Beach sensor."
                 ),
+                # Earliest year the provider holds, from the 2026-09-15 backfill.
+                start_year=1996,
             )
         ),
         tide_source=CoopsTideFeedConfig(
@@ -1562,7 +1576,8 @@ _CONFIG_LIST = [
         ),
         historic_temp_source=CspfTempFeedConfig(
             name="Sandettie Lightship",
-            start_year=2011,
+            # Earliest year the provider holds, from the 2026-09-15 backfill.
+            start_year=2004,
         ),
         # Dover tide model is fitted from Environment Agency measure E71624
         # (tidal level in meters). EA links this measure to E71639 mAOD; same-time

@@ -1805,10 +1805,9 @@ requires stronger migration and equivalence validation.
 
 ## Deep History
 
-Status: contract; the provider client changes and the backfill command are
-implemented, the served range and plot are pending. Three slices, in order:
-the provider client changes, the backfill command, then the served range and
-the plot.
+Status: implemented, in three slices: the provider client changes, the backfill
+command, then the served range and the plot. The archive was backfilled to full
+depth on 2026-09-15, and each source's configured `start_year` now follows it.
 
 The archive keeps everything a provider will still give, at every cadence the
 provider offers it, once. The served hourly frame then extends back to the
@@ -1937,13 +1936,25 @@ carries the header marker the client looks for.
 ### Served Range and Plot
 
 - After a backfill, each source's `start_year` in `config/locations.py` is
-  lowered to the earliest archived year, in a reviewed change. The served
+  lowered to the earliest archived year, in a reviewed change. From the
+  2026-09-15 backfill: bos 1984, san 1993, sea 1996, nyc 1997, dov 2004,
+  sfo 2007, aus 2007, pbi 2010; chi stays 2021 and cor 2024. The served
   hourly frame, the bundle object, and the plots then cover that range
   through the existing paths: the job hydrates the extra years from the
   archive on its next historical refresh, nothing is refetched, and every
   generation carries the deeper frame. Cost, accepted: a thirty-year
   station's frame is roughly three times today's 1.3 MB, so a bundle of
   perhaps 40 MB instead of 21 MB, loaded once per generation per instance.
+- The local entry point runs the publishing cycle with no archive behind it
+  on a fresh start, so it would fetch every configured year from the
+  providers, about 230 year requests across the sources, with four CO-OPS
+  stations at once: the burst that earned the 403. `shallweswim.local` takes
+  `--historic-years N` (default `LOCAL_HISTORIC_YEARS`, 10) and floors the
+  historical range at the current year minus N through the floor the feed
+  construction already accepts, threaded through the publishing cycle. A
+  larger N with `--store-dir` takes the one-time fetch and hydrates after.
+  The job and the web service are unaffected: the web never fetches, and the
+  job hydrates from the archive and fetches only what it lacks.
 - The twelve-month plot keeps one line per year. The current year is fully
   opaque; each earlier year's opacity falls linearly with its age to a floor
   (`FADE_FLOOR`, 0.15) reached at `FADE_YEARS` (10) and held there for all

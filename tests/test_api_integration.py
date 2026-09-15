@@ -36,6 +36,7 @@ from shallweswim.types import (
     CurrentStrength,
     CurrentTrend,
 )
+from shallweswim.util import utc_now
 from tests.helpers import create_test_app, install_managers
 
 # Mark all tests in this file as integration tests
@@ -77,9 +78,15 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
         # routes against live provider data, so they build the fetching
         # managers themselves and serve them as the loaded generation.
         clients = create_api_clients(session)
+        # The configured ranges reach back decades; two years is enough for the
+        # routes and keeps this from asking the providers for every year.
+        historic_start_year = utc_now().year - 1
         managers = {
             code: LocationDataManager(
-                config.CONFIGS[code], clients=clients, process_pool=pool
+                config.CONFIGS[code],
+                clients=clients,
+                process_pool=pool,
+                historic_start_year=historic_start_year,
             )
             for code in TEST_LOCATIONS
         }

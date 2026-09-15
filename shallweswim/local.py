@@ -9,7 +9,9 @@ generations that cycle publishes exactly as the deployed service loads the
 job's. ``--store-dir PATH`` keeps the archive and the published generations on
 disk, so a second start hydrates history from the archive instead of refetching
 every configured year; the default ``memory`` locator keeps them in this
-process only.
+process only. ``--historic-years N`` floors the historical temperature range at
+the current year minus N, counting the current year, because a fresh store has
+no archive behind it and the configured ranges now reach back decades.
 
 The app itself is unchanged: ``web.start_app`` builds it, and the updater is
 composed around its lifespan rather than conditionally inside it. This module
@@ -48,10 +50,18 @@ from shallweswim.archive.store import MEMORY_LOCATOR
 from shallweswim.clients import create_api_clients
 from shallweswim.logging_utils import setup_logging
 from shallweswim.snapshot.store import SNAPSHOT_READ_BUCKET_ENV_VAR
+from shallweswim.util import utc_now
 
 # The cadence the design targets for the production job, and the interval the
 # published generation's freshness budget is written against.
 DEFAULT_CADENCE_MINUTES = 10
+
+# Historical temperature years a local run fetches, counting the current year.
+# The configured ranges now reach back decades, and a fresh local store has no
+# archive behind it, so the first cycle would ask the providers for every one of
+# those years at once. Ten is enough for the plots to look like the deployed
+# ones.
+LOCAL_HISTORIC_YEARS = 10
 
 # Every store the process reads or writes is the same local store: the cycle's
 # archive writes, the historical feed's hydration reads, and the web half's
@@ -84,6 +94,7 @@ async def run_cycle(
     *,
     locator: str,
     cadence_seconds: float,
+    historic_start_year: int,
 ) -> None:
     """Run one publishing cycle, logging a broken cycle rather than raising.
 
@@ -97,6 +108,8 @@ async def run_cycle(
         app: The running application, whose state holds the process pool.
         session: The HTTP session the provider clients fetch over.
         locator: Store locator the generation is published into.
+        cadence_seconds: Seconds between the start of one cycle and the next.
+        historic_start_year: Earliest historical temperature year to fetch.
     """
     logging.info(f"[local] publishing cycle starting, store {locator}")
     try:
@@ -106,6 +119,7 @@ async def run_cycle(
             pool=app.state.process_pool,
             locator=locator,
             cadence=datetime.timedelta(seconds=cadence_seconds),
+            historic_start_year=historic_start_year,
         )
     except asyncio.CancelledError:
         raise
@@ -121,6 +135,7 @@ async def run_cycles(
     *,
     locator: str,
     cadence_seconds: float,
+    historic_start_year: int,
     since: float,
 ) -> None:
     """Keep publishing on the cadence after the first cycle, which already ran.
@@ -132,17 +147,28 @@ async def run_cycles(
         session: The HTTP session the provider clients fetch over.
         locator: Store locator the generations are published into.
         cadence_seconds: Seconds between the start of one cycle and the next.
+        historic_start_year: Earliest historical temperature year to fetch.
         since: The monotonic instant the already-run first cycle started at.
     """
     started_at = since
     while True:
         await asyncio.sleep(max(0.0, cadence_seconds - (time.monotonic() - started_at)))
         started_at = time.monotonic()
-        await run_cycle(app, session, locator=locator, cadence_seconds=cadence_seconds)
+        await run_cycle(
+            app,
+            session,
+            locator=locator,
+            cadence_seconds=cadence_seconds,
+            historic_start_year=historic_start_year,
+        )
 
 
 def install_updater(
-    app: fastapi.FastAPI, *, locator: str, cadence_seconds: float
+    app: fastapi.FastAPI,
+    *,
+    locator: str,
+    cadence_seconds: float,
+    historic_start_year: int,
 ) -> None:
     """Wrap the app's lifespan so the updater runs alongside it.
 
@@ -156,6 +182,9 @@ def install_updater(
         app: The application to wrap; its lifespan is replaced by the wrapper.
         locator: Store locator the cycles publish into.
         cadence_seconds: Seconds between the start of one cycle and the next.
+        historic_start_year: Earliest historical temperature year the cycles
+            fetch, so a fresh store does not ask the providers for every
+            configured year.
     """
     app_lifespan = app.router.lifespan_context
 
@@ -164,7 +193,11 @@ def install_updater(
         async with app_lifespan(app), aiohttp.ClientSession() as session:
             started_at = time.monotonic()
             await run_cycle(
-                app, session, locator=locator, cadence_seconds=cadence_seconds
+                app,
+                session,
+                locator=locator,
+                cadence_seconds=cadence_seconds,
+                historic_start_year=historic_start_year,
             )
             # The app's own startup found an empty store on a first run; this
             # load picks up what the cycle just published.
@@ -175,6 +208,7 @@ def install_updater(
                     session,
                     locator=locator,
                     cadence_seconds=cadence_seconds,
+                    historic_start_year=historic_start_year,
                     since=started_at,
                 )
             )
@@ -251,6 +285,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_CADENCE_MINUTES,
         help="Minutes between publishing cycles (default: %(default)s)",
     )
+    parser.add_argument(
+        "--historic-years",
+        type=int,
+        default=LOCAL_HISTORIC_YEARS,
+        help=(
+            "Historical temperature years to fetch, counting the current year: "
+            "10 in 2026 fetches 2017 through 2026. A fresh store would "
+            "otherwise fetch every configured year, now decades, from the "
+            "providers. Raise it with --store-dir, which takes the one-time "
+            "fetch and hydrates from the archive afterwards "
+            "(default: %(default)s)"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -269,8 +316,11 @@ def main(argv: list[str] | None = None) -> int:
     # such as `store` can never be read as a bucket name.
     locator = os.path.abspath(args.store_dir) if args.store_dir else MEMORY_LOCATOR
     apply_store_locator(locator)
+    # Counting the current year, so N years back from now ends at this year.
+    historic_start_year = utc_now().year - args.historic_years + 1
     logging.info(
         f"[local] store {locator}, publishing every {args.cadence} minutes, "
+        f"historical temperatures from {historic_start_year}, "
         f"serving on {args.host}:{args.port}"
     )
 
@@ -279,7 +329,12 @@ def main(argv: list[str] | None = None) -> int:
         frontend_dist=args.frontend_dist,
         require_frontend_dist=args.require_frontend_dist,
     )
-    install_updater(app, locator=locator, cadence_seconds=args.cadence * 60)
+    install_updater(
+        app,
+        locator=locator,
+        cadence_seconds=args.cadence * 60,
+        historic_start_year=historic_start_year,
+    )
 
     # The application object, not the factory string: the store and the loaded
     # generation live in this process and cannot survive a reload child.

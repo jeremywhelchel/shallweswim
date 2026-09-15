@@ -219,6 +219,8 @@ class LocationDataManager:
         config: config_lib.LocationConfig,
         clients: dict[str, BaseApiClient],
         process_pool: Executor,
+        *,
+        historic_start_year: int | None = None,
     ):
         """Initialize the Data manager for a specific location.
 
@@ -228,6 +230,9 @@ class LocationDataManager:
             process_pool: Executor for offloading plot generation. Production uses
                 a ProcessPoolExecutor for CPU-bound work; tests may use another
                 executor implementation.
+            historic_start_year: Earliest historical temperature year to fetch,
+                passed to `build_feeds`. When given, it raises the configured
+                start year; the default fetches the whole configured range.
         """
         self.config = config
         self.clients = clients
@@ -236,7 +241,7 @@ class LocationDataManager:
         # Dictionary mapping dataset names to their corresponding feeds
         # This is the single source of truth for all feed instances and data
         self._feeds: dict[feeds.FeedName, feeds.Feed | None] = build_feeds(
-            config, clients
+            config, clients, historic_start_year=historic_start_year
         )
 
         # Background update task

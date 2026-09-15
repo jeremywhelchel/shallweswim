@@ -32,7 +32,9 @@ from shallweswim.archive import store as archive_store
 from shallweswim.clients.base import BaseApiClient
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.config import CoopsTempFeedConfig, CoopsTideFeedConfig, LocationConfig
+from shallweswim.core import feeds
 from shallweswim.core import manager as manager_module
+from shallweswim.core.manager import LocationDataManager
 from shallweswim.types import TIDE_TYPE_CATEGORIES
 from shallweswim.util import utc_now
 
@@ -159,15 +161,58 @@ def cycle_clients(monkeypatch: pytest.MonkeyPatch) -> MockCoopsApi:
 
 
 async def _run_cycle(
-    client: MockCoopsApi, run_id: str, locator: str, *, full_history: bool = False
+    client: MockCoopsApi,
+    run_id: str,
+    locator: str,
+    *,
+    full_history: bool = False,
+    historic_start_year: int | None = None,
 ) -> str:
     """Run one publishing cycle in a thread pool instead of a process pool."""
     clients: dict[str, BaseApiClient] = {"coops": client}
     with ThreadPoolExecutor() as pool:
         _, outcome = await update.publish_locations(
-            clients, run_id, pool=pool, locator=locator, full_history=full_history
+            clients,
+            run_id,
+            pool=pool,
+            locator=locator,
+            full_history=full_history,
+            historic_start_year=historic_start_year,
         )
     return outcome
+
+
+@pytest.mark.asyncio
+async def test_cycle_floors_every_manager_historical_range(
+    cycle_clients: MockCoopsApi,
+    store_locator: Callable[[str], str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The floor `--historic-years` computes reaches each location's feed."""
+    locator = store_locator(archive_store.MEMORY_LOCATOR)
+    built: list[LocationDataManager] = []
+    construct = update.LocationDataManager
+
+    def record(*args: object, **kwargs: object) -> LocationDataManager:
+        manager = construct(*args, **kwargs)  # pyrefly: ignore
+        built.append(manager)
+        return manager
+
+    monkeypatch.setattr(update, "LocationDataManager", record)
+
+    outcome = await _run_cycle(
+        cycle_clients, "run-floor", locator, historic_start_year=utc_now().year
+    )
+
+    assert outcome == "success"
+    (manager,) = built
+    historic_feed = manager._feeds[feeds.FEED_HISTORIC_TEMPS]
+    assert isinstance(historic_feed, feeds.HistoricalTempsFeed)
+    # The configured range starts last year; the floor raises it to this year.
+    assert HISTORY_CONFIG.historic_temp_source is not None
+    assert HISTORY_CONFIG.historic_temp_source.start_year == LAST_YEAR
+    assert historic_feed.start_year == utc_now().year
+    assert cycle_clients.historic_years == [utc_now().year]
 
 
 @pytest.mark.asyncio
@@ -293,7 +338,11 @@ def test_entry_point_overrides_bucket_variables_from_the_environment(
 
     expected = str(tmp_path.resolve())
     assert [os.environ[name] for name in local.STORE_ENV_VARS] == [expected] * 3
-    assert installed == {"locator": expected, "cadence_seconds": 120.0}
+    assert installed == {
+        "locator": expected,
+        "cadence_seconds": 120.0,
+        "historic_start_year": utc_now().year - local.LOCAL_HISTORIC_YEARS + 1,
+    }
 
 
 def test_entry_point_defaults_to_the_memory_store(
@@ -309,6 +358,18 @@ def test_entry_point_defaults_to_the_memory_store(
         archive_store.MEMORY_LOCATOR
     ] * 3
     assert installed["cadence_seconds"] == local.DEFAULT_CADENCE_MINUTES * 60
+    assert installed["historic_start_year"] == (
+        utc_now().year - local.LOCAL_HISTORIC_YEARS + 1
+    )
+
+
+def test_historic_years_counts_the_current_year(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """N years back from now includes this one: 3 in 2026 starts at 2024."""
+    installed = _run_entry_point(monkeypatch, ["--historic-years", "3"])
+
+    assert installed["historic_start_year"] == utc_now().year - 2
 
 
 def test_lifespan_composition_runs_the_updater_between_startup_and_shutdown(
@@ -325,8 +386,10 @@ def test_lifespan_composition_runs_the_updater_between_startup_and_shutdown(
         pool: object,
         locator: str,
         cadence: datetime.timedelta,
+        historic_start_year: int,
     ) -> tuple[list[object], str]:
         assert cadence == datetime.timedelta(seconds=3600)
+        assert historic_start_year == LAST_YEAR
         order.append(f"cycle {locator}")
         cycled.set()
         return [], "success"
@@ -353,7 +416,9 @@ def test_lifespan_composition_runs_the_updater_between_startup_and_shutdown(
     app = fastapi.FastAPI(lifespan=app_lifespan)
     # An hour's cadence leaves the task asleep after its startup cycle, so the
     # shutdown path is what ends it.
-    local.install_updater(app, locator="memory", cadence_seconds=3600)
+    local.install_updater(
+        app, locator="memory", cadence_seconds=3600, historic_start_year=LAST_YEAR
+    )
 
     with TestClient(app):
         assert cycled.wait(timeout=10)
@@ -395,7 +460,9 @@ def test_first_request_is_served_from_the_first_published_generation(
 
     app = web_module.start_app()
     original_lifespan = app.router.lifespan_context
-    local.install_updater(app, locator=locator, cadence_seconds=3600)
+    local.install_updater(
+        app, locator=locator, cadence_seconds=3600, historic_start_year=LAST_YEAR
+    )
     try:
         with TestClient(app) as client:
             conditions = client.get(f"/api/{HISTORY_CONFIG.code}/conditions")

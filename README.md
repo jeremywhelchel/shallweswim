@@ -158,6 +158,14 @@ the way the deployed service loads the job's.
   accepts a request, so the first page already has data; later cycles fetch
   only the feeds that are due, so the process fetches each feed once per
   interval.
+- `--historic-years N` limits the historical temperature range to the last N
+  years, counting the current one: the default 10 in 2026 fetches 2017 through
+  2026. It exists because the configured ranges now reach back decades and a
+  fresh local store has no archive behind it, so the first cycle would
+  otherwise ask the providers for every configured year of every location at
+  once. Raise it, with `--store-dir`, when you want the deeper plots: that run
+  takes the one-time fetch and later starts hydrate those years from the
+  archive. The job and the deployed web service are unaffected.
 - `--reload` is not supported here, because the store lives in this process.
 
 ```bash

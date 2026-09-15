@@ -344,6 +344,7 @@ async def publish_locations(
     locator: str,
     full_history: bool = False,
     cadence: datetime.timedelta = JOB_CADENCE,
+    historic_start_year: int | None = None,
 ) -> tuple[list[tuple[int, int, int, CaptureResult]], str]:
     """Run every location's full serving cycle, then publish one snapshot.
 
@@ -385,6 +386,10 @@ async def publish_locations(
             fetches, for backfills and repairs.
         cadence: How often this cycle runs, so a feed due before the next run
             is fetched on this one rather than held for a whole cadence.
+        historic_start_year: Earliest historical temperature year every location
+            fetches. The job passes nothing and takes each source's whole
+            configured range; `shallweswim.local` floors the range so a fresh
+            local store does not fetch decades from the providers.
 
     Returns:
         Each location's counts in the order of `_capture_location`, and the
@@ -393,7 +398,12 @@ async def publish_locations(
     store = SnapshotStore(await asyncio.to_thread(object_store, locator))
     base = None if full_history else await _current_manifest(store)
     managers = [
-        LocationDataManager(location_config, clients, pool)
+        LocationDataManager(
+            location_config,
+            clients,
+            pool,
+            historic_start_year=historic_start_year,
+        )
         for location_config in config_lib.CONFIGS.values()
     ]
     for manager in managers:

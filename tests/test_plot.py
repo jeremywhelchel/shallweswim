@@ -85,6 +85,36 @@ def test_multi_year_plot_styles_current_year_as_primary() -> None:
     assert legend._loc == 1
 
 
+@pytest.mark.parametrize(
+    ("age_years", "expected"),
+    [(0, 1.0), (1, 0.915), (5, 0.575), (10, plot.FADE_FLOOR), (25, plot.FADE_FLOOR)],
+)
+def test_historic_year_alpha_fades_linearly_to_a_floor(
+    age_years: int, expected: float
+) -> None:
+    assert plot.historic_year_alpha(age_years) == pytest.approx(expected)
+
+
+def test_yearly_plot_fades_older_years_and_monthly_plot_does_not() -> None:
+    """The twelve-month plot fades with age; the two-month plot is unchanged."""
+    current_year = util.utc_now().year
+    index = pd.date_range(f"{current_year - 12}-01-01", periods=3 * 366 * 24, freq="h")
+    hist_temps = pd.DataFrame(
+        {"water_temp": np.linspace(50.0, 60.0, len(index))}, index=index
+    )
+
+    yearly = plot.create_historic_yearly_plot(hist_temps, "Test Station")
+    monthly = plot.create_historic_monthly_plot(hist_temps, "Test Station")
+
+    yearly_alphas = {
+        int(line.get_label()): line.get_alpha() for line in yearly.axes[0].lines[:3]
+    }
+    assert yearly_alphas[current_year - 12] == pytest.approx(plot.FADE_FLOOR)
+    assert yearly_alphas[current_year - 11] == pytest.approx(plot.FADE_FLOOR)
+    assert yearly_alphas[current_year - 10] == pytest.approx(plot.FADE_FLOOR)
+    assert [line.get_alpha() for line in monthly.axes[0].lines[:3]] == [0.75] * 3
+
+
 def test_multi_year_plot_styles_same_year_consistently_when_columns_differ() -> None:
     index = pd.date_range("2020-01-01", periods=4, freq="h")
     current_year = util.utc_now().year

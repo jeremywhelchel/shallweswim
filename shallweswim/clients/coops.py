@@ -37,9 +37,16 @@ TimeInterval = Literal["hilo", "MAX_SLACK", "h", "6-min", None]
 RequestTimeFormat = "%Y%m%d %H:%M"
 COOPS_PROVIDER = "coops"
 COOPS_MAX_CONCURRENT_REQUESTS = 4
-# CO-OPS rejects a request whose explicit range exceeds 365 days, which a
-# window over a leap year does. Sub-windows stay strictly under the limit.
-COOPS_MAX_REQUEST_RANGE = datetime.timedelta(days=365)
+# CO-OPS caps the explicit range of one request by product cadence: the hourly
+# product serves 365 days at a time, which a window over a leap year already
+# exceeds, while the six-minute product serves only 31. A request without an
+# interval returns six-minute readings, so it takes the six-minute limit.
+# Sub-windows stay strictly under whichever limit applies.
+COOPS_MAX_REQUEST_RANGE: dict[TimeInterval, datetime.timedelta] = {
+    "h": datetime.timedelta(days=365),
+    "6-min": datetime.timedelta(days=31),
+    None: datetime.timedelta(days=31),
+}
 # How much of an error response body to quote back in an exception message.
 RESPONSE_DETAIL_CHARS = 200
 # Phrase NOAA uses for the stable answer "this station has no data for this
@@ -240,27 +247,31 @@ class CoopsApi(BaseApiClient):
         )
 
     def _split_request_window(
-        self, begin: pd.Timestamp, end: pd.Timestamp
+        self, begin: pd.Timestamp, end: pd.Timestamp, interval: TimeInterval
     ) -> list[tuple[str, str]]:
         """Split a UTC window into request windows within the CO-OPS range limit.
 
-        A single request may span at most 365 days, so a window over a leap
-        year has to be fetched in parts. Consecutive parts abut to the minute:
-        each ends one minute before the next begins, so every reading falls in
-        exactly one part and none falls between two.
+        The limit depends on the requested cadence: a single hourly request may
+        span at most 365 days, which a window over a leap year exceeds, and a
+        single six-minute request at most 31, so a year at either cadence has
+        to be fetched in parts. Consecutive parts abut to the minute: each ends
+        one minute before the next begins, so every reading falls in exactly
+        one part and none falls between two.
 
         Args:
             begin: First instant of the window, timezone-aware UTC.
             end: Last instant of the window, timezone-aware UTC.
+            interval: Requested cadence, which selects the range limit.
 
         Returns:
             Formatted (begin, end) request strings in ascending instant order.
         """
+        max_range = COOPS_MAX_REQUEST_RANGE[interval]
         minute = datetime.timedelta(minutes=1)
         windows: list[tuple[str, str]] = []
         start = begin
         while start <= end:
-            stop = min(start + COOPS_MAX_REQUEST_RANGE - minute, end)
+            stop = min(start + max_range - minute, end)
             windows.append(
                 (
                     start.strftime(RequestTimeFormat),
@@ -581,9 +592,9 @@ class CoopsApi(BaseApiClient):
             interval: Optional time interval (if None, returns 6-minute intervals)
             location_code: Location code for logging purposes
 
-        A window longer than the CO-OPS range limit is fetched as consecutive
-        requests and stitched back together, so callers pass the window they
-        want regardless of its length.
+        A window longer than the CO-OPS range limit for the requested interval
+        is fetched as consecutive requests and stitched back together, so
+        callers pass the window they want regardless of its length or cadence.
 
         Returns:
             DataFrame indexed by timezone-aware UTC time, with columns:
@@ -602,6 +613,7 @@ class CoopsApi(BaseApiClient):
         windows = self._split_request_window(
             self._window_edge(begin_date, timezone),
             self._window_edge(end_date, timezone, end_of_day=True),
+            interval,
         )
 
         self.log(

@@ -362,6 +362,115 @@ def test_parse_stdmet_response_body() -> None:
     assert pd.isna(result["WTMP"].iloc[1])
 
 
+def test_parse_two_digit_year_response_body() -> None:
+    """The 1984-1998 yearly layout parses: no "#", two-digit year, no minutes.
+
+    Rows are taken from NDBC's real 44013h1984.txt. A two-digit year is
+    1900-based, every reading is on the hour, and a missing WTMP written as
+    999.0 is a missing value.
+    """
+    body = (
+        "YY MM DD hh WD   WSPD GST  WVHT  DPD   APD  MWD  BAR    ATMP  WTMP  DEWP  VIS\n"
+        "84 08 09 00 080 02.0 03.0 99.00 99.00 99.00 999 1011.1  19.3  19.2 999.0 99.0\n"
+        "84 08 09 01 020 01.0 02.0 99.00 99.00 99.00 999 1011.7  19.1  19.3 999.0 99.0\n"
+        "84 09 07 04 999 99.0 99.0 99.00 99.00 99.00 999 9999.0 999.0 999.0 999.0 99.0\n"
+    )
+
+    result = NdbcApi._parse_response_body(body=body, station_id="44013", mode="stdmet")
+
+    assert list(result.index) == [
+        pd.Timestamp("1984-08-09 00:00:00", tz="UTC"),
+        pd.Timestamp("1984-08-09 01:00:00", tz="UTC"),
+        pd.Timestamp("1984-09-07 04:00:00", tz="UTC"),
+    ]
+    assert str(result.index.tz) == "UTC"
+    assert result["WTMP"].iloc[0] == pytest.approx(19.2)
+    assert pd.isna(result["WTMP"].iloc[2])
+    assert pd.isna(result["DEWP"].iloc[0])
+    assert "YY" not in result.columns
+
+
+def test_parse_four_digit_year_response_body() -> None:
+    """The 1999-2004 yearly layout parses: no "#", four-digit year, no minutes.
+
+    Rows are taken from NDBC's real 44013h1999.txt.
+    """
+    body = (
+        "YYYY MM DD hh WD   WSPD GST  WVHT  DPD   APD  MWD  BAR    ATMP  WTMP  DEWP  VIS\n"
+        "1999 01 01 00 221  5.4  7.2   .33 11.11  5.25 999 1017.4  -4.3   5.6 999.0 99.0\n"
+        "1999 01 01 01 218  5.6  7.3   .31 11.11  5.51 999 1016.5  -4.0   5.7 999.0 99.0\n"
+        "1999 01 07 15 999 99.0 99.0 99.00 99.00 99.00 999 9999.0 999.0 999.0 999.0 99.0\n"
+    )
+
+    result = NdbcApi._parse_response_body(body=body, station_id="44013", mode="stdmet")
+
+    assert list(result.index) == [
+        pd.Timestamp("1999-01-01 00:00:00", tz="UTC"),
+        pd.Timestamp("1999-01-01 01:00:00", tz="UTC"),
+        pd.Timestamp("1999-01-07 15:00:00", tz="UTC"),
+    ]
+    assert result["WTMP"].iloc[1] == pytest.approx(5.7)
+    assert pd.isna(result["WTMP"].iloc[2])
+
+
+def test_parse_unmarked_header_with_minutes_response_body() -> None:
+    """The 2005-2006 yearly layout parses: no "#", four-digit year, minutes.
+
+    Rows are taken from NDBC's real 44013h2005.txt.
+    """
+    body = (
+        "YYYY MM DD hh mm  WD  WSPD GST  WVHT  DPD   APD  MWD  BAR    ATMP  WTMP  DEWP  VIS  TIDE\n"
+        "2005 01 01 00 00 187  9.0 10.1  0.85  3.23  3.58 999 1022.6   7.6   6.3   7.1 99.0 99.00\n"
+        "2005 01 01 01 00 193  8.3 10.5  0.78  3.85  3.57 999 1022.1   8.3   6.3   6.1 99.0 99.00\n"
+        "2005 01 24 11 00 311 12.8 99.0 99.00 99.00 99.00 999 9999.0 999.0 999.0 999.0 99.0 99.00\n"
+    )
+
+    result = NdbcApi._parse_response_body(body=body, station_id="44013", mode="stdmet")
+
+    assert list(result.index) == [
+        pd.Timestamp("2005-01-01 00:00:00", tz="UTC"),
+        pd.Timestamp("2005-01-01 01:00:00", tz="UTC"),
+        pd.Timestamp("2005-01-24 11:00:00", tz="UTC"),
+    ]
+    assert result["WTMP"].iloc[0] == pytest.approx(6.3)
+    assert pd.isna(result["WTMP"].iloc[2])
+
+
+def test_parse_response_body_pads_rows_shorter_than_the_header() -> None:
+    """A column appended mid-file leaves earlier rows short of the header.
+
+    Rows are taken from NDBC's real 44013h2000.txt, where TIDE was added
+    partway through the year. Earlier rows keep their readings by position
+    and the missing trailing column is a missing value.
+    """
+    body = (
+        "YYYY MM DD hh  WD  WSPD GST  WVHT  DPD   APD  MWD  BAR    ATMP  WTMP  DEWP  VIS  TIDE\n"
+        "2000 01 01 00 315  0.8  1.5  0.54 10.00  4.55 999 1019.2   1.1   5.9  -3.6 99.0\n"
+        "2000 12 31 23 262 14.4 17.3  1.56  4.55  4.03 999 1000.0  -1.5   4.3  -7.8 99.0 99.00\n"
+    )
+
+    result = NdbcApi._parse_response_body(body=body, station_id="44013", mode="stdmet")
+
+    assert list(result.index) == [
+        pd.Timestamp("2000-01-01 00:00:00", tz="UTC"),
+        pd.Timestamp("2000-12-31 23:00:00", tz="UTC"),
+    ]
+    assert result["WTMP"].iloc[0] == pytest.approx(5.9)
+    assert pd.isna(result["TIDE"].iloc[0])
+    assert result["WTMP"].iloc[1] == pytest.approx(4.3)
+
+
+def test_parse_response_body_rejects_rows_wider_than_the_header() -> None:
+    """A row with more values than the header names is rejected."""
+    body = (
+        "YYYY MM DD hh WD   WSPD GST  WVHT  DPD   APD  MWD  BAR    ATMP  WTMP  DEWP\n"
+        "1999 01 01 00 221  5.4  7.2   .33 11.11  5.25 999 1017.4  -4.3   5.6 999.0 99.0\n"
+    )
+
+    with pytest.raises(NdbcDataError, match="values but"):
+        NdbcApi._parse_response_body(body=body, station_id="44013", mode="stdmet")
+
+
 @pytest.mark.asyncio
 async def test_execute_request_retries_http_5xx(
     ndbc_client: NdbcApi,

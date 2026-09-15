@@ -44,6 +44,16 @@ NDBC_PROVIDER = "ndbc"
 NDBC_MAX_CONCURRENT_REQUESTS = 3
 NDBC_HISTORICAL_THRESHOLD = datetime.timedelta(days=44)
 NDBC_NAN_VALUES = ["MM", 99.0, 999, 9999, 9999.0]
+# Year column names that open a header line. Current files mark every header
+# line with "#", but yearly files before 2007 carry no marker: their single
+# header line starts with the year column name, "YY" in the two-digit-year
+# layouts NDBC used through 1998 and "YYYY" from 1999 on.
+NDBC_HEADER_YEAR_NAMES = frozenset({"YY", "YYYY"})
+# Name of the minutes column, absent from yearly files before 2005.
+NDBC_MINUTE_COLUMN = "mm"
+# Yearly files through 1998 write the year as two digits. NDBC's records begin
+# in the 1970s, so every such year belongs to the twentieth century.
+NDBC_TWO_DIGIT_YEAR_BASE = 1900
 
 
 class NdbcApi(BaseApiClient):
@@ -318,7 +328,7 @@ class NdbcApi(BaseApiClient):
         header: list[str] = []
         data: list[str] = []
         for line in StringIO(body):
-            if line.startswith("#"):
+            if cls._is_header_line(line):
                 header.append(line)
             elif line.strip():
                 data.append(line)
@@ -334,39 +344,73 @@ class NdbcApi(BaseApiClient):
                 f"NDBC response for station {station_id} has no column names"
             )
 
+        # NDBC appends a column mid-file when a sensor is added (44013 gained
+        # TIDE partway through 2000), so a row may be shorter than the header
+        # and its trailing columns are then missing. A row wider than the
+        # header has no such reading and is rejected here or by the parser.
         first_data_width = len([value for value in data[0].strip().split(" ") if value])
-        if first_data_width != len(names):
+        if first_data_width > len(names):
             raise NdbcDataError(
                 f"NDBC {mode} response for station {station_id} has {first_data_width} "
                 f"values but {len(names)} columns"
             )
+
+        # Yearly files before 2005 have no minutes column; every reading in them
+        # is on the hour.
+        has_minutes = len(names) > 4 and names[4] == NDBC_MINUTE_COLUMN
+        date_col_names = names[:5] if has_minutes else names[:4]
 
         try:
             df = pd.read_csv(
                 StringIO("".join(data)),
                 names=names,
                 sep=r"\s+",
-                na_values=NDBC_NAN_VALUES,
+                # The missing-value tokens are measurement sentinels: applying
+                # them to the date columns would turn the year 99 of a
+                # two-digit-year file into a missing value.
+                na_values={
+                    name: NDBC_NAN_VALUES
+                    for name in names
+                    if name not in date_col_names
+                },
             )
         except (NotImplementedError, TypeError, ValueError) as e:
             raise NdbcDataError(
                 f"Failed to parse NDBC {mode} response for station {station_id}: {e}"
             ) from e
 
-        date_col_names = names[:5]
-        date_strings = df[date_col_names].astype(str).agg(" ".join, axis=1)
         try:
+            year = df[date_col_names[0]].astype(int)
+            date_parts = pd.DataFrame(
+                {
+                    "year": year.where(year >= 100, year + NDBC_TWO_DIGIT_YEAR_BASE),
+                    "month": df[date_col_names[1]].astype(int),
+                    "day": df[date_col_names[2]].astype(int),
+                    "hour": df[date_col_names[3]].astype(int),
+                    "minute": (df[date_col_names[4]].astype(int) if has_minutes else 0),
+                }
+            )
             # NDBC text columns are UTC; localizing here keeps the absolute
             # instant, so both folds of a fall-back hour stay distinct rows.
-            df["timestamp"] = pd.to_datetime(
-                date_strings, format="%Y %m %d %H %M", utc=True
-            )
-        except ValueError as e:
+            df["timestamp"] = pd.to_datetime(date_parts, utc=True)
+        except (TypeError, ValueError) as e:
             raise NdbcDataError(
                 f"Failed to parse NDBC timestamps for station {station_id}: {e}"
             ) from e
 
         return df.drop(columns=date_col_names).set_index("timestamp")
+
+    @staticmethod
+    def _is_header_line(line: str) -> bool:
+        """Report whether a line is a header rather than an observation row.
+
+        Current files mark every header line with "#". Yearly files before 2007
+        carry no marker, so their header is recognized by its year column name.
+        """
+        if line.startswith("#"):
+            return True
+        tokens = line.split(maxsplit=1)
+        return bool(tokens) and tokens[0] in NDBC_HEADER_YEAR_NAMES
 
     async def temperature(
         self,

@@ -1805,9 +1805,10 @@ requires stronger migration and equivalence validation.
 
 ## Deep History
 
-Status: contract; implementation pending. Three slices, in order: the
-provider client changes, the backfill command, then the served range and the
-plot.
+Status: contract; the provider client changes are implemented, the backfill
+command and the served range and plot are pending. Three slices, in order:
+the provider client changes, the backfill command, then the served range and
+the plot.
 
 The archive keeps everything a provider will still give, at every cadence the
 provider offers it, once. The served hourly frame then extends back to the
@@ -1858,7 +1859,9 @@ carries the header marker the client looks for.
   either cadence and the client makes the requests. No caller-side loop.
 - NDBC: the historical yearly file parser reads the three pre-2007 layouts as
   well as the current one, verified against real files for 1984, 1998, 2004,
-  and 2006. The frame it returns is unchanged in shape.
+  and 2006, and tolerates a column appended partway through a file, as 44013
+  gained TIDE during 2000: a row shorter than the header is missing its
+  trailing columns. The frame it returns is unchanged in shape.
 - NWIS currents: the client gains a date window like the temperature call has,
   and the currents feed gains a start and end like the temperature feeds. This
   is what lets the observational currents source join the backfill; it is

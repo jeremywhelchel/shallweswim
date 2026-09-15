@@ -4,6 +4,7 @@
 import contextlib
 import datetime
 import io
+import itertools
 import logging
 import urllib.parse
 from collections.abc import AsyncIterator
@@ -27,6 +28,8 @@ from shallweswim.core.feeds import to_serving_index
 
 # Station timezone used for every request window in these tests
 EASTERN = "US/Eastern"
+# How CO-OPS request window edges are formatted in a request URL
+REQUEST_TIME_FORMAT = "%Y%m%d %H:%M"
 
 
 def request_query(request: AsyncMock | Any) -> dict[str, list[str]]:
@@ -392,6 +395,77 @@ async def test_temperature_keeps_a_window_within_the_range_limit_whole(
     assert query["begin_date"] == ["20230101 05:00"]
     assert query["end_date"] == ["20240101 04:59"]
     assert len(df) == 2
+
+
+@pytest.mark.asyncio
+async def test_temperature_splits_a_six_minute_year_into_monthly_requests(
+    coops_client: CoopsApi,
+) -> None:
+    """A six-minute year is fetched as abutting requests inside the 31-day cap.
+
+    CO-OPS serves the six-minute product 31 days at a time, so a year takes
+    twelve or thirteen requests. Together they cover the window exactly: each
+    ends one minute before the next begins and none overlaps.
+    """
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.return_value = temperature_csv_frame(["2023-06-01 12:00"], [70.0])
+
+        await coops_client.temperature(
+            station=8518750,
+            product="water_temperature",
+            begin_date=datetime.date(2023, 1, 1),
+            end_date=datetime.date(2023, 12, 31),
+            timezone=EASTERN,
+            interval="6-min",
+        )
+
+    windows = [
+        (
+            datetime.datetime.strptime(
+                request_query(call)["begin_date"][0], REQUEST_TIME_FORMAT
+            ),
+            datetime.datetime.strptime(
+                request_query(call)["end_date"][0], REQUEST_TIME_FORMAT
+            ),
+        )
+        for call in mock_request.call_args_list
+    ]
+
+    assert 12 <= len(windows) <= 13
+    assert windows[0][0] == datetime.datetime(2023, 1, 1, 5, 0)
+    assert windows[-1][1] == datetime.datetime(2024, 1, 1, 4, 59)
+    minute = datetime.timedelta(minutes=1)
+    for (_, earlier_end), (later_begin, _) in itertools.pairwise(windows):
+        assert later_begin - earlier_end == minute
+    for begin, end in windows:
+        assert end - begin < datetime.timedelta(days=31)
+
+
+@pytest.mark.asyncio
+async def test_temperature_keeps_a_six_minute_day_whole(
+    coops_client: CoopsApi,
+) -> None:
+    """A day of six-minute readings is well inside the cap and stays one request."""
+    with patch.object(
+        coops_client, "_execute_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_request.return_value = temperature_csv_frame(["2023-06-01 12:00"], [70.0])
+
+        await coops_client.temperature(
+            station=8518750,
+            product="water_temperature",
+            begin_date=datetime.date(2023, 6, 1),
+            end_date=datetime.date(2023, 6, 1),
+            timezone=EASTERN,
+            interval="6-min",
+        )
+
+    assert mock_request.call_count == 1
+    query = request_query(mock_request)
+    assert query["begin_date"] == ["20230601 04:00"]
+    assert query["end_date"] == ["20230602 03:59"]
 
 
 @pytest.mark.asyncio

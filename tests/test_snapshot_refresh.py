@@ -21,7 +21,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from shallweswim import config as config_lib
-from shallweswim import data as data_lib
 from shallweswim import web as web_module
 from shallweswim.archive.store import MemoryObjectStore, StoredObject
 from shallweswim.core import manager as manager_module
@@ -380,10 +379,9 @@ async def test_lifespan_constructs_no_manager_and_opens_no_client_session(
     def no_session(*args: object, **kwargs: object) -> None:
         raise AssertionError("The web lifespan opened an aiohttp ClientSession")
 
-    # Both the module that defines the manager and the compatibility shim that
-    # re-exports it, so neither import path can construct one unnoticed.
+    # The one module that defines the manager, so it cannot be constructed
+    # unnoticed.
     monkeypatch.setattr(manager_module, "LocationDataManager", no_manager)
-    monkeypatch.setattr(data_lib, "LocationDataManager", no_manager)
     monkeypatch.setattr(aiohttp, "ClientSession", no_session)
 
     lifespan_app = fastapi.FastAPI()

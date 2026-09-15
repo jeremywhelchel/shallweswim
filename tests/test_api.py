@@ -37,8 +37,8 @@ from shallweswim.config import (
     NdbcTempFeedConfig,
 )
 from shallweswim.core.feeds import FEED_CURRENTS, FEED_TIDES
+from shallweswim.core.manager import LocationDataManager
 from shallweswim.core.queries import DataUnavailableError
-from shallweswim.data import LocationDataManager
 from tests.helpers import assert_json_serializable, create_test_app, install_managers
 
 

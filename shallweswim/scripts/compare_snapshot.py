@@ -1,9 +1,9 @@
 """Compare bundle-backed serving with a locally fetched legacy manager.
 
-This is the shadow-mode comparison command, and it never runs in production.
-One local process holds both sides in memory exactly as a web instance would:
-it builds the fetching `LocationDataManager` of every enabled location the way
-the web service does, loads the current published generation from
+This is the comparison command, and it never runs in production. One local
+process holds both sides in memory: it builds the fetching
+`LocationDataManager` of every enabled location the way the job does, loads
+the current published generation from
 `SHALLWESWIM_SNAPSHOT_READ_BUCKET` into a `SnapshotLocationManager` per
 location, and asks both sides the same questions at one location-local instant.
 

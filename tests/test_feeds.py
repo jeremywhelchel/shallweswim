@@ -35,11 +35,7 @@ from shallweswim.clients.marine_institute import MarineInstituteApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
 from shallweswim.core import queries
-from shallweswim.dataframe_models import (
-    CurrentDataModel,
-    WaterTempDataModel,
-)
-from shallweswim.feeds import (
+from shallweswim.core.feeds import (
     FEED_RETRY_INTERVALS,
     CompositeFeed,
     CoopsCurrentsFeed,
@@ -59,6 +55,10 @@ from shallweswim.feeds import (
     NwisTempFeed,
     create_temp_feed,
     create_tide_feed,
+)
+from shallweswim.dataframe_models import (
+    CurrentDataModel,
+    WaterTempDataModel,
 )
 from tests.helpers import assert_json_serializable
 

@@ -29,7 +29,7 @@ from shallweswim.config import (
     LocationConfig,
 )
 from shallweswim.core.feeds import FEED_CURRENTS, FEED_TIDES
-from shallweswim.data import LocationDataManager
+from shallweswim.core.manager import LocationDataManager
 from tests.helpers import create_test_app, install_managers
 
 

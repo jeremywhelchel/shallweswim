@@ -563,8 +563,8 @@ content-addressed Parquet objects (one per served feed frame) and SVG objects
 (one per plot) under `published/objects/`, a manifest under
 `published/manifests/`, and finally the `published/current.json` pointer,
 replaced conditionally. A generation identical to the current one is not
-written. The web service reads these generations in shadow mode, described
-below, but still serves only its own fetched data.
+written. The web service loads these generations and serves only the loaded
+one, described below.
 
 The current generation is also the job's feed schedule. Before running a
 location's cycle, the job restores each feed's next fetch time from the current
@@ -690,16 +690,16 @@ SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
   --location nyc --at 2026-06-01T04:00:00
 ```
 
-It fetches every enabled location from the providers exactly as the web service
-does, loads the current generation from the read bucket, and asks both sides the
-same questions at one location-local instant (now, or `--at`, applied as each
+It fetches every enabled location from the providers exactly as the job does,
+loads the current generation from the read bucket, and asks both sides the same
+questions at one location-local instant (now, or `--at`, applied as each
 location's own local time). It hydrates nothing: `SHALLWESWIM_ARCHIVE_BUCKET`
 and `SHALLWESWIM_ARCHIVE_READ_BUCKET` are removed from the run's environment
 even when `.env` sets them, so the legacy side is a pure provider fetch that
 writes nothing. Only the viewer credential is needed:
-`roles/storage.objectViewer` on the bucket, the same grant shadow mode uses. A
-missing `SHALLWESWIM_SNAPSHOT_READ_BUCKET` fails as a usage error before any
-upstream request.
+`roles/storage.objectViewer` on the bucket, the same grant the web service
+uses. A missing `SHALLWESWIM_SNAPSHOT_READ_BUCKET` fails as a usage error
+before any upstream request.
 
 The report is one table per location, then the differing rows. Each configured
 feed gets one outcome: `missing` (only the legacy side has data, expected while

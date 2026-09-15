@@ -29,12 +29,13 @@ import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from shallweswim import api, feeds
+from shallweswim import api
 from shallweswim.clients.base import StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
-from shallweswim.data import LocationDataManager
+from shallweswim.core import feeds
+from shallweswim.core.manager import LocationDataManager
 from shallweswim.types import TIDE_TYPE_CATEGORIES
 from tests.conftest import (
     TEST_CONFIG_FULL,

@@ -46,7 +46,7 @@ templates/               # Jinja2 HTML templates
 static/                  # CSS, JS, images
 ```
 
-**Backwards compatibility**: Top-level shim files (`api.py`, `config.py`, `data.py`, `feeds.py`) re-export from the new locations for import compatibility.
+**Backwards compatibility**: `api/__init__.py` and `config/__init__.py` re-export from `routes.py` and `locations.py` for import compatibility.
 
 ### Entry Points And Store Locators
 

@@ -20,7 +20,7 @@ from pytest_mock import MockerFixture
 
 # Local imports
 from shallweswim import config as config_lib
-from shallweswim import feeds, util
+from shallweswim import util
 from shallweswim.api_types import FeedStatus
 
 # Import API client classes
@@ -29,10 +29,10 @@ from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.ndbc import NdbcApi
 from shallweswim.clients.nwis import NwisApi
-from shallweswim.core import queries
+from shallweswim.core import feeds, queries
+from shallweswim.core.feeds import Feed
+from shallweswim.core.manager import LocationDataManager
 from shallweswim.core.queries import DataUnavailableError, get_tide_info_at_time
-from shallweswim.data import LocationDataManager
-from shallweswim.feeds import Feed
 from shallweswim.types import (
     CurrentDirection,
     CurrentInfo,

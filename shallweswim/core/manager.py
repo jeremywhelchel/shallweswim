@@ -14,12 +14,12 @@ from typing import Any
 # Third-party imports
 import pandas as pd
 
-from shallweswim import api_types, feeds
+from shallweswim import api_types
 
 # Local imports
 from shallweswim import config as config_lib
 from shallweswim.clients.base import BaseApiClient
-from shallweswim.core import queries, updater
+from shallweswim.core import feeds, queries, updater
 from shallweswim.types import (
     CurrentInfo,
     DataSourceType,

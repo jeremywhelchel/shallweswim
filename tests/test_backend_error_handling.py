@@ -20,7 +20,7 @@ from shallweswim.clients.base import BaseClientError, StationUnavailableError
 from shallweswim.config import LocationConfig
 from shallweswim.core import updater
 from shallweswim.core.feeds import FEED_TIDES, FeedName
-from shallweswim.data import LocationDataManager
+from shallweswim.core.manager import LocationDataManager
 
 
 def create_minimal_config() -> LocationConfig:

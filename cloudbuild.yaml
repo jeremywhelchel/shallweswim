@@ -6,8 +6,8 @@ substitutions:
   _REGION: "us-east4"
   _SERVICE_NAME: "shallweswim"
   _IMAGE_NAME: "${_REGION}-docker.pkg.dev/${PROJECT_ID}/gcr/${_SERVICE_NAME}"
-  # Installation-local archive bucket for the capture job, and for the
-  # service's read-only snapshot shadow mode. Empty by default so the
+  # Installation-local archive bucket for the capture job, and the bucket the
+  # service loads published generations from. Empty by default so the
   # repository never hard-codes a bucket name; build_and_deploy.sh supplies it
   # from SHALLWESWIM_ARCHIVE_BUCKET and both deploy steps fail if it is empty.
   _ARCHIVE_BUCKET: ""

@@ -144,7 +144,7 @@ gcloud storage buckets add-iam-policy-binding \
 ```
 
 The web runtime identity takes the same read-only grant so the service can load
-published generations in shadow mode (see the invariant above for the command).
+published generations (see the invariant above for the command).
 
 Do not grant `shallweswim-capture` anything else, do not grant the web runtime
 identity any role on the archive bucket beyond `roles/storage.objectViewer`, and

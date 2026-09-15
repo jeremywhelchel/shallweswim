@@ -1,4 +1,4 @@
-"""The shadow-mode comparison core.
+"""The bundle comparison core.
 
 Every test compares two in-memory serving states: a seeded fetching manager
 and a `SnapshotLocationManager` loaded from a generation published into a

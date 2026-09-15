@@ -569,8 +569,9 @@ below, but still serves only its own fetched data.
 The current generation is also the job's feed schedule. Before running a
 location's cycle, the job restores each feed's next fetch time from the current
 manifest, for every entry that still names the feed's configured source. A feed
-that is not yet due is therefore not fetched — it is *held* — and the new
-manifest keeps its entry and its plots exactly as published. Each feed thus
+that would not come due before the next run starts is not fetched — it is
+*held* — and the new manifest keeps its entry and its plots exactly as
+published; a feed due before the next run fetches on this one. Each feed thus
 keeps its own interval whatever the job cadence is: live temperature every ten
 minutes, historical temperature every three hours, tide and current predictions
 daily. A feed that is due, that the manifest does not describe, or whose source

@@ -30,6 +30,7 @@ live in this process's memory. ``--reload`` is unsupported for the same reason.
 import argparse
 import asyncio
 import contextlib
+import datetime
 import logging
 import os
 import sys
@@ -78,7 +79,11 @@ def apply_store_locator(locator: str) -> None:
 
 
 async def run_cycle(
-    app: fastapi.FastAPI, session: aiohttp.ClientSession, *, locator: str
+    app: fastapi.FastAPI,
+    session: aiohttp.ClientSession,
+    *,
+    locator: str,
+    cadence_seconds: float,
 ) -> None:
     """Run one publishing cycle, logging a broken cycle rather than raising.
 
@@ -100,6 +105,7 @@ async def run_cycle(
             uuid.uuid4().hex,
             pool=app.state.process_pool,
             locator=locator,
+            cadence=datetime.timedelta(seconds=cadence_seconds),
         )
     except asyncio.CancelledError:
         raise
@@ -132,7 +138,7 @@ async def run_cycles(
     while True:
         await asyncio.sleep(max(0.0, cadence_seconds - (time.monotonic() - started_at)))
         started_at = time.monotonic()
-        await run_cycle(app, session, locator=locator)
+        await run_cycle(app, session, locator=locator, cadence_seconds=cadence_seconds)
 
 
 def install_updater(
@@ -157,7 +163,9 @@ def install_updater(
     async def lifespan_with_updater(app: fastapi.FastAPI) -> AsyncGenerator[None]:
         async with app_lifespan(app), aiohttp.ClientSession() as session:
             started_at = time.monotonic()
-            await run_cycle(app, session, locator=locator)
+            await run_cycle(
+                app, session, locator=locator, cadence_seconds=cadence_seconds
+            )
             # The app's own startup found an empty store on a first run; this
             # load picks up what the cycle just published.
             await app.state.snapshot.initial_load()

@@ -324,7 +324,9 @@ def test_lifespan_composition_runs_the_updater_between_startup_and_shutdown(
         *,
         pool: object,
         locator: str,
+        cadence: datetime.timedelta,
     ) -> tuple[list[object], str]:
+        assert cadence == datetime.timedelta(seconds=3600)
         order.append(f"cycle {locator}")
         cycled.set()
         return [], "success"

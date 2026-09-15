@@ -619,10 +619,16 @@ def _edit_published_feed(
 def test_second_publish_run_holds_every_feed_and_changes_nothing(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The manifest is the schedule, so an immediate rerun fetches nothing."""
+    """The manifest is the schedule, so an immediate rerun fetches nothing.
+
+    Under the production cadence the ten-minute live feed is due before the
+    next run and fetches every time, which the boundary test below covers; a
+    one-minute cadence here leaves every feed genuinely not due.
+    """
     coops_client, nwis_client, store = _install_publish_environment(
         monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
     )
+    monkeypatch.setattr(update, "JOB_CADENCE", datetime.timedelta(minutes=1))
 
     assert update.main([]) == 0
     objects_after_first = _published_keys(store, "published/objects/")
@@ -772,7 +778,8 @@ def test_restore_schedule_only_restores_matching_entries() -> None:
     historic = manager._feeds[feeds.FeedName.HISTORIC_TEMPS]
     assert tides is not None and live is not None
     assert currents is not None and historic is not None
-    due = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.UTC)
+    # Well past the next run, so a restored feed is genuinely not due.
+    due = utc_now().replace(tzinfo=datetime.UTC) + datetime.timedelta(days=1)
 
     update.restore_schedule(
         manager,
@@ -797,6 +804,41 @@ def test_restore_schedule_only_restores_matching_entries() -> None:
     # A feed the manifest does not describe keeps its fresh-feed state.
     assert historic._next_fetch_after is None
     assert all(feed.is_expired for feed in (live, currents, historic))
+
+
+def test_restore_schedule_fetches_a_feed_due_before_the_next_run() -> None:
+    """A ten-minute feed under a ten-minute cadence must fetch every run.
+
+    Restored literally, its next fetch time lands seconds after the next run
+    begins, so it would be held on every other run and refresh every twenty
+    minutes; production showed exactly that on 2026-09-14.
+    """
+    manager = fresh_manager()
+    live = manager._feeds[feeds.FeedName.LIVE_TEMPS]
+    tides = manager._feeds[feeds.FeedName.TIDES]
+    assert live is not None and tides is not None
+    now = utc_now().replace(tzinfo=datetime.UTC)
+    soon = now + datetime.timedelta(seconds=30)
+    later = now + datetime.timedelta(minutes=11)
+
+    update.restore_schedule(
+        manager,
+        LocationManifest(
+            feeds={
+                feeds.FeedName.LIVE_TEMPS: _manifest_entry(live, next_fetch_after=soon),
+                feeds.FeedName.TIDES: _manifest_entry(tides, next_fetch_after=later),
+            },
+            plots={},
+        ),
+        cadence=datetime.timedelta(minutes=10),
+    )
+
+    # Due before the next run: left in its fresh, always-due state.
+    assert live._next_fetch_after is None
+    assert live.is_expired
+    # Not due until after the next run: restored and held.
+    assert tides._next_fetch_after == later.replace(tzinfo=None)
+    assert not tides.is_expired
 
 
 def test_restore_schedule_without_a_manifest_leaves_every_feed_due() -> None:

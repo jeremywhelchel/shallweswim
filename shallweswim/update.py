@@ -221,8 +221,19 @@ def _location_counts(
     return attempted, published, record_count, CaptureResult(new_count, revised_count)
 
 
+# The cadence the scheduled job runs at, and the design's target. A feed whose
+# restored next fetch time falls before the next run would start is fetched
+# on this run: restoring it literally would hold a feed whose interval equals
+# the cadence on every other run, because its next fetch time lands seconds
+# after the next run begins.
+JOB_CADENCE = datetime.timedelta(minutes=10)
+
+
 def restore_schedule(
-    manager: LocationDataManager, location_manifest: LocationManifest | None
+    manager: LocationDataManager,
+    location_manifest: LocationManifest | None,
+    *,
+    cadence: datetime.timedelta = JOB_CADENCE,
 ) -> None:
     """Restore each feed's next fetch time from the current generation.
 
@@ -237,9 +248,12 @@ def restore_schedule(
         location_manifest: The location's entry in the current generation's
             manifest, or None when there is no generation, no entry for this
             location, or the run ignores the schedule.
+        cadence: How often runs start. A feed due before the next run stays
+            due now rather than waiting a whole cadence past its interval.
     """
     if location_manifest is None:
         return
+    next_run = utc_now() + cadence
     for feed_name, feed in manager._feeds.items():
         # The manager exposes no accessor for the feed objects themselves, and
         # scheduling is deliberately private to the feed.
@@ -248,12 +262,15 @@ def restore_schedule(
         entry = location_manifest.feeds.get(feed_name)
         if entry is None or entry.source_identity != feed.feed_config.citation_key:
             continue
-        feed._next_fetch_after = (
-            None
-            if entry.next_fetch_after is None
-            # Feeds keep naive UTC; the manifest states the same instant.
-            else entry.next_fetch_after.astimezone(datetime.UTC).replace(tzinfo=None)
-        )
+        if entry.next_fetch_after is None:
+            feed._next_fetch_after = None
+            continue
+        # Feeds keep naive UTC; the manifest states the same instant.
+        due_at = entry.next_fetch_after.astimezone(datetime.UTC).replace(tzinfo=None)
+        if due_at <= next_run:
+            # Due before the next run starts: fetch now (a fresh feed is due).
+            continue
+        feed._next_fetch_after = due_at
 
 
 async def _current_manifest(store: SnapshotStore) -> Manifest | None:
@@ -304,6 +321,7 @@ async def publish_locations(
     pool: Executor,
     locator: str,
     full_history: bool = False,
+    cadence: datetime.timedelta = JOB_CADENCE,
 ) -> tuple[list[tuple[int, int, int, CaptureResult]], str]:
     """Run every location's full serving cycle, then publish one snapshot.
 
@@ -343,6 +361,8 @@ async def publish_locations(
             `archive.store.object_store` resolves it.
         full_history: Whether to ignore the published schedule so every feed
             fetches, for backfills and repairs.
+        cadence: How often this cycle runs, so a feed due before the next run
+            is fetched on this one rather than held for a whole cadence.
 
     Returns:
         Each location's counts in the order of `_capture_location`, and the
@@ -356,7 +376,9 @@ async def publish_locations(
     ]
     for manager in managers:
         restore_schedule(
-            manager, None if base is None else base.locations.get(manager.config.code)
+            manager,
+            None if base is None else base.locations.get(manager.config.code),
+            cadence=cadence,
         )
     await asyncio.gather(*(serve_location(manager) for manager in managers))
     await asyncio.gather(
@@ -462,6 +484,8 @@ async def _run(*, full_history: bool, publish_snapshot: bool) -> int:
                         pool=pool,
                         locator=os.environ[ARCHIVE_BUCKET_ENV_VAR],
                         full_history=full_history,
+                        # Read at call time so tests can shorten the cadence.
+                        cadence=JOB_CADENCE,
                     )
                 finally:
                     pool.shutdown(wait=True)

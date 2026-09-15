@@ -1726,9 +1726,13 @@ Job: (implemented)
 - The current generation's manifest is the persisted feed schedule. Before
   updating a feed, the job restores that feed's `next_fetch_after` from the
   current generation when the entry's `source_identity` matches the feed's
-  `citation_key`; a feed that is not yet due is not fetched, and manifest
-  assembly carries its entry forward unchanged, plots included, with a
-  freshness outcome of `held`. A feed that is due, has no entry, or changed
+  `citation_key`; a feed that would not come due before the next run starts
+  is not fetched, and manifest assembly carries its entry forward unchanged,
+  plots included, with a freshness outcome of `held`. A feed due before the
+  next run fetches on this one: restored literally, a feed whose interval
+  equals the cadence lands seconds after the next run begins and is held on
+  every other run, which production showed on 2026-09-14 as live temperature
+  refreshing every twenty minutes. A feed that is due, has no entry, or changed
   identity fetches as today. This keeps each feed at its own interval under
   any job cadence: live temperature every ten minutes, historical
   temperature every three hours, tide and current predictions daily, which

@@ -24,10 +24,11 @@ own interval whatever the job cadence is.
 
 ``--backfill-from`` switches the run to a third mode, the deep-history walk in
 ``shallweswim.core.backfill``: every year each selected location's historical
-temperature source still holds is fetched and archived, newest year first. It
-is capture-only like the default run, but it neither publishes nor hydrates,
-and its summary event names itself so the scheduled capture metrics never
-count it.
+temperature source still holds is fetched and archived, newest year first. The
+selected locations run one after another, and the walk paces its requests, so
+a run that archives decades asks a provider at a courteous rate. It is
+capture-only like the default run, but it neither publishes nor hydrates, and
+its summary event names itself so the scheduled capture metrics never count it.
 
 That publishing cycle, ``publish_locations``, has a second host:
 ``shallweswim.local`` runs it on a timer inside the web app's process against a
@@ -553,9 +554,11 @@ async def _run_backfill(
 ) -> int:
     """Walk every selected location's history and emit one summary event.
 
-    Locations run concurrently, as the capture path runs them, and each
-    location's requests run one at a time inside its own walk. Nothing here
-    publishes, hydrates, or plots: a backfill only fetches and archives.
+    Locations run one after another, in the order given, and each location's
+    requests run one at a time inside its own walk: four stations walking at
+    once would multiply the rate at one provider, and a backfill is run by
+    hand, so its duration does not matter. Nothing here publishes, hydrates,
+    or plots: a backfill only fetches and archives.
 
     Args:
         location_configs: The locations to walk.
@@ -572,14 +575,12 @@ async def _run_backfill(
     try:
         async with aiohttp.ClientSession() as session:
             clients = create_api_clients(session)
-            results = await asyncio.gather(
-                *[
-                    backfill.backfill_location(
-                        location_config, clients, floor_year=floor_year
-                    )
-                    for location_config in location_configs
-                ]
-            )
+            results = [
+                await backfill.backfill_location(
+                    location_config, clients, floor_year=floor_year
+                )
+                for location_config in location_configs
+            ]
     except Exception as error:
         logging.error(
             f"Backfill run failed: {error}",

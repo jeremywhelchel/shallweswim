@@ -1896,10 +1896,24 @@ carries the header marker the client looks for.
   five consecutive empty years going backwards (`BACKFILL_EMPTY_YEARS_STOP`).
   Any other error ends that source and is logged at ERROR; the other
   locations continue, as the capture path isolates feed failures today.
-- Requests within a source run one at a time, newest year first; locations run
-  concurrently as the capture path does. A CO-OPS station with thirty years is
-  about 400 requests. Provider courtesy is one pass per source, once per
+- Provider courtesy. Requests within a source run one at a time, newest year
+  first, with a short pause between them (`BACKFILL_REQUEST_PAUSE`, one
+  second), and locations run one after another rather than concurrently: a
+  backfill is run by hand and its duration does not matter, while four CO-OPS
+  stations walking at once would quadruple the rate at one provider. A CO-OPS
+  station with thirty years is about 400 requests; every source together is
+  roughly 1,700, around ninety minutes. It is one pass per source, once per
   location lifetime.
+- Rate limiting. The first real walk was answered with HTTP 403 by CO-OPS
+  after about 160 requests in eight minutes, and the block lifted within the
+  hour. CO-OPS uses 403 for a temporary rate block, which is 429 by the
+  letter of the standard. The live client paths keep treating 403 as a
+  refusal that fails fast, which is right for the job and the web app. The
+  walk alone treats a 403 as a wait: it pauses (`BACKFILL_BLOCK_PAUSE`, five
+  minutes) and retries the same request, up to `BACKFILL_BLOCK_RETRIES` (3)
+  times, before ending the source as an error. To make that possible the
+  client's HTTP error carries its status code as a field rather than only in
+  its message. Any other non-transient error still ends the source at once.
 - It runs from the operator's machine against the archive bucket, under a
   temporary write grant to the local operator identity that is revoked
   afterwards. Nothing in the code depends on where it runs; the scheduled

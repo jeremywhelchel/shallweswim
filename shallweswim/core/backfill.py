@@ -8,11 +8,12 @@ several years running. The walk therefore discovers a source's depth itself
 rather than taking a range an operator found by hand.
 
 ``shallweswim.update`` hosts the walk: it parses the arguments, runs the
-selected locations concurrently, and logs the run summary. A backfill only
+selected locations one after another, and logs the run summary. A backfill only
 writes: it publishes nothing, reads nothing back from the archive, and keeps no
 fetched data in memory beyond the request that archived it.
 """
 
+import asyncio
 import calendar
 import dataclasses
 import datetime
@@ -21,7 +22,11 @@ from enum import StrEnum
 
 from shallweswim import config as config_lib
 from shallweswim.archive.capture import CaptureResult
-from shallweswim.clients.base import BaseApiClient, StationUnavailableError
+from shallweswim.clients.base import (
+    BaseApiClient,
+    BaseClientError,
+    StationUnavailableError,
+)
 from shallweswim.core.feeds import TempFeed, create_temp_feed
 from shallweswim.util import utc_now
 
@@ -34,6 +39,25 @@ BACKFILL_FLOOR_YEAR = 1900
 # records have short gaps; this is the bound on how long a walk keeps asking
 # past one before deciding the record has ended.
 BACKFILL_EMPTY_YEARS_STOP = 5
+
+# Pause between consecutive requests within a source. A backfill runs by hand
+# and its duration does not matter, so it asks a provider at a rate a person
+# browsing would.
+BACKFILL_REQUEST_PAUSE = datetime.timedelta(seconds=1)
+
+# How long the walk waits out a provider block, and how many times it waits for
+# the same request before giving up on the source.
+BACKFILL_BLOCK_PAUSE = datetime.timedelta(minutes=5)
+BACKFILL_BLOCK_RETRIES = 3
+
+# The status CO-OPS answers with when it is rate blocking, which by the letter
+# of the standard is 429. Only the walk reads it as a block worth waiting out:
+# every other path keeps treating a 403 as a refusal that fails fast.
+BACKFILL_BLOCK_STATUS = 403
+
+# Sleeping is a module attribute so tests can record the walk's pauses instead
+# of waiting them out.
+_sleep = asyncio.sleep
 
 
 class BackfillStop(StrEnum):
@@ -202,12 +226,59 @@ def _year_requests(
     return requests
 
 
+async def _archive_request(
+    request: _YearRequest,
+    clients: dict[str, BaseApiClient],
+    location_code: str,
+) -> CaptureResult | None:
+    """Fetch and archive one request, waiting out a provider block.
+
+    A `BACKFILL_BLOCK_STATUS` answer is CO-OPS rate blocking rather than
+    refusing, and the block lifts by itself, so the walk waits
+    `BACKFILL_BLOCK_PAUSE` and asks for the same window again, up to
+    `BACKFILL_BLOCK_RETRIES` times. The count is per request: a request that
+    succeeds after a wait leaves the walk with the full allowance for the next
+    one. Every other error, including a retryable one the client layer already
+    exhausted, propagates on its first raise.
+
+    Args:
+        request: The request to fetch and archive.
+        clients: Provider API clients keyed by provider name.
+        location_code: Location code for log context.
+
+    Returns:
+        The rows this request added to and revised in the archive, or None when
+        the feed archived nothing.
+    """
+    waits = 0
+    while True:
+        try:
+            return await request.feed.archive_once(clients)
+        except BaseClientError as error:
+            if error.status != BACKFILL_BLOCK_STATUS or waits >= BACKFILL_BLOCK_RETRIES:
+                raise
+            waits += 1
+            logging.warning(
+                f"[{location_code}] Provider blocked {request.label} "
+                f"(HTTP {BACKFILL_BLOCK_STATUS}); waiting "
+                f"{BACKFILL_BLOCK_PAUSE} before retry {waits} of "
+                f"{BACKFILL_BLOCK_RETRIES}: {error}"
+            )
+            await _sleep(BACKFILL_BLOCK_PAUSE.total_seconds())
+
+
 async def _archive_year(
     requests: list[_YearRequest],
     clients: dict[str, BaseApiClient],
     location_code: str,
+    *,
+    source_started: bool,
 ) -> tuple[CaptureResult, int]:
     """Fetch and archive one year's requests, one at a time.
+
+    Requests are paced `BACKFILL_REQUEST_PAUSE` apart. The pause comes before a
+    request rather than after it, so the walk never waits once its last request
+    is done, and the source's very first request is not delayed at all.
 
     A request the provider answers with no data is counted and skipped: a
     six-minute month a station lacks while its hourly year has data is the
@@ -218,6 +289,8 @@ async def _archive_year(
         requests: The year's requests, in fetch order.
         clients: Provider API clients keyed by provider name.
         location_code: Location code for log context.
+        source_started: Whether an earlier year of this source already made a
+            request, so this year's first request is paced like the rest.
 
     Returns:
         The rows this year added to and revised in the archive, and how many of
@@ -226,9 +299,11 @@ async def _archive_year(
     new_count = 0
     revised_count = 0
     empty_requests = 0
-    for request in requests:
+    for index, request in enumerate(requests):
+        if source_started or index > 0:
+            await _sleep(BACKFILL_REQUEST_PAUSE.total_seconds())
         try:
-            captured = await request.feed.archive_once(clients)
+            captured = await _archive_request(request, clients, location_code)
         except StationUnavailableError as error:
             empty_requests += 1
             logging.debug(f"[{location_code}] No data for {request.label}: {error}")
@@ -267,11 +342,13 @@ async def backfill_location(
     """Archive every year the location's historical temperature source holds.
 
     Years are walked from the current UTC year down to the floor, newest
-    first, one request at a time. A year is empty only when every one of its
-    requests returned no data; after `BACKFILL_EMPTY_YEARS_STOP` consecutive
-    empty years the walk stops, and a year with data resets that count. Any
-    other failure ends this source's walk and is logged at ERROR, leaving the
-    years already archived archived; the caller's other locations continue.
+    first, one request at a time, `BACKFILL_REQUEST_PAUSE` apart. A year is
+    empty only when every one of its requests returned no data; after
+    `BACKFILL_EMPTY_YEARS_STOP` consecutive empty years the walk stops, and a
+    year with data resets that count. A provider block is waited out per
+    request; any other failure ends this source's walk and is logged at ERROR,
+    leaving the years already archived archived; the caller's other locations
+    continue.
 
     Args:
         location_config: Location to walk.
@@ -297,6 +374,7 @@ async def backfill_location(
     years_empty: list[int] = []
     consecutive_empty = 0
     stop = BackfillStop.FLOOR
+    source_started = False
     for year in range(now.year, floor_year - 1, -1):
         requests = _year_requests(location_config, temp_config, clients, year, now)
         if not requests:
@@ -304,7 +382,7 @@ async def backfill_location(
             continue
         try:
             captured, empty_requests = await _archive_year(
-                requests, clients, location_config.code
+                requests, clients, location_config.code, source_started=source_started
             )
         except Exception as error:
             logging.error(
@@ -313,6 +391,9 @@ async def backfill_location(
             )
             stop = BackfillStop.ERROR
             break
+        # This year asked for something, so the next year's first request is
+        # paced like the rest of the walk.
+        source_started = True
         logging.info(
             _year_message(
                 location_config.code,

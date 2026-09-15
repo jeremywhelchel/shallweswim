@@ -239,7 +239,8 @@ class CspfApi(BaseApiClient):
                     return _CspfPage(url=url, body="")
                 if response.status != 200:
                     raise CspfApiError(
-                        f"CSPF request failed with HTTP {response.status} for {url}"
+                        f"CSPF request failed with HTTP {response.status} for {url}",
+                        status=response.status,
                     )
                 return _CspfPage(url=url, body=body)
 

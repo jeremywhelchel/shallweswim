@@ -6,6 +6,7 @@ import aiohttp
 import pytest
 
 from shallweswim.clients.base import (
+    BaseClientError,
     RetryableClientError,
     provider_request_slot,
     raise_if_retryable_http_status,
@@ -79,10 +80,19 @@ def test_retryable_network_error_includes_exception_details() -> None:
     )
 
 
+def test_client_error_carries_the_http_status_it_was_given() -> None:
+    """A status is readable as a field, and absent when none was given."""
+    with_status = BaseClientError("HTTP error 403 for url", status=403)
+    assert with_status.status == 403
+    assert str(with_status) == "HTTP error 403 for url"
+    assert BaseClientError("no response at all").status is None
+
+
 def test_raise_if_retryable_http_status_raises_for_retryable_status() -> None:
     """Retryable HTTP statuses are converted to retryable client errors."""
-    with pytest.raises(RetryableClientError, match="HTTP 503"):
+    with pytest.raises(RetryableClientError, match="HTTP 503") as raised:
         raise_if_retryable_http_status(503, "HTTP 503")
+    assert raised.value.status == 503
 
 
 def test_raise_if_retryable_http_status_ignores_terminal_status() -> None:

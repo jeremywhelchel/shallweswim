@@ -575,8 +575,12 @@ hourly request for the whole year and twelve six-minute requests, one per month
 otherwise abort the year. Every other source is one request per year. A year is
 empty only when every one of its requests returned no data; after five
 consecutive empty years the source's walk stops, and a year with data resets
-that count. One INFO line reports each year as it completes. Locations run
-concurrently; requests inside a source run one at a time.
+that count. One INFO line reports each year as it completes. Locations run one
+after another, and requests inside a source run one at a time, a second apart.
+CO-OPS answers a rate block with HTTP 403 rather than 429, so the walk reads a
+403 as a temporary block: it waits five minutes and asks for the same window
+again, up to three times, before that source ends in an error. Walking every
+source takes roughly ninety minutes.
 
 The run captures only: it publishes no snapshot, reads nothing back from the
 archive, and generates no plots, so it needs `SHALLWESWIM_ARCHIVE_BUCKET` and

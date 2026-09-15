@@ -30,7 +30,7 @@ from shallweswim.archive.observations import (
 from shallweswim.archive.store import MemoryObjectStore
 from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
-from shallweswim.clients.nwis import NwisApi
+from shallweswim.clients.nwis import NwisApi, NwisConnectionError
 from shallweswim.config import (
     CoopsTempFeedConfig,
     LocationConfig,
@@ -1203,12 +1203,16 @@ class BackfillCoopsApi(CoopsApi):
         data_years: set[int],
         six_minute_gaps: set[tuple[int, int]] | None = None,
         errors: dict[int, Exception] | None = None,
+        order: list[str] | None = None,
     ) -> None:
         """Record which years hold data, which months lack six-minute readings."""
         super().__init__(session=cast(aiohttp.ClientSession, None))
         self.data_years = data_years
         self.six_minute_gaps = six_minute_gaps or set()
         self.errors = errors or {}
+        # A list both fakes append to, so a test can see the order requests to
+        # different providers were made in.
+        self.order = order
         self.requests: list[tuple[str | None, datetime.datetime]] = []
 
     async def temperature(
@@ -1224,6 +1228,8 @@ class BackfillCoopsApi(CoopsApi):
         """Return the window's readings, or report the station has none."""
         assert isinstance(begin_date, datetime.datetime)
         self.requests.append((interval, begin_date))
+        if self.order is not None:
+            self.order.append("coops")
         year, month = begin_date.year, begin_date.month
         error = self.errors.get(year)
         if error is not None:
@@ -1245,11 +1251,17 @@ class BackfillNwisApi(NwisApi):
         *,
         data_years: set[int],
         errors: dict[int, Exception] | None = None,
+        blocks: dict[int, int] | None = None,
+        order: list[str] | None = None,
     ) -> None:
         """Record which years hold data and which raise an unexpected error."""
         super().__init__(session=cast(aiohttp.ClientSession, None))
         self.data_years = data_years
         self.errors = errors or {}
+        # How many times a year is answered with a provider block before it is
+        # answered normally, counted down as the walk retries.
+        self.blocks = dict(blocks or {})
+        self.order = order
         self.requests: list[datetime.datetime] = []
 
     async def temperature(
@@ -1264,12 +1276,40 @@ class BackfillNwisApi(NwisApi):
         """Return the year's readings, or report the site has none."""
         assert isinstance(begin_date, datetime.datetime)
         self.requests.append(begin_date)
+        if self.order is not None:
+            self.order.append("nwis")
+        blocks_left = self.blocks.get(begin_date.year, 0)
+        if blocks_left:
+            self.blocks[begin_date.year] = blocks_left - 1
+            raise NwisConnectionError(
+                f"NWIS request for site {site_no} returned HTTP 403",
+                status=backfill.BACKFILL_BLOCK_STATUS,
+            )
         error = self.errors.get(begin_date.year)
         if error is not None:
             raise error
         if begin_date.year not in self.data_years:
             raise StationUnavailableError(f"No data for {begin_date.year}")
         return _hourly_year_frame(begin_date.year)
+
+
+def _record_backfill_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Replace the walk's sleep with a recorder, so its pauses cost no time.
+
+    The recorder still yields to the event loop, so a walk that ran locations
+    concurrently would interleave their requests rather than hide it.
+
+    Returns:
+        The seconds the walk sleeps for, in order.
+    """
+    sleeps: list[float] = []
+
+    async def record(seconds: float) -> None:
+        sleeps.append(seconds)
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(backfill, "_sleep", record)
+    return sleeps
 
 
 def _install_backfill_environment(
@@ -1295,6 +1335,8 @@ def _install_backfill_environment(
     store = MemoryObjectStore()
     monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     monkeypatch.setattr(backfill, "utc_now", lambda: BACKFILL_NOW)
+    # Tests that assert on the pauses install their own recorder for it.
+    _record_backfill_sleeps(monkeypatch)
     return coops_client, nwis_client, store
 
 
@@ -1650,3 +1692,147 @@ def test_backfill_summary_event_fields_are_its_own_operation(
     assert [
         record for record in caplog.records if getattr(record, "operation", "") == "run"
     ] == []
+
+
+def test_backfill_waits_out_a_provider_block_and_retries_the_request(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A 403 is a temporary block: the walk waits, asks again, and goes on."""
+    nwis_client = BackfillNwisApi(data_years={2026, 2025}, blocks={2025: 1})
+    _, _, store = _install_backfill_environment(
+        monkeypatch, [NWIS_BACKFILL_CONFIG], nwis_client=nwis_client
+    )
+    sleeps = _record_backfill_sleeps(monkeypatch)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from", "2024"])
+
+    assert exit_code == 0
+    # The blocked year was asked for twice, and the walk reached the floor.
+    assert [request.year for request in nwis_client.requests] == [
+        2026,
+        2025,
+        2025,
+        2024,
+    ]
+    assert _archived_years(store, "archive/temperature/nwis/") == [2025, 2026]
+    assert sleeps.count(backfill.BACKFILL_BLOCK_PAUSE.total_seconds()) == 1
+    blocked = [
+        record
+        for record in caplog.records
+        if "Provider blocked" in record.getMessage()
+        and record.levelno == logging.WARNING
+    ]
+    assert len(blocked) == 1
+    assert "retry 1 of 3" in blocked[0].getMessage()
+    summary = _backfill_summary(caplog)
+    assert summary.outcome == "success"
+    assert "stopped at floor" in summary.getMessage()
+
+
+def test_backfill_gives_up_on_a_source_that_stays_blocked(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Three waits, and a fourth block ends the source like any other error."""
+    nwis_client = BackfillNwisApi(
+        data_years={2026, 2025}, blocks={2025: backfill.BACKFILL_BLOCK_RETRIES + 1}
+    )
+    _, _, store = _install_backfill_environment(
+        monkeypatch, [NWIS_BACKFILL_CONFIG], nwis_client=nwis_client
+    )
+    sleeps = _record_backfill_sleeps(monkeypatch)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from", "2024"])
+
+    assert exit_code == 0
+    assert [request.year for request in nwis_client.requests] == [2026] + [2025] * (
+        backfill.BACKFILL_BLOCK_RETRIES + 1
+    )
+    assert (
+        sleeps.count(backfill.BACKFILL_BLOCK_PAUSE.total_seconds())
+        == backfill.BACKFILL_BLOCK_RETRIES
+    )
+    # The years reached before the block stay archived.
+    assert _archived_years(store, "archive/temperature/nwis/") == [2026]
+    errors = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR
+        and "Backfill of nwis:temperature" in record.getMessage()
+    ]
+    assert len(errors) == 1
+    assert "403" in errors[0].getMessage()
+    summary = _backfill_summary(caplog)
+    assert summary.outcome == "partial"
+    assert "stopped at error" in summary.getMessage()
+
+
+def test_backfill_ends_a_source_at_once_on_a_status_that_is_not_a_block(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    nwis_client = BackfillNwisApi(
+        data_years={2026},
+        errors={
+            2025: NwisConnectionError(
+                "NWIS request for site 87654321 returned HTTP 404", status=404
+            )
+        },
+    )
+    _, _, store = _install_backfill_environment(
+        monkeypatch, [NWIS_BACKFILL_CONFIG], nwis_client=nwis_client
+    )
+    sleeps = _record_backfill_sleeps(monkeypatch)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from", "2024"])
+
+    assert exit_code == 0
+    # The failing year was asked for once, and the walk stopped there.
+    assert [request.year for request in nwis_client.requests] == [2026, 2025]
+    assert backfill.BACKFILL_BLOCK_PAUSE.total_seconds() not in sleeps
+    assert _archived_years(store, "archive/temperature/nwis/") == [2026]
+    summary = _backfill_summary(caplog)
+    assert summary.outcome == "partial"
+    assert "stopped at error" in summary.getMessage()
+
+
+def test_backfill_pauses_between_requests_within_a_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One pause between consecutive requests, and none after the last."""
+    coops_client = BackfillCoopsApi(data_years={2026, 2025})
+    _install_backfill_environment(
+        monkeypatch, [COOPS_BACKFILL_CONFIG], coops_client=coops_client
+    )
+    sleeps = _record_backfill_sleeps(monkeypatch)
+
+    assert update.main(["--backfill-from", "2025"]) == 0
+
+    # The current year stops at the current month; 2025 is a whole year.
+    assert len(coops_client.requests) == (1 + BACKFILL_NOW.month) + 13
+    assert sleeps == [backfill.BACKFILL_REQUEST_PAUSE.total_seconds()] * (
+        len(coops_client.requests) - 1
+    )
+
+
+def test_backfill_walks_locations_one_after_another(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A location's requests all land before the next location's first."""
+    order: list[str] = []
+    coops_client = BackfillCoopsApi(data_years={2026}, order=order)
+    nwis_client = BackfillNwisApi(data_years={2026}, order=order)
+    _install_backfill_environment(
+        monkeypatch,
+        [COOPS_BACKFILL_CONFIG, NWIS_BACKFILL_CONFIG],
+        coops_client=coops_client,
+        nwis_client=nwis_client,
+    )
+
+    assert update.main(["--backfill-from", "2025"]) == 0
+
+    assert coops_client.requests and nwis_client.requests
+    assert order == ["coops"] * len(coops_client.requests) + ["nwis"] * len(
+        nwis_client.requests
+    )

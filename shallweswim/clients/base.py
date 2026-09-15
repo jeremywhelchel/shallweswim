@@ -69,7 +69,19 @@ import tenacity
 
 
 class BaseClientError(Exception):
-    """Base exception for all client-related errors."""
+    """Base exception for all client-related errors.
+
+    Attributes:
+        status: HTTP status the provider answered with, when the error came
+            from a response status, and None otherwise. Callers that treat one
+            status differently from another read it here rather than parsing
+            the message; the deep-history walk waits out a CO-OPS 403 this way.
+    """
+
+    def __init__(self, *args: object, status: int | None = None) -> None:
+        """Build a client error, optionally recording the HTTP status."""
+        super().__init__(*args)
+        self.status = status
 
 
 class ClientConnectionError(BaseClientError):
@@ -129,7 +141,7 @@ def retryable_network_error(
 def raise_if_retryable_http_status(status_code: int, message: str) -> None:
     """Raise RetryableClientError when an HTTP status should be retried."""
     if is_retryable_http_status(status_code):
-        raise RetryableClientError(message)
+        raise RetryableClientError(message, status=status_code)
 
 
 ResponseT = TypeVar("ResponseT")

@@ -113,7 +113,9 @@ class MarineInstituteApi(BaseApiClient):
                             level=logging.ERROR,
                             location_code=location_code,
                         )
-                        raise MarineInstituteConnectionError(error_msg)
+                        raise MarineInstituteConnectionError(
+                            error_msg, status=response.status
+                        )
                     csv_data = await response.text()
         except (TimeoutError, aiohttp.ClientError) as e:
             raise retryable_network_error(

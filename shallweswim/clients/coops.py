@@ -341,7 +341,7 @@ class CoopsApi(BaseApiClient):
                         self.log(
                             error_msg, level=logging.ERROR, location_code=location_code
                         )
-                        raise CoopsConnectionError(error_msg)
+                        raise CoopsConnectionError(error_msg, status=response.status)
 
                     # Read CSV data if status is OK
                     csv_data = await response.text()

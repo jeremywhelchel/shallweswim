@@ -120,7 +120,8 @@ class NdbcApi(BaseApiClient):
                 continue
             if response.status != 200:
                 raise NdbcApiError(
-                    f"NDBC request failed with HTTP {response.status} for {url}"
+                    f"NDBC request failed with HTTP {response.status} for {url}",
+                    status=response.status,
                 )
 
             parsed = self._parse_response_body(

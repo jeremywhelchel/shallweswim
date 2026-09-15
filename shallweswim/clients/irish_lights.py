@@ -168,7 +168,8 @@ class IrishLightsApi(BaseApiClient):
                 )
                 if response.status != 200:
                     raise IrishLightsApiError(
-                        f"Irish Lights request failed with HTTP {response.status} for {url}"
+                        f"Irish Lights request failed with HTTP {response.status} for {url}",
+                        status=response.status,
                     )
 
         try:

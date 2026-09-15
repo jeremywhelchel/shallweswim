@@ -259,7 +259,7 @@ class NwisApi(BaseApiClient):
                     self.log(
                         error_msg, level=logging.ERROR, location_code=location_code
                     )
-                    raise NwisConnectionError(error_msg)
+                    raise NwisConnectionError(error_msg, status=response.status)
 
                 try:
                     payload = await response.json()

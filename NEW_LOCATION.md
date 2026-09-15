@@ -137,7 +137,12 @@ The work is usually:
    citation.
 4. Check that source citations render clearly.
 5. Run the relevant debug script or live integration test for the source.
-6. Run pre-commit before committing.
+6. Back fill the new location's history against the archive bucket
+   (`uv run python -m shallweswim.update --backfill-from --location CODE`), read
+   the earliest year with data from the run summary, and set the historical
+   temperature source's `start_year` to it. See the backfill section of
+   [README.md](README.md) for what the walk does and what it needs.
+7. Run pre-commit before committing.
 
 Tests are not required just because a new config value was added. Add or update
 tests only when the change introduces new behavior, a new invariant, or a

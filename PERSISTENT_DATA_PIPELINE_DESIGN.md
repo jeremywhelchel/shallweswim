@@ -1805,8 +1805,8 @@ requires stronger migration and equivalence validation.
 
 ## Deep History
 
-Status: contract; the provider client changes are implemented, the backfill
-command and the served range and plot are pending. Three slices, in order:
+Status: contract; the provider client changes and the backfill command are
+implemented, the served range and plot are pending. Three slices, in order:
 the provider client changes, the backfill command, then the served range and
 the plot.
 

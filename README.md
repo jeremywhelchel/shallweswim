@@ -551,6 +551,48 @@ has no purpose. Locations run concurrently and each location's feeds run in
 sequence. One failing feed leaves the run `partial` and still exits zero; a run
 that publishes nothing exits non-zero.
 
+##### Backfilling Deep History
+
+`--backfill-from` archives everything a provider still holds, rather than the
+configured historical range:
+
+```bash
+# Walk every year each location's historical temperature source still holds
+SHALLWESWIM_ARCHIVE_BUCKET=my-archive-bucket \
+  uv run python -m shallweswim.update --backfill-from
+
+# Walk one location, no further back than 2009
+SHALLWESWIM_ARCHIVE_BUCKET=my-archive-bucket \
+  uv run python -m shallweswim.update --backfill-from 2009 --location pbi
+```
+
+Each selected location's historical temperature source is walked one calendar
+year at a time, from this year down to the floor year, newest first; without a
+year the floor is 1900, so the walk ends by running out of data rather than by
+reaching the floor. CO-OPS stations are fetched as both products per year — one
+hourly request for the whole year and twelve six-minute requests, one per month
+— because neither product covers the other and a month the station lacks would
+otherwise abort the year. Every other source is one request per year. A year is
+empty only when every one of its requests returned no data; after five
+consecutive empty years the source's walk stops, and a year with data resets
+that count. One INFO line reports each year as it completes. Locations run
+concurrently; requests inside a source run one at a time.
+
+The run captures only: it publishes no snapshot, reads nothing back from the
+archive, and generates no plots, so it needs `SHALLWESWIM_ARCHIVE_BUCKET` and
+nothing else. It is rejected together with `--full-history` or
+`SHALLWESWIM_SNAPSHOT_PUBLISH=1`, and an unknown location code fails before any
+request. Run it from your own machine against the archive bucket, under a
+temporary write grant; the scheduled job keeps capturing meanwhile, and
+re-archiving a year already held changes nothing. A source whose fetch fails
+unexpectedly ends there, is logged at ERROR, and leaves the run `partial`,
+which still exits zero; only a failure of the run itself exits non-zero. The
+summary event uses `operation=backfill`, so the scheduled capture metrics and
+alerts never count it, and reports per source the years archived, the years
+empty, and the earliest year with data — that earliest year is what the
+source's `start_year` in `shallweswim/config/locations.py` is then lowered to,
+in a reviewed change, so the served range and the plots follow.
+
 ##### Published Snapshots
 
 The deployed job also publishes a serving snapshot after its capture cycle, and

@@ -28,11 +28,15 @@ from shallweswim.archive.observations import (
     read_observations,
 )
 from shallweswim.archive.store import MemoryObjectStore
-from shallweswim.clients.base import BaseApiClient
+from shallweswim.clients.base import BaseApiClient, StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.nwis import NwisApi
-from shallweswim.config import CoopsTempFeedConfig, LocationConfig
-from shallweswim.core import feeds
+from shallweswim.config import (
+    CoopsTempFeedConfig,
+    LocationConfig,
+    NwisTempFeedConfig,
+)
+from shallweswim.core import backfill, feeds
 from shallweswim.core import manager as manager_module
 from shallweswim.core.manager import build_feeds
 from shallweswim.snapshot.load import load_current
@@ -1095,3 +1099,554 @@ def test_publish_disabled_keeps_the_capture_only_path(
     assert coops_client.currents_calls == 0
     pool_factory.assert_not_called()
     assert _published_keys(store, "published/") == []
+
+
+# =============================================================================
+# Deep history backfill
+# =============================================================================
+
+# A fixed clock keeps the walk's years, windows, and partition keys the same
+# whenever the suite runs.
+BACKFILL_NOW = datetime.datetime(2026, 9, 15, 12, 0)
+BACKFILL_YEAR = BACKFILL_NOW.year
+
+COOPS_BACKFILL_STATION = 7777777
+NWIS_BACKFILL_SITE = "87654321"
+
+# Rows one complete year archives: a day of hourly readings, and for CO-OPS two
+# six-minute readings in each of the twelve months.
+HOURLY_ROWS_PER_YEAR = 24
+SIX_MINUTE_ROWS_PER_MONTH = 2
+
+COOPS_BACKFILL_CONFIG = LocationConfig(
+    code="bkc",
+    name="Backfill CO-OPS Location",
+    swim_location="Deep Record Beach",
+    swim_location_link="http://example.com/deep",
+    description="Test location whose CO-OPS station is walked back by year",
+    latitude=26.0,
+    longitude=-80.0,
+    timezone=pytz.timezone("US/Eastern"),
+    default_temperature_unit="F",
+    historic_temp_source=CoopsTempFeedConfig(
+        station=COOPS_BACKFILL_STATION, name="Deep Record Temp"
+    ),
+    enabled=True,
+)
+
+NWIS_BACKFILL_CONFIG = LocationConfig(
+    code="bkn",
+    name="Backfill NWIS Location",
+    swim_location="River Record",
+    swim_location_link="http://example.com/river-record",
+    description="Test location whose NWIS site is walked back by year",
+    latitude=38.0,
+    longitude=-85.0,
+    timezone=pytz.timezone("US/Eastern"),
+    default_temperature_unit="F",
+    historic_temp_source=NwisTempFeedConfig(
+        site_no=NWIS_BACKFILL_SITE, name="River Record Temp"
+    ),
+    enabled=True,
+)
+
+NO_HISTORY_CONFIG = LocationConfig(
+    code="nhi",
+    name="No History Location",
+    swim_location="Live Only Beach",
+    swim_location_link="http://example.com/live-only",
+    description="Test location whose source serves live readings only",
+    latitude=30.0,
+    longitude=-81.0,
+    timezone=pytz.timezone("US/Eastern"),
+    default_temperature_unit="F",
+    live_temp_source=CoopsTempFeedConfig(
+        station=COOPS_BACKFILL_STATION, name="Live Only Temp"
+    ),
+    historic_temp_source=CoopsTempFeedConfig(
+        station=COOPS_BACKFILL_STATION, name="Live Only Temp", historic_enabled=False
+    ),
+    enabled=True,
+)
+
+
+def _hourly_year_frame(year: int) -> pd.DataFrame:
+    """Return a day of on-the-hour readings at the start of one year."""
+    index = pd.date_range(
+        f"{year}-01-01", periods=HOURLY_ROWS_PER_YEAR, freq="h", tz="UTC", name="time"
+    )
+    return pd.DataFrame({"water_temp": [60.0] * len(index)}, index=index)
+
+
+def _six_minute_month_frame(year: int, month: int) -> pd.DataFrame:
+    """Return six-minute readings at the start of one month, off the hour.
+
+    Off the hour so they never coincide with the hourly product's readings,
+    which would archive as overlaps rather than as rows of their own.
+    """
+    index = pd.date_range(
+        f"{year}-{month:02d}-01 00:30",
+        periods=SIX_MINUTE_ROWS_PER_MONTH,
+        freq="6min",
+        tz="UTC",
+        name="time",
+    )
+    return pd.DataFrame({"water_temp": [61.0, 61.5]}, index=index)
+
+
+class BackfillCoopsApi(CoopsApi):
+    """CO-OPS client answering each backfill window from a fixed record."""
+
+    def __init__(
+        self,
+        *,
+        data_years: set[int],
+        six_minute_gaps: set[tuple[int, int]] | None = None,
+        errors: dict[int, Exception] | None = None,
+    ) -> None:
+        """Record which years hold data, which months lack six-minute readings."""
+        super().__init__(session=cast(aiohttp.ClientSession, None))
+        self.data_years = data_years
+        self.six_minute_gaps = six_minute_gaps or set()
+        self.errors = errors or {}
+        self.requests: list[tuple[str | None, datetime.datetime]] = []
+
+    async def temperature(
+        self,
+        station: int,
+        product: str,
+        begin_date: object,
+        end_date: object,
+        timezone: str,
+        interval: str | None = None,
+        location_code: str = "unknown",
+    ) -> pd.DataFrame:
+        """Return the window's readings, or report the station has none."""
+        assert isinstance(begin_date, datetime.datetime)
+        self.requests.append((interval, begin_date))
+        year, month = begin_date.year, begin_date.month
+        error = self.errors.get(year)
+        if error is not None:
+            raise error
+        if year not in self.data_years:
+            raise StationUnavailableError(f"No data was found for {year}")
+        if interval == "6-min":
+            if (year, month) in self.six_minute_gaps:
+                raise StationUnavailableError(f"No data was found for {year}-{month}")
+            return _six_minute_month_frame(year, month)
+        return _hourly_year_frame(year)
+
+
+class BackfillNwisApi(NwisApi):
+    """NWIS client answering one temperature request per backfilled year."""
+
+    def __init__(
+        self,
+        *,
+        data_years: set[int],
+        errors: dict[int, Exception] | None = None,
+    ) -> None:
+        """Record which years hold data and which raise an unexpected error."""
+        super().__init__(session=cast(aiohttp.ClientSession, None))
+        self.data_years = data_years
+        self.errors = errors or {}
+        self.requests: list[datetime.datetime] = []
+
+    async def temperature(
+        self,
+        site_no: str,
+        begin_date: object,
+        end_date: object,
+        timezone: str,
+        location_code: str = "unknown",
+        parameter_cd: str = "00010",
+    ) -> pd.DataFrame:
+        """Return the year's readings, or report the site has none."""
+        assert isinstance(begin_date, datetime.datetime)
+        self.requests.append(begin_date)
+        error = self.errors.get(begin_date.year)
+        if error is not None:
+            raise error
+        if begin_date.year not in self.data_years:
+            raise StationUnavailableError(f"No data for {begin_date.year}")
+        return _hourly_year_frame(begin_date.year)
+
+
+def _install_backfill_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    configs: list[LocationConfig],
+    *,
+    coops_client: BackfillCoopsApi | None = None,
+    nwis_client: BackfillNwisApi | None = None,
+) -> tuple[BackfillCoopsApi, BackfillNwisApi, MemoryObjectStore]:
+    """Point a backfill run at fake locations, fixed clients, and a fixed clock."""
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+    monkeypatch.delenv("SHALLWESWIM_SNAPSHOT_PUBLISH", raising=False)
+    monkeypatch.delenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", raising=False)
+    monkeypatch.setattr(
+        config,
+        "CONFIGS",
+        MappingProxyType({item.code: item for item in configs}),
+    )
+    coops_client = coops_client or BackfillCoopsApi(data_years=set())
+    nwis_client = nwis_client or BackfillNwisApi(data_years=set())
+    clients: dict[str, BaseApiClient] = {"coops": coops_client, "nwis": nwis_client}
+    monkeypatch.setattr(update, "create_api_clients", lambda session: clients)
+    store = MemoryObjectStore()
+    monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
+    monkeypatch.setattr(backfill, "utc_now", lambda: BACKFILL_NOW)
+    return coops_client, nwis_client, store
+
+
+def _backfill_summary(caplog: pytest.LogCaptureFixture) -> logging.LogRecord:
+    """Return the single backfill run summary event."""
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "operation", "") == "backfill"
+    ]
+    assert len(records) == 1
+    return records[0]
+
+
+def _coops_key(year: int) -> str:
+    return f"archive/temperature/coops/{COOPS_BACKFILL_STATION}/{year}.parquet"
+
+
+def _nwis_key(year: int) -> str:
+    return f"archive/temperature/nwis/{NWIS_BACKFILL_SITE}%3A00010/{year}.parquet"
+
+
+def _archived_years(store: MemoryObjectStore, prefix: str) -> list[int]:
+    """Return the years this source holds partitions for, oldest first."""
+    return sorted(
+        int(key.rsplit("/", 1)[1].removesuffix(".parquet"))
+        for key in store._objects
+        if key.startswith(prefix)
+    )
+
+
+def test_backfill_argument_defaults_to_the_floor_year() -> None:
+    assert _parse_args_backfill([]) is None
+    assert _parse_args_backfill(["--backfill-from"]) == backfill.BACKFILL_FLOOR_YEAR
+    assert backfill.BACKFILL_FLOOR_YEAR == 1900
+    assert _parse_args_backfill(["--backfill-from", "2009"]) == 2009
+
+
+def _parse_args_backfill(argv: list[str]) -> int | None:
+    """Return the floor year the given arguments select."""
+    parsed: int | None = update._parse_args(argv).backfill_from
+    return parsed
+
+
+def test_backfill_rejects_an_unknown_location_before_any_request(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _install_backfill_environment(monkeypatch, [NWIS_BACKFILL_CONFIG])
+    session_factory = Mock()
+    monkeypatch.setattr(update.aiohttp, "ClientSession", session_factory)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from", "2000", "--location", "zzz", "bkn"])
+
+    assert exit_code == 1
+    session_factory.assert_not_called()
+    assert any(
+        "Unknown location code(s): zzz" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.parametrize(
+    "argv,publish,expected",
+    [
+        (["--backfill-from", "2000", "--full-history"], False, "--full-history"),
+        (["--backfill-from"], True, "SHALLWESWIM_SNAPSHOT_PUBLISH=1"),
+        (["--location", "bkn"], False, "--location selects"),
+    ],
+)
+def test_backfill_usage_errors_stop_before_any_request(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    argv: list[str],
+    publish: bool,
+    expected: str,
+) -> None:
+    _install_backfill_environment(monkeypatch, [NWIS_BACKFILL_CONFIG])
+    if publish:
+        monkeypatch.setenv("SHALLWESWIM_SNAPSHOT_PUBLISH", "1")
+    session_factory = Mock()
+    monkeypatch.setattr(update.aiohttp, "ClientSession", session_factory)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(argv)
+
+    assert exit_code == 1
+    session_factory.assert_not_called()
+    assert any(expected in record.getMessage() for record in caplog.records)
+
+
+def test_backfill_requires_the_archive_bucket(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _install_backfill_environment(monkeypatch, [NWIS_BACKFILL_CONFIG])
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "")
+    session_factory = Mock()
+    monkeypatch.setattr(update.aiohttp, "ClientSession", session_factory)
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from"])
+
+    assert exit_code == 1
+    session_factory.assert_not_called()
+
+
+def test_backfill_walks_newest_first_and_archives_one_partition_per_year(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    nwis_client = BackfillNwisApi(data_years={2026, 2025, 2024, 2023})
+    _, _, store = _install_backfill_environment(
+        monkeypatch, [NWIS_BACKFILL_CONFIG], nwis_client=nwis_client
+    )
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from", "2020"])
+
+    assert exit_code == 0
+    # One request per year, walked from this year down to the floor.
+    assert [request.year for request in nwis_client.requests] == list(
+        range(BACKFILL_YEAR, 2019, -1)
+    )
+    assert _archived_years(store, "archive/temperature/nwis/") == [
+        2023,
+        2024,
+        2025,
+        2026,
+    ]
+    for year in (2023, 2024, 2025, 2026):
+        rows = _archived_rows(store, _nwis_key(year), TEMPERATURE_UNIT)
+        assert len(rows) == HOURLY_ROWS_PER_YEAR
+
+    summary = _backfill_summary(caplog)
+    assert summary.outcome == "success"
+    assert "archived 2023, 2024, 2025, 2026" in summary.getMessage()
+    assert "empty 2020, 2021, 2022" in summary.getMessage()
+    assert "earliest 2023" in summary.getMessage()
+    assert "stopped at floor" in summary.getMessage()
+
+
+def test_backfill_stops_after_five_empty_years_and_resets_on_data(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A year with data restarts the count; five empty ones in a row end it."""
+    nwis_client = BackfillNwisApi(data_years={2026, 2023})
+    _, _, store = _install_backfill_environment(
+        monkeypatch, [NWIS_BACKFILL_CONFIG], nwis_client=nwis_client
+    )
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from"])
+
+    assert exit_code == 0
+    # 2025 and 2024 are empty, 2023 resets the count, and the walk ends after
+    # the five empty years 2022 through 2018 rather than at the 1900 floor.
+    assert [request.year for request in nwis_client.requests] == list(
+        range(BACKFILL_YEAR, 2017, -1)
+    )
+    assert _archived_years(store, "archive/temperature/nwis/") == [2023, 2026]
+    summary = _backfill_summary(caplog)
+    assert summary.outcome == "success"
+    assert "earliest 2023" in summary.getMessage()
+    assert "stopped at empty years" in summary.getMessage()
+
+
+def test_backfill_of_an_empty_source_is_a_successful_run(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    nwis_client = BackfillNwisApi(data_years=set())
+    _, _, store = _install_backfill_environment(
+        monkeypatch, [NWIS_BACKFILL_CONFIG], nwis_client=nwis_client
+    )
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from"])
+
+    assert exit_code == 0
+    assert len(nwis_client.requests) == backfill.BACKFILL_EMPTY_YEARS_STOP
+    assert store._objects == {}
+    summary = _backfill_summary(caplog)
+    assert summary.outcome == "success"
+    assert summary.record_count == 0
+    assert "earliest none" in summary.getMessage()
+
+
+def test_backfill_fetches_both_coops_products_for_every_year(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Thirteen requests a complete year, and an empty month is skipped."""
+    coops_client = BackfillCoopsApi(
+        data_years={2026, 2025}, six_minute_gaps={(2025, 3)}
+    )
+    _, _, store = _install_backfill_environment(
+        monkeypatch, [COOPS_BACKFILL_CONFIG], coops_client=coops_client
+    )
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from", "2025"])
+
+    assert exit_code == 0
+    requests_2025 = [
+        request for request in coops_client.requests if request[1].year == 2025
+    ]
+    assert [interval for interval, _ in requests_2025] == ["h"] + ["6-min"] * 12
+    assert [begin.month for _, begin in requests_2025] == [1, *range(1, 13)]
+    # The current year stops at the current month; nothing asks for the future.
+    requests_2026 = [
+        request for request in coops_client.requests if request[1].year == 2026
+    ]
+    assert [begin.month for _, begin in requests_2026] == [
+        1,
+        *range(1, BACKFILL_NOW.month + 1),
+    ]
+
+    # The empty March leaves the rest of 2025 archived.
+    assert len(_archived_rows(store, _coops_key(2025), TEMPERATURE_UNIT)) == (
+        HOURLY_ROWS_PER_YEAR + 11 * SIX_MINUTE_ROWS_PER_MONTH
+    )
+    assert len(_archived_rows(store, _coops_key(2026), TEMPERATURE_UNIT)) == (
+        HOURLY_ROWS_PER_YEAR + BACKFILL_NOW.month * SIX_MINUTE_ROWS_PER_MONTH
+    )
+    assert any(
+        "1 of 13 requests empty" in record.getMessage() for record in caplog.records
+    )
+    assert _backfill_summary(caplog).outcome == "success"
+
+
+def test_backfill_publishes_nothing_and_never_hydrates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, store = _install_backfill_environment(
+        monkeypatch,
+        [COOPS_BACKFILL_CONFIG],
+        coops_client=BackfillCoopsApi(data_years={2026}),
+    )
+    # A read bucket must not be consulted: the walk fetches every year from the
+    # provider, so nothing in it may open the hydration store.
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", "test-archive")
+    hydration_store = Mock(side_effect=AssertionError("backfill must not hydrate"))
+    monkeypatch.setattr(feeds, "object_store", hydration_store)
+    pool_factory = Mock()
+    monkeypatch.setattr(update, "ProcessPoolExecutor", pool_factory)
+
+    assert update.main(["--backfill-from", "2025"]) == 0
+
+    hydration_store.assert_not_called()
+    pool_factory.assert_not_called()
+    assert _published_keys(store, "published/") == []
+    assert _archived_years(store, "archive/temperature/coops/") == [2026]
+
+
+def test_backfill_location_filter_walks_only_the_named_locations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coops_client = BackfillCoopsApi(data_years={2026})
+    nwis_client = BackfillNwisApi(data_years={2026})
+    _, _, store = _install_backfill_environment(
+        monkeypatch,
+        [COOPS_BACKFILL_CONFIG, NWIS_BACKFILL_CONFIG, NO_HISTORY_CONFIG],
+        coops_client=coops_client,
+        nwis_client=nwis_client,
+    )
+
+    assert update.main(["--backfill-from", "2025", "--location", "bkn"]) == 0
+
+    assert coops_client.requests == []
+    assert [request.year for request in nwis_client.requests] == [2026, 2025]
+    assert _archived_years(store, "archive/temperature/nwis/") == [2026]
+
+
+def test_backfill_skips_a_location_without_a_historical_source(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    coops_client = BackfillCoopsApi(data_years={2026})
+    _, _, store = _install_backfill_environment(
+        monkeypatch, [NO_HISTORY_CONFIG], coops_client=coops_client
+    )
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from", "2025"])
+
+    assert exit_code == 0
+    assert coops_client.requests == []
+    assert store._objects == {}
+    assert any(
+        "No historical temperature source to backfill" in record.getMessage()
+        for record in caplog.records
+    )
+    summary = _backfill_summary(caplog)
+    assert summary.outcome == "success"
+    assert "no sources to walk" in summary.getMessage()
+
+
+def test_backfill_isolates_a_failing_source_and_reports_partial(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    coops_client = BackfillCoopsApi(data_years={2026, 2025})
+    nwis_client = BackfillNwisApi(
+        data_years={2026, 2025}, errors={2025: RuntimeError("nwis boom")}
+    )
+    _, _, store = _install_backfill_environment(
+        monkeypatch,
+        [COOPS_BACKFILL_CONFIG, NWIS_BACKFILL_CONFIG],
+        coops_client=coops_client,
+        nwis_client=nwis_client,
+    )
+
+    with caplog.at_level(logging.INFO):
+        exit_code = update.main(["--backfill-from", "2024"])
+
+    # The failing walk stopped at its bad year; the other location finished.
+    assert exit_code == 0
+    assert [request.year for request in nwis_client.requests] == [2026, 2025]
+    assert _archived_years(store, "archive/temperature/nwis/") == [2026]
+    assert _archived_years(store, "archive/temperature/coops/") == [2025, 2026]
+    errors = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR
+        and "Backfill of nwis:temperature" in record.getMessage()
+    ]
+    assert len(errors) == 1
+    assert "2025" in errors[0].getMessage()
+    summary = _backfill_summary(caplog)
+    assert summary.outcome == "partial"
+    assert summary.levelno == logging.WARNING
+    assert "stopped at error" in summary.getMessage()
+
+
+def test_backfill_summary_event_fields_are_its_own_operation(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The summary never reports itself as a scheduled capture run."""
+    _install_backfill_environment(
+        monkeypatch,
+        [NWIS_BACKFILL_CONFIG],
+        nwis_client=BackfillNwisApi(data_years={2026, 2025}),
+    )
+    monkeypatch.setenv("CLOUD_RUN_EXECUTION", "shallweswim-backfill-01")
+
+    with caplog.at_level(logging.INFO):
+        assert update.main(["--backfill-from", "2025"]) == 0
+
+    summary = _backfill_summary(caplog)
+    assert summary.component == "updater"
+    assert summary.operation == "backfill"
+    assert summary.outcome == "success"
+    assert summary.run_id == "shallweswim-backfill-01"
+    assert isinstance(summary.duration_ms, int)
+    assert summary.new_count == 2 * HOURLY_ROWS_PER_YEAR
+    assert summary.revised_count == 0
+    assert summary.record_count == summary.new_count + summary.revised_count
+    assert [
+        record for record in caplog.records if getattr(record, "operation", "") == "run"
+    ] == []

@@ -707,6 +707,45 @@ class TempFeed(Feed, abc.ABC):
         """
         return self.feed_config.name or "Unknown Temperature Source"
 
+    async def archive_once(
+        self, clients: dict[str, BaseApiClient]
+    ) -> CaptureResult | None:
+        """Fetch this feed's window once and archive it, publishing nothing.
+
+        An update pairs fetching and capture with publication, outlier removal,
+        and scheduling, all of which serve the running app. The backfill walk
+        (`core/backfill.py`) wants only the pair: it fetches one past year, or
+        one month of one, and archives the client frame exactly as the
+        historical feed archives a freshly fetched year - the raw
+        provider-cadence frame rather than the serving index, with the fetch
+        time as its retrieval time. The feed keeps no data and is not
+        rescheduled, so it is used once and discarded.
+
+        Args:
+            clients: Provider API clients keyed by provider name.
+
+        Returns:
+            The rows this capture added to and revised in the archive, or None
+            when no archive bucket is configured and nothing was captured. The
+            capture job requires a bucket, so its walks always get counts.
+
+        Raises:
+            StationUnavailableError: When the provider has no data for this
+                window, which the caller counts as an empty request.
+        """
+        # A capture accumulates into _last_capture, which the update path
+        # resets per update; this call is its own unit of work.
+        self._last_capture = None
+        frame = await self._fetch(clients=clients)
+        await self._capture_observations(
+            frame,
+            utc_now(),
+            measurement=TEMPERATURE_MEASUREMENT,
+            value_column=TEMPERATURE_VALUE_COLUMN,
+            unit=TEMPERATURE_UNIT,
+        )
+        return self._last_capture
+
 
 class CurrentsFeed(Feed, abc.ABC):
     """Abstract base class for all currents data feeds.

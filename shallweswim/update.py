@@ -22,6 +22,13 @@ the current manifest, so a feed that is not yet due is not fetched and its
 published entry and plots are carried forward. Each feed therefore keeps its
 own interval whatever the job cadence is.
 
+``--backfill-from`` switches the run to a third mode, the deep-history walk in
+``shallweswim.core.backfill``: every year each selected location's historical
+temperature source still holds is fetched and archived, newest year first. It
+is capture-only like the default run, but it neither publishes nor hydrates,
+and its summary event names itself so the scheduled capture metrics never
+count it.
+
 That publishing cycle, ``publish_locations``, has a second host:
 ``shallweswim.local`` runs it on a timer inside the web app's process against a
 local store. It therefore takes its process pool and its store locator as
@@ -47,7 +54,7 @@ from shallweswim.archive.capture import CaptureResult
 from shallweswim.archive.store import object_store
 from shallweswim.clients import create_api_clients
 from shallweswim.clients.base import BaseApiClient
-from shallweswim.core import feeds
+from shallweswim.core import backfill, feeds
 from shallweswim.core.manager import (
     PLOT_HARD_TIMEOUT,
     LocationDataManager,
@@ -72,6 +79,20 @@ SNAPSHOT_PUBLISH_ENV_VAR = "SHALLWESWIM_SNAPSHOT_PUBLISH"
 # the historical feed restores past years from this bucket instead of
 # refetching them from the provider.
 ARCHIVE_READ_BUCKET_ENV_VAR = "SHALLWESWIM_ARCHIVE_READ_BUCKET"
+
+# Operation names of the two run summaries this job emits. The scheduled
+# capture heartbeat metric and its alerts select the capture name, so a
+# backfill, which runs by hand and archives decades in one pass, must never
+# report itself as one.
+CAPTURE_OPERATION = "run"
+BACKFILL_OPERATION = "backfill"
+
+# Levels the run summary is logged at, by outcome.
+SUMMARY_LEVELS = {
+    "success": logging.INFO,
+    "partial": logging.WARNING,
+    "failed": logging.ERROR,
+}
 
 # Feeds whose observations belong in the archive. Tide feeds are predictions and
 # never appear here; currents are included only for observation sources.
@@ -423,6 +444,8 @@ def _summary_fields(
     record_count: int,
     run_id: str,
     archived: CaptureResult,
+    *,
+    operation: str = CAPTURE_OPERATION,
 ) -> dict[str, object]:
     """Return bounded fields for the single run summary event.
 
@@ -432,13 +455,15 @@ def _summary_fields(
         record_count: Total published rows across captured feeds.
         run_id: Identifier correlating this run with platform execution logs.
         archived: Rows this run added to and revised in the archive.
+        operation: Which kind of run this summarizes. A backfill names itself,
+            so the scheduled capture metrics and alerts never count it.
 
     Returns:
         Approved structured logging fields for the summary event.
     """
     return {
         "component": "updater",
-        "operation": "run",
+        "operation": operation,
         "outcome": outcome,
         "duration_ms": max(0, round((time.monotonic() - started_at) * 1000)),
         "record_count": record_count,
@@ -514,18 +539,89 @@ async def _run(*, full_history: bool, publish_snapshot: bool) -> int:
         )
         return 1
 
-    levels = {
-        "success": logging.INFO,
-        "partial": logging.WARNING,
-        "failed": logging.ERROR,
-    }
     logging.log(
-        levels[outcome],
+        SUMMARY_LEVELS[outcome],
         f"Capture run {outcome}: {published} of {attempted} feeds published"
         f"{publish_note}",
         extra=_summary_fields(outcome, started_at, record_count, run_id, archived),
     )
     return 0 if outcome != "failed" else 1
+
+
+async def _run_backfill(
+    location_configs: list[config_lib.LocationConfig], *, floor_year: int
+) -> int:
+    """Walk every selected location's history and emit one summary event.
+
+    Locations run concurrently, as the capture path runs them, and each
+    location's requests run one at a time inside its own walk. Nothing here
+    publishes, hydrates, or plots: a backfill only fetches and archives.
+
+    Args:
+        location_configs: The locations to walk.
+        floor_year: Oldest year any walk will request.
+
+    Returns:
+        Process exit code: 0 when every walk ran, whatever it found, and 1 only
+        when the run itself failed.
+    """
+    started_at = time.monotonic()
+    # Cloud Run sets CLOUD_RUN_EXECUTION on job tasks; a backfill normally runs
+    # from an operator's machine and gets a generated identifier instead.
+    run_id = os.environ.get("CLOUD_RUN_EXECUTION") or uuid.uuid4().hex
+    try:
+        async with aiohttp.ClientSession() as session:
+            clients = create_api_clients(session)
+            results = await asyncio.gather(
+                *[
+                    backfill.backfill_location(
+                        location_config, clients, floor_year=floor_year
+                    )
+                    for location_config in location_configs
+                ]
+            )
+    except Exception as error:
+        logging.error(
+            f"Backfill run failed: {error}",
+            extra=_summary_fields(
+                "failed",
+                started_at,
+                0,
+                run_id,
+                CaptureResult(0, 0),
+                operation=BACKFILL_OPERATION,
+            ),
+        )
+        return 1
+
+    walks = [result for result in results if result is not None]
+    archived = CaptureResult(
+        sum(walk.archived.new_count for walk in walks),
+        sum(walk.archived.revised_count for walk in walks),
+    )
+    # A walk that ended in an error archived the years it reached, and the
+    # other locations finished, so the run is partial rather than failed.
+    outcome = (
+        "partial"
+        if any(walk.stop is backfill.BackfillStop.ERROR for walk in walks)
+        else "success"
+    )
+    detail = "; ".join(walk.summary() for walk in walks) or "no sources to walk"
+    logging.log(
+        SUMMARY_LEVELS[outcome],
+        f"Backfill {outcome}: {detail}",
+        extra=_summary_fields(
+            outcome,
+            started_at,
+            # A backfill publishes no frames, so its record count is what it
+            # wrote: the archive rows it added plus the ones it revised.
+            archived.new_count + archived.revised_count,
+            run_id,
+            archived,
+            operation=BACKFILL_OPERATION,
+        ),
+    )
+    return 0
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -551,11 +647,54 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "and ignores the published schedule so every feed fetches."
         ),
     )
+    parser.add_argument(
+        "--backfill-from",
+        nargs="?",
+        type=int,
+        const=backfill.BACKFILL_FLOOR_YEAR,
+        default=None,
+        metavar="YEAR",
+        help=(
+            "Archive every year each selected location's historical "
+            "temperature source still holds, walking back from this year's "
+            f"data to YEAR (default {backfill.BACKFILL_FLOOR_YEAR}). The run "
+            "captures only: it publishes nothing and reads nothing back."
+        ),
+    )
+    parser.add_argument(
+        "--location",
+        nargs="+",
+        default=[],
+        metavar="CODE",
+        help="Location codes to back fill; defaults to every enabled location.",
+    )
     return parser.parse_args(argv)
 
 
+def _backfill_configs(codes: list[str]) -> list[config_lib.LocationConfig] | None:
+    """Return the locations a backfill walks, or None when a code is unknown.
+
+    Args:
+        codes: Requested location codes, empty for every enabled location.
+
+    Returns:
+        The selected configurations, or None after logging which codes are not
+        configured, so the run stops before any provider request.
+    """
+    if not codes:
+        return list(config_lib.CONFIGS.values())
+    unknown = [code for code in codes if code.lower() not in config_lib.CONFIGS]
+    if unknown:
+        logging.error(
+            f"Unknown location code(s): {', '.join(unknown)}; "
+            f"configured codes are {', '.join(sorted(config_lib.CONFIGS))}"
+        )
+        return None
+    return [config_lib.CONFIGS[code.lower()] for code in codes]
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Run one bounded capture job.
+    """Run one bounded capture job, or one backfill walk.
 
     Args:
         argv: Argument list to parse, or None to read from the command line.
@@ -565,13 +704,39 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = _parse_args(argv)
     logging_utils.setup_logging()
+    backfill_from: int | None = args.backfill_from
+    publish_snapshot = os.environ.get(SNAPSHOT_PUBLISH_ENV_VAR) == "1"
+    # Usage is settled before the bucket and before any provider request, so a
+    # run that cannot mean what it says never contacts a provider.
+    if backfill_from is None and args.location:
+        logging.error("--location selects the locations of a --backfill-from run")
+        return 1
+    if backfill_from is not None and args.full_history:
+        logging.error(
+            "--backfill-from and --full-history are different runs: a backfill "
+            "walks every year the provider still holds, while --full-history "
+            "fetches the configured historical range"
+        )
+        return 1
+    if backfill_from is not None and publish_snapshot:
+        logging.error(
+            f"--backfill-from cannot run with {SNAPSHOT_PUBLISH_ENV_VAR}=1; "
+            "a backfill captures only and publishes nothing"
+        )
+        return 1
     if not os.environ.get(ARCHIVE_BUCKET_ENV_VAR):
         logging.error(
             f"{ARCHIVE_BUCKET_ENV_VAR} is required; "
             "the capture job fetches only in order to archive"
         )
         return 1
-    publish_snapshot = os.environ.get(SNAPSHOT_PUBLISH_ENV_VAR) == "1"
+    if backfill_from is not None:
+        # A backfill needs no read bucket: it fetches every year from the
+        # provider and never hydrates one from the archive.
+        location_configs = _backfill_configs(args.location)
+        if location_configs is None:
+            return 1
+        return asyncio.run(_run_backfill(location_configs, floor_year=backfill_from))
     if publish_snapshot and not os.environ.get(ARCHIVE_READ_BUCKET_ENV_VAR):
         logging.error(
             f"{ARCHIVE_READ_BUCKET_ENV_VAR} is required when "

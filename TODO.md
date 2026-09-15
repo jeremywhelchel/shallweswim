@@ -267,19 +267,6 @@ Notes:
   prediction feed is stale when the requested time leaves the fetched window,
   an observation feed by the age of its latest observation. Decide with
   shadow-mode data, not before.
-- The in-process historical temperature fetch is not deterministic. Two
-  `compare_snapshot` runs two minutes apart against the same generation
-  (NYC, 2026-09-14) matched all 137,656 hourly rows once and differed on
-  seven the second time, by 0.1°F, on a recurring set of hours (for example
-  2014-04-14 14:00, 2021-03-11 19:00, 2021-03-26 20:00, 2023-03-02 04:00
-  local). The provider is deterministic: identical CO-OPS hourly requests,
-  and the same hours inside differently bounded windows, returned identical
-  values on 983 shared rows. The bundle side is stable because past years
-  hydrate from the archive, so production serving is unaffected; a fresh
-  full-history fetch (a clone's first local run, a backfill) is what varies.
-  Next step: log the per-chunk raw responses for one of those hours across
-  two consecutive `HistoricalTempsFeed` fetches and diff them, looking at
-  chunk overlap and the order the year frames are combined.
 - NWIS returns an empty body for years before a site's record begins (Austin
   2011 and 2012); the client reports it as a JSON parse error instead of
   station-unavailable, which logs at ERROR and lists the years as failed.

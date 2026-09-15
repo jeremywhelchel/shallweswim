@@ -1577,11 +1577,13 @@ Measurements so far (2026-09-14, first day of shadow mode, hourly job):
   publication (60-second check interval), 46 changed objects loaded in 1.2
   seconds, by an elected user request whose total latency was 1.2 seconds.
 - The local comparison command matched every feed for NYC and Boston except
-  a few historic hourly rows per run that differ by 0.1°F and move between
-  runs; see `TODO.md`. A later run across all eleven locations matched
-  everything except Cork's current hour, where Irish Lights serves a running
-  hourly average that changes until the hour closes, which the archive's
-  one-revised-row-per-hour pattern already showed.
+  a few historic hourly rows per run that differ by 0.1°F, the provider's
+  own rounding granularity, between separate from-scratch fetches. Nothing
+  served depends on a from-scratch fetch, so this is noted and not tracked.
+  A later run across all eleven locations matched everything except Cork's
+  current hour, where Irish Lights serves a running hourly average that
+  changes until the hour closes, which the archive's one-revised-row-per-hour
+  pattern already showed.
 
 Exit criteria before cutover is deployed (revised 2026-09-14 from a week to
 what the evidence actually needs, since the mechanism proved itself on the

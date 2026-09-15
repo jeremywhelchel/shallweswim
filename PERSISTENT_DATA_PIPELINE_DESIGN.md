@@ -1803,6 +1803,57 @@ Archive writes begin early because delay can permanently lose observations.
 Making the archive authoritative for incremental reads remains later because it
 requires stronger migration and equivalence validation.
 
+## Deep History
+
+Status: contract; implementation pending. Two slices, in order: the backfill
+command, then the served range and the plot.
+
+The archive keeps everything a provider will still give, once. The served
+hourly frame then extends back to the same depth, and the plots draw one
+line per year exactly as today, with older years fading. No aggregation: if
+the result is too busy, aggregation is a later, separate decision.
+
+### Backfill Command
+
+- `python -m shallweswim.update --backfill-from YEAR [--location CODE ...]`
+  is a one-time, capture-only run: for every historical temperature source
+  (and observational currents source) of the selected locations it fetches
+  each year from `YEAR` up to the year before the source's configured start,
+  archives what comes back, publishes nothing, and hydrates nothing. A year
+  the provider has no data for is `StationUnavailableError` and is skipped;
+  after three consecutive empty years going backwards the source stops.
+- It runs as a job execution with argument overrides, like the full-history
+  repair, one location at a time if a source is deep enough to approach the
+  twenty-minute job timeout. Provider courtesy is one request per year per
+  source, once.
+- The run summary reports the years archived per source.
+- Expected depth: CO-OPS water temperature reaches back to the 1990s at many
+  stations; NDBC buoys vary from a few years to decades; NWIS, CSPF, Irish
+  Lights, and Marine Institute are already at or near their full depth.
+
+### Served Range and Plot
+
+- After a backfill, each source's `start_year` in `config/locations.py` is
+  lowered to the earliest archived year, in a reviewed change. The served
+  hourly frame, the bundle object, and the plots then cover that range
+  through the existing paths: the job hydrates the extra years from the
+  archive on its next historical refresh, nothing is refetched, and every
+  generation carries the deeper frame. Cost, accepted: a thirty-year
+  station's frame is roughly three times today's 1.3 MB, so a bundle of
+  perhaps 40 MB instead of 21 MB, loaded once per generation per instance.
+- The twelve-month plot keeps one line per year. The current year is fully
+  opaque; each earlier year's opacity falls linearly with its age to a floor
+  (`FADE_FLOOR`, 0.15) reached at `FADE_YEARS` (10) and held there for all
+  older years, so every archived year is drawn and the recent ones dominate.
+  Line width and colour policy are unchanged. The two-month plot is
+  unchanged. Both are named constants in the plot policy, one treatment for
+  every location.
+- Provider-side gaps in old years appear as gaps in the line, as they do
+  today.
+
+Out of scope: any averaging or banding across years; per-station backfill
+for sources whose provider offers no history.
+
 ## Testing Strategy
 
 - Serialization round trips preserve indexes, timezones, values, source

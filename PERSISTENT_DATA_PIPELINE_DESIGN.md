@@ -1805,31 +1805,117 @@ requires stronger migration and equivalence validation.
 
 ## Deep History
 
-Status: contract; implementation pending. Two slices, in order: the backfill
-command, then the served range and the plot.
+Status: contract; implementation pending. Three slices, in order: the
+provider client changes, the backfill command, then the served range and the
+plot.
 
-The archive keeps everything a provider will still give, once. The served
-hourly frame then extends back to the same depth, and the plots draw one
-line per year exactly as today, with older years fading. No aggregation: if
-the result is too busy, aggregation is a later, separate decision.
+The archive keeps everything a provider will still give, at every cadence the
+provider offers it, once. The served hourly frame then extends back to the
+same depth, and the plots draw one line per year exactly as today, with older
+years fading. No aggregation: if the result is too busy, aggregation is a
+later, separate decision.
+
+Backfilling is a standing step, not a one-off: every new location is
+backfilled when it comes online, and the new-location checklist
+(`NEW_LOCATION.md`) says so. The command therefore discovers a source's depth
+itself rather than taking a range an operator found by hand.
+
+### What the providers hold
+
+Probed on 2026-09-15, read-only, through the providers directly and through
+the project's own clients. Every provider signals an empty year cleanly: CO-OPS
+answers "No data was found", NDBC has no yearly file, CSPF has no page, and
+each client already raises `StationUnavailableError` for it. Nothing was found
+hidden behind a multi-year gap; the CO-OPS stations are empty in 1980, 1985,
+and 1989.
+
+| Location | Source | Fetched from today | Provider holds from |
+| --- | --- | --- | --- |
+| bos | NDBC 44013 | 2011 | 1984 |
+| san | CO-OPS 9410230 | 2011 | 1993 hourly; six-minute from 1993-10 |
+| sea | CO-OPS 9446484 | 2011 | 1996 hourly; six-minute from 1996-07 |
+| nyc | CO-OPS 8518750 | 2011 | 1997 hourly; six-minute from 1998-01 |
+| dov | CSPF Sandettie | 2011 | 2004-06 |
+| sfo | NDBC 46237 | 2011 | 2007-07 |
+| aus | NWIS 08155500 | 2011 | 2007-10 (fifteen-minute readings) |
+| pbi | CO-OPS 8722670 | 2011 | 2010 hourly; six-minute from 2010-07 |
+| chi | NDBC 45198 | 2021 | 2021 |
+| cor | Irish Lights | 2024 | 2024-05 |
+| sdf | NWIS currents 03292494 | live only | 2013-11 |
+
+Two findings shape the design. CO-OPS's hourly and six-minute products have
+different coverage: hourly reaches further back at every station, and hourly
+is complete across stretches where six-minute is empty (Tacoma in 1997, The
+Battery in October 2011). And the NDBC client cannot read yearly files before
+2007: NDBC changed the file layout three times before then (two-digit years,
+then four-digit years, then a minutes column), and none of those layouts
+carries the header marker the client looks for.
+
+### Provider Clients
+
+- CO-OPS: the request-window split gains a per-interval limit, 31 days for the
+  six-minute product and 365 days for hourly, so a caller asks for a year at
+  either cadence and the client makes the requests. No caller-side loop.
+- NDBC: the historical yearly file parser reads the three pre-2007 layouts as
+  well as the current one, verified against real files for 1984, 1998, 2004,
+  and 2006. The frame it returns is unchanged in shape.
+- NWIS currents: the client gains a date window like the temperature call has,
+  and the currents feed gains a start and end like the temperature feeds. This
+  is what lets the observational currents source join the backfill; it is
+  ordered last and may follow the temperature backfill.
 
 ### Backfill Command
 
-- `python -m shallweswim.update --backfill-from YEAR [--location CODE ...]`
-  is a one-time, capture-only run: for every historical temperature source
-  (and observational currents source) of the selected locations it fetches
-  each year from `YEAR` up to the year before the source's configured start,
-  archives what comes back, publishes nothing, and hydrates nothing. A year
-  the provider has no data for is `StationUnavailableError` and is skipped;
-  after three consecutive empty years going backwards the source stops.
-- It runs as a job execution with argument overrides, like the full-history
-  repair, one location at a time if a source is deep enough to approach the
-  twenty-minute job timeout. Provider courtesy is one request per year per
-  source, once.
-- The run summary reports the years archived per source.
-- Expected depth: CO-OPS water temperature reaches back to the 1990s at many
-  stations; NDBC buoys vary from a few years to decades; NWIS, CSPF, Irish
-  Lights, and Marine Institute are already at or near their full depth.
+- `python -m shallweswim.update --backfill-from [YEAR] [--location CODE ...]`
+  is a capture-only run: it archives what comes back, publishes nothing, and
+  hydrates nothing. `YEAR` is the floor of the walk and defaults to 1900
+  (`BACKFILL_FLOOR_YEAR`) when omitted; the floor only bounds a source the
+  provider really holds that far back. It is rejected together with
+  `--full-history` or the publish variable.
+- Scope: every historical temperature source of the selected locations, and
+  the observational currents source once its client takes a date window. Each
+  source walks every year from the current year down to the floor, newest
+  first, including the years already configured and archived, so one run
+  leaves the archive holding everything the provider offers. Re-archiving a
+  year already held changes nothing: the merge treats a row equal to the
+  stored one as an overlap.
+- Cadence: CO-OPS is fetched as both products per station-year, one hourly
+  request and twelve six-minute requests, because neither covers the other.
+  Six-minute months the provider lacks are expected and skipped. The merge
+  matches rows on their observation instant, so an on-the-hour six-minute row
+  overlaps the hourly one. NDBC yearly files, NWIS instantaneous values, CSPF,
+  and Irish Lights are one request per year at native cadence, as the
+  historical feed makes today. Going forward the live temperature feed keeps
+  archiving six-minute CO-OPS readings under the same source identity.
+- Empty years: a year is empty when every request in it raised
+  `StationUnavailableError`; within a CO-OPS year the hourly request and the
+  twelve six-minute requests count together. The walk stops a source after
+  five consecutive empty years going backwards (`BACKFILL_EMPTY_YEARS_STOP`).
+  Any other error ends that source and is logged at ERROR; the other
+  locations continue, as the capture path isolates feed failures today.
+- Requests within a source run one at a time, newest year first; locations run
+  concurrently as the capture path does. A CO-OPS station with thirty years is
+  about 400 requests. Provider courtesy is one pass per source, once per
+  location lifetime.
+- It runs from the operator's machine against the archive bucket, under a
+  temporary write grant to the local operator identity that is revoked
+  afterwards. Nothing in the code depends on where it runs; the scheduled
+  job keeps capturing meanwhile, and the merge's conditional writes handle
+  the overlap.
+- The run summary is one structured event with a distinct operation name, so
+  the capture heartbeat metric and the shadow policies never count a backfill
+  as a scheduled capture. It reports, per source, each year's rows added and
+  revised or that it was empty, and the earliest year that returned data. The
+  run exits zero when every walk completed, even where every year was empty,
+  and non-zero only when the run itself fails.
+- Serving is unchanged. The archive assumes no cadence: hydration reads
+  whatever rows a year holds and resamples to hourly with the first reading
+  of each hour, which for CO-OPS is the on-the-hour reading the hourly product
+  returns, so a year hydrated from mixed rows serves exactly as one fetched
+  hourly did. The current year already holds both cadences today.
+- Expected size: thirty years of six-minute readings for one CO-OPS station is
+  about 2.5 million rows, a few tens of MB of Parquet across its yearly
+  partitions.
 
 ### Served Range and Plot
 
@@ -1851,8 +1937,10 @@ the result is too busy, aggregation is a later, separate decision.
 - Provider-side gaps in old years appear as gaps in the line, as they do
   today.
 
-Out of scope: any averaging or banding across years; per-station backfill
-for sources whose provider offers no history.
+Out of scope: any averaging or banding across years; smoothing the served
+hour to a mean rather than the first reading; per-station backfill for
+sources whose provider offers no history; serving anything finer than the
+hourly frame.
 
 ## Testing Strategy
 

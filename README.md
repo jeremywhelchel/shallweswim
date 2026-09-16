@@ -106,8 +106,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component documentation, cod
 The job, the bundle, and the web servers, with the archive and the rules that
 bind them, are documented in [DATA_PIPELINE.md](DATA_PIPELINE.md).
 
-The provider-neutral telemetry contracts and managed GCP monitoring approach
-are documented in [Observability Design](OBSERVABILITY_DESIGN.md).
+The metrics, alert policies, dashboard, uptime check, and production log
+queries are documented in [MONITORING.md](MONITORING.md).
 
 To add a new swim spot, start with [NEW_LOCATION.md](NEW_LOCATION.md). If the
 spot needs an unsupported upstream API or parser, use
@@ -719,7 +719,7 @@ hydration never fails startup. The web service manifest never sets this
 variable; the capture job sets it because publishing a snapshot hydrates the
 full historical range.
 
-See [archive setup](infra/monitoring/README.md#observation-archive-setup) for
+See [archive setup](infra/monitoring/README.md#observation-archive-bucket) for
 the one-time bucket commands and the
 [capture job runbook](infra/capture-job/README.md) for the job identity,
 deployment, scheduling, and validation steps. The operations dashboard includes
@@ -811,11 +811,10 @@ External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute
 - **Health check (`/api/healthy`, alias `/api/health`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
 - **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, `age_seconds`, `consecutive_failures`, and the next scheduled fetch time. Historical temperature feeds also include year-level diagnostics for required, cached, missing, fetched, and failed years. Use this for granular monitoring and alerting.
 
-The reference GCP deployment's log-based metrics and operations dashboard are
-managed by Terraform under [`infra/monitoring`](infra/monitoring/README.md).
-See [OBSERVABILITY_DESIGN.md](OBSERVABILITY_DESIGN.md) for the broader monitoring
-and alert migration and [ARCHITECTURE.md](ARCHITECTURE.md) for station-outage
-handling.
+[MONITORING.md](MONITORING.md) owns the metrics, alert policies, dashboard,
+and log queries built on the application's events; they are applied with
+Terraform from [`infra/monitoring`](infra/monitoring/README.md).
+[ARCHITECTURE.md](ARCHITECTURE.md) covers station-outage handling.
 
 ### HTTP Error Codes
 

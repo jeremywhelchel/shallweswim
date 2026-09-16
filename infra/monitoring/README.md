@@ -1,101 +1,29 @@
 # GCP Monitoring Infrastructure
 
-This directory owns Shall We Swim's user-defined log-based metrics, application
-operations dashboard, and explicitly marked shadow alert policies. It
-deliberately does not own Cloud Run, IAM, notification channels, existing uptime
-checks, or pre-Terraform alert policies.
-Resources with `[Terraform]` in their display name or `Managed by Terraform` in
-their description must not be edited in the GCP console.
+This directory applies Shall We Swim's user-defined log-based metrics, the
+operations dashboard, and the Terraform-managed alert policies. What they
+are, what they measure, and which of them notify anyone is in
+[MONITORING.md](../../MONITORING.md); this README is how to apply them. The
+module deliberately does not own Cloud Run, IAM, notification channels, the
+uptime check, or the alert policies that predate Terraform. Resources with
+`[Terraform]` in their display name or `Managed by Terraform` in their
+description must not be edited in the GCP console.
 
-The metrics consume the bounded structured events documented in
-`OBSERVABILITY_DESIGN.md` and `DATA_PIPELINE.md`. Terraform
-defines the extraction rules; it does not read or process logs itself. Cloud
-Logging creates metric samples from new matching entries after the metrics are
-created. Existing log entries are not backfilled.
+Terraform defines extraction rules; it does not read logs. Cloud Logging
+creates metric samples only from entries written after a metric exists, so
+nothing is backfilled.
 
-The metric filters match structured events from both the Cloud Run service and
-the `shallweswim-capture` Cloud Run Job, so the capture job's feed-update,
-`archive.merge`, `snapshot.publish`, `snapshot.freshness`, `snapshot.gc`, and
-run summary events feed the same metrics and dashboard as the web service, and
-the web service's own `snapshot.load` events feed a matching pair of metrics. The
-feed, plot, and snapshot load alert policies stay scoped to the service
-resource type; the six capture job policies below are scoped to
-`resource.type = "cloud_run_job"` instead.
+## Observation archive bucket
 
-## Observation archive setup
-
-The observation archive is written by the scheduled Cloud Run capture job, not
-by the web service. `SHALLWESWIM_ARCHIVE_BUCKET` (a bucket name without
-`gs://`) names the bucket the job writes to; `service.yaml` never sets it. The
-managed operations dashboard shows archive merges per hour by outcome, capture
-runs per hour by outcome, snapshot publishes per hour by outcome, snapshot
-collections per hour by outcome, maximum published feed age by feed per hour,
-new and revised observations per hour by source, and merge duration p95 by
-source per hour. The capture job runs every ten minutes; the tiles still total
-per hour so the bars stay readable. Failed
-merges are one colour of the hourly outcome stack
-instead of a separate tile; the archive merge failure shadow policy covers that
-signal.
-
-The job also publishes a serving snapshot each run and emits one
-`snapshot.publish` event per attempt with `outcome` `success`, `unchanged`, or
-`failed`. `shallweswim_snapshot_publishes` counts those events by outcome and
-`shallweswim_snapshot_publish_duration_ms` records their duration; the
-"Snapshot publishes per hour by outcome" tile shows the counter. The event's
-`record_count` is the number of objects written, which is exact in the event
-and not charted. No alert policy watches publication itself.
-
-After publishing, each run sweeps the generations publication superseded and
-emits one `snapshot.gc` event with `outcome` `success` or `failed`,
-`duration_ms`, and `record_count` as the number of published objects it
-deleted. `shallweswim_snapshot_gcs` counts those events by outcome for the
-"Snapshot collections per hour by outcome" tile. The sweep deletes manifests
-older than the retention window and the objects no retained manifest
-references; it never deletes archive observations, and no alert policy watches
-it. A `failed` collection is logged at ERROR because nothing else notices a
-store that stopped accepting deletes.
-
-Each publish also emits one `snapshot.freshness` event per location and feed,
-carrying the age of the frame that generation serves and an `outcome` of
-`success` (fetched this run), `held` (not yet due, entry kept unchanged),
-`carried` (the previous entry carried forward after a failure), or `absent`
-(configured with nothing to serve, and therefore no age).
-`shallweswim_snapshot_feed_age_seconds` is a distribution of those ages by
-location, feed, and outcome, charted as "Snapshot feed age max by feed per
-hour". It is the signal that a feed is stuck on carried-forward data: a
-publish stays `success` while the age grows run after run.
-
-The web service itself emits one `snapshot.load` event per bundle load or
-refresh that does work, with `outcome` `success` or `failed`, `duration_ms`,
-`record_count` as the number of objects read, `generation_id`, and
-`age_seconds` as the age of the loaded generation's publication time at load,
-the lag between the job publishing and this instance picking it up. Unlike
-the job-side snapshot metrics, these events come from
-`resource.type = "cloud_run_revision"` alone. `shallweswim_snapshot_loads`
-counts those events by outcome for the "Snapshot loads per hour by outcome"
-tile, `shallweswim_snapshot_load_duration_ms` records their duration, and
-`shallweswim_snapshot_load_lag_seconds` is a distribution of `age_seconds`
-charted as "Snapshot load lag p99 per hour"; the same lag distribution backs
-the `snapshot_load_lag` shadow policy, the signal that pages for sustained
-refresh failure once the web depends on the bundle.
-
-Merges are value-aware, so a repeated fetch of unchanged readings reports
-`outcome=unchanged` and writes nothing. The `new_rows` and `revised_rows`
-metrics are distributions of the per-merge row counts, and the
-`timeSeriesFilter` widget cannot sum a distribution. Their two tiles therefore
-use the Monitoring Query Language, which can: `align delta(1h)` followed by
-`group_by [source: metric.source], [rows: sum(sum_from(val()))]`. Those observation
-counts are histogram estimates derived from the distribution's bucket counts
-rather than exact totals, which is why both tiles are titled `(estimated)`;
-exact per-merge counts stay available in the merge events' `new_count` and
-`revised_count` fields.
-
-Bucket creation is a one-time operator task, outside this Terraform module.
-Load the local-operator credential and project through repo-local environment
-variables (`GOOGLE_APPLICATION_CREDENTIALS`,
-`CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`, `CLOUDSDK_CORE_PROJECT`). Do not use
-`gcloud auth` or modify global configuration. Choose a globally unique archive
-bucket name and set `SHALLWESWIM_ARCHIVE_BUCKET` in the local environment first.
+The observation archive is written by the scheduled capture job, not by the
+web service; `SHALLWESWIM_ARCHIVE_BUCKET` (a bucket name without `gs://`)
+names it, and `service.yaml` never sets it. Bucket creation is a one-time
+operator task outside this module. Load the local-operator credential and
+project through repo-local environment variables
+(`GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`,
+`CLOUDSDK_CORE_PROJECT`). Do not use `gcloud auth` or modify global
+configuration. Choose a globally unique bucket name and set
+`SHALLWESWIM_ARCHIVE_BUCKET` in the local environment first.
 
 ```bash
 gcloud storage buckets create "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
@@ -105,19 +33,18 @@ gcloud storage buckets create "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
   --public-access-prevention
 ```
 
-IAM for this bucket belongs to the job that uses it. Creating the
+IAM for this bucket belongs to the job that uses it: creating the
 `shallweswim-capture` and `shallweswim-capture-invoker` identities, binding
 `roles/storage.objectUser` on the bucket to `shallweswim-capture` alone,
-deploying the job, and scheduling it are documented in
-[`../capture-job/README.md`](../capture-job/README.md). The web runtime identity
-must not be bound to this bucket: the capture job is the only production writer,
-and granting the multi-instance web service write access would reintroduce
-concurrent writers.
+deploying the job, and scheduling it are in
+[`../capture-job/README.md`](../capture-job/README.md). The web runtime
+identity must not be bound to this bucket: the capture job is the only
+production writer.
 
-Keep the archive separate from Terraform state. Do not add a lifecycle rule that
-deletes live observation objects; normalized observations are retained
-indefinitely. To stop capture, pause the scheduler job as described in the
-capture job runbook; archived data is unaffected.
+Keep the archive separate from Terraform state. Do not add a lifecycle rule
+that deletes observation objects; observations are retained indefinitely. To
+stop capture, pause the scheduler job as described in the capture job
+runbook; archived data is unaffected.
 
 ## State bootstrap
 
@@ -196,9 +123,9 @@ ownership marker, the per-feed snapshot freshness thresholds, and the
 dashboard's fifteen tiles, including the two MQL `sum_from` data sets. It
 cannot emulate Cloud Logging ingestion.
 
-Review the plan before every apply. The module now owns eighteen log-based
-metrics, one dashboard, and twelve `[Terraform][Shadow]` alert policies with no
-notification channels. It does not change pre-Terraform monitoring.
+Review the plan before every apply. The module owns the eighteen log-based
+metrics, the dashboard, and the twelve alert policies listed in
+MONITORING.md; it does not change pre-Terraform monitoring.
 
 An apply that creates a log-based metric and, in the same run, alert policies
 that reference it can fail on the policies with "Cannot find metric(s)": the
@@ -206,51 +133,19 @@ metric takes up to ten minutes to become visible to Cloud Monitoring after
 creation. The metric and everything else still apply. Wait ten minutes, plan
 again, and apply the remaining policies; nothing needs changing.
 
-## Capture job shadow policies
+A log-based metric's label descriptions are immutable: changing one replaces
+the metric and erases its history. Change a description only with that cost
+accepted.
 
-Six shadow policies watch the capture job, the first two following the dead-man
-switch design in `OBSERVABILITY_DESIGN.md`:
+## Promoting an alert policy
 
-- **Capture job heartbeat**: a metric-absence condition on
-  `shallweswim_updater_runs` restricted to `outcome` `success` or `partial`,
-  firing after 30 minutes without either, which is three missed ten-minute
-  runs. A `partial` run still proves the job executed. The web service serves
-  only what this job publishes, so this is the pipeline's dead-man switch and
-  the first shadow policy to promote. Absence conditions evaluate only a
-  metric that has produced data, so this policy is trustworthy only once the
-  run counter has been populated by real runs.
-- **Archive merge failures**: a threshold condition on
-  `shallweswim_archive_merges` with `outcome="failed"` over a one-hour
-  alignment. A conflicting equally recent claim recovers on the next
-  overlapping fetch, so this is a warn candidate.
-- **Snapshot feed freshness**, one policy per feed type: a threshold condition
-  on `shallweswim_snapshot_feed_age_seconds` restricted to that feed, over a
-  one-hour alignment. The thresholds come from the feed health rule, the
-  expiration interval plus 15 minutes: 1500s for `live_temps`, 11700s for
-  `historic_temps`, and 87300s for `tides` and `currents`. The metric is a
-  distribution, which has no maximum aligner, and the ten-minute job
-  contributes six samples per feed and location per hour, so the hour's 99th
-  percentile is effectively that hour's maximum age. These thresholds are
-  first guesses to be tuned on the baseline.
-
-Two more shadow policies watch the web service instead of the job, both
-scoped to `resource.type = "cloud_run_revision"`:
-
-- **Snapshot load lag**: a threshold condition on
-  `shallweswim_snapshot_load_lag_seconds` over a one-hour alignment. The
-  threshold is 1800 seconds, three ten-minute cadences; the observed lag is
-  under a minute. It catches an instance whose refresh path is stuck. It
-  cannot catch a job that stopped publishing, because the lag is recorded
-  only when a load happens; the heartbeat above covers that.
-- **Snapshot load failures**: a threshold condition on
-  `shallweswim_snapshot_loads` with `outcome="failed"`, more than two in a
-  fifteen-minute alignment. A single failure retries a check interval later
-  while the instance keeps serving; repeated failures mean an instance cannot
-  read the store at all.
-
-Promotion is the same rule as the other shadow policies: review the policy's
-production behavior over a real baseline period, choose notification channels
-explicitly, and remove the `[Shadow]` marker in a separately reviewed change.
+The twelve Terraform policies are enabled with no notification channels, so
+they open incidents in Cloud Monitoring and page nobody; their display names
+carry `[Shadow]` and their `mode=shadow` label. To promote one: review its
+incidents over a real baseline period, choose its notification channels
+explicitly, and remove the marker and the label, in a separately reviewed
+change. Notification channels are not managed here, so their addresses never
+enter this module's state.
 
 ## Apply and integration-test
 
@@ -265,18 +160,11 @@ Cloud Monitoring dashboards. Local validation checks HCL, provider schemas, and
 the proposed API operations. The GCP integration test is a controlled apply:
 
 1. Confirm the apply creates only the expected resources listed in the plan.
-2. Generate or wait for new feed, plot, merge, snapshot publish, snapshot
-   freshness, snapshot load, snapshot collection, and capture run events.
-   Metrics do not backfill.
+2. Generate or wait for new events of each kind; metrics do not backfill.
 3. Verify the eighteen metrics appear with bounded labels and the dashboard
    charts populate after several minutes.
 4. Compare metric counts with a Cloud Logging query over the same interval.
-5. Confirm shadow policies have no notification channels before applying them.
-
-Shadow policies are enabled for evaluation so incidents appear in Cloud
-Monitoring, but they cannot page. Promote a policy only after reviewing its
-production behavior, choosing notification channels explicitly, and removing
-the `[Shadow]` marker in a separately reviewed change.
+5. Confirm the policies have no notification channels before applying them.
 
 Use `terraform plan` afterward to verify an empty plan and detect drift. Remove
 test resources only with an explicitly reviewed `terraform destroy` plan.

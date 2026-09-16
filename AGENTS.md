@@ -77,60 +77,9 @@ Two error types for data availability:
 
 ## Querying Production Health
 
-Use `gcloud` with credentials loaded via `.envrc`/direnv — never use `gcloud auth`.
-
-Check Cloud Run service status and the latest serving revision:
-
-```bash
-gcloud run services describe shallweswim \
-  --region=us-east4 \
-  --format='yaml(status.url,status.conditions,status.traffic,status.latestReadyRevisionName,status.latestCreatedRevisionName)'
-```
-
-For log investigations after a deploy, prefer filtering to the latest ready revision so older
-revisions do not obscure current health:
-
-```bash
-# Current revision 5xx request errors
-gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND resource.labels.revision_name="REVISION_NAME" AND httpRequest.status>=500' \
-  --limit=50 \
-  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestMethod,httpRequest.requestUrl,httpRequest.latency,httpRequest.userAgent)'
-
-# Current revision 4xx request warnings (often bot/probe noise)
-gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND resource.labels.revision_name="REVISION_NAME" AND httpRequest.status>=400 AND httpRequest.status<500' \
-  --limit=30 \
-  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestMethod,httpRequest.requestUrl,httpRequest.latency,httpRequest.userAgent)'
-
-# Uptime check results (/api/healthy and alias /api/health are equivalent)
-gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND httpRequest.userAgent:"GoogleStackdriverMonitoring-UptimeChecks"' \
-  --limit=20 \
-  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestMethod,httpRequest.requestUrl,httpRequest.latency,resource.labels.revision_name)'
-
-# Specific time window
-gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND timestamp>="2026-02-18T20:00:00Z" AND timestamp<="2026-02-18T21:00:00Z"' \
-  --limit=100 \
-  --format='table(timestamp,severity,httpRequest.status,httpRequest.requestUrl,jsonPayload.message,textPayload)'
-
-# Full JSON details for errors
-gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND severity>=ERROR' \
-  --limit=20 --format=json
-
-# Filter structured application logs by message content
-gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="shallweswim" AND jsonPayload.message:"san"' \
-  --limit=30 --format='table(timestamp,severity,jsonPayload.message)'
-```
-
-Cloud Run request logs store status, URL, latency, and user agent under `httpRequest`; application
-logs store their message and approved structured fields under `jsonPayload`. `textPayload` is often
-empty for both request logs and structured application logs. Cloud Run also reports many `4xx`
-responses as `WARNING`, so `severity>=WARNING` alone is noisy and commonly includes bot scans for
-paths such as `/wp`, `/wordpress`, and `/api/health`.
+Production health queries, the events and metrics, the alert policies, and
+the dashboard are in [MONITORING.md](MONITORING.md). Use `gcloud` with the
+credentials loaded from `.env`/`.envrc`, never `gcloud auth`.
 
 Required `.env` variables: `CLOUDSDK_CORE_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`
 

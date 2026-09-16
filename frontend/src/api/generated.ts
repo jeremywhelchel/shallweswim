@@ -184,7 +184,10 @@ export interface paths {
          *         at: Location-local ISO-8601 timestamp within 24 hours; overrides shift
          *
          *     Returns:
-         *         CurrentsResponse object with current prediction details
+         *         CurrentsResponse object with current prediction details. `current`
+         *         is null when the requested time lies outside the window the served
+         *         prediction frame holds, and the legacy chart is null likewise when
+         *         the served tide predictions do not cover it.
          *
          *     Raises:
          *         HTTPException: If the location is not configured or doesn't support currents
@@ -1030,6 +1033,8 @@ export interface components {
         CurrentInfo: {
             /** @description Direction of current (Enum: CurrentDirection, null if non-tidal) */
             direction?: components["schemas"]["CurrentDirection"] | null;
+            /** @description How current this reading is, for observed currents. Null for predictions, which are present or absent rather than fresh, stale, or old. */
+            freshness?: components["schemas"]["Freshness"] | null;
             /**
              * Magnitude
              * @description Current strength in knots
@@ -1120,7 +1125,8 @@ export interface components {
          * @description Complete response for currents API endpoint.
          */
         CurrentsResponse: {
-            current: components["schemas"]["CurrentInfo"];
+            /** @description Current prediction at the requested time, null when that time lies outside the window the served prediction frame holds */
+            current?: components["schemas"]["CurrentInfo"] | null;
             /**
              * Current Chart Filename
              * @description Filename of the current chart image (only for locations with chart assets)
@@ -1258,6 +1264,33 @@ export interface components {
             seconds_until_next_fetch?: number | null;
         };
         /**
+         * Freshness
+         * @description How current one served observation is, decided by the server.
+         *
+         *     Observations degrade with age, so every observation the API returns says
+         *     how current it is and every client shows the same thing. The value and the
+         *     observation timestamp are served unchanged in all three states: an old
+         *     reading is still the last known reading.
+         */
+        Freshness: {
+            /**
+             * Age Seconds
+             * @description Age of the observation in seconds, measured from the observation's own timestamp rather than from the fetch.
+             */
+            age_seconds: number;
+            /** @description How current the observation is (Enum: FreshnessState): fresh until it is 2 hours old, stale until 24 hours, then old. */
+            state: components["schemas"]["FreshnessState"];
+        };
+        /**
+         * FreshnessState
+         * @description How current an observation is, as served to every client.
+         *
+         *     See "Freshness of what is served" in DATA_PIPELINE.md: the thresholds are
+         *     `OBSERVATION_FRESH_FOR` and `OBSERVATION_STALE_FOR` in `core/feeds.py`.
+         * @enum {string}
+         */
+        FreshnessState: "fresh" | "stale" | "old";
+        /**
          * GoodServiceDirection
          * @description GoodService transit direction keys used by route status payloads.
          * @enum {string}
@@ -1271,38 +1304,42 @@ export interface components {
         /**
          * HistoricalTempStatus
          * @description Year-level diagnostics for the historical temperature feed.
+         *
+         *     Served history comes from the archive alone, so these report what the
+         *     archive held on the last refresh and what that refresh's top-up capture
+         *     fetched from the provider.
          */
         HistoricalTempStatus: {
             /**
              * Available Years
-             * @description Required years currently available from the year cache.
+             * @description Required years the archive held on the last refresh.
              */
             available_years: number[];
             /**
              * Cached Years
-             * @description All years currently present in the year cache.
+             * @description Years the currently served frame was built from.
              */
             cached_years: number[];
             /**
              * Failed Years
-             * @description Year-to-error map from the latest historical fetch attempt.
+             * @description Year-to-error map from the last refresh's top-up capture.
              */
             failed_years: {
                 [key: string]: string;
             };
             /**
              * Fetched Years
-             * @description Years fetched successfully during the latest attempt.
+             * @description Years the last refresh's top-up capture fetched and archived.
              */
             fetched_years: number[];
             /**
              * Missing Years
-             * @description Required years not currently available from the year cache.
+             * @description Required years the archive lacked, which serve as gaps.
              */
             missing_years: number[];
             /**
              * Required Years
-             * @description Configured years required before historical data is published.
+             * @description Configured years the served historical frame covers.
              */
             required_years: number[];
         };
@@ -1337,14 +1374,18 @@ export interface components {
          *     - temperature: Only included if the location has a temperature source with live_enabled=True
          *     - tides: Only included if the location has a tide source
          *     - current: Only included if the location has a current source
+         *
+         *     A prediction-backed condition is additionally null when the requested time
+         *     lies outside the window the served prediction frame holds. Observations
+         *     carry a `freshness` instead: they are always served, however old.
          */
         LocationConditions: {
-            /** @description Current information (if available) */
+            /** @description Current information, null when the location has no current source or a requested prediction time lies outside the window the served predictions hold */
             current?: components["schemas"]["CurrentInfo"] | null;
             location: components["schemas"]["LocationInfo"];
             /** @description Water temperature information (if available) */
             temperature?: components["schemas"]["TemperatureInfo"] | null;
-            /** @description Tide information (if available) */
+            /** @description Tide information, null when the location has no tide source or the requested time lies outside the window the served predictions hold */
             tides?: components["schemas"]["TideInfo"] | null;
         };
         /**
@@ -1476,6 +1517,8 @@ export interface components {
          * @description Water temperature information for API responses.
          */
         TemperatureInfo: {
+            /** @description How current this observed reading is */
+            freshness: components["schemas"]["Freshness"];
             /**
              * Station Name
              * @description Human-readable name of the temperature station

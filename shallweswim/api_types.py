@@ -18,6 +18,7 @@ from shallweswim.types import (
     CurrentStrength,
     CurrentTrend,
     DataSourceType,
+    FreshnessState,
     GoodServiceDirection,
     TideCategory,
     TideTrend,
@@ -106,6 +107,33 @@ class HistoricalTempStatus(BaseModel):
     )
 
 
+class Freshness(BaseModel):
+    """How current one served observation is, decided by the server.
+
+    Observations degrade with age, so every observation the API returns says
+    how current it is and every client shows the same thing. The value and the
+    observation timestamp are served unchanged in all three states: an old
+    reading is still the last known reading.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: FreshnessState = Field(
+        ...,
+        description=(
+            "How current the observation is (Enum: FreshnessState): fresh until "
+            "it is 2 hours old, stale until 24 hours, then old."
+        ),
+    )
+    age_seconds: int = Field(
+        ...,
+        description=(
+            "Age of the observation in seconds, measured from the observation's "
+            "own timestamp rather than from the fetch."
+        ),
+    )
+
+
 class TemperatureInfo(BaseModel):
     """Water temperature information for API responses."""
 
@@ -121,6 +149,9 @@ class TemperatureInfo(BaseModel):
     water_temp_c: float = Field(..., description="Water temperature in degrees Celsius")
     station_name: str | None = Field(
         None, description="Human-readable name of the temperature station"
+    )
+    freshness: Freshness = Field(
+        ..., description="How current this observed reading is"
     )
 
 
@@ -277,6 +308,14 @@ class CurrentInfo(BaseModel):
     source_type: DataSourceType = Field(
         ...,
         description="Indicates if data is prediction or observation (Enum: DataSourceType)",
+    )
+    freshness: Freshness | None = Field(
+        None,
+        description=(
+            "How current this reading is, for observed currents. Null for "
+            "predictions, which are present or absent rather than fresh, stale, "
+            "or old."
+        ),
     )
 
 
@@ -659,7 +698,13 @@ class CurrentsResponse(BaseModel):
         ...,
         description="Timestamp of the prediction in the location's local timezone",
     )
-    current: CurrentInfo
+    current: CurrentInfo | None = Field(
+        None,
+        description=(
+            "Current prediction at the requested time, null when that time lies "
+            "outside the window the served prediction frame holds"
+        ),
+    )
     legacy_chart: LegacyChartInfo | None = Field(
         default=None,
         description="Legacy chart info (only for locations with chart assets)",
@@ -680,6 +725,10 @@ class LocationConditions(BaseModel):
     - temperature: Only included if the location has a temperature source with live_enabled=True
     - tides: Only included if the location has a tide source
     - current: Only included if the location has a current source
+
+    A prediction-backed condition is additionally null when the requested time
+    lies outside the window the served prediction frame holds. Observations
+    carry a `freshness` instead: they are always served, however old.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -688,7 +737,18 @@ class LocationConditions(BaseModel):
     temperature: TemperatureInfo | None = Field(
         None, description="Water temperature information (if available)"
     )
-    tides: TideInfo | None = Field(None, description="Tide information (if available)")
+    tides: TideInfo | None = Field(
+        None,
+        description=(
+            "Tide information, null when the location has no tide source or the "
+            "requested time lies outside the window the served predictions hold"
+        ),
+    )
     current: CurrentInfo | None = Field(
-        None, description="Current information (if available)"
+        None,
+        description=(
+            "Current information, null when the location has no current source "
+            "or a requested prediction time lies outside the window the served "
+            "predictions hold"
+        ),
     )

@@ -35,11 +35,20 @@ from shallweswim.config import (
     CoopsTideFeedConfig,
     LocationConfig,
     NdbcTempFeedConfig,
+    NwisCurrentFeedConfig,
 )
 from shallweswim.core.feeds import FEED_CURRENTS, FEED_TIDES
 from shallweswim.core.manager import LocationDataManager
 from shallweswim.core.queries import DataUnavailableError
 from tests.helpers import assert_json_serializable, create_test_app, install_managers
+
+
+def observation_freshness(
+    state: sw_types.FreshnessState = sw_types.FreshnessState.FRESH,
+    age_seconds: int = 300,
+) -> sw_types.Freshness:
+    """Build the freshness the core layer attaches to a served observation."""
+    return sw_types.Freshness(state=state, age_seconds=age_seconds)
 
 
 @pytest.fixture
@@ -540,7 +549,9 @@ def test_get_location_conditions(
     # --- 2. Mock Manager Methods and Attributes ---
     # Mock the return value for get_current_temperature method
     mock_manager.get_current_temperature.return_value = sw_types.TemperatureReading(
-        timestamp=mock_dt, temperature=mock_temp_value
+        timestamp=mock_dt,
+        temperature=mock_temp_value,
+        freshness=observation_freshness(age_seconds=1800),
     )
     # Mock the return value for get_current_flow_info method
     mock_manager.get_current_flow_info.return_value = mock_current_info
@@ -658,6 +669,195 @@ def test_get_location_conditions(
     assert data["current"]["range"]["peak"]["phase"] == "flood"
 
 
+def _conditions_mocks(
+    mock_manager: MagicMock,
+    mock_dt: datetime.datetime,
+    *,
+    temperature_freshness: sw_types.Freshness | None = None,
+) -> None:
+    """Point a mocked manager at one complete set of conditions."""
+    mock_manager.get_current_temperature.return_value = sw_types.TemperatureReading(
+        timestamp=mock_dt,
+        temperature=65.0,
+        freshness=temperature_freshness or observation_freshness(),
+    )
+    mock_manager.get_tide_info_at_time.return_value = sw_types.TideInfo(
+        past=[
+            sw_types.TideEntry(
+                time=mock_dt - datetime.timedelta(hours=3),
+                type=sw_types.TideCategory.LOW,
+                prediction=0.2,
+            )
+        ],
+        next=[
+            sw_types.TideEntry(
+                time=mock_dt + datetime.timedelta(hours=3),
+                type=sw_types.TideCategory.HIGH,
+                prediction=4.8,
+            )
+        ],
+    )
+    mock_manager.predict_tide_at_time.return_value = None
+    mock_manager.predict_flow_at_time.return_value = sw_types.CurrentInfo(
+        timestamp=mock_dt,
+        magnitude=1.4,
+        source_type=sw_types.DataSourceType.PREDICTION,
+        magnitude_pct=0.75,
+        direction=sw_types.CurrentDirection.EBBING,
+        phase=sw_types.CurrentPhase.EBB,
+        state_description="moderate ebb and easing",
+    )
+
+
+@pytest.mark.parametrize(
+    ("state", "age_seconds"),
+    [
+        (sw_types.FreshnessState.FRESH, 600),
+        (sw_types.FreshnessState.STALE, 10800),
+        (sw_types.FreshnessState.OLD, 200000),
+    ],
+)
+def test_conditions_temperature_reports_freshness(
+    test_client: TestClient,
+    mock_data_managers: dict[str, LocationConfig],
+    state: sw_types.FreshnessState,
+    age_seconds: int,
+) -> None:
+    """Every served temperature says how current it is, value and time unchanged."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
+    mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
+    _conditions_mocks(
+        mock_manager,
+        mock_dt,
+        temperature_freshness=observation_freshness(state, age_seconds),
+    )
+
+    response = test_client.get("/api/nyc/conditions")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    LocationConditions.model_validate(data)
+    assert data["temperature"]["freshness"] == {
+        "state": state.value,
+        "age_seconds": age_seconds,
+    }
+    # An old reading is still the last known reading.
+    assert data["temperature"]["timestamp"] == mock_dt.isoformat()
+    assert data["temperature"]["water_temp_f"] == 65.0
+
+
+def test_conditions_prediction_current_has_null_freshness(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Predictions are present or absent, so they carry no freshness."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
+    _conditions_mocks(mock_manager, datetime.datetime(2026, 5, 18, 15, 30, 0))
+
+    response = test_client.get("/api/nyc/conditions")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["current"]["freshness"] is None
+
+
+def test_conditions_observed_current_reports_freshness(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Observed currents age like the live temperature does."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
+    mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
+    _conditions_mocks(mock_manager, mock_dt)
+    mock_manager.get_current_flow_info.return_value = sw_types.CurrentInfo(
+        timestamp=mock_dt,
+        magnitude=0.4,
+        source_type=sw_types.DataSourceType.OBSERVATION,
+        freshness=observation_freshness(sw_types.FreshnessState.STALE, 10800),
+    )
+    observed_config = mock_data_managers["nyc"].model_copy(
+        update={
+            "currents_source": NwisCurrentFeedConfig(
+                site_no="12345678", parameter_cd="72255", name="River Current"
+            )
+        }
+    )
+
+    with patch("shallweswim.config.get") as mock_get:
+        mock_get.side_effect = lambda code: (
+            observed_config if code == "nyc" else mock_data_managers.get(code)
+        )
+        response = test_client.get("/api/nyc/conditions")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    LocationConditions.model_validate(data)
+    assert data["current"]["source_type"] == "observation"
+    assert data["current"]["freshness"] == {"state": "stale", "age_seconds": 10800}
+
+
+def test_conditions_current_absent_outside_prediction_window(
+    test_client: TestClient,
+    mock_data_managers: dict[str, LocationConfig],
+) -> None:
+    """A prediction outside the served window is absent, not carried forward."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
+    mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
+    _conditions_mocks(mock_manager, mock_dt)
+    mock_manager.predict_flow_at_time.return_value = None
+
+    response = test_client.get("/api/nyc/conditions")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    LocationConditions.model_validate(data)
+    assert data["current"] is None
+    # The other conditions are unaffected.
+    assert data["temperature"] is not None
+    assert data["tides"] is not None
+
+
+def test_conditions_tides_absent_outside_prediction_window(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """Tides stop at the last predicted entry the served frame holds."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
+    mock_dt = datetime.datetime(2026, 5, 18, 15, 30, 0)
+    _conditions_mocks(mock_manager, mock_dt)
+    mock_manager.get_tide_info_at_time.return_value = None
+
+    response = test_client.get("/api/nyc/conditions")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    LocationConditions.model_validate(data)
+    assert data["tides"] is None
+    assert data["temperature"] is not None
+    assert data["current"] is not None
+    mock_manager.predict_tide_at_time.assert_not_called()
+
+
+def test_currents_endpoint_current_absent_outside_prediction_window(
+    test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
+) -> None:
+    """The currents endpoint answers 200 with a null current outside the window."""
+    assert isinstance(test_client.app, FastAPI)
+    mock_manager = test_client.app.state.snapshot.managers["nyc"]
+    mock_manager.predict_flow_at_time.return_value = None
+    mock_manager.get_chart_info.return_value = None
+
+    response = test_client.get("/api/nyc/currents")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["current"] is None
+    assert data["legacy_chart"] is None
+    assert data["current_chart_filename"] is None
+    assert data["navigation"]["shift"] == 0
+
+
 @freeze_time("2026-05-18T18:00:00Z")
 def test_conditions_endpoint_accepts_local_at_parameter(
     test_client: TestClient, mock_data_managers: dict[str, LocationConfig]
@@ -669,6 +869,7 @@ def test_conditions_endpoint_accepts_local_at_parameter(
     mock_manager.get_current_temperature.return_value = sw_types.TemperatureReading(
         timestamp=datetime.datetime(2026, 5, 18, 13, 55, 0),
         temperature=65.0,
+        freshness=observation_freshness(),
     )
     mock_manager.get_tide_info_at_time.return_value = sw_types.TideInfo(
         past=[
@@ -1448,7 +1649,7 @@ def test_conditions_endpoint_handles_nan_in_current_data(
 
     # Mock temperature (required for the endpoint to work)
     mock_manager.get_current_temperature.return_value = sw_types.TemperatureReading(
-        timestamp=mock_dt, temperature=65.0
+        timestamp=mock_dt, temperature=65.0, freshness=observation_freshness()
     )
 
     # Mock tides

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
+from freezegun import freeze_time
 
 from shallweswim.archive.store import MemoryObjectStore
 from shallweswim.core.feeds import FeedName, PlotName
@@ -29,6 +30,7 @@ from shallweswim.snapshot.model import (
 )
 from shallweswim.snapshot.publish import publish
 from shallweswim.snapshot.store import SnapshotStore
+from shallweswim.types import FreshnessState
 from tests.conftest import TEST_CONFIG_FULL
 from tests.snapshot_fixtures import FETCHED, FETCHED_AT, seeded_manager, tides_frame
 
@@ -149,6 +151,52 @@ async def test_snapshot_manager_answers_like_the_manager_it_was_built_from() -> 
         assert status.model_dump(exclude=exclude) == expected.feeds[name].model_dump(
             exclude=exclude
         )
+
+
+@pytest.mark.asyncio
+@freeze_time("2026-06-02 06:00:00")
+async def test_both_managers_agree_on_freshness_and_the_prediction_window() -> None:
+    """Served readings age, and predictions stop at the window, in both paths.
+
+    The frozen clock is 02:00 local (US/Eastern, UTC-4 in June). The fixture's
+    last live temperature reading is 2026-06-01 23:54 local, two hours and six
+    minutes before that.
+    """
+    manager = seeded_manager()
+    snapshot_manager = await _load_manager(manager)
+
+    reading = snapshot_manager.get_current_temperature()
+    assert reading == manager.get_current_temperature()
+    assert reading.timestamp == datetime.datetime(2026, 6, 1, 23, 54)
+    assert reading.freshness.state is FreshnessState.STALE
+    assert reading.freshness.age_seconds == 7560
+
+    observed = snapshot_manager.get_current_flow_info()
+    assert observed == manager.get_current_flow_info()
+    assert observed.freshness is not None
+    assert observed.freshness.state is FreshnessState.STALE
+
+    predicted = snapshot_manager.predict_flow_at_time(LOCAL_T)
+    assert predicted is not None
+    assert predicted.freshness is None
+
+    # The fixture's currents run 00:00-05:59 and its tides 03:12-21:51 local.
+    for outside in (
+        datetime.datetime(2026, 5, 31, 23, 59),
+        datetime.datetime(2026, 6, 1, 6, 0),
+    ):
+        assert snapshot_manager.predict_flow_at_time(outside) is None
+        assert manager.predict_flow_at_time(outside) is None
+    for outside in (
+        datetime.datetime(2026, 6, 1, 3, 11),
+        datetime.datetime(2026, 6, 1, 21, 52),
+    ):
+        assert snapshot_manager.get_tide_info_at_time(outside) is None
+        assert manager.get_tide_info_at_time(outside) is None
+        assert snapshot_manager.predict_tide_at_time(outside) is None
+        assert manager.predict_tide_at_time(outside) is None
+        assert snapshot_manager.get_chart_info(outside) is None
+        assert manager.get_chart_info(outside) is None
 
 
 def test_status_applies_the_feed_rules_to_manifest_metadata() -> None:

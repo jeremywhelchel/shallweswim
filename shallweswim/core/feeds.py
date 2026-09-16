@@ -96,6 +96,14 @@ HEALTH_CHECK_BUFFER = datetime.timedelta(
     minutes=15
 )  # Longer buffer for service health checks
 
+# How current a served observation is, as reported to every client on the live
+# temperature and on observed currents. See "Freshness of what is served" in
+# DATA_PIPELINE.md. Deliberately looser than the fetch interval above: a
+# healthy NDBC buoy reports hourly and posts with a lag, so its latest reading
+# is routinely thirty to ninety minutes old.
+OBSERVATION_FRESH_FOR = datetime.timedelta(hours=2)
+OBSERVATION_STALE_FOR = datetime.timedelta(hours=24)
+
 # Archive partition reads are network-bound and independent per year. This bounds
 # concurrent reads so a long configured history does not open a read per year.
 ARCHIVE_HYDRATION_CONCURRENCY = 8

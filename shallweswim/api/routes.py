@@ -41,6 +41,7 @@ from shallweswim.api_types import (
     CurrentRange,
     CurrentRangePoint,
     CurrentsResponse,
+    Freshness,
     LegacyChartInfo,
     LocationConditions,
     LocationInfo,
@@ -259,14 +260,29 @@ def api_tide_state(tide_state: types.TideState | None) -> TideState | None:
 def api_tide_info_at_time(
     data_manager: LocationServing,
     timestamp: datetime.datetime,
-) -> TideInfo:
-    """Build tide API data for one location-local timestamp."""
+) -> TideInfo | None:
+    """Build tide API data for one location-local timestamp.
+
+    Returns None when the timestamp lies outside the window the served tide
+    predictions hold, since a prediction is present or absent.
+    """
     tide_info = data_manager.get_tide_info_at_time(timestamp)
+    if tide_info is None:
+        return None
+
     return TideInfo(
         past=[api_tide_entry(tide) for tide in tide_info.past],
         next=[api_tide_entry(tide) for tide in tide_info.next],
         state=api_tide_state(data_manager.predict_tide_at_time(timestamp)),
     )
+
+
+def api_freshness(freshness: types.Freshness | None) -> Freshness | None:
+    """Convert an observation's internal freshness to the API model."""
+    if freshness is None:
+        return None
+
+    return Freshness(state=freshness.state, age_seconds=freshness.age_seconds)
 
 
 def api_current_info(
@@ -288,6 +304,7 @@ def api_current_info(
         state_description=current_info.state_description,
         range=api_current_range(current_info.range),
         source_type=current_info.source_type,
+        freshness=api_freshness(current_info.freshness),
     )
 
 
@@ -306,11 +323,14 @@ def api_temperature_info(
     temp_reading = data_manager.get_current_temperature()
     water_temp_f = temp_reading.temperature
     water_temp_c = round(util.f_to_c(water_temp_f), 1)
+    freshness = api_freshness(temp_reading.freshness)
+    assert freshness is not None  # Observations always carry freshness
     return TemperatureInfo(
         timestamp=temp_reading.timestamp,
         water_temp_f=water_temp_f,
         water_temp_c=water_temp_c,
         station_name=cfg.live_temp_source.name,
+        freshness=freshness,
     )
 
 
@@ -358,13 +378,15 @@ def api_conditions_current_info(
 ) -> CurrentInfo | None:
     """Build current data for the conditions endpoint at the resolved time.
 
-    Prediction sources use the requested planner time. Observation sources
-    remain latest-observation data until we have forecast/prediction support for
-    that source type.
+    Prediction sources use the requested planner time, and answer only inside
+    the window the served frame holds: outside it the condition is absent.
+    Observation sources remain latest-observation data, carrying their
+    freshness, until we have forecast/prediction support for that source type.
     """
     if not (ctx.cfg.currents_source and ctx.data_manager.has_feed_data(FEED_CURRENTS)):
         return None
 
+    current_info: types.CurrentInfo | None
     match ctx.cfg.currents_source.source_type:
         case types.DataSourceType.PREDICTION:
             current_info = ctx.data_manager.predict_flow_at_time(ctx.timestamp)
@@ -374,6 +396,9 @@ def api_conditions_current_info(
             raise ValueError(
                 f"Unknown current source type: {ctx.cfg.currents_source.source_type}"
             )
+
+    if current_info is None:
+        return None
 
     return api_current_info(current_info)
 
@@ -891,7 +916,10 @@ def register_routes(app: fastapi.FastAPI) -> None:
             at: Location-local ISO-8601 timestamp within 24 hours; overrides shift
 
         Returns:
-            CurrentsResponse object with current prediction details
+            CurrentsResponse object with current prediction details. `current`
+            is null when the requested time lies outside the window the served
+            prediction frame holds, and the legacy chart is null likewise when
+            the served tide predictions do not cover it.
 
         Raises:
             HTTPException: If the location is not configured or doesn't support currents
@@ -928,7 +956,11 @@ def register_routes(app: fastapi.FastAPI) -> None:
         fwd = min(resolved_shift + 60, util.MAX_SHIFT_LIMIT)
         back = max(resolved_shift - 60, util.MIN_SHIFT_LIMIT)
 
-        current_prediction = api_current_info(current_info, magnitude_digits=1)
+        current_prediction = (
+            None
+            if current_info is None
+            else api_current_info(current_info, magnitude_digits=1)
+        )
 
         # Get chart data only if this location has chart assets configured
         legacy_chart = None
@@ -938,14 +970,16 @@ def register_routes(app: fastapi.FastAPI) -> None:
                 chart_info = ctx.data_manager.get_chart_info(ctx.timestamp)
             except DataUnavailableError as e:
                 raise HTTPException(status_code=503, detail=str(e)) from e
-            legacy_chart = LegacyChartInfo(
-                hours_since_last_tide=round(chart_info.hours_since_last_tide, 1),
-                last_tide_type=chart_info.last_tide_type,
-                chart_filename=chart_info.chart_filename,
-                map_title=chart_info.map_title,
-            )
+            if chart_info is not None:
+                legacy_chart = LegacyChartInfo(
+                    hours_since_last_tide=round(chart_info.hours_since_last_tide, 1),
+                    last_tide_type=chart_info.last_tide_type,
+                    chart_filename=chart_info.chart_filename,
+                    map_title=chart_info.map_title,
+                )
             if (
-                current_info.direction is not None
+                current_info is not None
+                and current_info.direction is not None
                 and current_info.magnitude_pct is not None
             ):
                 current_chart_filename = util.get_current_chart_filename(

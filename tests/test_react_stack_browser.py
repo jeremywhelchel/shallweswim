@@ -77,6 +77,9 @@ class FakeNycDataManager:
         return types.TemperatureReading(
             timestamp=self.expected_at - datetime.timedelta(minutes=20),
             temperature=61.4,
+            freshness=types.Freshness(
+                state=types.FreshnessState.FRESH, age_seconds=1200
+            ),
         )
 
     def get_tide_info_at_time(self, timestamp: datetime.datetime) -> types.TideInfo:

@@ -101,6 +101,7 @@ const conditionsPayload: components["schemas"]["LocationConditions"] = {
     water_temp_f: 61.4,
     water_temp_c: 16.3,
     station_name: "Coney Island",
+    freshness: { state: "fresh", age_seconds: 1800 },
   },
   tides: {
     past: [
@@ -643,6 +644,7 @@ test("omits temperature difference caveat when station and swim spot match", asy
         water_temp_f: 68,
         water_temp_c: 20,
         station_name: "Barton Springs",
+        freshness: { state: "fresh", age_seconds: 1800 },
       },
     }),
     locationCode: "loc",
@@ -675,6 +677,7 @@ test("omits temperature difference caveat for sources marked as local", async ()
         water_temp_f: 64,
         water_temp_c: 17.8,
         station_name: "La Jolla, CA",
+        freshness: { state: "fresh", age_seconds: 1800 },
       },
     }),
     locationCode: "loc",
@@ -754,6 +757,7 @@ test("renders all configured locations from bootstrap metadata", () => {
       water_temp_f: 66.7,
       water_temp_c: 19.3,
       station_name: "Ohio River at Water Tower",
+      freshness: { state: "fresh", age_seconds: 1800 },
     },
     current: {
       ...(conditionsPayload.current as components["schemas"]["CurrentInfo"]),

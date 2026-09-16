@@ -519,26 +519,52 @@ def test_prepare_current_prediction_frame_handles_all_slack_data() -> None:
         create_test_location_config(),
         datetime.datetime(2025, 4, 22, 19, 0, 0),
     )
+    assert result is not None
     assert result.phase == CurrentPhase.SLACK
     assert result.range is None
 
 
-def test_predict_flow_from_precomputed_frame_reports_time_before_data_unavailable(
+@pytest.mark.parametrize(
+    "requested",
+    [
+        datetime.datetime(2025, 4, 21, 23, 59, 0),
+        datetime.datetime(2025, 4, 23, 0, 0, 1),
+    ],
+    ids=["before", "after"],
+)
+def test_predict_flow_from_precomputed_frame_absent_outside_window(
+    mock_config: config_lib.LocationConfig,
+    mock_current_data: pd.DataFrame,
+    requested: datetime.datetime,
+) -> None:
+    """A prediction is answered only inside the window the frame holds."""
+    frame = queries.prepare_current_prediction_frame(mock_current_data)
+
+    assert (
+        queries.predict_flow_from_precomputed_frame(frame, mock_config, requested)
+        is None
+    )
+
+
+def test_predict_flow_from_precomputed_frame_answers_at_window_edges(
     mock_config: config_lib.LocationConfig,
     mock_current_data: pd.DataFrame,
 ) -> None:
-    """Requests before the first current prediction do not leak pandas KeyError: NaT."""
+    """The first and last predicted instants are inside the window."""
     frame = queries.prepare_current_prediction_frame(mock_current_data)
 
-    with pytest.raises(
-        DataUnavailableError,
-        match="No current prediction available at or before",
-    ):
+    assert (
         queries.predict_flow_from_precomputed_frame(
-            frame,
-            mock_config,
-            datetime.datetime(2025, 4, 21, 23, 59, 0),
+            frame, mock_config, datetime.datetime(2025, 4, 22, 0, 0, 0)
         )
+        is not None
+    )
+    assert (
+        queries.predict_flow_from_precomputed_frame(
+            frame, mock_config, datetime.datetime(2025, 4, 22, 23, 0, 0)
+        )
+        is not None
+    )
 
 
 def test_prepare_tide_prediction_frame_derives_minute_curve(
@@ -638,42 +664,54 @@ def test_predict_tide_from_precomputed_frame_returns_estimated_state(
     assert 0.0 <= cast(float, result.height_pct) <= 1.0
 
 
-def test_predict_tide_from_precomputed_frame_reports_time_before_data_unavailable(
+@pytest.mark.parametrize(
+    "requested",
+    [
+        datetime.datetime(2025, 4, 21, 23, 59, 0),
+        datetime.datetime(2025, 4, 22, 18, 0, 1),
+    ],
+    ids=["before", "after"],
+)
+def test_predict_tide_from_precomputed_frame_absent_outside_window(
     mock_config: config_lib.LocationConfig,
     mock_tide_data: pd.DataFrame,
+    requested: datetime.datetime,
 ) -> None:
-    """Requests before the first tide curve row do not leak pandas KeyError: NaT."""
+    """Tide state is answered only inside the window the curve holds."""
     frame = queries.prepare_tide_prediction_frame(mock_tide_data)
 
-    with pytest.raises(
-        DataUnavailableError,
-        match="No data available at or before",
-    ):
-        queries.predict_tide_from_precomputed_frame(
-            frame,
-            mock_config,
-            datetime.datetime(2025, 4, 21, 23, 59, 0),
-        )
+    assert (
+        queries.predict_tide_from_precomputed_frame(frame, mock_config, requested)
+        is None
+    )
 
 
-def test_get_chart_info_reports_time_before_tide_data_unavailable(
+@pytest.mark.parametrize(
+    "requested",
+    [
+        datetime.datetime(2025, 4, 21, 23, 59, 0),
+        datetime.datetime(2025, 4, 22, 18, 0, 1),
+    ],
+    ids=["before", "after"],
+)
+def test_get_chart_info_absent_outside_tide_window(
     mock_config: config_lib.LocationConfig,
     mock_tide_data: pd.DataFrame,
+    requested: datetime.datetime,
 ) -> None:
-    """Legacy chart lookup reports missing prior tide data instead of KeyError: NaT."""
+    """The legacy chart describes a tide prediction, so it stops at the window."""
     tide_feed = MagicMock()
     tide_feed._data = mock_tide_data
     tide_feed.values = mock_tide_data
 
-    with pytest.raises(
-        DataUnavailableError,
-        match="No data available at or before",
-    ):
+    assert (
         queries.get_chart_info(
             {feeds.FEED_TIDES: tide_feed},
             mock_config,
-            datetime.datetime(2025, 4, 21, 23, 59, 0),
+            requested,
         )
+        is None
+    )
 
 
 def test_predict_tide_from_precomputed_frame_rejects_timezone_aware_input(
@@ -1187,6 +1225,7 @@ async def test_current_prediction_strengthening() -> None:
         result = data.predict_flow_at_time(t)
 
         # Check the result
+        assert result is not None
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
         assert result.trend == CurrentTrend.BUILDING
         assert (
@@ -1242,6 +1281,7 @@ async def test_current_prediction_weakening() -> None:
         result = data.predict_flow_at_time(t)
 
         # Check the result
+        assert result is not None
         assert result.direction == CurrentDirection.FLOODING  # Use Enum member
         assert result.trend == CurrentTrend.EASING
         assert (
@@ -1827,6 +1867,111 @@ async def test_wait_until_ready_timeout(
 
     result = await mock_data_manager.wait_until_ready(timeout=0.1)
     assert result is False
+
+
+def _live_temps_feed(timestamp: datetime.datetime, temperature: float) -> MagicMock:
+    """Build a served live-temperature feed whose latest reading is `timestamp`."""
+    frame = pd.DataFrame(
+        {"water_temp": [temperature]},
+        index=pd.DatetimeIndex([timestamp]),
+    )
+    feed = MagicMock()
+    feed.has_data = True
+    feed._data = frame
+    feed.values = frame
+    return feed
+
+
+@pytest.mark.parametrize(
+    ("observed_local", "expected_state", "expected_age_seconds"),
+    [
+        (datetime.datetime(2025, 7, 1, 12, 0, 0), "fresh", 0),
+        (datetime.datetime(2025, 7, 1, 10, 0, 1), "fresh", 7199),
+        (datetime.datetime(2025, 7, 1, 10, 0, 0), "stale", 7200),
+        (datetime.datetime(2025, 6, 30, 12, 0, 1), "stale", 86399),
+        (datetime.datetime(2025, 6, 30, 12, 0, 0), "old", 86400),
+        (datetime.datetime(2025, 6, 24, 12, 0, 0), "old", 604800),
+    ],
+    ids=["just-read", "almost-stale", "stale-edge", "almost-old", "old-edge", "week"],
+)
+@freeze_time("2025-07-01 16:00:00")
+def test_temperature_freshness_at_threshold_edges(
+    mock_config: config_lib.LocationConfig,
+    observed_local: datetime.datetime,
+    expected_state: str,
+    expected_age_seconds: int,
+) -> None:
+    """Freshness turns at 2 hours and again at 24, and reports the exact age.
+
+    The frozen clock is 12:00 local (US Eastern, UTC-4 in July).
+    """
+    reading = queries.get_current_temperature(
+        {feeds.FEED_LIVE_TEMPS: _live_temps_feed(observed_local, 61.4)},
+        mock_config,
+    )
+
+    assert reading.timestamp == observed_local
+    assert reading.temperature == 61.4
+    assert reading.freshness.state.value == expected_state
+    assert reading.freshness.age_seconds == expected_age_seconds
+
+
+@freeze_time("2025-07-01 16:00:00")
+def test_temperature_freshness_measured_through_location_timezone(
+    mock_config: config_lib.LocationConfig,
+) -> None:
+    """Ages resolve the naive local reading through the location's timezone."""
+    # 12:00 in US Eastern is the frozen UTC instant itself. Subtracting the
+    # naive local timestamp from the UTC clock would report four hours.
+    observed_local = datetime.datetime(2025, 7, 1, 12, 0, 0)
+
+    reading = queries.get_current_temperature(
+        {feeds.FEED_LIVE_TEMPS: _live_temps_feed(observed_local, 61.4)},
+        mock_config,
+    )
+
+    assert reading.freshness.age_seconds == 0
+    assert (util.utc_now() - observed_local).total_seconds() == 4 * 3600
+
+
+@freeze_time("2025-07-01 16:00:00")
+def test_observed_current_carries_freshness(
+    mock_config: config_lib.LocationConfig,
+) -> None:
+    """Observed currents age like the live temperature does."""
+    observed_local = datetime.datetime(2025, 7, 1, 9, 0, 0)
+    frame = pd.DataFrame(
+        {"velocity": [0.4]},
+        index=pd.DatetimeIndex([observed_local]),
+    )
+    feed = MagicMock()
+    feed.has_data = True
+    feed._data = frame
+    feed.values = frame
+
+    info = queries.get_current_flow_info({feeds.FEED_CURRENTS: feed}, mock_config)
+
+    assert info.source_type == DataSourceType.OBSERVATION
+    assert info.timestamp == observed_local
+    assert info.magnitude == 0.4
+    assert info.freshness is not None
+    assert info.freshness.state.value == "stale"
+    assert info.freshness.age_seconds == 3 * 3600
+
+
+def test_current_prediction_has_no_freshness(
+    mock_config: config_lib.LocationConfig,
+    mock_current_data: pd.DataFrame,
+) -> None:
+    """Predictions are present or absent, never fresh, stale, or old."""
+    frame = queries.prepare_current_prediction_frame(mock_current_data)
+
+    result = queries.predict_flow_from_precomputed_frame(
+        frame, mock_config, datetime.datetime(2025, 4, 22, 12, 0, 0)
+    )
+
+    assert result is not None
+    assert result.freshness is None
 
 
 @freeze_time("2025-05-04 10:15:00")

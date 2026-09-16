@@ -72,6 +72,18 @@ class DataSourceType(enum.Enum):
     OBSERVATION = "observation"
 
 
+class FreshnessState(enum.Enum):
+    """How current an observation is, as served to every client.
+
+    See "Freshness of what is served" in DATA_PIPELINE.md: the thresholds are
+    `OBSERVATION_FRESH_FOR` and `OBSERVATION_STALE_FOR` in `core/feeds.py`.
+    """
+
+    FRESH = "fresh"
+    STALE = "stale"
+    OLD = "old"
+
+
 class WebcamProvider(enum.Enum):
     """Supported frontend webcam provider/rendering types."""
 
@@ -93,6 +105,19 @@ TIDE_TYPE_CATEGORIES = [member.value for member in TideCategory]
 
 
 @dataclass
+class Freshness:
+    """How current one observation is, decided once by the server.
+
+    The age is measured from the observation's own timestamp, not from the
+    fetch, so a source that keeps answering with the same last reading ages
+    like one that stopped answering.
+    """
+
+    state: FreshnessState
+    age_seconds: int  # Age of the observation at the time it was served
+
+
+@dataclass
 class TemperatureReading:
     """Structured information about a water temperature reading."""
 
@@ -100,6 +125,7 @@ class TemperatureReading:
         datetime.datetime
     )  # Time of the reading (timezone-naive, in location's local timezone)
     temperature: float  # Water temperature in degrees Fahrenheit
+    freshness: Freshness  # How current the reading is
 
 
 @dataclass
@@ -178,6 +204,10 @@ class CurrentInfo:
     magnitude_pct: float | None = None
     state_description: str | None = None
     range: CurrentRange | None = None
+
+    # How current an observation is; None for predictions, which are present
+    # or absent rather than fresh, stale, or old.
+    freshness: Freshness | None = None
 
 
 @dataclass

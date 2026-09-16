@@ -12,11 +12,14 @@ import numpy as np
 import pandas as pd
 
 from shallweswim import config as config_lib
+from shallweswim import util
 from shallweswim.core import feeds
 from shallweswim.core.feeds import (
     FEED_CURRENTS,
     FEED_LIVE_TEMPS,
     FEED_TIDES,
+    OBSERVATION_FRESH_FOR,
+    OBSERVATION_STALE_FOR,
 )
 from shallweswim.core.serving import FeedData
 from shallweswim.types import (
@@ -28,6 +31,8 @@ from shallweswim.types import (
     CurrentStrength,
     CurrentTrend,
     DataSourceType,
+    Freshness,
+    FreshnessState,
     LegacyChartInfo,
     TemperatureReading,
     TideCategory,
@@ -86,6 +91,61 @@ def get_feed_data(
     if feed is None or not feed.has_data:
         raise DataUnavailableError(f"Feed '{feed_name}' data not available")
     return feed.values
+
+
+def observation_freshness(
+    timestamp: datetime.datetime,
+    config: config_lib.LocationConfig,
+    now_utc: datetime.datetime | None = None,
+) -> Freshness:
+    """Decide how current one observation is, for every client at once.
+
+    See "Freshness of what is served" in DATA_PIPELINE.md. The age is measured
+    from the reading's own timestamp, not from the fetch, and the observation
+    time and value are served unchanged in every state: an old reading is still
+    the last known reading.
+
+    Args:
+        timestamp: The observation's naive location-local timestamp.
+        config: Location configuration, for its timezone.
+        now_utc: Naive UTC instant to measure against, defaulting to now.
+
+    Returns:
+        The observation's freshness state and its age in whole seconds.
+    """
+    if now_utc is None:
+        now_utc = util.utc_now()
+
+    # Resolve the local reading through the location's timezone before
+    # subtracting: naive local arithmetic is an hour wrong across a DST change.
+    observed_utc = util.local_to_utc(timestamp, config.timezone)
+    age = now_utc - observed_utc
+
+    # A reading timestamped slightly ahead of our clock is fresh, not negative.
+    age_seconds = max(0, int(age.total_seconds()))
+
+    if age < OBSERVATION_FRESH_FOR:
+        state = FreshnessState.FRESH
+    elif age < OBSERVATION_STALE_FOR:
+        state = FreshnessState.STALE
+    else:
+        state = FreshnessState.OLD
+
+    return Freshness(state=state, age_seconds=age_seconds)
+
+
+def frame_covers_time(df: pd.DataFrame, t: datetime.datetime) -> bool:
+    """Whether a served prediction frame holds the requested instant.
+
+    A prediction is answered only inside the window the served frame holds,
+    from its first through its last predicted instant; outside it the condition
+    is absent rather than answered with an edge row. See "Freshness of what is
+    served" in DATA_PIPELINE.md.
+    """
+    if df.empty:
+        return False
+    index = cast(pd.DatetimeIndex, df.index)
+    return bool(index.min() <= pd.Timestamp(t) <= index.max())
 
 
 def get_latest_row(df: pd.DataFrame) -> pd.Series:
@@ -213,7 +273,7 @@ def predict_tide_from_precomputed_frame(
     df: pd.DataFrame,
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
-) -> TideState:
+) -> TideState | None:
     """Estimate point-in-time tide state from a precomputed tide frame.
 
     Args:
@@ -222,7 +282,9 @@ def predict_tide_from_precomputed_frame(
         t: Time to estimate tide state for, defaults to current local time.
 
     Returns:
-        Estimated tide state for the closest available minute at or before `t`.
+        Estimated tide state for the closest available minute at or before `t`,
+        or None when `t` lies outside the frame's window: a prediction is
+        present or absent, never carried past what was fetched.
 
     Raises:
         ValueError: If input datetime has timezone info or the frame contract is invalid.
@@ -236,6 +298,9 @@ def predict_tide_from_precomputed_frame(
         raise ValueError("Tide prediction DataFrame must use a DatetimeIndex")
     if df.index.tz is not None:
         raise ValueError("Tide prediction DataFrame should use naive datetimes")
+
+    if not frame_covers_time(df, t):
+        return None
 
     row = get_row_at_time(df, t)
     timestamp = row.name
@@ -604,6 +669,7 @@ def _current_range_from_segment_context(
 
 def get_current_temperature(
     feeds_dict: Mapping[feeds.FeedName, FeedData | None],
+    config: config_lib.LocationConfig,
 ) -> TemperatureReading:
     """Get the most recent water temperature reading.
 
@@ -612,11 +678,14 @@ def get_current_temperature(
 
     Args:
         feeds_dict: Mapping from feed names to served feeds
+        config: Location configuration, for the timezone the reading's age is
+            measured through
 
     Returns:
         A TemperatureReading object containing:
             - timestamp: datetime of when the reading was taken
             - temperature: float representing the water temperature in degrees Fahrenheit
+            - freshness: how current the reading is, and its age in seconds
 
     Raises:
         DataUnavailableError: If no temperature data is available or the feed is not configured
@@ -632,14 +701,18 @@ def get_current_temperature(
     # Round temperature to 1 decimal place to avoid excessive precision
     rounded_temp = round(temp, 1)  # type: ignore[call-overload]
 
-    return TemperatureReading(timestamp=time, temperature=rounded_temp)  # type: ignore[arg-type]
+    return TemperatureReading(
+        timestamp=time,  # type: ignore[arg-type]
+        temperature=rounded_temp,
+        freshness=observation_freshness(time, config),  # type: ignore[arg-type]
+    )
 
 
 def get_tide_info_at_time(
     feeds_dict: Mapping[feeds.FeedName, FeedData | None],
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
-) -> TideInfo:
+) -> TideInfo | None:
     """Get the previous tide and upcoming tides relative to a target time.
 
     Retrieves the most recent tide before the target time and the next two
@@ -655,6 +728,10 @@ def get_tide_info_at_time(
         A TideInfo object containing:
             - past: List of TideEntry objects with the most recent tide information
             - next: List of TideEntry objects with the next two upcoming tides
+
+        None when the requested time lies outside the served frame's window,
+        first through last predicted tide: a prediction is present or absent,
+        never carried past what was fetched.
 
     Raises:
         DataUnavailableError: If tide data feed is missing or not properly configured
@@ -672,6 +749,9 @@ def get_tide_info_at_time(
 
     # Ensure DataFrame has no timezone info for consistent comparison
     _require_naive_datetime_index(tides_data, "Tide")
+
+    if not frame_covers_time(tides_data, t):
+        return None
 
     # Extract past and future tide data
     past_tides_df = tides_data[:now_ts].tail(1)
@@ -696,7 +776,7 @@ def get_chart_info(
     feeds_dict: Mapping[feeds.FeedName, FeedData | None],
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
-) -> LegacyChartInfo:
+) -> LegacyChartInfo | None:
     """Generate chart information based on tide data for the specified time.
 
     Calculates the time since the last tide event and generates appropriate
@@ -715,6 +795,9 @@ def get_chart_info(
             - chart_filename: Filename for the chart image
             - map_title: Formatted title for the map display
 
+        None when the requested time lies outside the served tide frame's
+        window, since the chart describes a tide prediction.
+
     Raises:
         DataUnavailableError: If tide data is not available
     """
@@ -723,6 +806,9 @@ def get_chart_info(
 
     # Get tides data from the feed
     tides_data = get_feed_data(feeds_dict, FEED_TIDES)
+
+    if not frame_covers_time(tides_data, t):
+        return None
 
     # Get the row closest to the specified time
     row = get_row_at_time(tides_data, t)
@@ -757,6 +843,7 @@ def get_chart_info(
 
 def get_current_flow_info(
     feeds_dict: Mapping[feeds.FeedName, FeedData | None],
+    config: config_lib.LocationConfig,
 ) -> CurrentInfo:
     """Get the latest observed current information.
 
@@ -765,10 +852,12 @@ def get_current_flow_info(
 
     Args:
         feeds_dict: Mapping from feed names to served feeds
+        config: Location configuration, for the timezone the observation's age
+            is measured through
 
     Returns:
-        A CurrentInfo object containing the timestamp, magnitude, and source type
-        of the most recent current observation
+        A CurrentInfo object containing the timestamp, magnitude, source type,
+        and freshness of the most recent current observation
 
     Raises:
         DataUnavailableError: If current data is not available or not properly loaded
@@ -784,6 +873,7 @@ def get_current_flow_info(
         timestamp=latest_timestamp,  # type: ignore[arg-type]
         source_type=DataSourceType.OBSERVATION,
         magnitude=latest_reading["velocity"],  # type: ignore[arg-type]
+        freshness=observation_freshness(latest_timestamp, config),  # type: ignore[arg-type]
     )
 
 
@@ -791,7 +881,7 @@ def predict_flow_from_precomputed_frame(
     df: pd.DataFrame,
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
-) -> CurrentInfo:
+) -> CurrentInfo | None:
     """Predict tidal current conditions for a specific time.
 
     Uses a precomputed current prediction frame from
@@ -818,8 +908,12 @@ def predict_flow_from_precomputed_frame(
             - range: Optional slack-to-peak context for the active current segment
             - source_type: Always PREDICTION for this method
 
+        None when `t` lies outside the frame's window, first through last
+        predicted instant: a prediction is present or absent, never carried
+        past what was fetched.
+
     Raises:
-        DataUnavailableError: If current data is not available or not properly loaded.
+        DataUnavailableError: If the frame's row index is not a datetime.
         ValueError: If input datetime has timezone info.
     """
     if not t:
@@ -830,16 +924,17 @@ def predict_flow_from_precomputed_frame(
         raise ValueError("Input datetime must be naive")
     _require_naive_datetime_index(df, "Current prediction")
 
+    if not frame_covers_time(df, t):
+        return None
+
     # Fetch only the scalar columns needed for the public response. The
     # precomputed frame also carries segment metadata for range labels, and
     # materializing a full mixed-type pandas row on every request is measurably
     # slower.
     row_time = df.index.asof(t)
-    if pd.isna(row_time):
-        raise DataUnavailableError(
-            f"No current prediction available at or before {t.isoformat()}"
-        )
-    if not isinstance(row_time, datetime.datetime):
+    # Inside the window there is always a row at or before `t`; this guards the
+    # frame's contract, not the request.
+    if pd.isna(row_time) or not isinstance(row_time, datetime.datetime):
         raise DataUnavailableError(
             "Current prediction row index must contain datetimes"
         )
@@ -897,12 +992,14 @@ def predict_flow_at_time(
     feeds_dict: Mapping[feeds.FeedName, FeedData | None],
     config: config_lib.LocationConfig,
     t: datetime.datetime | None = None,
-) -> CurrentInfo:
+) -> CurrentInfo | None:
     """Predict tidal current conditions for a specific time.
 
     This convenience path derives the current prediction frame on demand. Runtime
     managers should prefer prepare_current_prediction_frame() plus
     predict_flow_from_precomputed_frame() so repeated requests are cheap.
+
+    Returns None when the requested time lies outside the served frame's window.
     """
     currents_data = get_feed_data(feeds_dict, FEED_CURRENTS)
     prediction_frame = prepare_current_prediction_frame(currents_data)

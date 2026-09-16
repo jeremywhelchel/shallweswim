@@ -231,9 +231,11 @@ class SnapshotLocationManager:
 
     def get_current_temperature(self) -> TemperatureReading:
         """See `queries.get_current_temperature`."""
-        return queries.get_current_temperature(self._feeds)
+        return queries.get_current_temperature(self._feeds, self.config)
 
-    def get_tide_info_at_time(self, t: datetime.datetime | None = None) -> TideInfo:
+    def get_tide_info_at_time(
+        self, t: datetime.datetime | None = None
+    ) -> TideInfo | None:
         """See `queries.get_tide_info_at_time`."""
         return queries.get_tide_info_at_time(self._feeds, self.config, t)
 
@@ -247,15 +249,19 @@ class SnapshotLocationManager:
             self._tide_prediction_frame, self.config, t
         )
 
-    def get_chart_info(self, t: datetime.datetime | None = None) -> LegacyChartInfo:
+    def get_chart_info(
+        self, t: datetime.datetime | None = None
+    ) -> LegacyChartInfo | None:
         """See `queries.get_chart_info`."""
         return queries.get_chart_info(self._feeds, self.config, t)
 
     def get_current_flow_info(self) -> CurrentInfo:
         """See `queries.get_current_flow_info`."""
-        return queries.get_current_flow_info(self._feeds)
+        return queries.get_current_flow_info(self._feeds, self.config)
 
-    def predict_flow_at_time(self, t: datetime.datetime | None = None) -> CurrentInfo:
+    def predict_flow_at_time(
+        self, t: datetime.datetime | None = None
+    ) -> CurrentInfo | None:
         """Predict current from the derived frame, else from the raw frame."""
         if self._current_prediction_frame is not None:
             return queries.predict_flow_from_precomputed_frame(

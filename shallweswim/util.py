@@ -39,6 +39,39 @@ def utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
 
+def local_to_utc(
+    timestamp: datetime.datetime, timezone: datetime.tzinfo
+) -> datetime.datetime:
+    """Convert a naive location-local datetime to the naive UTC clock.
+
+    Feeds publish a naive location-local index, so an observation's age is only
+    correct when the local instant is resolved through the location's timezone:
+    subtracting naive local datetimes would be off by an hour across a
+    daylight-saving change. Ambiguous local instants, the repeated hour of a
+    fall-back, resolve to the standard-time reading; the resulting hour of
+    slack is immaterial to an age measured in hours.
+
+    Args:
+        timestamp: Naive datetime in the location's timezone.
+        timezone: The location's timezone.
+
+    Returns:
+        The same instant as a naive UTC datetime, comparable to `utc_now()`.
+
+    Raises:
+        ValueError: If the input datetime carries timezone information.
+    """
+    if timestamp.tzinfo is not None:
+        raise ValueError("Input datetime must be naive")
+
+    localize = getattr(timezone, "localize", None)
+    if callable(localize):
+        aware = localize(timestamp)
+    else:
+        aware = timestamp.replace(tzinfo=timezone)
+    return aware.astimezone(datetime.UTC).replace(tzinfo=None)
+
+
 def effective_time(
     timezone: datetime.tzinfo, shift_minutes: int = 0
 ) -> datetime.datetime:

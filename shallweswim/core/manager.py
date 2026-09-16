@@ -931,13 +931,16 @@ class LocationDataManager:
         Raises:
             DataUnavailableError: If no temperature data is available.
         """
-        return queries.get_current_temperature(self._feeds)
+        return queries.get_current_temperature(self._feeds, self.config)
 
-    def get_tide_info_at_time(self, t: datetime.datetime | None = None) -> TideInfo:
+    def get_tide_info_at_time(
+        self, t: datetime.datetime | None = None
+    ) -> TideInfo | None:
         """Get the previous tide and upcoming tides relative to a target time.
 
         Returns:
-            A TideInfo object with past and next tide entries
+            A TideInfo object with past and next tide entries, or None when the
+            requested time lies outside the served frame's window.
 
         Raises:
             DataUnavailableError: If tide data feed is missing.
@@ -976,14 +979,17 @@ class LocationDataManager:
             t,
         )
 
-    def get_chart_info(self, t: datetime.datetime | None = None) -> LegacyChartInfo:
+    def get_chart_info(
+        self, t: datetime.datetime | None = None
+    ) -> LegacyChartInfo | None:
         """Generate chart information based on tide data for the specified time.
 
         Args:
             t: The time to generate chart info for, defaults to current time
 
         Returns:
-            A LegacyChartInfo object with chart filename and metadata
+            A LegacyChartInfo object with chart filename and metadata, or None
+            when the requested time lies outside the served tide frame's window.
 
         Raises:
             DataUnavailableError: If tide data is not available.
@@ -999,7 +1005,7 @@ class LocationDataManager:
         Raises:
             DataUnavailableError: If current data is not available.
         """
-        return queries.get_current_flow_info(self._feeds)
+        return queries.get_current_flow_info(self._feeds, self.config)
 
     def get_plot(self, plot_type: feeds.PlotName) -> bytes | None:
         """Get a generated plot by type.
@@ -1012,14 +1018,17 @@ class LocationDataManager:
         """
         return self._plots.get(plot_type)
 
-    def predict_flow_at_time(self, t: datetime.datetime | None = None) -> CurrentInfo:
+    def predict_flow_at_time(
+        self, t: datetime.datetime | None = None
+    ) -> CurrentInfo | None:
         """Predict tidal current conditions for a specific time.
 
         Args:
             t: Time to predict current for, defaults to current time
 
         Returns:
-            A CurrentInfo object with current prediction
+            A CurrentInfo object with the current prediction, or None when the
+            requested time lies outside the served frame's window.
 
         Raises:
             DataUnavailableError: If current data is not available.

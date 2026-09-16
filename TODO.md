@@ -292,13 +292,16 @@ Notes:
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
-- Promote the six shadow alert policies once baselined, starting with the
-  capture job heartbeat; the feed-failure and plot policies remain scoped to the
-  web service resource and do not cover the capture job's feed failures.
-- Verify the "new/revised observations per hour" dashboard tiles render as
-  hourly totals. They aggregate distribution metrics with `ALIGN_SUM`, which may
-  display as distributions; if so, switch to an MQL query summing the
-  distribution or add counter-style metrics.
+- Rescope the four feed and plot alert policies and the five feed and plot
+  dashboard tiles from the web service resource to the capture job. Since
+  the web servers stopped fetching, only the job emits `feed_update` and
+  `plot_generation` events, so those policies see nothing and those tiles
+  are empty (MONITORING.md). A filter change keeps the metric but counts
+  only entries written after it; if the change replaces a metric, its
+  policies need a second apply ten minutes later.
+- Promote the twelve Terraform alert policies once each has a reviewed
+  baseline, starting with the capture job heartbeat, then retire the three
+  older console policies that page on a single error.
 - Capture the archive validation checklist outcome after the first week:
   compare archived row counts with live feeds per source and record the result
   in DATA_PIPELINE.md's archive section.

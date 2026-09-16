@@ -124,12 +124,12 @@ that step passes a naive frame through unchanged.
 
 The job's cycle (schedule restoration, holding, carry-forward, publication,
 the sweep), the bundle's layout, the web servers' loading and refresh, the
-archive's partitions, merge semantics, and hydration are the rules in
+archive's partitions, merge semantics, and the read of served history are the rules in
 [DATA_PIPELINE.md](DATA_PIPELINE.md). In code: `update.py` runs the cycle,
 `snapshot/` builds, publishes, loads, and serves generations
 (`SnapshotLocationManager` satisfies the same `core/serving.py`
 `LocationServing` protocol as `LocationDataManager`, which is what the routes
-are typed against), `archive/` captures, merges, and hydrates, and
+are typed against), `archive/` captures, merges, and reads years back, and
 `core/backfill.py` walks a source's full history.
 
 Keep user-facing condition endpoints on the fast path. Expensive, repeatable
@@ -704,7 +704,7 @@ Historical temperature plots are backend-rendered SVGs generated from the
 `historic_temps` feed. The feed reads each configured year out of the archive,
 normalizes and validates each year independently, and combines the years it
 holds; the only fetch it makes is the top-up capture of the current year, which
-it reads back with the rest (DATA_PIPELINE.md "Hydration"). Per-year
+it reads back with the rest (DATA_PIPELINE.md "Reading from the archive"). Per-year
 normalization uses the same hourly resampling path as the final combined feed,
 so source quirks such as duplicate local timestamps around daylight-saving
 transitions are resolved before schema validation. A year the archive lacks is

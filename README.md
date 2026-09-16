@@ -707,7 +707,7 @@ nothing, so it never sets it.
 
 `SHALLWESWIM_ARCHIVE_READ_BUCKET` is independent of
 `SHALLWESWIM_ARCHIVE_BUCKET`, which remains the only variable that enables
-writes. Hydration calls only the store's read operation, so the local
+writes. Reading years from the archive uses only the store's read operation, so the local
 credential needs no more than `roles/storage.objectViewer` on the bucket. The
 feed's own fetch is one top-up of the current year, which is captured and then
 read back like every other year. Archived partitions are UTC years, so reading

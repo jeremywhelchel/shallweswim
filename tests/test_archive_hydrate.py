@@ -370,14 +370,11 @@ async def test_year_missing_from_the_archive_is_a_gap(monkeypatch, caplog) -> No
     status = feed.status.historical_temp_status
     assert status is not None
     assert status.missing_years == [missing_year, current_year]
-    assert any(
-        f"holds no rows for years [{missing_year}, {current_year}]"
-        in record.getMessage()
-        for record in caplog.records
-    )
     events = _hydrate_events(caplog)
     assert len(events) == 1
-    assert events[0].outcome == "success"
+    assert events[0].outcome == "partial"
+    assert events[0].levelno == logging.WARNING
+    assert f"years [{missing_year}, {current_year}] are absent" in events[0].message
     assert events[0].record_count == len(_year_frame(archived_year))
 
 
@@ -413,13 +410,16 @@ async def test_failed_archive_read_warns_and_leaves_a_gap(monkeypatch, caplog) -
     warnings = [
         record
         for record in caplog.records
-        if record.levelno == logging.WARNING and "hydration failed" in record.message
+        if record.levelno == logging.WARNING
+        and "could not be read" not in record.message
+        and "failed:" in record.message
     ]
     assert len(warnings) == 1
     assert str(broken_year) in warnings[0].message
     events = _hydrate_events(caplog)
     assert len(events) == 1
-    assert events[0].outcome == "failed"
+    assert events[0].outcome == "partial"
+    assert f"years [{broken_year}] could not be read" in events[0].message
     assert events[0].record_count == len(_year_frame(archived_year))
 
 

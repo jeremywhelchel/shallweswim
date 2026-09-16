@@ -7,13 +7,64 @@ metrics and alerts built on the events named here.
 
 ## Shape
 
-Two processes and one store. The **job** (`shallweswim.update`) is the only
-process that contacts a provider. On each run it fetches the feeds that are
-due, archives the observations they return, draws the plots, and publishes one
-immutable **generation**, the bundle, into object storage. The **web servers**
-(`shallweswim.web`) load the current generation into memory and serve every
-request from it. There is no database: the store holds plain content-addressed
-objects, and the web servers only read them.
+Two processes, one store, and a data layer between the providers and the
+site. The **job** (`shallweswim.update`) is the only process that contacts a
+provider. On each run it fetches the feeds that are due, merges the
+observations they return into the **archive**, builds the served frames,
+draws the plots, and publishes one immutable **generation**, the bundle, into
+object storage. The **web servers** (`shallweswim.web`) load the current
+generation into memory and serve every request from it. There is no
+database: the store holds plain content-addressed objects, and the web
+servers only read them.
+
+```text
+providers
+  CO-OPS, NDBC, NWIS, CSPF, Irish Lights: observations
+  CO-OPS, Marine Institute, harmonic model: tide and current predictions
+        │
+        │ fetch, by the job only: live readings every run,
+        │ the current year on the historical interval,
+        │ and a one-time backfill of what a provider still holds
+        ▼
+┌──────────────────────────────────────┐   ┌───────────────────────────────┐
+│ observations                         │   │ predictions                   │
+│ raw, native cadence, with product    │   │ fetched daily, served as      │
+└──────────────────┬───────────────────┘   │ fetched, never archived       │
+                   │ merge                 └───────────────┬───────────────┘
+                   ▼                                       │
+┌──────────────────────────────────────┐                   │
+│ archive                              │                   │
+│ one object per source and UTC year   │                   │
+│ ranked merge, never deleted          │                   │
+└──────────────────┬───────────────────┘                   │
+                   │ read every configured year            │
+                   ▼                                       ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ served frames and plots                                                  │
+│ serving index, hourly resample, validation                               │
+└──────────────────────────────────┬───────────────────────────────────────┘
+                                   │ publish
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ bundle: immutable generations in the store                               │
+└──────────────────────────────────┬───────────────────────────────────────┘
+                                   │ load, every minute
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ web servers: the loaded generation answers every request                 │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+The archive is the layer that makes the site independent of any provider's
+memory. Observations flow one way into it, from the live feeds every run,
+from the historical feed's top-up of the current year on its interval, and
+from the one-time backfill of whatever a provider still holds, and served
+history is read from it alone (see [The archive](#the-archive)). For a
+provider that publishes no history, the archive is the only history there
+is, and it grows from the day the location is added. Predictions are the
+exception: a tide or current prediction is fetched daily and served as
+fetched, because a prediction is not an observation and has no history
+worth keeping.
 
 Why: fetching, plotting, and serving used to share one process, so background
 progress was tied to the lifecycle and resources of whatever instance was
@@ -118,8 +169,8 @@ archive. Archive failures are logged as failed merge events and change neither
 the feed's success nor its schedule.
 
 The historical temperature feed's refresh is a top-up capture followed by
-hydration, so that the archive is the only source of served history (see
-[Hydration](#hydration)). On its interval the feed fetches the current year
+a read of every configured year from the archive, so that the archive is the only source of served history (see
+[Reading from the archive](#reading-from-the-archive)). On its interval the feed fetches the current year
 from the provider and merges it into the archive, as a capture only; it then
 builds its served frame from the archive. A provider that offers no history is
 not a special case: its archive begins with its live feed's first capture and
@@ -385,7 +436,7 @@ Each merge logs one `component=archive` `operation=merge` event with
 `attempt_count`, `incoming_count`, `new_count`, `overlap_count`, and
 `revised_count`. A capture's new and revised counts sum into the run summary.
 
-### Hydration
+### Reading from the archive
 
 Served history comes from the archive alone. Providers feed the archive three
 ways, the live feed's capture every run, the historical feed's top-up capture
@@ -404,11 +455,11 @@ the historical feed runs, which the job and the local entry point both ensure.
 
 Each year is read `ARCHIVE_HYDRATION_CONCURRENCY` (8) reads at a time. A
 historical year is a station-local year while partitions are UTC years, so
-hydration reads the year's partition and the next one and keeps the rows
+the read takes the year's partition and the next one and keeps the rows
 inside the local year. The rows then follow exactly the provider path: serving
 index, resample to hourly keeping the first reading of each hour, validation.
 The archive assumes no cadence, so a year holding six-minute rows, hourly
-rows, or both serves identically. Hydrated years are never captured back.
+rows, or both serves identically. Years read from the archive are never captured back.
 
 Why: the archive is the layer between this service and the providers'
 raw data, and for some sources it will be the only durable record there
@@ -554,7 +605,7 @@ Each historical source's `start_year` in `config/locations.py` is the
 earliest year the archive holds for it, set in a reviewed change after the
 backfill; the summary's earliest year is what to set. The served hourly frame,
 the bundle, and the plots then cover that range through the ordinary paths:
-the job hydrates the years from the archive and refetches nothing. A
+the job reads the years from the archive and refetches nothing. A
 thirty-year station's frame is a few megabytes; the bundle is about 34 MB.
 
 ### Plots

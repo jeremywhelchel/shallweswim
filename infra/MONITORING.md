@@ -50,7 +50,7 @@ pipeline event means; this table is the map from event to metric.
 | `updater` / `feed_update` | every feed update attempt (`core/feeds.py`), in the job and the local entry point | `success`, `unavailable`, `failed` | `location`, `feed`, `provider`, `duration_ms`, `record_count` on success | `feed_updates`, `feed_update_duration_ms`, `feed_records` |
 | `plot` / `plot_generation` | each plot harvested from the process pool (`core/manager.py`) | `success`, `failed` | `location`, `feed`, `duration_ms` as submit-to-harvest latency, which includes queueing and CPU starvation | `plot_generations`, `plot_availability_latency_ms` |
 | `archive` / `merge` | each partition merge (`archive/merge.py`) | `success`, `unchanged`, `failed` | `source_identity`, `duration_ms`, `attempt_count`, `incoming_count`, `new_count`, `overlap_count`, `revised_count`, `record_count` | `archive_merges`, `archive_merge_duration_ms`, `archive_merge_new_rows`, `archive_merge_revised_rows` |
-| `archive` / `hydrate` | the historical feed after reading its years from the archive (`core/feeds.py`) | `success`, `failed` | `location`, `feed`, `record_count` | none |
+| `archive` / `hydrate` | the historical feed after reading its years from the archive (`core/feeds.py`), once per refresh | `success` (every configured year served), `partial`, `failed` (none) | `location`, `feed`, `record_count` as rows read; the message names the years absent or unreadable | none; the archive read gap policy matches the event |
 | `updater` / `run` | the job's run summary (`update.py`) | `success`, `partial`, `failed` | `duration_ms`, `record_count`, `new_count`, `revised_count`, `run_id` | `updater_runs`, `updater_run_duration_ms` |
 | `updater` / `backfill` | the backfill walk's summary (`update.py`) | `success`, `partial`, `failed` | as `run` | none, deliberately: a hand-run walk must not look like a scheduled run |
 | `snapshot` / `publish` | each publish attempt (`snapshot/publish.py`) | `success`, `unchanged`, `skipped`, `failed` | `generation_id`, `duration_ms`, `record_count` as objects written, `run_id` | `snapshot_publishes`, `snapshot_publish_duration_ms` |
@@ -102,8 +102,8 @@ outcome set gained `held`.
 
 ## Alert policies
 
-Fifteen policies concern the application, all Terraform's, in
-`monitoring/alert_policies.tf` and `monitoring/uptime.tf`, and all fifteen
+Sixteen policies concern the application, all Terraform's, in
+`monitoring/alert_policies.tf` and `monitoring/uptime.tf`, and all sixteen
 notify the project's channels (`mode=paging`).
 
 Why they all page: each threshold was first run for forty hours of the
@@ -136,6 +136,7 @@ the operator's environment, so no address is in the repository.
 | Application error | service and job | any application log entry at ERROR or above, request logs excluded; the application logs ERROR only for a defect or an exhausted critical operation, so this is the catch-all for failures no other policy anticipated; one notification an hour | ERROR |
 | Request 5xx | service | any response in a minute with a `5xx` status other than `503`, from Cloud Run's request count; `503` is the deliberate no-data answer | ERROR |
 | Homepage uptime failure | uptime check | the uptime check below fails for five minutes, with missing data counted as failure | CRITICAL |
+| Archive read gap | job | a historical refresh's archive read event with any outcome but `success`: a configured year was absent from the archive or could not be read, so the plots have a gap they should not | WARNING |
 
 The freshness thresholds are each feed's interval plus fifteen minutes, the
 same rule `/api/status` applies. Every policy that compares a value with a

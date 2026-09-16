@@ -2495,7 +2495,9 @@ class TestHistoricalTempsFeed:
             past_year
         ]
         assert any(
-            f"holds no rows for years [{past_year}]" in record.getMessage()
+            getattr(record, "operation", None) == "hydrate"
+            and record.outcome == "partial"
+            and f"years [{past_year}] are absent" in record.getMessage()
             for record in caplog.records
         )
 

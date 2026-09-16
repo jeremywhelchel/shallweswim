@@ -444,3 +444,43 @@ resource "google_monitoring_alert_policy" "request_5xx" {
     auto_close = "1800s"
   }
 }
+
+# Every configured historical year exists in the archive since the backfill and
+# the live feed writes the current one every run, so the historical feed's
+# archive read should serve every year it was configured to. Anything less is
+# a defect somewhere: an unreadable object, a deleted one, or a configured
+# range that outran the archive. The read event says which years and why.
+resource "google_monitoring_alert_policy" "archive_read_gap" {
+  display_name          = "[Terraform] Archive read gap"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = var.notification_channel_ids
+  severity              = "WARNING"
+  user_labels           = local.paging_alert_labels
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "A historical temperature refresh served fewer years than it was configured to. The matched entry names the location and the years that were absent from the archive or could not be read; the plots show them as gaps. Check the archive objects for that source (DATA_PIPELINE.md \"The archive\")."
+  }
+
+  conditions {
+    display_name = "Historical archive read not complete"
+
+    condition_matched_log {
+      filter = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.component=\"archive\" AND jsonPayload.operation=\"hydrate\" AND jsonPayload.outcome!=\"success\""
+
+      label_extractors = {
+        location = "EXTRACT(jsonPayload.location)"
+        outcome  = "EXTRACT(jsonPayload.outcome)"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+
+    notification_rate_limit {
+      period = "3600s"
+    }
+  }
+}

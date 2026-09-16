@@ -271,6 +271,7 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.application_errors,
         google_monitoring_alert_policy.request_5xx,
         google_monitoring_alert_policy.homepage_uptime_failure,
+        google_monitoring_alert_policy.archive_read_gap,
         ], values(google_monitoring_alert_policy.snapshot_feed_freshness)) : (
         startswith(policy.display_name, "[Terraform] ") &&
         !strcontains(policy.display_name, "[Shadow]") &&
@@ -326,5 +327,14 @@ run "monitoring_plan" {
       google_monitoring_alert_policy.homepage_uptime_failure.conditions[0].condition_threshold[0].evaluation_missing_data == "EVALUATION_MISSING_DATA_ACTIVE",
     ])
     error_message = "The uptime check probes the health endpoint every minute and its policy fires after five minutes of failure or missing data."
+  }
+
+  assert {
+    condition = alltrue([
+      strcontains(google_monitoring_alert_policy.archive_read_gap.conditions[0].condition_matched_log[0].filter, "jsonPayload.operation=\"hydrate\""),
+      strcontains(google_monitoring_alert_policy.archive_read_gap.conditions[0].condition_matched_log[0].filter, "jsonPayload.outcome!=\"success\""),
+      strcontains(google_monitoring_alert_policy.archive_read_gap.conditions[0].condition_matched_log[0].filter, "resource.type=\"cloud_run_job\""),
+    ])
+    error_message = "The archive read gap policy must match every historical read that served fewer years than configured."
   }
 }

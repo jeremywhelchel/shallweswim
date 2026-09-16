@@ -1836,13 +1836,6 @@ class HistoricalTempsFeed(CompositeFeed):
         hydrated = await self._hydrate_from_archive(required_years)
 
         self._last_available_years = tuple(sorted(hydrated))
-        missing_years = tuple(year for year in required_years if year not in hydrated)
-        if missing_years:
-            self.log(
-                "Historical temperature archive holds no rows for years "
-                f"{list(missing_years)}; they are gaps in the served frame",
-                logging.WARNING,
-            )
         if not hydrated:
             raise StationUnavailableError(
                 "Historical temperature archive holds none of the required "
@@ -1964,6 +1957,7 @@ class HistoricalTempsFeed(CompositeFeed):
         )
 
         hydrated: dict[int, pd.DataFrame] = {}
+        absent_years: list[int] = []
         failed_years: list[int] = []
         record_count = 0
         for year, frame in zip(required_years, frames, strict=True):
@@ -1971,6 +1965,7 @@ class HistoricalTempsFeed(CompositeFeed):
                 if isinstance(frame, BaseException):
                     raise frame
                 if frame is None:
+                    absent_years.append(year)
                     continue
                 served = self._combine_feeds(
                     [to_serving_index(frame, self.location_config.timezone)]
@@ -1979,20 +1974,32 @@ class HistoricalTempsFeed(CompositeFeed):
             except Exception as error:
                 failed_years.append(year)
                 self.log(
-                    f"Archive hydration failed for {year}: {error}",
+                    f"Archive read of {year} failed: {error}",
                     logging.WARNING,
                 )
                 continue
             hydrated[year] = served
             record_count += len(frame)
 
-        if not hydrated and not failed_years:
-            return hydrated
-        message = f"Archive hydration loaded years {sorted(hydrated)}"
+        # One event per refresh reports the served result against what was
+        # configured: every configured year exists in the archive since the
+        # backfill and the live feed writes the current one every run, so any
+        # year absent or unreadable is a defect, and the policy on this event
+        # pages on anything but success.
+        if len(hydrated) == len(required_years):
+            outcome = "success"
+        elif hydrated:
+            outcome = "partial"
+        else:
+            outcome = "failed"
+        message = f"Archive read served years {sorted(hydrated)}"
+        if absent_years:
+            message += f"; years {absent_years} are absent from the archive"
         if failed_years:
             message += f"; years {failed_years} could not be read"
         self.log(
             message,
+            logging.INFO if outcome == "success" else logging.WARNING,
             extra={
                 "component": "archive",
                 "operation": "hydrate",
@@ -2000,7 +2007,7 @@ class HistoricalTempsFeed(CompositeFeed):
                 # This class is the historical temperature feed, so its event
                 # carries that feed name rather than the class name.
                 "feed": FeedName.HISTORIC_TEMPS.value,
-                "outcome": "failed" if failed_years else "success",
+                "outcome": outcome,
                 "record_count": record_count,
             },
         )

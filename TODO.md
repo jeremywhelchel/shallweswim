@@ -249,7 +249,7 @@ Notes:
   exact UTC interval; either changes serving data slightly.
 - NDBC historical windows are UTC days, so a station's "2011" serving frame
   begins at 19:00 local on 31 December 2010 and each year ends five hours
-  early; the archive hydration path trims to the station-local year, so the
+  early; the archive read trims to the station-local year, so the
   two paths differ by the leading five hours of the first year. Express NDBC
   historical windows in station-local days like CO-OPS and NWIS.
 - NDBC `_build_request_urls` still mixes a naive `datetime.now()` with UTC

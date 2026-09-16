@@ -361,6 +361,50 @@ The only per-request work that is not a lookup is the on-demand tide and
 current detail plot (`/api/{location}/plots/current_tide` and `/plots/tide`),
 drawn in the web server's process pool from the loaded frames.
 
+### Freshness of what is served
+
+Pending: every reading the conditions endpoint returns says how current it
+is, decided by the server so that every client shows the same thing, and
+the page changes how it presents a reading as it ages. Carry-forward keeps
+a feed's last frame in the bundle without limit, so without this a reading
+weeks old renders exactly like one minutes old, with only its timestamp to
+tell them apart.
+
+Observations, the live temperature and the observed currents, carry their
+observation time, as they do now, plus a `freshness` of `fresh`, `stale`, or
+`old`, and their age in seconds. The observation time and the value are
+always present: an old reading is still the last known reading. The
+thresholds are named constants next to the feed intervals they derive from:
+
+| Feed | `fresh` until | `stale` until | then `old` |
+| --- | --- | --- | --- |
+| live temperature | the feed's interval plus the health buffer, 25 minutes | 24 hours | |
+| observed currents | the feed's interval plus the health buffer, 25 minutes | 24 hours | |
+
+The page renders the three states differently: `fresh` as today, the value
+with its time; `stale` with the age made visible, "last reading 3 hours
+ago"; `old` with the headline no longer presenting the value as the current
+condition, and a secondary line keeping the last reading, its time, and its
+age. The historical plots are never marked: they are history by nature, and
+a missing recent stretch shows as the line ending.
+
+Predictions, tides and predicted currents, are not old, they are present or
+absent. A prediction is answered only when the requested time, now or the
+planner's time, lies inside the fetched window, the first through the last
+predicted instant the served frame holds; outside it the condition is
+absent and the page says there is no prediction for that time. Today a
+time past the end of the window is answered with the window's last row,
+which after a long job outage would present a days-old prediction as
+current.
+
+Why: observations degrade with age and predictions do not, which is why
+they get different rules; the thresholds derive from the intervals the
+pipeline already has, so they live in one table rather than in the
+frontend; and the decision is the server's, one field per condition, so
+the page and every embed do no clock arithmetic of their own. The job marks
+a feed stale at the same threshold, so the stale alert pages at the moment
+the page stops presenting the value as current.
+
 ## The archive
 
 The archive keeps every observation a provider has returned, at the provider's

@@ -213,6 +213,12 @@ Notes:
 
 ### Source Client Work
 
+- Re-enable the San Francisco live temperature feed (NDBC 46237,
+  `live_enabled=False` since 2026-09-16) once the buoy reports water
+  temperature again. Its last reading was 2026-08-03; waves and direction
+  kept arriving, so the temperature sensor failed rather than the buoy. Check
+  the `WTMP` column of <https://www.ndbc.noaa.gov/data/realtime2/46237.txt>;
+  the historical yearly files were unaffected and stay enabled.
 - Consider adding direct NDBC data-file availability checks to the debug script
   for configured stations and years. Prefer probing the same text files the
   runtime client consumes; avoid scraping NDBC station HTML pages unless direct

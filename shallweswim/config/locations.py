@@ -1393,6 +1393,11 @@ _CONFIG_LIST = [
                     "San Francisco Bar Buoy is outside the Golden Gate; "
                     "Aquatic Park is sheltered inside the bay."
                 ),
+                # The buoy has reported no water temperature since 2026-08-03
+                # (waves and direction still arrive, so the sensor is out, not
+                # the buoy); the live fetch failed every run for six weeks.
+                # Disabled 2026-09-16; see TODO.md to re-enable.
+                live_enabled=False,
                 # Earliest year the provider holds, from the 2026-09-15 backfill.
                 start_year=2007,
             )

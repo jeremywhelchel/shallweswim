@@ -256,7 +256,7 @@ Expected repository changes:
   sent as Docker build context
 - do not commit `frontend/dist`
 
-`cloudbuild.yaml` can probably remain structurally unchanged because it already
+`infra/cloudbuild.yaml` can probably remain structurally unchanged because it already
 delegates the build to `docker buildx build`. The Dockerfile should own the
 frontend build steps.
 

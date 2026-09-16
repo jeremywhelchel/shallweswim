@@ -3,7 +3,7 @@
 This directory applies Shall We Swim's user-defined log-based metrics, the
 operations dashboard, and the Terraform-managed alert policies. What they
 are, what they measure, and which of them notify anyone is in
-[MONITORING.md](../../MONITORING.md); this README is how to apply them. The
+[MONITORING.md](../MONITORING.md); this README is how to apply them. The
 module deliberately does not own Cloud Run, IAM, notification channels, the
 uptime check, or the alert policies that predate Terraform. Resources with
 `[Terraform]` in their display name or `Managed by Terraform` in their
@@ -13,38 +13,9 @@ Terraform defines extraction rules; it does not read logs. Cloud Logging
 creates metric samples only from entries written after a metric exists, so
 nothing is backfilled.
 
-## Observation archive bucket
-
-The observation archive is written by the scheduled capture job, not by the
-web service; `SHALLWESWIM_ARCHIVE_BUCKET` (a bucket name without `gs://`)
-names it, and `service.yaml` never sets it. Bucket creation is a one-time
-operator task outside this module. Load the local-operator credential and
-project through repo-local environment variables
-(`GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`,
-`CLOUDSDK_CORE_PROJECT`). Do not use `gcloud auth` or modify global
-configuration. Choose a globally unique bucket name and set
-`SHALLWESWIM_ARCHIVE_BUCKET` in the local environment first.
-
-```bash
-gcloud storage buckets create "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
-  --project="$CLOUDSDK_CORE_PROJECT" \
-  --location="$CLOUDSDK_RUN_REGION" \
-  --uniform-bucket-level-access \
-  --public-access-prevention
-```
-
-IAM for this bucket belongs to the job that uses it: creating the
-`shallweswim-capture` and `shallweswim-capture-invoker` identities, binding
-`roles/storage.objectUser` on the bucket to `shallweswim-capture` alone,
-deploying the job, and scheduling it are in
-[`../capture-job/README.md`](../capture-job/README.md). The web runtime
-identity must not be bound to this bucket: the capture job is the only
-production writer.
-
-Keep the archive separate from Terraform state. Do not add a lifecycle rule
-that deletes observation objects; observations are retained indefinitely. To
-stop capture, pause the scheduler job as described in the capture job
-runbook; archived data is unaffected.
+The observation archive bucket, its identities, and the job that writes it
+are in [`../README.md`](../README.md), the deployment guide; this module
+never touches that bucket. Keep Terraform state in its own bucket, below.
 
 ## State bootstrap
 

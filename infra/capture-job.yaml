@@ -1,16 +1,17 @@
 # Cloud Run Job configuration for the observation capture job
-# Deploy with: gcloud run jobs replace capture-job.yaml --region="$CLOUDSDK_RUN_REGION" (after the cloudbuild.yaml substitutions)
+# Deploy with: ./infra/build_and_deploy.sh from the repository root, which
+# substitutes the placeholders below and runs gcloud run jobs replace.
 # NOTE: ${IMAGE_TAG} and ${SHALLWESWIM_ARCHIVE_BUCKET} are substituted by
-# Cloud Build (see cloudbuild.yaml) before the file is applied. The archive
+# Cloud Build (see infra/cloudbuild.yaml) before the file is applied. The archive
 # bucket name differs per installation and is never hard-coded here.
 # This job is the only production writer to the archive bucket; the web
-# service (service.yaml) never sets SHALLWESWIM_ARCHIVE_BUCKET. It is also
+# service (infra/service.yaml) never sets SHALLWESWIM_ARCHIVE_BUCKET. It is also
 # the snapshot publisher: SHALLWESWIM_SNAPSHOT_PUBLISH=1 makes each run
 # publish a serving snapshot under published/ in the same bucket, and
 # SHALLWESWIM_ARCHIVE_READ_BUCKET (the same bucket) lets the historical
 # feed restore past years from the archive instead of refetching them. The
 # web service sets neither.
-# Operator runbook: infra/capture-job/README.md
+# Deployment guide: infra/README.md
 # Docs: https://cloud.google.com/run/docs/reference/yaml/v1
 apiVersion: run.googleapis.com/v1
 kind: Job

@@ -4,7 +4,9 @@
 
 substitutions:
   # Installation-local region, supplied by build_and_deploy.sh from
-  # CLOUDSDK_RUN_REGION; the repository hard-codes no region.
+  # CLOUDSDK_RUN_REGION; the repository hard-codes no region. The build is
+  # submitted from the repository root, which is the Docker context, so the
+  # manifests are read from infra/.
   _REGION: ""
   _SERVICE_NAME: "shallweswim"
   _IMAGE_NAME: "${_REGION}-docker.pkg.dev/${PROJECT_ID}/gcr/${_SERVICE_NAME}"
@@ -46,18 +48,18 @@ steps:
         if [ -z "${_ARCHIVE_BUCKET}" ] || [ -z "${_REGION}" ]; then
           echo "ERROR: the _ARCHIVE_BUCKET or _REGION substitution is empty." >&2
           echo "Set SHALLWESWIM_ARCHIVE_BUCKET and CLOUDSDK_RUN_REGION in the operator" >&2
-          echo "environment (see .env.example) and deploy with ./build_and_deploy.sh." >&2
+          echo "environment (see .env.example) and deploy with ./infra/build_and_deploy.sh." >&2
           exit 1
         fi
         sed -e "s|\$${IMAGE_TAG}|${BUILD_ID}|g" \
             -e "s|\$${SHALLWESWIM_ARCHIVE_BUCKET}|${_ARCHIVE_BUCKET}|g" \
             -e "s|\$${PROJECT_ID}|${PROJECT_ID}|g" \
             -e "s|\$${REGION}|${_REGION}|g" \
-            service.yaml > service-substituted.yaml
-        gcloud run services replace service-substituted.yaml --region=${_REGION}
+            infra/service.yaml > infra/service-substituted.yaml
+        gcloud run services replace infra/service-substituted.yaml --region=${_REGION}
 
   # Replace the capture job after the service deploy so the job never runs a
-  # stale image. See infra/capture-job/README.md for identities and scheduling.
+  # stale image. See infra/README.md for identities and scheduling.
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     id: cloud_run_capture_job_deploy
     entrypoint: bash
@@ -68,15 +70,15 @@ steps:
         if [ -z "${_ARCHIVE_BUCKET}" ] || [ -z "${_REGION}" ]; then
           echo "ERROR: the _ARCHIVE_BUCKET or _REGION substitution is empty." >&2
           echo "Set SHALLWESWIM_ARCHIVE_BUCKET and CLOUDSDK_RUN_REGION in the operator" >&2
-          echo "environment (see .env.example) and deploy with ./build_and_deploy.sh." >&2
+          echo "environment (see .env.example) and deploy with ./infra/build_and_deploy.sh." >&2
           exit 1
         fi
         sed -e "s|\$${IMAGE_TAG}|${BUILD_ID}|g" \
             -e "s|\$${SHALLWESWIM_ARCHIVE_BUCKET}|${_ARCHIVE_BUCKET}|g" \
             -e "s|\$${PROJECT_ID}|${PROJECT_ID}|g" \
             -e "s|\$${REGION}|${_REGION}|g" \
-            capture-job.yaml > capture-job-substituted.yaml
-        gcloud run jobs replace capture-job-substituted.yaml --region=${_REGION}
+            infra/capture-job.yaml > infra/capture-job-substituted.yaml
+        gcloud run jobs replace infra/capture-job-substituted.yaml --region=${_REGION}
 
 options:
   dynamic_substitutions: true

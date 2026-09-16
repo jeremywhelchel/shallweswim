@@ -1,9 +1,12 @@
 # Monitoring
 
-The metrics, alert policies, dashboard, uptime check, and log queries for the
-reference GCP deployment. DATA_PIPELINE.md owns what the pipeline's events
-mean; this document owns what is built on them. infra/monitoring/README.md
-says how to apply the Terraform that creates them.
+The reference deployment's monitoring on Google Cloud: the metrics, alert
+policies, dashboard, uptime check, and log queries built on the
+application's events. ARCHITECTURE.md "Logging" owns the events' shape and
+fields, DATA_PIPELINE.md owns what the pipeline's events mean, and this
+document owns what is built on them. [monitoring/README.md](monitoring/README.md)
+says how to apply the Terraform that creates them; [README.md](README.md) is
+the deployment itself.
 
 ## Shape
 
@@ -29,36 +32,14 @@ Four questions are kept separate, and each has its own signal:
 | Is a coherent generation being published and loaded? | publish, freshness, and load events |
 | Is each feed current enough for its purpose? | per-feed age thresholds |
 
-## Telemetry contract
+## Events
 
-Hosted processes set `SHALLWESWIM_LOG_FORMAT=json` (`service.yaml`,
-`capture-job.yaml`) so `logging_utils.py` emits one JSON object per line
-with `severity`, `message`, `logger`, `source`, and only the approved fields
-below. Local runs default to the console format. Under the JSON format the
-web server disables Uvicorn access logs, because Cloud Run writes its own
-request log for every request under `httpRequest`.
-
-The approved structured fields, `STRUCTURED_FIELDS` in `logging_utils.py`,
-are the only ones a log call may pass through `extra`:
-
-```text
-component operation location feed provider outcome run_id generation_id
-duration_ms record_count age_seconds attempt_count incoming_count new_count
-overlap_count revised_count source_identity observed_at
-```
-
-Every label is bounded: location codes, feed names, provider families, source
-identities from the configured citation keys, and short outcome sets. Station
-identifiers from requests, URLs, exception text, timestamps, and generation or
-run ids never become labels; they stay in the message or in fields no metric
-extracts.
-
-Severity keeps its plain meaning (ARCHITECTURE.md "Logging"): INFO for
-expected work, WARNING for handled degradation including a station that has
-no data, ERROR for a defect or an exhausted critical operation. An ERROR is
-visible but does not by itself page; the policies below decide that.
-
-### Events
+Both manifests set `SHALLWESWIM_LOG_FORMAT=json`, so each process emits one
+JSON object per line with `severity`, `message`, `logger`, `source`, and the
+approved structured fields listed in ARCHITECTURE.md "Logging", which also
+states the severity meanings and why no field is unbounded. Under that
+format the web server disables Uvicorn access logs, because Cloud Run writes
+its own request log for every request under `httpRequest`.
 
 One completion event per unit of work, with `component` and `operation`
 naming it and `outcome` from a short set. DATA_PIPELINE.md defines what each
@@ -317,8 +298,8 @@ gcloud logging read \
 ## Applying changes
 
 The metrics, the dashboard, and the twelve Terraform policies are applied
-from `infra/monitoring` with a dedicated Terraform identity;
-[infra/monitoring/README.md](infra/monitoring/README.md) is the how-to,
+from `monitoring/` with a dedicated Terraform identity;
+[monitoring/README.md](monitoring/README.md) is the how-to,
 including the state bucket, impersonation, the plan and apply commands, the
 mock-provider test, the ten-minute wait before a new metric's policies can be
 applied, and how a policy is promoted. Everything else here, the uptime check

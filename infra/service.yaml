@@ -1,8 +1,9 @@
 # Cloud Run service configuration
-# Deploy with: gcloud run services replace service.yaml --region="$CLOUDSDK_RUN_REGION" (after the cloudbuild.yaml substitutions)
+# Deploy with: ./infra/build_and_deploy.sh from the repository root, which
+# substitutes the placeholders below and runs gcloud run services replace.
 # NOTE: ${IMAGE_TAG} and ${SHALLWESWIM_ARCHIVE_BUCKET} are substituted by
-# Cloud Build (see cloudbuild.yaml) before the file is applied, exactly as they
-# are for capture-job.yaml.
+# Cloud Build (see infra/cloudbuild.yaml) before the file is applied, exactly as they
+# are for infra/capture-job.yaml.
 # SHALLWESWIM_SNAPSHOT_READ_BUCKET is a read-only variable, and it is required:
 # this service serves every request from the generations the capture job
 # publishes under published/, keeps them current, and never contacts a data

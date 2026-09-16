@@ -161,6 +161,8 @@ frontend/playwright-report/
 *.tfstate
 *.tfstate.*
 *.tfplan
+# Rendered by infra/cloudbuild.yaml inside the build; never committed
+infra/*-substituted.yaml
 crash.log
 crash.*.log
 override.tf

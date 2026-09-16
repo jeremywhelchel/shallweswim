@@ -2,7 +2,7 @@
 
 The job, the bundle, and the web servers. This document owns the rules for
 how observations are fetched, archived, published, and served. README.md says
-how to run each piece; ARCHITECTURE.md maps the code; MONITORING.md owns the
+how to run each piece; ARCHITECTURE.md maps the code; infra/MONITORING.md owns the
 metrics and alerts built on the events named here.
 
 ## Shape
@@ -62,8 +62,8 @@ unconditionally, so a local run can never reach the operator's bucket. In the
 reference deployment the job identity holds `roles/storage.objectUser` on the
 archive bucket and the web runtime and local operator identities hold
 `roles/storage.objectViewer`; the local operator opens itself an expiring
-write window for a backfill or a repair. infra/capture-job/README.md
-"Identities" defines each identity and what it may do.
+write window for a backfill or a repair. infra/README.md "Identities"
+defines each identity and what it may do.
 
 ## The job's cycle
 
@@ -423,7 +423,7 @@ how soon a due feed is noticed, not how often a feed is fetched.
 - A job crash from an application defect, a generation older than the
   freshness threshold, a failed publication or promotion, a web server that
   cannot load any generation, and unexpected `500`s are the page-worthy
-  conditions; MONITORING.md owns the policies.
+  conditions; infra/MONITORING.md owns the policies.
 - Health reports service health and data freshness separately, so one missing
   upstream series is never total application failure.
 - Overlapping job executions are safe: conditional promotion and the base
@@ -492,7 +492,7 @@ really reaches that far back.
   whenever every walk completed.
 
 It runs from an operator's machine against the archive bucket inside an
-operator write window (infra/capture-job/README.md "Identities"); the
+operator write window (infra/README.md "Identities"); the
 scheduled job keeps capturing meanwhile. Backfilling is a standing step: every new location is backfilled
 when it comes online (NEW_LOCATION.md).
 

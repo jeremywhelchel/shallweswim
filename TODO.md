@@ -305,7 +305,7 @@ Notes:
   returns to GitHub `main`. On 2026-09-14 the Cloud Build trigger was marked
   disabled and, because a disabled trigger still runs when Cloud Scheduler
   calls its run API (it deployed an older `main` twice over a
-  `build_and_deploy.sh` deploy), the Cloud Scheduler job in the deployment region that
+  `infra/build_and_deploy.sh` deploy), the Cloud Scheduler job in the deployment region that
   invokes it every eight hours was paused as well. Resuming means unpausing
   the scheduler job and clearing the trigger's disabled flag.
 - Evaluate Cloud Run second generation for performance, startup behavior, and

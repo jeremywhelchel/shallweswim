@@ -12,9 +12,9 @@ from pathlib import Path
 from shallweswim.snapshot.store import SNAPSHOT_READ_BUCKET_ENV_VAR
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVICE_YAML = (ROOT / "service.yaml").read_text()
-CAPTURE_JOB_YAML = (ROOT / "capture-job.yaml").read_text()
-CLOUDBUILD_YAML = (ROOT / "cloudbuild.yaml").read_text()
+SERVICE_YAML = (ROOT / "infra" / "service.yaml").read_text()
+CAPTURE_JOB_YAML = (ROOT / "infra" / "capture-job.yaml").read_text()
+CLOUDBUILD_YAML = (ROOT / "infra" / "cloudbuild.yaml").read_text()
 
 ARCHIVE_BUCKET_VAR = "SHALLWESWIM_ARCHIVE_BUCKET"
 ARCHIVE_READ_BUCKET_VAR = "SHALLWESWIM_ARCHIVE_READ_BUCKET"
@@ -66,7 +66,12 @@ def test_web_service_reads_snapshots_from_the_archive_bucket() -> None:
         == 2
     )
     # Both deploy steps refuse to deploy an empty substitution.
-    assert CLOUDBUILD_YAML.count('if [ -z "${_ARCHIVE_BUCKET}" ]; then') == 2
+    assert (
+        CLOUDBUILD_YAML.count(
+            'if [ -z "${_ARCHIVE_BUCKET}" ] || [ -z "${_REGION}" ]; then'
+        )
+        == 2
+    )
 
 
 def test_web_service_sets_the_variable_its_startup_requires() -> None:

@@ -107,7 +107,7 @@ The job, the bundle, and the web servers, with the archive and the rules that
 bind them, are documented in [DATA_PIPELINE.md](DATA_PIPELINE.md).
 
 The metrics, alert policies, dashboard, uptime check, and production log
-queries are documented in [MONITORING.md](MONITORING.md).
+queries are documented in [infra/MONITORING.md](infra/MONITORING.md).
 
 To add a new swim spot, start with [NEW_LOCATION.md](NEW_LOCATION.md). If the
 spot needs an unsupported upstream API or parser, use
@@ -259,19 +259,15 @@ Then visit <http://localhost:12345> in your browser.
 
 ## Deployment
 
-The application is hosted on Google Cloud Run:
+The application is portable: it needs an object store, a scheduled job, and
+web servers, and nothing outside `infra/` names a provider
+(ARCHITECTURE.md "Documentation"). [infra/README.md](infra/README.md) is the
+reference deployment on Google Cloud: the identities and grants, the bucket,
+the build and deploy, the service, the job and its schedule, manual runs,
+and pausing. Its deploy command is `./infra/build_and_deploy.sh`, run from
+the repository root.
 
-```bash
-# Deploy to Google Cloud Run
-./build_and_deploy.sh
-```
-
-The observation capture job is a separate bounded entry point
-(`python -m shallweswim.update`) deployed from the same image as a Cloud Run
-Job and triggered by Cloud Scheduler instead of running inside the web
-service. See the [capture job runbook](infra/capture-job/README.md).
-
-### Canonical URLs
+## Canonical URLs
 
 The canonical production host is `https://shallweswim.today`. The app redirects
 `www.shallweswim.today` to the apex host, exposes canonical tags on app and
@@ -719,10 +715,8 @@ hydration never fails startup. The web service manifest never sets this
 variable; the capture job sets it because publishing a snapshot hydrates the
 full historical range.
 
-See [archive setup](infra/monitoring/README.md#observation-archive-bucket) for
-the one-time bucket commands and the
-[capture job runbook](infra/capture-job/README.md) for the job identity,
-deployment, scheduling, and validation steps. The operations dashboard includes
+See [infra/README.md](infra/README.md) for the one-time bucket commands and
+the job identity, deployment, scheduling, and validation steps. The operations dashboard includes
 archive merges by outcome, capture runs and snapshot publishes per hour by
 outcome, maximum published feed age by feed, and new and revised observations
 per hour by source; bucket setup and job deployment are separate from applying
@@ -811,7 +805,7 @@ External data sources (NOAA CO-OPS, NOAA NDBC, USGS NWIS, CSPF, Marine Institute
 - **Health check (`/api/healthy`, alias `/api/health`)**: Returns 200 if at least one location can serve data. Single station outages don't mark the entire service unhealthy.
 - **Status endpoint (`/api/status`)**: Returns detailed per-feed status including `is_healthy`, `is_expired`, `age_seconds`, `consecutive_failures`, and the next scheduled fetch time. Historical temperature feeds also include year-level diagnostics for required, cached, missing, fetched, and failed years. Use this for granular monitoring and alerting.
 
-[MONITORING.md](MONITORING.md) owns the metrics, alert policies, dashboard,
+[infra/MONITORING.md](infra/MONITORING.md) owns the metrics, alert policies, dashboard,
 and log queries built on the application's events; they are applied with
 Terraform from [`infra/monitoring`](infra/monitoring/README.md).
 [ARCHITECTURE.md](ARCHITECTURE.md) covers station-outage handling.

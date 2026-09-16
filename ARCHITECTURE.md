@@ -44,15 +44,18 @@ tests/                   # Unit and integration tests
 frontend/                # React/Vite app source and frontend build tooling
 templates/               # Jinja2 HTML templates
 static/                  # CSS, JS, images
+infra/                   # Reference deployment on Google Cloud: guide, manifests,
+                         # build config, deploy script, monitoring document and Terraform
 ```
 
 **Backwards compatibility**: `api/__init__.py` and `config/__init__.py` re-export from `routes.py` and `locations.py` for import compatibility.
 
 **Subject documents**: [DATA_PIPELINE.md](DATA_PIPELINE.md) owns the job, the
-bundle, the web servers, and the archive; [MONITORING.md](MONITORING.md) owns
-the metrics, alert policies, dashboard, and log queries; [README.md](README.md)
-owns how to run and operate them. This document is the map and the coding
-standards.
+bundle, the web servers, and the archive; [README.md](README.md) owns how to
+run and operate them; [infra/README.md](infra/README.md) is the reference
+deployment on Google Cloud and [infra/MONITORING.md](infra/MONITORING.md) its
+metrics, alert policies, dashboard, and log queries. This document is the map
+and the coding standards.
 
 ### Entry Points And Store Locators
 
@@ -310,13 +313,29 @@ Two error types for data availability, at different layers:
   retain their own human-readable development format in console mode. JSON
   deployments disable Uvicorn access logs because the hosting platform emits
   richer native request logs; this avoids duplicate production request events.
-- Application code must not use a provider logging SDK. Only approved,
-  bounded-cardinality fields from `logging_utils.py` may be supplied through
-  `extra`; arbitrary fields could leak secrets or create unbounded log labels.
-- Each unit of pipeline work emits one structured completion event with a
-  bounded outcome; MONITORING.md lists the events and the metrics built on
-  them. Request starts and provider-specific details remain DEBUG diagnostics
-  rather than routine INFO events.
+- Application code must not use a provider logging SDK, call a monitoring
+  API, or export telemetry itself; it writes events to stdout and the
+  platform's extraction rules build metrics from them, so the same events
+  serve any backend. Only the approved fields, `STRUCTURED_FIELDS` in
+  `logging_utils.py`, may be supplied through `extra`:
+
+  ```text
+  component operation location feed provider outcome run_id generation_id
+  duration_ms record_count age_seconds attempt_count incoming_count new_count
+  overlap_count revised_count source_identity observed_at
+  ```
+
+  Every one is bounded: location codes, feed names, provider families,
+  source identities from the configured citation keys, and short outcome
+  sets. Station identifiers from requests, URLs, exception text,
+  timestamps, and generation or run ids never become fields; they stay in
+  the message, so no metric label is unbounded and no secret can leak.
+- Each unit of pipeline work emits one structured completion event, named by
+  `component` and `operation`, with `outcome` from a short set;
+  DATA_PIPELINE.md defines the pipeline's events and infra/MONITORING.md
+  maps each to the metrics built on it. Request starts and
+  provider-specific details remain DEBUG diagnostics rather than routine
+  INFO events.
 - Successful route-entry and response events rely on platform-native request
   logs rather than duplicate application INFO messages. Application logs record
   domain work, state changes, degraded availability, and failures.
@@ -352,8 +371,9 @@ Two error types for data availability, at different layers:
 - **One owning document per subject.** README.md is how to run and operate
   it. ARCHITECTURE.md is the map, the coding standards, and the pointers to
   the subject documents. DATA_PIPELINE.md owns the job, the bundle, and the
-  web servers. MONITORING.md owns the metrics, alert policies, dashboard,
-  and log queries. NEW_LOCATION.md and NEW_DATA_FEED.md are task guides.
+  web servers. infra/README.md owns the reference deployment and
+  infra/MONITORING.md its metrics, alert policies, dashboard, and log
+  queries. NEW_LOCATION.md and NEW_DATA_FEED.md are task guides.
   TODO.md holds open items only. A fact lives in one of these and the others
   point to it; never restate a contract in a second document.
 - **Reasons stay next to rules.** A design choice gets one paragraph of why
@@ -736,10 +756,12 @@ be tuned from production or local logs.
 
 ### Logging Guidelines
 
-- **WARNING**: expected operational issues, such as a station outage. Visible
-  in logs; no policy pages on it.
-- **ERROR**: an unexpected issue that needs attention, a potential bug or
-  provider change. Which policies page on it is in MONITORING.md.
+- **INFO**: expected work.
+- **WARNING**: expected operational issues, such as a station that has no
+  data. Visible in logs; no policy pages on it.
+- **ERROR**: an unexpected issue that needs attention, a potential bug,
+  provider change, or exhausted critical operation. An ERROR is visible but
+  does not by itself page; which policies page is in infra/MONITORING.md.
 
 ### Health Check (`/api/healthy`, `/api/health`)
 
@@ -773,7 +795,7 @@ be tuned from production or local logs.
 - Shows year-level `historic_temps` diagnostics, including required, cached,
   available, missing, fetched, and failed years
 - Read by people; the alerting signals are the structured events, not this
-  endpoint (MONITORING.md)
+  endpoint (infra/MONITORING.md)
 - Each location also reports the generation it was served from:
   `generation_id`, `published_at`, and `loaded_at`
 - The response is an empty object while no generation is loaded, which is what

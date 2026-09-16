@@ -292,8 +292,6 @@ Notes:
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
-- Move the homepage uptime check and its policy from the console into
-  `infra/monitoring`, the last monitoring resources not owned by Terraform.
 - The CO-OPS tide predictions client lets the provider's "No Predictions
   data was found" answer reach the date parser, which raises a ValueError
   and logs ERROR ("Unknown datetime string format") instead of the

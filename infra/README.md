@@ -64,6 +64,7 @@ purpose and never a side effect of running the app or the tests:
 | execute the capture job by hand, with argument overrides | `run.developer` |
 | manage monitoring by impersonating `shallweswim-terraform`: Terraform applies, and `gcloud ... --impersonate-service-account` for the few console-owned monitoring resources | `iam.serviceAccountTokenCreator` on that account |
 | open a bucket write window for itself | `bucketPolicyEditor` on the archive bucket, a custom role of `storage.buckets.getIamPolicy` and `storage.buckets.setIamPolicy` |
+| grant or revoke the application's own roles on the project, for the application's own identities | `resourcemanager.projectIamAdmin` conditioned with `modifiedGrantsByRole` to a fixed list of roles, below; it can never grant owner, editor, or anything outside the list |
 
 It cannot write the archive by default, so no local run or test can touch
 the archive by accident. For a backfill, a repair, or deleting bad objects, a
@@ -83,6 +84,33 @@ policy until someone removes it, which is harmless; remove it with the
 matching `remove-iam-policy-binding` and the same `--condition` when tidying.
 Conditional bindings require uniform bucket-level access, which the bucket
 below is created with.
+
+The project-level grant is bounded the same way, by a condition rather than
+by trust: the operator may add or remove a binding only for a role in the
+list, so it can give the Terraform account a monitoring role or the job
+identity a storage role, and nothing else. The list is the roles the
+application's identities use:
+
+```text
+roles/monitoring.editor  roles/monitoring.viewer  roles/logging.configWriter
+roles/logging.viewer  roles/storage.objectViewer  roles/storage.objectUser
+roles/run.developer  roles/run.invoker  roles/iam.serviceAccountTokenCreator
+```
+
+Granting it is an owner action, once, with the condition from a file
+because its expression contains commas:
+
+```bash
+cat > operator-grants.yaml <<'EOF'
+title: operator-grants-app-roles
+description: The local operator may grant or revoke only the application's own roles.
+expression: api.getAttribute("iam.googleapis.com/modifiedGrantsByRole", []).hasOnly(["roles/monitoring.editor","roles/monitoring.viewer","roles/logging.configWriter","roles/logging.viewer","roles/storage.objectViewer","roles/storage.objectUser","roles/run.developer","roles/run.invoker","roles/iam.serviceAccountTokenCreator"])
+EOF
+gcloud projects add-iam-policy-binding "$CLOUDSDK_CORE_PROJECT" \
+  --member="serviceAccount:shallweswim-local-operator@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
+  --role=roles/resourcemanager.projectIamAdmin \
+  --condition-from-file=operator-grants.yaml
+```
 
 ## The bucket
 

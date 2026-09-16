@@ -270,6 +270,7 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.archive_merge_failures,
         google_monitoring_alert_policy.application_errors,
         google_monitoring_alert_policy.request_5xx,
+        google_monitoring_alert_policy.homepage_uptime_failure,
         ], values(google_monitoring_alert_policy.snapshot_feed_freshness)) : (
         startswith(policy.display_name, "[Terraform] ") &&
         !strcontains(policy.display_name, "[Shadow]") &&
@@ -315,5 +316,15 @@ run "monitoring_plan" {
       strcontains(google_monitoring_alert_policy.request_5xx.conditions[0].condition_threshold[0].filter, "run.googleapis.com/request_count"),
     ])
     error_message = "The catch-all policies must cover both application resources, exclude request logs and 503s, and close on their own."
+  }
+
+  assert {
+    condition = alltrue([
+      google_monitoring_uptime_check_config.homepage.http_check[0].path == "/api/healthy?uptime",
+      google_monitoring_uptime_check_config.homepage.period == "60s",
+      google_monitoring_alert_policy.homepage_uptime_failure.conditions[0].condition_threshold[0].duration == "300s",
+      google_monitoring_alert_policy.homepage_uptime_failure.conditions[0].condition_threshold[0].evaluation_missing_data == "EVALUATION_MISSING_DATA_ACTIVE",
+    ])
+    error_message = "The uptime check probes the health endpoint every minute and its policy fires after five minutes of failure or missing data."
   }
 }

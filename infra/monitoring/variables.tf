@@ -27,3 +27,9 @@ variable "notification_channel_ids" {
   type        = list(string)
   default     = []
 }
+
+variable "site_host" {
+  description = "Public hostname the uptime check probes; the application's canonical host."
+  type        = string
+  default     = "shallweswim.today"
+}

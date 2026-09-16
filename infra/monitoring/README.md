@@ -1,11 +1,11 @@
 # GCP Monitoring Infrastructure
 
 This directory applies Shall We Swim's user-defined log-based metrics, the
-operations dashboard, and the Terraform-managed alert policies. What they
-are, what they measure, and which of them notify anyone is in
+operations dashboard, the uptime check, and the alert policies. What they
+are, what they measure, and what they notify is in
 [MONITORING.md](../MONITORING.md); this README is how to apply them. The
-module deliberately does not own Cloud Run, IAM, notification channels, the
-uptime check, or the alert policies that predate Terraform. Resources with
+module deliberately does not own Cloud Run, IAM, or notification
+channels. Resources with
 `[Terraform]` in their display name or `Managed by Terraform` in their
 description must not be edited in the GCP console.
 
@@ -48,8 +48,9 @@ identity. Grant it only:
 
 - `roles/storage.objectAdmin` on the state bucket
 - `roles/logging.configWriter` on the project
-- `roles/monitoring.dashboardEditor` on the project
-- `roles/monitoring.alertPolicyEditor` on the project
+- `roles/monitoring.editor` on the project, which covers every kind of
+  monitoring resource the module owns or may own: metrics, dashboards,
+  alert policies, uptime checks, channels
 - `roles/serviceusage.serviceUsageConsumer` on the project
 
 Store its credential outside version control and set

@@ -102,10 +102,9 @@ outcome set gained `held`.
 
 ## Alert policies
 
-Fifteen policies concern the application. Fourteen are Terraform's, in
-`monitoring/alert_policies.tf`, and all fourteen notify the project's
-channels (`mode=paging`). One, the uptime failure, predates Terraform and
-notifies the same channels from the console.
+Fifteen policies concern the application, all Terraform's, in
+`monitoring/alert_policies.tf` and `monitoring/uptime.tf`, and all fifteen
+notify the project's channels (`mode=paging`).
 
 Why they all page: each threshold was first run for forty hours of the
 ten-minute cadence with no channel attached, and none fired except the load
@@ -136,6 +135,7 @@ the operator's environment, so no address is in the repository.
 | Live plot availability latency | job | a `live_temps` plot event with `duration_ms` above 45 s; the harvest waits for the location's slowest fetch, so check the feed durations of the same run first | WARNING |
 | Application error | service and job | any application log entry at ERROR or above, request logs excluded; the application logs ERROR only for a defect or an exhausted critical operation, so this is the catch-all for failures no other policy anticipated; one notification an hour | ERROR |
 | Request 5xx | service | any response in a minute with a `5xx` status other than `503`, from Cloud Run's request count; `503` is the deliberate no-data answer | ERROR |
+| Homepage uptime failure | uptime check | the uptime check below fails for five minutes, with missing data counted as failure | CRITICAL |
 
 The freshness thresholds are each feed's interval plus fifteen minutes, the
 same rule `/api/status` applies. Every policy that compares a value with a
@@ -154,17 +154,6 @@ Only the two snapshot load policies watch the service resource, because
 loading is the web servers' work. Everything else is the job's: it is the
 only process that fetches feeds, draws scheduled plots, and writes the
 archive, so the feed, plot, archive, and run policies watch the job resource.
-
-### The console policy
-
-| Policy | Condition | Notifies |
-| --- | --- | --- |
-| Homepage uptime failure | the uptime check below fails for five minutes, with missing data counted as failure | email and phone |
-
-It is managed in the console with the uptime check it watches. Its two
-former neighbours, a project-wide error-log match that never closed and a
-5xx policy with the project id in its filter, are replaced by the
-application error and request 5xx policies above.
 
 ## Dashboard
 
@@ -192,8 +181,8 @@ static-IP checkers with a 30-second timeout, sends `X-HealthCheck: uptime`,
 and accepts any `2xx`. The request is plain HTTP, so each probe appears twice
 in the request log: the redirect and the HTTPS request that follows it. Its
 user agent is `GoogleStackdriverMonitoring-UptimeChecks`, which the queries
-below filter on. The check and its policy are managed in the console, not by
-Terraform.
+below filter on. The check and its policy are in `monitoring/uptime.tf`;
+the check was imported from the console so it kept its id and history.
 
 `/api/healthy` (alias `/api/health`) answers 200 while the instance has a
 loaded generation in which any location has data, and 503 otherwise, so one

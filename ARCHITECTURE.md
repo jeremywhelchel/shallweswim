@@ -432,6 +432,37 @@ Two error types for data availability, at different layers:
 
 ## 4. Documentation
 
+- **Current state only.** Every document in the repository describes the
+  system as it is. History is `git log`. No progress logs, no dated status
+  lines, no migration plans, no "implemented" markers, no design documents
+  kept after the work lands. When a section stops being true, fix it or
+  delete it in the same commit as the change that made it untrue.
+- **One owning document per subject.** README.md is how to run and operate
+  it. ARCHITECTURE.md is the map, the coding standards, and the pointers to
+  the subject documents. DATA_PIPELINE.md owns the job, the bundle, and the
+  web servers. MONITORING.md owns the metrics, alert policies, dashboard,
+  and log queries. NEW_LOCATION.md and NEW_DATA_FEED.md are task guides.
+  TODO.md holds open items only. A fact lives in one of these and the others
+  point to it; never restate a contract in a second document. Pending:
+  DATA_PIPELINE.md and MONITORING.md do not exist yet; their content still
+  sits in PERSISTENT_DATA_PIPELINE_DESIGN.md and OBSERVABILITY_DESIGN.md,
+  which are deleted once it has moved.
+- **Reasons stay next to rules.** A design choice gets one paragraph of why
+  inside the section that states it, so a reader meets the reason with the
+  rule. Alternatives considered, incidents, and cost estimates are not kept.
+- **Contract before code, in place.** A change is proposed by editing the
+  owning document to the intended state and marking that passage pending in
+  one line. It is reviewed there, implemented, and the marker is removed in
+  the commit that lands the code. Contracts never live anywhere else.
+- **A design document only for an effort in flight.** An effort that spans
+  more than one review-and-commit cycle and needs sequencing gets one file
+  in `design/`, and TODO.md points at it. It holds what the owning documents
+  cannot: the goal and the why, alternatives rejected, the slices and their
+  order, the rollout and cutover plan, open questions, and the effort's
+  decision log, dated status included. It never holds a contract; those go
+  into the owning documents as pending passages from the start. Deleting the
+  file is part of the effort's definition of done, in the commit that lands
+  its last slice. An empty `design/` means nothing is in flight.
 - **Docstrings**: Use Google-style docstrings for all functions and classes.
   - **Args**: List arguments and their types.
   - **Returns**: Describe the return value.

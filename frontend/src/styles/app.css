@@ -29,16 +29,19 @@ a {
   text-decoration: none;
 }
 
-/* Drift bar marker callout: subtle pulse toward the side that will change next. */
+/* Drift bar marker callout: subtle pulse toward the side that will change next.
+   The marker is centred on its point by Tailwind's translate utilities, which
+   set the `translate` property; `transform` composes with that, so these
+   frames carry only the pulse offset and must not restate the centring. */
 @keyframes drift-marker-left {
   0%,
   100% {
     box-shadow: 0 0 0 rgba(15, 23, 42, 0);
-    transform: translate(-50%, -50%);
+    transform: translateX(0);
   }
   50% {
     box-shadow: -6px 0 10px rgba(15, 23, 42, 0.32);
-    transform: translate(calc(-50% - 2px), -50%);
+    transform: translateX(-2px);
   }
 }
 
@@ -46,11 +49,11 @@ a {
   0%,
   100% {
     box-shadow: 0 0 0 rgba(15, 23, 42, 0);
-    transform: translate(-50%, -50%);
+    transform: translateX(0);
   }
   50% {
     box-shadow: 6px 0 10px rgba(15, 23, 42, 0.32);
-    transform: translate(calc(-50% + 2px), -50%);
+    transform: translateX(2px);
   }
 }
 

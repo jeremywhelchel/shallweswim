@@ -1,7 +1,9 @@
 locals {
-  cloud_run_resource_filter = "resource.type = \"cloud_run_revision\""
-  # The capture job is the archive's only production writer, so its policies
-  # watch the job resource rather than the web service revisions.
+  # The web servers load and serve generations, so the snapshot load policies
+  # watch the service revisions. Everything else the job does: it is the only
+  # process that fetches feeds, draws plots on a schedule, and writes the
+  # archive, so the feed, plot, archive, and run policies watch the job.
+  cloud_run_resource_filter     = "resource.type = \"cloud_run_revision\""
   cloud_run_job_resource_filter = "resource.type = \"cloud_run_job\""
   shadow_alert_labels = {
     managed_by = "terraform"
@@ -38,7 +40,7 @@ resource "google_monitoring_alert_policy" "live_feed_update_latency" {
     display_name = "Live feed-update p95 > 45s for 10m"
 
     condition_threshold {
-      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.feed_update_duration.name}\" AND ${local.cloud_run_resource_filter} AND metric.label.feed = \"live_temps\""
+      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.feed_update_duration.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.feed = \"live_temps\""
       comparison      = "COMPARISON_GT"
       threshold_value = 45000
       duration        = "600s"
@@ -74,7 +76,7 @@ resource "google_monitoring_alert_policy" "live_plot_availability_latency" {
     display_name = "Live plot availability p95 > 45s for 10m"
 
     condition_threshold {
-      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.plot_availability_latency.name}\" AND ${local.cloud_run_resource_filter} AND metric.label.feed = \"live_temps\""
+      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.plot_availability_latency.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.feed = \"live_temps\""
       comparison      = "COMPARISON_GT"
       threshold_value = 45000
       duration        = "600s"
@@ -110,7 +112,7 @@ resource "google_monitoring_alert_policy" "repeated_feed_failures" {
     display_name = "At least 3 feed failures in 10m"
 
     condition_threshold {
-      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.feed_updates.name}\" AND ${local.cloud_run_resource_filter} AND metric.label.outcome = \"failed\""
+      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.feed_updates.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.outcome = \"failed\""
       comparison      = "COMPARISON_GT"
       threshold_value = 2
       duration        = "0s"
@@ -146,7 +148,7 @@ resource "google_monitoring_alert_policy" "plot_generation_failure" {
     display_name = "Any plot generation failure"
 
     condition_threshold {
-      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.plot_generations.name}\" AND ${local.cloud_run_resource_filter} AND metric.label.outcome = \"failed\""
+      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.plot_generations.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.outcome = \"failed\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0
       duration        = "0s"

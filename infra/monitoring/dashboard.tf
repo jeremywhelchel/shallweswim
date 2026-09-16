@@ -20,7 +20,7 @@ resource "google_monitoring_dashboard" "operations" {
                 legendTemplate = "$${metric.labels.outcome}"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.feed_updates.name}\" AND resource.type=\"cloud_run_revision\""
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.feed_updates.name}\" AND resource.type=\"cloud_run_job\""
                     aggregation = {
                       alignmentPeriod    = "300s"
                       perSeriesAligner   = "ALIGN_SUM"
@@ -50,7 +50,7 @@ resource "google_monitoring_dashboard" "operations" {
                 legendTemplate = "$${metric.labels.feed}"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.feed_update_duration.name}\" AND resource.type=\"cloud_run_revision\""
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.feed_update_duration.name}\" AND resource.type=\"cloud_run_job\""
                     aggregation = {
                       alignmentPeriod    = "300s"
                       perSeriesAligner   = "ALIGN_PERCENTILE_95"
@@ -80,7 +80,7 @@ resource "google_monitoring_dashboard" "operations" {
                 legendTemplate = "$${metric.labels.outcome}"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.plot_generations.name}\" AND resource.type=\"cloud_run_revision\""
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.plot_generations.name}\" AND resource.type=\"cloud_run_job\""
                     aggregation = {
                       alignmentPeriod    = "300s"
                       perSeriesAligner   = "ALIGN_SUM"
@@ -111,7 +111,7 @@ resource "google_monitoring_dashboard" "operations" {
                 legendTemplate = "$${metric.labels.feed}"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.plot_availability_latency.name}\" AND resource.type=\"cloud_run_revision\""
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.plot_availability_latency.name}\" AND resource.type=\"cloud_run_job\""
                     aggregation = {
                       alignmentPeriod    = "300s"
                       perSeriesAligner   = "ALIGN_PERCENTILE_95"
@@ -141,7 +141,7 @@ resource "google_monitoring_dashboard" "operations" {
                 legendTemplate = "$${metric.labels.feed}"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.feed_records.name}\" AND resource.type=\"cloud_run_revision\""
+                    filter = "metric.type=\"${local.metric_prefix}/${google_logging_metric.feed_records.name}\" AND resource.type=\"cloud_run_job\""
                     aggregation = {
                       alignmentPeriod    = "300s"
                       perSeriesAligner   = "ALIGN_PERCENTILE_50"

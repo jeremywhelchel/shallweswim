@@ -134,6 +134,35 @@ run "monitoring_plan" {
   }
 
   assert {
+    condition = alltrue([
+      for policy in [
+        google_monitoring_alert_policy.live_feed_update_latency,
+        google_monitoring_alert_policy.live_plot_availability_latency,
+        google_monitoring_alert_policy.repeated_feed_failures,
+        google_monitoring_alert_policy.plot_generation_failure,
+      ] : strcontains(policy.conditions[0].condition_threshold[0].filter, "resource.type = \"cloud_run_job\"")
+    ])
+    error_message = "The feed and plot policies must watch the job resource; only the job fetches feeds and draws scheduled plots."
+  }
+
+  assert {
+    condition = alltrue([
+      for tile in jsondecode(google_monitoring_dashboard.operations.dashboard_json).mosaicLayout.tiles :
+      strcontains(try(tile.widget.xyChart.dataSets[0].timeSeriesQuery.timeSeriesFilter.filter, ""), "resource.type=\"cloud_run_job\"")
+      if anytrue([
+        for metric in [
+          google_logging_metric.feed_updates.name,
+          google_logging_metric.feed_update_duration.name,
+          google_logging_metric.feed_records.name,
+          google_logging_metric.plot_generations.name,
+          google_logging_metric.plot_availability_latency.name,
+        ] : strcontains(try(tile.widget.xyChart.dataSets[0].timeSeriesQuery.timeSeriesFilter.filter, ""), metric)
+      ])
+    ])
+    error_message = "The feed and plot dashboard tiles must watch the job resource, which is the only emitter of those events."
+  }
+
+  assert {
     condition = (
       google_monitoring_alert_policy.snapshot_load_failures.conditions[0].condition_threshold[0].threshold_value == 2 &&
       google_monitoring_alert_policy.snapshot_load_failures.conditions[0].condition_threshold[0].aggregations[0].alignment_period == "900s" &&

@@ -146,10 +146,10 @@ only what the job publishes, so it is the pipeline's dead-man switch.
 | Snapshot currents freshness | job | the same above 87300 s | WARNING |
 | Snapshot load lag | service | `snapshot_load_lag_seconds` p99 over an hour above 1800 s, three cadences; catches an instance whose refresh path is stuck, not a job that stopped publishing | WARNING |
 | Snapshot load failures | service | more than two `snapshot_loads` with outcome `failed` in fifteen minutes; one failure retries a check interval later, repeated ones mean the instance cannot read the store | WARNING |
-| Repeated feed failures | service | more than two `feed_updates` with outcome `failed` in ten minutes, per location and feed; `unavailable` is excluded | ERROR |
-| Plot generation failure | service | any `plot_generations` with outcome `failed` in five minutes | ERROR |
-| Live feed update latency | service | `feed_update_duration_ms` p95 for `live_temps` above 45 s for ten minutes | WARNING |
-| Live plot availability latency | service | `plot_availability_latency_ms` p95 for `live_temps` above 45 s for ten minutes | WARNING |
+| Repeated feed failures | job | more than two `feed_updates` with outcome `failed` in ten minutes, per location and feed; `unavailable` is excluded | ERROR |
+| Plot generation failure | job | any `plot_generations` with outcome `failed` in five minutes | ERROR |
+| Live feed update latency | job | `feed_update_duration_ms` p95 for `live_temps` above 45 s for ten minutes | WARNING |
+| Live plot availability latency | job | `plot_availability_latency_ms` p95 for `live_temps` above 45 s for ten minutes | WARNING |
 
 The freshness thresholds are each feed's interval plus fifteen minutes, the
 same rule `/api/status` applies. The job publishes every ten minutes, so an
@@ -158,11 +158,10 @@ is in effect its maximum. The heartbeat is an absence condition, and an
 absence condition evaluates only a metric that has produced data, so its
 silence means nothing until `updater_runs` has samples.
 
-The four service-scoped feed and plot policies watch
-`resource.type="cloud_run_revision"`, and the web servers emit no feed or
-plot events since they stopped fetching: the job emits them under the job
-resource. Those four policies therefore see nothing today. Rescoping them to
-the job is an open item in TODO.md.
+Only the two snapshot load policies watch the service resource, because
+loading is the web servers' work. Everything else is the job's: it is the
+only process that fetches feeds, draws scheduled plots, and writes the
+archive, so the feed, plot, archive, and run policies watch the job resource.
 
 ### Older policies
 
@@ -187,8 +186,8 @@ One dashboard, "Shall We Swim Operations [Terraform]", fifteen tiles from
 
 | Tiles | What they show |
 | --- | --- |
-| Feed updates per 5 minutes by outcome; feed update duration p95 by feed; published feed record count p50 by feed | the feed events, filtered to the service resource, which emits none since the web servers stopped fetching; empty until rescoped to the job (TODO.md) |
-| Plot completions per 5 minutes by outcome; plot availability latency p95 by feed | the plot events, filtered the same way and empty for the same reason |
+| Feed updates per 5 minutes by outcome; feed update duration p95 by feed; published feed record count p50 by feed | the job's feed events |
+| Plot completions per 5 minutes by outcome; plot availability latency p95 by feed | the job's plot events |
 | Capture runs per hour by outcome; snapshot publishes per hour by outcome; snapshot collections per hour by outcome | the job's run, publish, and sweep counters |
 | Archive merges per hour by outcome; archive merge duration p95 by source per hour | the merge counter and duration |
 | New observations per hour by source (estimated); revised observations per hour by source (estimated) | the row-count distributions, summed with the Monitoring Query Language's `sum_from`, because the plain widget cannot sum a distribution; the totals are histogram estimates, and the exact counts are in the merge events |

@@ -292,13 +292,6 @@ Notes:
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
-- Rescope the four feed and plot alert policies and the five feed and plot
-  dashboard tiles from the web service resource to the capture job. Since
-  the web servers stopped fetching, only the job emits `feed_update` and
-  `plot_generation` events, so those policies see nothing and those tiles
-  are empty (MONITORING.md). A filter change keeps the metric but counts
-  only entries written after it; if the change replaces a metric, its
-  policies need a second apply ten minutes later.
 - Promote the twelve Terraform alert policies once each has a reviewed
   baseline, starting with the capture job heartbeat, then retire the three
   older console policies that page on a single error.

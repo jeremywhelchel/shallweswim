@@ -348,7 +348,7 @@ the deployed job, and an interrupted session would leave the schedule running
 the expensive variant.
 
 The full-history repair ignores the published schedule so every feed fetches,
-with past years hydrated from the archive:
+and the historical feed serves its whole configured range from the archive:
 
 ```bash
 gcloud run jobs execute shallweswim-capture --region="$CLOUDSDK_RUN_REGION" --wait \

@@ -147,9 +147,13 @@ serves the web app from the same process, which loads each published generation
 the way the deployed service loads the job's.
 
 - `--store-dir PATH` keeps the archive and the published generations in a
-  directory. The next start hydrates historical years from that archive instead
-  of refetching every configured year, so a restart is fast. Without it the
-  store is in process memory and starts empty every run.
+  directory. Served history comes from that archive, so what one run captured
+  the next run still serves, and a fresh store holds only what its own cycles
+  have captured: the current year, from the first cycle on. To see a
+  location's full history locally, run the backfill once against the same
+  directory (`SHALLWESWIM_ARCHIVE_BUCKET=PATH ... --backfill-from --location
+  CODE`, see [Backfilling Deep History](#backfilling-deep-history)). Without
+  `--store-dir` the store is in process memory and starts empty every run.
 - `--cadence MINUTES` sets how often the cycle runs, ten minutes by default,
   which is the cadence the production job targets. The first cycle runs to
   completion during startup and its generation is loaded before the server
@@ -157,13 +161,12 @@ the way the deployed service loads the job's.
   only the feeds that are due, so the process fetches each feed once per
   interval.
 - `--historic-years N` limits the historical temperature range to the last N
-  years, counting the current one: the default 10 in 2026 fetches 2017 through
+  years, counting the current one: the default 10 in 2026 serves 2017 through
   2026. It exists because the configured ranges now reach back decades and a
-  fresh local store has no archive behind it, so the first cycle would
-  otherwise ask the providers for every configured year of every location at
-  once. Raise it, with `--store-dir`, when you want the deeper plots: that run
-  takes the one-time fetch and later starts hydrate those years from the
-  archive. The job and the deployed web service are unaffected.
+  fresh local store has an empty archive, so every year before the floor would
+  only be read and reported as a gap. Raise it, with `--store-dir`, when the
+  archive behind it holds those years. The job and the deployed web service are
+  unaffected.
 - `--reload` is not supported here, because the store lives in this process.
 
 ```bash
@@ -599,9 +602,9 @@ runs every ten minutes. `SHALLWESWIM_SNAPSHOT_PUBLISH=1` switches a run to the
 full serving cycle of every location, all four feeds including tide and current
 predictions, derived frames, and plots in a process pool, and then writes one
 immutable generation under `published/` in the archive bucket. Publishing also
-requires `SHALLWESWIM_ARCHIVE_READ_BUCKET`, set to the same bucket, so the
-historical feed hydrates past years from the archive instead of refetching
-them. The web service sets neither variable.
+requires `SHALLWESWIM_ARCHIVE_READ_BUCKET`, set to the same bucket, because the
+historical feed serves every year from the archive. The web service sets
+neither variable.
 
 ```bash
 SHALLWESWIM_SNAPSHOT_PUBLISH=1 \
@@ -660,10 +663,13 @@ SHALLWESWIM_SNAPSHOT_READ_BUCKET="$SHALLWESWIM_ARCHIVE_BUCKET" \
 It fetches every enabled location from the providers exactly as the job does,
 loads the current generation from the read bucket, and asks both sides the same
 questions at one location-local instant (now, or `--at`, applied as each
-location's own local time). It hydrates nothing: `SHALLWESWIM_ARCHIVE_BUCKET`
-and `SHALLWESWIM_ARCHIVE_READ_BUCKET` are removed from the run's environment
-even when `.env` sets them, so the legacy side is a pure provider fetch that
-writes nothing. Only the viewer credential is needed:
+location's own local time). It reads and writes no archive:
+`SHALLWESWIM_ARCHIVE_BUCKET` and `SHALLWESWIM_ARCHIVE_READ_BUCKET` are removed
+from the run's environment even when `.env` sets them, so the fetched side is a
+pure provider fetch that writes nothing. Served history comes from the archive
+alone, so with none to read that side holds no historical temperatures and the
+feed compares as `extra`; the live temperature, tide, and current comparisons
+are what the command is for. Only the viewer credential is needed:
 `roles/storage.objectViewer` on the bucket, the same grant the web service
 uses. A missing `SHALLWESWIM_SNAPSHOT_READ_BUCKET` fails as a usage error
 before any upstream request.
@@ -687,33 +693,29 @@ side; plot bytes are not compared, because the two sides draw different fetch
 windows.
 
 The command exits 0 only when every feed is `match`, `extra`, or `absent`, so it
-can run in a loop for days and its exit status is the verdict. Historical
-temperature frames should agree on overlap except where a provider revised a
-reading between the two fetches; investigate every such mismatch rather than
-loosening the rule.
+can run in a loop for days and its exit status is the verdict.
 
-##### Hydrating Historical Temperatures From The Archive
+##### Serving Historical Temperatures From The Archive
 
-`SHALLWESWIM_ARCHIVE_READ_BUCKET` makes a fetching process read historical
-temperature years from the archive instead of refetching them from the
-provider. Only fetching processes hydrate: the capture job, which sets it in
-its manifest, and a local run, which points it at the same local store as
-`--store-dir`, so a second start is fast. The deployed web service fetches
-nothing, so it never hydrates and never sets it.
+`SHALLWESWIM_ARCHIVE_READ_BUCKET` names the archive the historical temperature
+feed serves every year from, so it is required wherever that feed runs. Only
+fetching processes read it: the capture job, whose manifest sets it for a
+publishing run and which defaults it to `SHALLWESWIM_ARCHIVE_BUCKET` on a
+capture-only run, since both name the same store; and a local run, which points
+it at the same local store as `--store-dir`. The deployed web service fetches
+nothing, so it never sets it.
 
 `SHALLWESWIM_ARCHIVE_READ_BUCKET` is independent of
 `SHALLWESWIM_ARCHIVE_BUCKET`, which remains the only variable that enables
 writes. Hydration calls only the store's read operation, so the local
 credential needs no more than `roles/storage.objectViewer` on the bucket. The
-current year and any year the archive does not hold still fetch from the
-provider, and hydrated years are never captured back. Archived partitions are
-UTC years, so hydrating a station-local year reads that year's partition and the
-next one and keeps the rows inside the local year; its final local hours are
-served exactly as a provider fetch would return them. A failed read or
-validation for one year logs a warning and leaves that year to the provider, so
-hydration never fails startup. The web service manifest never sets this
-variable; the capture job sets it because publishing a snapshot hydrates the
-full historical range.
+feed's own fetch is one top-up of the current year, which is captured and then
+read back like every other year. Archived partitions are UTC years, so reading
+a station-local year reads that year's partition and the next one and keeps the
+rows inside the local year; its final local hours are served exactly as a
+provider fetch would return them. A year the archive lacks, or one whose read
+or validation fails, logs a warning and is a gap in the frame and the plots,
+never a failed feed.
 
 See [infra/README.md](infra/README.md) for the one-time bucket commands and
 the job identity, deployment, scheduling, and validation steps. The operations dashboard includes

@@ -586,11 +586,15 @@ def _isolate_legacy() -> None:
     """Make the legacy side a pure provider fetch that writes nothing.
 
     The comparison exists to prove the bundle equals what the providers return
-    right now, so the historical feed must not hydrate past years from the
-    archive: `SHALLWESWIM_ARCHIVE_READ_BUCKET` is removed from this process's
-    environment even when the operator's `.env` sets it for ordinary local
-    runs. The write bucket is removed too, because a comparison run must never
-    add to the archive.
+    right now, so neither archive variable reaches this process, even when the
+    operator's `.env` sets them for ordinary local runs: the fetched side must
+    read nothing from the archive and add nothing to it.
+
+    Served history now comes from the archive alone, so with no archive to read
+    the fetched side holds no historical temperatures at all and that feed
+    compares as `extra`, the outcome for a feed only the bundle has. The live
+    temperature, tide, and current comparisons are unaffected and remain what
+    this command is for.
     """
     os.environ.pop(ARCHIVE_READ_BUCKET_ENV_VAR, None)
     os.environ.pop(ARCHIVE_BUCKET_ENV_VAR, None)

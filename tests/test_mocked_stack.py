@@ -30,6 +30,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from shallweswim import api
+from shallweswim.archive.store import MEMORY_LOCATOR, memory_store
 from shallweswim.clients.base import StationUnavailableError
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.ndbc import NdbcApi
@@ -254,8 +255,22 @@ class MockNdbcApi(NdbcApi):
 # =============================================================================
 
 
+@pytest.fixture
+def memory_archive(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Point the archive variables at an empty in-process store.
+
+    The historical temperature feed serves every year from the archive, so a
+    manager that is expected to hold history needs one to read and write.
+    """
+    memory_store.cache_clear()
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", MEMORY_LOCATOR)
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", MEMORY_LOCATOR)
+    yield
+    memory_store.cache_clear()
+
+
 @pytest_asyncio.fixture
-async def mock_api_client() -> AsyncGenerator[TestClient]:
+async def mock_api_client(memory_archive: None) -> AsyncGenerator[TestClient]:
     """Create test client serving a generation published from mock API clients.
 
     This fixture waits for all data to be loaded, publishes it as a generation,

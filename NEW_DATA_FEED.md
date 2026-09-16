@@ -107,7 +107,13 @@ Typical steps:
 4. Map expected no-data conditions to `StationUnavailableError`.
 5. Map provider schema drift or parse failures to client-specific data errors.
 6. Add a source config model in `shallweswim/config/locations.py`.
-7. Add a feed wrapper and factory branch in `shallweswim/core/feeds.py`.
+7. Add a feed class and factory branch in `shallweswim/core/feeds.py`. An
+   observation feed also names its provider product: add the constant to
+   `shallweswim/archive/observations.py`, return it from the feed's
+   `archive_product`, and rank it in `archive/merge.py`'s `PRODUCT_RANKS`
+   (DATA_PIPELINE.md "Merge semantics"). One product per provider is the
+   normal case; two only when the provider publishes the same instant twice
+   and one of them is more authoritative.
 8. Register the client in `shallweswim/api/routes.py`.
 9. Add a debug script in `shallweswim/scripts/` if this is a new provider.
 

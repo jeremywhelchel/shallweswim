@@ -8,8 +8,48 @@ from io import BytesIO
 
 import pandas as pd
 
-from shallweswim.archive.observations import normalize_archive_frame, read_observations
+from shallweswim.archive.observations import (
+    COOPS_HOURLY_PRODUCT,
+    COOPS_SIX_MINUTE_PRODUCT,
+    CSPF_PRODUCT,
+    IRISH_LIGHTS_PRODUCT,
+    NDBC_FILES_PRODUCT,
+    NDBC_REALTIME_PRODUCT,
+    NWIS_PRODUCT,
+    PRODUCT_COLUMN,
+    normalize_archive_frame,
+    read_observations,
+)
 from shallweswim.archive.store import ObjectStore, VersionConflictError
+
+# How authoritative each provider product is about an instant it reports. A
+# merge only ever compares rows of one source identity, so ranks are compared
+# only within one provider and equal numbers across providers never meet.
+#
+# NDBC's monthly and yearly files are quality controlled after the fact, so they
+# supersede the realtime file the same station's rows may have come from first.
+# CO-OPS's hourly product is the on-the-hour sample of its six-minute product,
+# so neither supersedes the other. Every other provider publishes one product,
+# which is trivially its own rank.
+PRODUCT_RANKS: dict[str, int] = {
+    NDBC_FILES_PRODUCT: 2,
+    NDBC_REALTIME_PRODUCT: 1,
+    COOPS_HOURLY_PRODUCT: 1,
+    COOPS_SIX_MINUTE_PRODUCT: 1,
+    NWIS_PRODUCT: 1,
+    CSPF_PRODUCT: 1,
+    IRISH_LIGHTS_PRODUCT: 1,
+}
+
+# A row whose product the table does not name, including one archived before the
+# column existed, ranks below every named product, so one capture with a known
+# product supersedes it.
+UNRANKED_PRODUCT = 0
+
+
+def _product_ranks(products: pd.Series) -> pd.Series:
+    """Return each row's product rank, unranked where the product is unknown."""
+    return products.map(PRODUCT_RANKS).fillna(UNRANKED_PRODUCT).astype("int64")
 
 
 class ArchiveIntegrityError(Exception):
@@ -59,7 +99,7 @@ def _parquet_bytes(frame: pd.DataFrame) -> bytes:
         output,
         index=False,
         engine="pyarrow",
-        use_dictionary=["unit"],
+        use_dictionary=["unit", PRODUCT_COLUMN],
     )
     return output.getvalue()
 
@@ -75,9 +115,12 @@ def _prepare_merge(
 
     The deduplication key is `observed_at`; source identity is fixed per
     partition. A key absent from the partition is new. A key whose stored value
-    is identical keeps the stored row, including its original `retrieved_at`. A
-    key whose stored value differs is decided by the newest `retrieved_at`, and
-    an equally recent differing claim is an integrity conflict.
+    is identical keeps the stored row, including its original `retrieved_at` and
+    product. A key whose stored value differs is decided first by product rank,
+    so a higher-ranked product replaces a lower-ranked one whichever was fetched
+    first; within one rank the newest `retrieved_at` wins, which is a provider
+    revising its own reading; an equally recent differing claim of the same rank
+    is an integrity conflict.
     """
     if stored_data is None:
         current = incoming.iloc[0:0].copy()
@@ -91,19 +134,31 @@ def _prepare_merge(
     stored_value = stored["value"].reindex(keys).to_numpy()
     stored_retrieved = stored["retrieved_at"].reindex(keys).to_numpy()
 
+    incoming_rank = _product_ranks(incoming[PRODUCT_COLUMN]).to_numpy()
+    stored_rank = _product_ranks(
+        stored[PRODUCT_COLUMN].reindex(keys).astype("string")
+    ).to_numpy()
+
     matched = ~pd.isna(stored_value)
     differing = matched & (incoming["value"].to_numpy() != stored_value)
-    conflicting = differing & (incoming["retrieved_at"].to_numpy() == stored_retrieved)
+    equally_ranked = differing & (incoming_rank == stored_rank)
+    conflicting = equally_ranked & (
+        incoming["retrieved_at"].to_numpy() == stored_retrieved
+    )
     if conflicting.any():
         raise ArchiveIntegrityError(source_identity, keys.iloc[conflicting.argmax()])
 
     new = ~matched
-    revised = differing & (incoming["retrieved_at"].to_numpy() > stored_retrieved)
+    # A higher-ranked product supersedes whatever is stored whenever it was
+    # fetched; within one rank, retrieval order decides.
+    revised = (differing & (incoming_rank > stored_rank)) | (
+        equally_ranked & (incoming["retrieved_at"].to_numpy() > stored_retrieved)
+    )
     new_count = int(new.sum())
     revised_count = int(revised.sum())
     # Overlapping means "did not change the partition": rows identical to the
     # stored row, and differing rows the stored row already supersedes because
-    # it was retrieved more recently.
+    # its product ranks higher, or ranks equal and it was retrieved later.
     overlap_count = len(incoming) - new_count - revised_count
 
     replacements = new | revised

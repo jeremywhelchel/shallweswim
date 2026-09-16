@@ -32,6 +32,22 @@ CURRENTS_MEASUREMENT = "currents"
 CURRENTS_VALUE_COLUMN = "velocity"
 CURRENTS_UNIT = "kt"
 
+# The provider products the archive records, one name per way a provider
+# publishes a reading. Capture writes the product of the fetch that returned a
+# row, and `archive/merge.py` ranks them per provider. They are named here, with
+# the column they fill, because the merge writer and the feeds that state them
+# both read them and the archive layer imports neither `core/` nor `clients/`.
+COOPS_HOURLY_PRODUCT = "coops:h"
+COOPS_SIX_MINUTE_PRODUCT = "coops:6-min"
+NDBC_FILES_PRODUCT = "ndbc:files"
+NDBC_REALTIME_PRODUCT = "ndbc:realtime"
+NWIS_PRODUCT = "nwis"
+CSPF_PRODUCT = "cspf"
+IRISH_LIGHTS_PRODUCT = "irish-lights"
+
+# The column those products are written to.
+PRODUCT_COLUMN = "product"
+
 
 def validate_source_identity(source_identity: str, measurement: str) -> tuple[str, str]:
     """Return the provider and station of a source identity for this measurement.
@@ -73,8 +89,8 @@ def partition_key(source_identity: str, measurement: str, year: int) -> str:
 
 # Additive nullable fields belong here and in ObservationModel when the archive
 # contract grows. The reader fills fields absent from older Parquet objects before
-# Pandera validation.
-_ADDITIVE_NULLABLE_COLUMNS: dict[str, str] = {}
+# Pandera validation, so a row written before a field existed reads back as null.
+_ADDITIVE_NULLABLE_COLUMNS: dict[str, str] = {PRODUCT_COLUMN: "string"}
 
 
 class ObservationModel(pa.DataFrameModel):
@@ -88,6 +104,9 @@ class ObservationModel(pa.DataFrameModel):
     retrieved_at: pa_typing.Series[Annotated[pd.DatetimeTZDtype, "ns", "UTC"]] = (
         pa.Field(nullable=False)
     )
+    # Null for every row archived before the column existed; those rows rank
+    # below every named product in a merge.
+    product: pa_typing.Series[pd.StringDtype] = pa.Field(nullable=True)
 
     class Config:  # type: ignore[misc]
         """Require the exact, ordered archive schema without coercion."""
@@ -116,6 +135,7 @@ def normalize_observations(
     value_column: str,
     unit: str,
     retrieved_at: datetime.datetime,
+    product: str | None = None,
 ) -> NormalizedObservations:
     """Convert a client's scalar values and UTC instants to archive rows.
 
@@ -126,6 +146,14 @@ def normalize_observations(
     A repeated UTC instant keeps its first row. A repeat that claims a different
     value is also dropped, but counted separately so the discarded claim is
     visible rather than silent.
+
+    Args:
+        frame: The client frame, indexed by timezone-aware UTC instants.
+        value_column: The frame column holding the scalar value.
+        unit: The canonical unit every row carries.
+        retrieved_at: When this fetch happened.
+        product: The provider product this fetch returned, written on every
+            row; None leaves the column null, which ranks below every product.
 
     Raises:
         ValueError: If the value column is missing, the unit is empty, or the
@@ -173,6 +201,11 @@ def normalize_observations(
             "retrieved_at": pd.Series(
                 retrieved, index=range(len(observations)), dtype="datetime64[ns, UTC]"
             ),
+            PRODUCT_COLUMN: pd.Series(
+                product if product is not None else pd.NA,
+                index=range(len(observations)),
+                dtype="string",
+            ),
         }
     )
     return NormalizedObservations(
@@ -187,6 +220,8 @@ def normalize_archive_frame(frame: pd.DataFrame, *, expected_unit: str) -> pd.Da
     for column, dtype in _ADDITIVE_NULLABLE_COLUMNS.items():
         if column not in normalized.columns:
             normalized[column] = pd.Series(pd.NA, index=normalized.index, dtype=dtype)
+        else:
+            normalized[column] = normalized[column].astype(dtype)
 
     missing = set(OBSERVATION_COLUMNS) - set(normalized.columns)
     if missing:

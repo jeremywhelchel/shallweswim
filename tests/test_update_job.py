@@ -8,6 +8,7 @@ in-memory object store rather than mocked out.
 import asyncio
 import datetime
 import logging
+import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -318,15 +319,23 @@ def test_default_run_limits_history_to_current_year(
     assert coops_client.historic_temperature_calls == 1
 
 
-def test_full_history_flag_fetches_configured_range(
+def test_full_history_flag_widens_the_served_range_not_the_fetch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    coops_client, _, _ = _install_job_environment(
+    """The flag chooses which years are served, not how many are fetched."""
+    coops_client, _, store = _install_job_environment(
         monkeypatch, [MULTI_YEAR_HISTORY_CONFIG]
     )
 
     assert update.main(["--full-history"]) == 0
-    assert coops_client.historic_temperature_calls == utc_now().year - 2024 + 1
+
+    # The top-up fetches this year whatever range the feed serves; the earlier
+    # configured years come from the archive, and are gaps until a backfill
+    # puts them there.
+    assert coops_client.historic_temperature_calls == 1
+    assert [key for key in store._objects if key.startswith("archive/")] == [
+        f"archive/temperature/coops/6666666/{utc_now().year}.parquet"
+    ]
 
 
 def test_past_history_range_is_skipped_without_failing(
@@ -522,11 +531,12 @@ def test_publish_run_writes_one_generation_with_every_feed_and_plot(
 
     assert exit_code == 0
     # The full serving cycle fetches the prediction feeds the capture-only
-    # path skips, and the full historical range without --full-history.
+    # path skips. The historical feed serves the full configured range from the
+    # archive and fetches only its top-up year, once per location.
     assert coops_client.tides_calls == 2
     assert coops_client.currents_calls == 1
     assert nwis_client.currents_calls == 1
-    assert coops_client.historic_temperature_calls == 2 * (utc_now().year - 2011 + 1)
+    assert coops_client.historic_temperature_calls == 2
     # Archive capture still runs inside the feed updates.
     assert len(_archived_rows(store, TEMPERATURE_KEY, TEMPERATURE_UNIT)) == 24
     assert len(_archived_rows(store, CURRENTS_KEY, CURRENTS_UNIT)) == 24
@@ -1099,6 +1109,10 @@ def test_publish_disabled_keeps_the_capture_only_path(
     assert coops_client.currents_calls == 0
     pool_factory.assert_not_called()
     assert _published_keys(store, "published/") == []
+    # The historical feed serves from the archive here too, so the run names
+    # the read locator itself rather than requiring a second variable.
+    assert os.environ["SHALLWESWIM_ARCHIVE_READ_BUCKET"] == "test-archive"
+    assert coops_client.historic_temperature_calls == 1
 
 
 # =============================================================================

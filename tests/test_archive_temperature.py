@@ -8,7 +8,9 @@ import pandera.errors
 import pytest
 
 from shallweswim.archive.observations import (
+    COOPS_HOURLY_PRODUCT,
     OBSERVATION_COLUMNS,
+    PRODUCT_COLUMN,
     TEMPERATURE_UNIT,
     TEMPERATURE_VALUE_COLUMN,
     NormalizedObservations,
@@ -16,6 +18,10 @@ from shallweswim.archive.observations import (
     normalize_observations,
     read_observations,
 )
+
+# Every column a partition written today carries: the four required ones and
+# the nullable product added under the schema evolution rule.
+ARCHIVE_COLUMNS = (*OBSERVATION_COLUMNS, PRODUCT_COLUMN)
 
 
 def _temperature_frame(times: list[str]) -> pd.DataFrame:
@@ -27,20 +33,27 @@ def _temperature_frame(times: list[str]) -> pd.DataFrame:
 
 
 def _normalize_result(
-    frame: pd.DataFrame, *, retrieved_at: datetime.datetime
+    frame: pd.DataFrame,
+    *,
+    retrieved_at: datetime.datetime,
+    product: str | None = COOPS_HOURLY_PRODUCT,
 ) -> NormalizedObservations:
     return normalize_observations(
         frame,
         value_column=TEMPERATURE_VALUE_COLUMN,
         unit=TEMPERATURE_UNIT,
         retrieved_at=retrieved_at,
+        product=product,
     )
 
 
 def _normalize_temperature(
-    frame: pd.DataFrame, *, retrieved_at: datetime.datetime
+    frame: pd.DataFrame,
+    *,
+    retrieved_at: datetime.datetime,
+    product: str | None = COOPS_HOURLY_PRODUCT,
 ) -> pd.DataFrame:
-    return _normalize_result(frame, retrieved_at=retrieved_at).frame
+    return _normalize_result(frame, retrieved_at=retrieved_at, product=product).frame
 
 
 def test_temperature_archive_schema_contract() -> None:
@@ -52,12 +65,30 @@ def test_temperature_archive_schema_contract() -> None:
         retrieved_at=datetime.datetime(2026, 1, 15, 17, 10),
     )
 
-    assert tuple(frame.columns) == OBSERVATION_COLUMNS
+    assert tuple(frame.columns) == ARCHIVE_COLUMNS
     assert str(frame.dtypes["observed_at"]) == "datetime64[ns, UTC]"
     assert str(frame.dtypes["value"]) == "float64"
     assert str(frame.dtypes["unit"]) == "string"
     assert str(frame.dtypes["retrieved_at"]) == "datetime64[ns, UTC]"
+    assert str(frame.dtypes[PRODUCT_COLUMN]) == "string"
     assert frame["unit"].tolist() == ["F", "F"]
+    assert frame[PRODUCT_COLUMN].tolist() == [COOPS_HOURLY_PRODUCT] * 2
+
+
+def test_product_is_nullable_for_objects_written_without_it() -> None:
+    """An object from before the column reads back with a null product."""
+    frame = _normalize_temperature(
+        _temperature_frame(["2026-01-15 12:00"]),
+        retrieved_at=datetime.datetime(2026, 1, 15, 17, 10),
+    ).drop(columns=[PRODUCT_COLUMN])
+
+    restored = read_observations(
+        BytesIO(_to_parquet_bytes(frame)), expected_unit=TEMPERATURE_UNIT
+    )
+
+    assert tuple(restored.columns) == ARCHIVE_COLUMNS
+    assert restored[PRODUCT_COLUMN].isna().all()
+    assert str(restored.dtypes[PRODUCT_COLUMN]) == "string"
 
 
 def test_resampling_gaps_are_not_archived_as_observations() -> None:
@@ -85,7 +116,7 @@ def test_all_nan_frame_yields_empty_valid_archive_frame() -> None:
     )
 
     assert frame.empty
-    assert tuple(frame.columns) == OBSERVATION_COLUMNS
+    assert tuple(frame.columns) == ARCHIVE_COLUMNS
     ObservationModel.validate(frame, lazy=True)
 
 
@@ -221,6 +252,7 @@ def test_pandera_model_rejects_timezone_naive_timestamps() -> None:
             "value": pd.Series([60.0], dtype="float64"),
             "unit": pd.Series(["F"], dtype="string"),
             "retrieved_at": pd.to_datetime(["2026-01-15 17:10"]),
+            PRODUCT_COLUMN: pd.Series([COOPS_HOURLY_PRODUCT], dtype="string"),
         }
     )
 

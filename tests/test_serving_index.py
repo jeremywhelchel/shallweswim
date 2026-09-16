@@ -2,15 +2,15 @@
 
 import datetime
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pandas as pd
 import pytest
 import pytz
 
 from shallweswim import config
-from shallweswim.archive.capture import CaptureResult
-from shallweswim.clients.base import BaseApiClient
+from shallweswim.archive.capture import CaptureResult, capture_observations
+from shallweswim.archive.store import MEMORY_LOCATOR, memory_store
 from shallweswim.core import feeds
 
 EASTERN = pytz.timezone("US/Eastern")
@@ -123,55 +123,37 @@ async def test_update_serves_naive_and_captures_utc(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_historical_fetch_serves_naive_and_captures_utc(monkeypatch) -> None:
-    """Per-year UTC frames serve as hourly local rows and capture unconverted."""
-    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", "test-archive")
+async def test_historical_top_up_captures_utc_and_serves_naive(monkeypatch) -> None:
+    """The top-up captures the UTC frame; the archive serves it back as local."""
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", MEMORY_LOCATOR)
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", MEMORY_LOCATOR)
+    memory_store.cache_clear()
     captured: list[pd.DataFrame] = []
+    real_capture = capture_observations
 
     async def record(*args: Any, **kwargs: Any) -> CaptureResult:
         captured.append(kwargs["frame"])
-        return CaptureResult(0, 0)
+        return await real_capture(*args, **kwargs)
 
     monkeypatch.setattr(feeds, "capture_observations", record)
 
-    location = _location()
+    year = feeds.utc_now().year
     historical = feeds.HistoricalTempsFeed(
-        location_config=location,
+        location_config=_location(),
         feed_config=config.CoopsTempFeedConfig(station=8518750),
-        start_year=2024,
-        end_year=2025,
+        start_year=year,
+        end_year=year,
         expiration_interval=datetime.timedelta(hours=3),
     )
+    frame = _utc_frame(
+        f"{year}-06-02 04:00", f"{year}-06-02 08:00", "10min", f"{year}-06-02 06:00"
+    )
+    monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=frame))
 
-    class YearFeed(feeds.Feed):
-        """Stand-in for a per-year client feed returning UTC instants."""
-
-        year: int
-
-        @property
-        def data_model(self) -> Any:
-            return historical.data_model
-
-        async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
-            return _utc_frame(
-                f"{self.year}-11-02 04:00",
-                f"{self.year}-11-02 08:00",
-                "10min",
-                f"{self.year}-11-02 06:00",
-            )
-
-    year_feeds: list[feeds.Feed] = [
-        YearFeed(
-            location_config=location,
-            feed_config=config.CoopsTempFeedConfig(station=8518750),
-            expiration_interval=datetime.timedelta(hours=3),
-            year=year,
-        )
-        for year in (2024, 2025)
-    ]
-
-    with patch.object(historical, "_get_feeds", return_value=year_feeds):
+    try:
         result = await historical._fetch(clients={})
+    finally:
+        memory_store.cache_clear()
 
     assert result.index.tz is None
     assert result.index.is_unique
@@ -179,5 +161,8 @@ async def test_historical_fetch_serves_naive_and_captures_utc(monkeypatch) -> No
     assert result.index.name == "time"
     assert (result.index.minute == 0).all()
 
-    assert len(captured) == 2
-    assert all(frame.index.tz is not None for frame in captured)
+    # One capture, of the unconverted client frame; the served rows above came
+    # back out of the archive rather than from this frame.
+    assert len(captured) == 1
+    assert captured[0].index.tz is not None
+    pd.testing.assert_frame_equal(captured[0], frame)

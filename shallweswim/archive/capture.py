@@ -31,10 +31,12 @@ def _partitions(
     value_column: str,
     unit: str,
     retrieved_at: datetime.datetime,
+    product: str,
 ) -> list[tuple[str, pd.DataFrame]]:
     """Normalize the UTC client frame and partition by UTC year.
 
-    Source identity is preserved in the partition key prefix.
+    Source identity is preserved in the partition key prefix, and every row
+    records the product the fetch returned, which the merge ranks.
     """
     # Reject a mismatched identity before normalization, so the failure names
     # the identity rather than the value column that identity would not carry.
@@ -44,6 +46,7 @@ def _partitions(
         value_column=value_column,
         unit=unit,
         retrieved_at=retrieved_at,
+        product=product,
     )
     if normalized.conflicting_dropped:
         logging.warning(
@@ -74,6 +77,7 @@ async def capture_observations(
     value_column: str,
     unit: str,
     retrieved_at: datetime.datetime,
+    product: str,
 ) -> CaptureResult:
     """Merge each UTC year; the feed caller isolates preparation failures.
 
@@ -84,6 +88,14 @@ async def capture_observations(
     Args:
         locator: The archive store locator, as `archive.store.object_store`
             resolves it: a bucket name, a filesystem path, or `memory`.
+        frame: The client frame to archive, as the client returned it.
+        source_identity: The capturing feed's `citation_key`.
+        measurement: The archived measurement, such as `temperature`.
+        value_column: The frame column holding the scalar value.
+        unit: The canonical unit every archived row carries.
+        retrieved_at: When this fetch happened.
+        product: The provider product this fetch returned, written on every row
+            so the merge can rank it against what the partition holds.
     """
     partitions = await asyncio.to_thread(
         _partitions,
@@ -93,6 +105,7 @@ async def capture_observations(
         value_column,
         unit,
         retrieved_at,
+        product,
     )
     if not partitions:
         return CaptureResult(0, 0)

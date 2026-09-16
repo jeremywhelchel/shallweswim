@@ -701,18 +701,17 @@ different layers.
 #### Historical Temperature Plot Processing
 
 Historical temperature plots are backend-rendered SVGs generated from the
-`historic_temps` feed. The feed fetches each configured year from the
-location's `historic_temp_source`, normalizes and validates each year
-independently, and only publishes a new combined dataset when every required
-year succeeds. Successful years are cached in memory for the process lifetime:
-past years do not expire once fetched, while the current year refreshes on the
-historical feed interval. Per-year normalization uses the same hourly resampling
-path as the final combined feed, so source quirks such as duplicate local
-timestamps around daylight-saving transitions are resolved before schema
-validation. Incomplete attempts record the successful and failed years for
-diagnostics but leave the previously published complete dataset and plots
-untouched. After a complete fetch, the feed combines years, sorts by timestamp,
-and resamples to hourly rows. Plot generation then pivots the data with
+`historic_temps` feed. The feed reads each configured year out of the archive,
+normalizes and validates each year independently, and combines the years it
+holds; the only fetch it makes is the top-up capture of the current year, which
+it reads back with the rest (DATA_PIPELINE.md "Hydration"). Per-year
+normalization uses the same hourly resampling path as the final combined feed,
+so source quirks such as duplicate local timestamps around daylight-saving
+transitions are resolved before schema validation. A year the archive lacks is
+a gap in the frame and the plots; a refresh that can serve nothing at all
+leaves the previously published dataset and plots untouched. After combining,
+the feed sorts by timestamp and resamples to hourly rows. Plot generation then
+pivots the data with
 `util.pivot_year()`, which moves the year into columns and normalizes every
 timestamp onto leap-year calendar year 2020 so all years can be compared on one
 month/day axis.

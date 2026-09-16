@@ -6,6 +6,7 @@ as well as shared test fixtures including fake location configs for deterministi
 
 # Standard library imports
 import os
+from collections.abc import Iterator
 
 # Third-party imports
 import pytest
@@ -164,6 +165,19 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "performance: mark test as a request-path performance guardrail"
     )
+
+
+@pytest.fixture(autouse=True)
+def isolate_store_variables() -> Iterator[None]:
+    """Remove the bucket variables again after every test.
+
+    `pytest_configure` strips them before collection, but a test that runs the
+    job's entry point lets it name the read locator itself, as a capture-only
+    run does, and that assignment must not outlive the test.
+    """
+    yield
+    for name in OPERATOR_BUCKET_ENV_VARS:
+        os.environ.pop(name, None)
 
 
 def pytest_collection_modifyitems(

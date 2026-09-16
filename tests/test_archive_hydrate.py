@@ -12,7 +12,9 @@ from shallweswim import config
 from shallweswim.archive import capture, hydrate
 from shallweswim.archive import store as archive_store
 from shallweswim.archive.observations import (
+    COOPS_HOURLY_PRODUCT,
     CURRENTS_MEASUREMENT,
+    NWIS_PRODUCT,
     TEMPERATURE_MEASUREMENT,
     TEMPERATURE_UNIT,
     TEMPERATURE_VALUE_COLUMN,
@@ -61,8 +63,17 @@ def _frame(*times: str, value: float = 60.0) -> pd.DataFrame:
 
 
 def _year_frame(year: int) -> pd.DataFrame:
-    """Two readings in a UTC year, enough to distinguish it from its neighbors."""
-    return _frame(f"{year}-06-01 12:00", f"{year}-06-01 13:00", value=float(year % 100))
+    """Three readings in a UTC year, enough to distinguish it from its neighbors.
+
+    Three, because a served frame of fewer rows has no inferable frequency for
+    the feed's status summary.
+    """
+    return _frame(
+        f"{year}-06-01 12:00",
+        f"{year}-06-01 13:00",
+        f"{year}-06-01 14:00",
+        value=float(year % 100),
+    )
 
 
 def _ten_minute_fold_frame() -> pd.DataFrame:
@@ -88,6 +99,7 @@ async def _archive(
         value_column=TEMPERATURE_VALUE_COLUMN,
         unit=TEMPERATURE_UNIT,
         retrieved_at=datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),
+        product=COOPS_HOURLY_PRODUCT,
     )
     key = NYC_TEMPERATURE_KEY.format(year=frame.index[0].year)
     assert await store.read(key) is not None
@@ -139,6 +151,7 @@ def test_partition_key_matches_the_keys_capture_writes() -> None:
         TEMPERATURE_VALUE_COLUMN,
         TEMPERATURE_UNIT,
         datetime.datetime(2026, 1, 2),
+        NWIS_PRODUCT,
     )
     assert written[0][0] == partition_key(nwis_identity, TEMPERATURE_MEASUREMENT, 2026)
 
@@ -150,6 +163,7 @@ def test_partition_key_matches_the_keys_capture_writes() -> None:
         TEMPERATURE_VALUE_COLUMN,
         TEMPERATURE_UNIT,
         datetime.datetime(2026, 1, 2),
+        COOPS_HOURLY_PRODUCT,
     )
     assert coops_written[0][0] == partition_key(
         coops_identity, TEMPERATURE_MEASUREMENT, 2026
@@ -280,13 +294,14 @@ async def test_feed_serves_the_final_local_hours_of_a_hydrated_year(
 
 
 @pytest.mark.asyncio
-async def test_feed_hydrates_past_years_and_fetches_only_the_current_year(
+async def test_feed_tops_up_this_year_and_serves_every_archived_year(
     monkeypatch, caplog
 ) -> None:
+    """One provider request per refresh; every served year comes from the archive."""
     store = MemoryObjectStore()
     monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", READ_BUCKET)
-    monkeypatch.delenv("SHALLWESWIM_ARCHIVE_BUCKET", raising=False)
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", WRITE_BUCKET)
     current_year = feeds.utc_now().year
     past_years = (current_year - 2, current_year - 1)
     archived_rows = 0
@@ -305,6 +320,8 @@ async def test_feed_hydrates_past_years_and_fetches_only_the_current_year(
     assert fetch.await_count == 1
     assert feed.last_fetched_years == (current_year,)
     assert feed.last_available_years == (*past_years, current_year)
+    # The current year serves from the archive too, which is where the top-up
+    # capture just put it.
     assert set(feed.values[TEMPERATURE_VALUE_COLUMN].dropna().unique()) == {
         float(year % 100) for year in (*past_years, current_year)
     }
@@ -322,15 +339,14 @@ async def test_feed_hydrates_past_years_and_fetches_only_the_current_year(
     assert events[0].levelno == logging.INFO
     assert events[0].component == "archive"
     assert events[0].outcome == "success"
-    assert events[0].record_count == archived_rows
+    assert events[0].record_count == archived_rows + len(current)
     assert events[0].location == feed.location_config.code
     assert events[0].feed == feeds.FeedName.HISTORIC_TEMPS.value
 
 
 @pytest.mark.asyncio
-async def test_year_missing_from_the_archive_falls_back_to_the_provider(
-    monkeypatch, caplog
-) -> None:
+async def test_year_missing_from_the_archive_is_a_gap(monkeypatch, caplog) -> None:
+    """A year no capture ever reached is a gap, not a provider fetch."""
     store = MemoryObjectStore()
     monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", READ_BUCKET)
@@ -339,17 +355,26 @@ async def test_year_missing_from_the_archive_falls_back_to_the_provider(
     archived_year, missing_year = current_year - 2, current_year - 1
     await _archive(store, _year_frame(archived_year))
 
-    fetch = AsyncMock(
-        side_effect=[_year_frame(missing_year), _year_frame(current_year)]
-    )
+    fetch = AsyncMock(return_value=_year_frame(current_year))
     monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", fetch)
     feed = _history(archived_year, current_year)
     with caplog.at_level(logging.INFO):
         await feed.update({})
 
-    assert fetch.await_count == 2
-    assert feed.last_fetched_years == (missing_year, current_year)
-    assert feed.last_available_years == (archived_year, missing_year, current_year)
+    # Only the top-up ran, and with no write bucket its year stays out of the
+    # archive, so both it and the never-archived year are gaps.
+    assert fetch.await_count == 1
+    assert feed.has_data
+    assert feed.last_fetched_years == (current_year,)
+    assert feed.last_available_years == (archived_year,)
+    status = feed.status.historical_temp_status
+    assert status is not None
+    assert status.missing_years == [missing_year, current_year]
+    assert any(
+        f"holds no rows for years [{missing_year}, {current_year}]"
+        in record.getMessage()
+        for record in caplog.records
+    )
     events = _hydrate_events(caplog)
     assert len(events) == 1
     assert events[0].outcome == "success"
@@ -357,9 +382,8 @@ async def test_year_missing_from_the_archive_falls_back_to_the_provider(
 
 
 @pytest.mark.asyncio
-async def test_failed_archive_read_warns_and_falls_back_to_the_provider(
-    monkeypatch, caplog
-) -> None:
+async def test_failed_archive_read_warns_and_leaves_a_gap(monkeypatch, caplog) -> None:
+    """A year the archive cannot read is a gap in the frame, never a failure."""
     store = MemoryObjectStore()
     monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     monkeypatch.setenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", READ_BUCKET)
@@ -377,15 +401,15 @@ async def test_failed_archive_read_warns_and_falls_back_to_the_provider(
         return await real_read(key)
 
     monkeypatch.setattr(store, "read", flaky_read)
-    fetch = AsyncMock(side_effect=[_year_frame(broken_year), _year_frame(current_year)])
-    monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", fetch)
+    monkeypatch.setattr(
+        feeds.CoopsTempFeed, "_fetch", AsyncMock(return_value=_year_frame(current_year))
+    )
     feed = _history(broken_year, current_year)
     with caplog.at_level(logging.INFO):
         await feed.update({})
 
-    assert fetch.await_count == 2
-    assert feed.last_fetched_years == (broken_year, current_year)
-    assert feed.last_available_years == (broken_year, archived_year, current_year)
+    assert feed.has_data
+    assert feed.last_available_years == (archived_year,)
     warnings = [
         record
         for record in caplog.records
@@ -401,7 +425,7 @@ async def test_failed_archive_read_warns_and_falls_back_to_the_provider(
 
 @pytest.mark.asyncio
 async def test_hydrated_years_are_not_captured(monkeypatch) -> None:
-    """Capture applies only to years the provider supplied this update."""
+    """Capture applies only to the year the top-up fetched this refresh."""
     read_store = MemoryObjectStore()
     write_store = MemoryObjectStore()
     stores = {READ_BUCKET: read_store, WRITE_BUCKET: write_store}
@@ -418,7 +442,7 @@ async def test_hydrated_years_are_not_captured(monkeypatch) -> None:
     feed = _history(archived_year, current_year)
     await feed.update({})
 
-    # Only the provider-fetched current year reached the write bucket.
+    # Only the top-up's current year reached the write bucket.
     assert (
         await write_store.read(NYC_TEMPERATURE_KEY.format(year=current_year))
     ) is not None
@@ -426,26 +450,36 @@ async def test_hydrated_years_are_not_captured(monkeypatch) -> None:
         await write_store.read(NYC_TEMPERATURE_KEY.format(year=archived_year))
     ) is None
     assert feed.last_capture == capture.CaptureResult(len(_year_frame(current_year)), 0)
+    # The read store is read-only to this feed, so the hydrated year is
+    # unchanged and the top-up's year never appeared in it.
+    assert (
+        await read_store.read(NYC_TEMPERATURE_KEY.format(year=current_year))
+    ) is None
 
 
 @pytest.mark.asyncio
-async def test_unset_read_bucket_fetches_every_year(monkeypatch, caplog) -> None:
+async def test_unset_read_bucket_leaves_nothing_to_serve(monkeypatch, caplog) -> None:
+    """The read locator is required wherever the historical feed runs."""
     store = MemoryObjectStore()
     monkeypatch.setattr(archive_store, "GcsObjectStore", lambda bucket: store)
     monkeypatch.delenv("SHALLWESWIM_ARCHIVE_READ_BUCKET", raising=False)
-    monkeypatch.delenv("SHALLWESWIM_ARCHIVE_BUCKET", raising=False)
+    monkeypatch.setenv("SHALLWESWIM_ARCHIVE_BUCKET", WRITE_BUCKET)
     current_year = feeds.utc_now().year
     archived_year = current_year - 1
     await _archive(store, _year_frame(archived_year))
 
-    fetch = AsyncMock(
-        side_effect=[_year_frame(archived_year), _year_frame(current_year)]
-    )
+    fetch = AsyncMock(return_value=_year_frame(current_year))
     monkeypatch.setattr(feeds.CoopsTempFeed, "_fetch", fetch)
     feed = _history(archived_year, current_year)
     with caplog.at_level(logging.INFO):
         await feed.update({})
 
-    assert fetch.await_count == 2
-    assert feed.last_fetched_years == (archived_year, current_year)
+    # The top-up still captured, but nothing can be read back to serve.
+    assert fetch.await_count == 1
+    assert not feed.has_data
+    assert isinstance(feed._last_error, feeds.StationUnavailableError)
     assert _hydrate_events(caplog) == []
+    assert any(
+        "SHALLWESWIM_ARCHIVE_READ_BUCKET is unset" in record.getMessage()
+        for record in caplog.records
+    )

@@ -237,7 +237,7 @@ async def test_filesystem_store_persists_and_hydrates_the_second_cycle(
     store_locator: Callable[[str], str],
     tmp_path: Path,
 ) -> None:
-    """A store directory keeps the archive, so past years stop being refetched."""
+    """A store directory keeps the archive, so the next cycle serves from it."""
     root = tmp_path / "store"
     locator = store_locator(str(root))
 
@@ -251,11 +251,12 @@ async def test_filesystem_store_persists_and_hydrates_the_second_cycle(
         == "success"
     )
 
-    assert first_years == [LAST_YEAR, utc_now().year]
-    # Only the current year reaches the provider again; last year hydrates.
+    # Each cycle tops the archive up with one year, this one, whatever range it
+    # serves; both cycles published, so both served what the archive held.
+    assert first_years == [utc_now().year]
     assert cycle_clients.historic_years[len(first_years) :] == [utc_now().year]
+    # Last year is a gap in the served frame until a backfill archives it.
     assert sorted(path.name for path in (root / "archive").rglob("*.parquet")) == [
-        f"{LAST_YEAR}.parquet",
         f"{utc_now().year}.parquet",
     ]
     assert (root / "published" / "current.json").is_file()

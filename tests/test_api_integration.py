@@ -58,7 +58,9 @@ def test_00_environment_info() -> None:
 
 
 @pytest_asyncio.fixture(scope="module")
-async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
+async def test_app(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> AsyncGenerator[fastapi.FastAPI]:
     """Create a FastAPI app for API testing.
 
     This creates a dedicated FastAPI app with only the API routes registered.
@@ -71,6 +73,15 @@ async def test_app() -> AsyncGenerator[fastapi.FastAPI]:
     # Create a process pool for CPU-bound tasks (e.g., plotting)
     pool = ProcessPoolExecutor(max_workers=os.cpu_count())  # Match production config
     app.state.process_pool = pool  # Assign to app state
+
+    # The historical temperature feed serves every year from the archive, so
+    # these tests give it one: a scratch directory this module alone writes
+    # and reads. Not the process-wide memory store, because a capture that
+    # completes after this fixture tears down would land in the store a later
+    # test expects empty. Nothing here can reach a real bucket.
+    archive_dir = str(tmp_path_factory.mktemp("archive"))
+    os.environ["SHALLWESWIM_ARCHIVE_BUCKET"] = archive_dir
+    os.environ["SHALLWESWIM_ARCHIVE_READ_BUCKET"] = archive_dir
 
     # Create and manage the HTTP session within the fixture's scope
     async with aiohttp.ClientSession() as session:

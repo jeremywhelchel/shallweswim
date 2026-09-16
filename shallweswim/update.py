@@ -76,9 +76,9 @@ ARCHIVE_BUCKET_ENV_VAR = "SHALLWESWIM_ARCHIVE_BUCKET"
 # job definition sets it; the web service never does.
 SNAPSHOT_PUBLISH_ENV_VAR = "SHALLWESWIM_SNAPSHOT_PUBLISH"
 
-# Required when publishing: a snapshot carries the full historical range, and
-# the historical feed restores past years from this bucket instead of
-# refetching them from the provider.
+# Required wherever the historical temperature feed runs, because it serves
+# every year from the archive: publishing must name it, and a capture-only run
+# defaults it to the archive bucket, which is the same store.
 ARCHIVE_READ_BUCKET_ENV_VAR = "SHALLWESWIM_ARCHIVE_READ_BUCKET"
 
 # Operation names of the two run summaries this job emits. The scheduled
@@ -164,8 +164,9 @@ async def _capture_location(
     Args:
         config: Location configuration to capture.
         clients: Provider API clients keyed by provider name.
-        full_history: Whether to fetch the full configured historical
-            temperature year range instead of only the current UTC year.
+        full_history: Whether the historical feed serves the full configured
+            year range instead of only the current UTC year. Its top-up capture
+            fetches the current year either way.
 
     Returns:
         Tuple of attempted feed count, published feed count, total published row
@@ -488,10 +489,10 @@ async def _run(*, full_history: bool, publish_snapshot: bool) -> int:
     """Capture every enabled location concurrently and emit one summary event.
 
     Args:
-        full_history: Whether to fetch the full configured historical
-            temperature year range instead of only the current UTC year. The
-            publishing path always uses the full range, and takes the flag to
-            mean "ignore the published schedule", so every feed fetches.
+        full_history: Whether the historical feed serves the full configured
+            year range instead of only the current UTC year. The publishing
+            path always serves the full range, and takes the flag to mean
+            "ignore the published schedule", so every feed fetches.
         publish_snapshot: Whether to run the full serving cycle and publish a
             snapshot instead of updating only the archivable feeds.
 
@@ -652,10 +653,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--full-history",
         action="store_true",
         help=(
-            "Fetch the full configured historical temperature year range "
-            "instead of only the current UTC year. A publishing run "
-            f"({SNAPSHOT_PUBLISH_ENV_VAR}=1) always fetches the full range, "
-            "and ignores the published schedule so every feed fetches."
+            "Serve the full configured historical temperature year range from "
+            "the archive instead of only the current UTC year; the top-up "
+            "capture fetches the current year either way. A publishing run "
+            f"({SNAPSHOT_PUBLISH_ENV_VAR}=1) always uses the full range, and "
+            "ignores the published schedule so every feed fetches."
         ),
     )
     parser.add_argument(
@@ -748,13 +750,19 @@ def main(argv: list[str] | None = None) -> int:
         if location_configs is None:
             return 1
         return asyncio.run(_run_backfill(location_configs, floor_year=backfill_from))
-    if publish_snapshot and not os.environ.get(ARCHIVE_READ_BUCKET_ENV_VAR):
-        logging.error(
-            f"{ARCHIVE_READ_BUCKET_ENV_VAR} is required when "
-            f"{SNAPSHOT_PUBLISH_ENV_VAR}=1; a snapshot carries the full "
-            "historical range, which hydrates from the archive"
-        )
-        return 1
+    if publish_snapshot:
+        if not os.environ.get(ARCHIVE_READ_BUCKET_ENV_VAR):
+            logging.error(
+                f"{ARCHIVE_READ_BUCKET_ENV_VAR} is required when "
+                f"{SNAPSHOT_PUBLISH_ENV_VAR}=1; a snapshot carries the full "
+                "historical range, which it reads from the archive"
+            )
+            return 1
+    elif not os.environ.get(ARCHIVE_READ_BUCKET_ENV_VAR):
+        # A capture-only run updates the historical feed too, and that feed
+        # serves every year from the archive. The run writes and reads one
+        # store, so name it here rather than asking for the same locator twice.
+        os.environ[ARCHIVE_READ_BUCKET_ENV_VAR] = os.environ[ARCHIVE_BUCKET_ENV_VAR]
     return asyncio.run(
         _run(full_history=args.full_history, publish_snapshot=publish_snapshot)
     )

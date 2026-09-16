@@ -31,8 +31,9 @@ publishing on the cadence (`DEFAULT_CADENCE_MINUTES`, 10) and cancels that
 task at shutdown. The web app opens no HTTP session, so the local entry point
 opens the one its cycles fetch over; the pool they plot in is the app's. Its
 `--historic-years N` (`LOCAL_HISTORIC_YEARS`, 10, counting the current year)
-floors every historical temperature range, because a fresh local store has no
-archive behind it and the configured ranges reach back decades.
+floors every historical temperature range, because a fresh local store has an
+empty archive and the configured ranges reach back decades, so every year
+before the floor would only be read and reported as a gap.
 
 ### Store locators
 
@@ -54,7 +55,7 @@ Three environment variables carry locators:
 | Variable | Who sets it | Access |
 | --- | --- | --- |
 | `SHALLWESWIM_ARCHIVE_BUCKET` | the job | writes the archive and the bundle; required by the job, which fetches only in order to archive |
-| `SHALLWESWIM_ARCHIVE_READ_BUCKET` | the job when publishing, local development | reads the archive to hydrate historical years |
+| `SHALLWESWIM_ARCHIVE_READ_BUCKET` | the job, local development | reads the archive the historical feed serves from; the job defaults it to the archive bucket on a capture-only run |
 | `SHALLWESWIM_SNAPSHOT_READ_BUCKET` | the web servers | reads `published/`; required, because a web process with no store has nothing to serve |
 
 The local entry point sets all three to one locator in its own process,
@@ -116,16 +117,13 @@ Prediction feeds, tides and NOAA current predictions, never enter the
 archive. Archive failures are logged as failed merge events and change neither
 the feed's success nor its schedule.
 
-Pending: the historical temperature feed's refresh becomes a top-up capture
-followed by hydration, so that the archive is the only source of served
-history (see [Hydration](#hydration)). On its interval the feed fetches the
-current year from the provider and merges it into the archive, as a capture
-only; it then builds its served frame from the archive. A provider that
-offers no history is not a special case: its archive begins with its live
-feed's first capture and its history grows from there. Today the current
-year is fetched from the provider and served directly, with the archive
-written as a side effect, and a year the archive lacks that the provider
-cannot supply makes the whole feed unavailable.
+The historical temperature feed's refresh is a top-up capture followed by
+hydration, so that the archive is the only source of served history (see
+[Hydration](#hydration)). On its interval the feed fetches the current year
+from the provider and merges it into the archive, as a capture only; it then
+builds its served frame from the archive. A provider that offers no history is
+not a special case: its archive begins with its live feed's first capture and
+its history grows from there.
 
 ### Publishing and the sweep
 
@@ -133,8 +131,7 @@ After the cycle the job builds every location's snapshot, publishes one
 generation (see [The bundle](#the-bundle)), and then sweeps superseded
 generations (see [Garbage collection](#garbage-collection-and-retention)). A
 publishing run requires `SHALLWESWIM_ARCHIVE_READ_BUCKET` as well, because a
-generation carries the full historical range, which hydrates from the archive
-rather than refetching.
+generation carries the full historical range, which is read from the archive.
 Publication and the sweep each log their own event and isolate their own
 failures: the run's outcome and exit code belong to the capture cycle.
 
@@ -143,9 +140,12 @@ failures: the run's outcome and exit code belong to the capture cycle.
 Without `SHALLWESWIM_SNAPSHOT_PUBLISH=1` a run fetches only the archivable
 feeds, live temperatures, historical temperatures, and observational currents,
 once each, and archives what they return. It fetches no predictions, draws no
-plots, and publishes nothing. The historical feed fetches only the current
-year; `--full-history` fetches the whole configured range. Locations run
-concurrently and each location's feeds run in sequence.
+plots, and publishes nothing. The historical feed's top-up fetches the current
+year; it still serves from the archive, so the run sets
+`SHALLWESWIM_ARCHIVE_READ_BUCKET` to the archive bucket when the environment
+does not, and `--full-history` widens the range it serves rather than what it
+fetches. Locations run concurrently and each location's feeds run in
+sequence.
 
 ### Run summary
 
@@ -321,7 +321,7 @@ archive/<measurement>/<provider>/<station>/<year>.parquet
 
 `<measurement>` is `temperature` or `currents`; provider and station are the
 two segments of the feed's `citation_key`, percent-encoded, which is the
-source identity everywhere in the pipeline. Every row has four columns:
+source identity everywhere in the pipeline. Every row has five columns:
 
 | Column | Meaning |
 | --- | --- |
@@ -329,6 +329,7 @@ source identity everywhere in the pipeline. Every row has four columns:
 | `value` | float in the canonical unit |
 | `unit` | `F` for temperature, `kt` for currents |
 | `retrieved_at` | timezone-aware UTC instant the fetch happened |
+| `product` | the provider product the fetch returned, null in older objects |
 
 Schema evolution is additive: a change is a nullable column or a new path
 prefix, objects are never rewritten for a schema change, and every read goes
@@ -341,34 +342,33 @@ dtypes, units, and UTC semantics, and a golden list pins every configured
 
 A capture merges each UTC year of the incoming frame into its partition with
 `compare_and_swap`, retrying up to five times with exponential backoff on a
-version conflict. Rows are matched on `observed_at`:
+version conflict. Rows are matched on `observed_at`, and every row records the
+provider product it came from, which the merge ranks before it compares
+retrieval times:
 
 | Incoming row | Result |
 | --- | --- |
 | key absent from the partition | **new**: added |
-| same value as stored | **overlap**: partition unchanged, stored `retrieved_at` kept |
-| different value, retrieved later than stored | **revised**: replaces the stored row |
-| different value, retrieved earlier than stored | **overlap**: the stored row already supersedes it |
-| different value, same `retrieved_at` | integrity error: equally authoritative rows disagree |
+| same value as stored | **overlap**: partition unchanged, stored row kept whole |
+| different value, higher-ranked product | **revised**: replaces the stored row, whichever was fetched first |
+| different value, lower-ranked product | **overlap**: the stored row already supersedes it |
+| different value, equal rank, retrieved later than stored | **revised**: a provider revising its own reading |
+| different value, equal rank, retrieved earlier than stored | **overlap**: the stored row already supersedes it |
+| different value, equal rank, same `retrieved_at` | integrity error: equally authoritative rows disagree |
+
+The ranks are one named table in the archive module, per provider: NDBC's
+quality-controlled yearly and monthly files (`ndbc:files`) above its realtime
+file (`ndbc:realtime`); CO-OPS hourly (`coops:h`) and six-minute
+(`coops:6-min`) equal, since the hourly product is the on-the-hour six-minute
+sample; every single-product provider is its one product (`nwis`, `cspf`,
+`irish-lights`). A row whose product the table does not name, including one
+archived before the column existed, ranks below every product, so one backfill
+or top-up with a known product supersedes it. Ranking applies only within one
+source identity: the merge never combines two stations or two providers.
 
 A merge with nothing new or revised leaves the partition byte-identical, so
 re-archiving a year already held changes nothing. Merges from the scheduled
 job and a backfill run interleave safely through the conditional write.
-
-Pending: every row records the provider product it came from, in a
-nullable `product` column added under the schema evolution rule, and the
-merge ranks products before it compares retrieval times. For one instant:
-a value from a higher-ranked product replaces a lower-ranked one whichever
-was fetched first; within one product the later retrieval wins, which is a
-provider revising its own reading; the same product at the same retrieval
-time with different values stays an integrity error. The ranks are one
-named table in the archive module, per provider: NDBC's quality-controlled
-yearly and monthly files above its realtime file; CO-OPS hourly and
-six-minute equal, since the hourly product is the on-the-hour six-minute
-sample; every single-product provider is its one product. A row archived
-before the column existed reads back with no product and ranks lowest, so
-one backfill or top-up with a known product supersedes it. Only within one
-source identity: the merge never combines two stations or two providers.
 
 Why: with served history coming from the archive, the merge rule is the
 serving rule, and "later retrieval wins" across products would let fetch
@@ -387,34 +387,28 @@ Each merge logs one `component=archive` `operation=merge` event with
 
 ### Hydration
 
-When `SHALLWESWIM_ARCHIVE_READ_BUCKET` is set, the historical temperature feed
-reads each required past year from the archive before asking the provider,
-`ARCHIVE_HYDRATION_CONCURRENCY` (8) reads at a time. A historical year is a
-station-local year while partitions are UTC years, so hydration reads the
-year's partition and the next one and keeps the rows inside the local year.
-The rows then follow exactly the provider path: serving index, resample to
-hourly keeping the first reading of each hour, validation. The archive assumes
-no cadence, so a year holding six-minute rows, hourly rows, or both serves
-identically. The current year always refetches from the provider; a year the
-archive lacks, or whose read or validation fails, is left for the provider
-fetch; hydrated years are never captured back. Hydration never fails an
-update.
+Served history comes from the archive alone. Providers feed the archive three
+ways, the live feed's capture every run, the historical feed's top-up capture
+of the current year on its interval, and the one-time backfill; nothing else
+reaches the served frame. The historical feed's refresh is therefore: run the
+top-up capture, with its failure isolated exactly as any capture failure is;
+read every year of the configured range from the archive, the current year
+included, so the served current year carries the live feed's readings from the
+last run rather than waiting for the three-hourly fetch; combine what the
+archive holds. A year the archive lacks, or whose read fails, is a gap in the
+frame and the plot, never a failure of the feed, which fails only when the
+archive holds nothing in the range. The feed's year diagnostics report the
+years the archive holds and the years it lacks; "fetched" and "failed" years
+describe the top-up capture. The read bucket is therefore required wherever
+the historical feed runs, which the job and the local entry point both ensure.
 
-Pending: served history comes from the archive alone. Providers feed the
-archive three ways, the live feed's capture every run, the historical
-feed's top-up capture of the current year on its interval, and the one-time
-backfill; nothing else reaches the served frame. The historical feed's
-refresh is then: run the top-up capture, with its failure isolated exactly
-as any capture failure is; read every year of the configured range from
-the archive, the current year included, so the served current year carries
-the live feed's readings from the last run rather than waiting for the
-three-hourly fetch; combine what the archive holds. A year the archive
-lacks, or whose read fails, is a gap in the frame and the plot, never a
-failure of the feed, which fails only when the archive holds nothing in the
-range. The feed's year diagnostics report the years the archive holds and
-the years it lacks; "fetched" and "failed" years describe the top-up
-capture. The read bucket is therefore required wherever the historical
-feed runs, which is already so for the job and the local entry point.
+Each year is read `ARCHIVE_HYDRATION_CONCURRENCY` (8) reads at a time. A
+historical year is a station-local year while partitions are UTC years, so
+hydration reads the year's partition and the next one and keeps the rows
+inside the local year. The rows then follow exactly the provider path: serving
+index, resample to hourly keeping the first reading of each hour, validation.
+The archive assumes no cadence, so a year holding six-minute rows, hourly
+rows, or both serves identically. Hydrated years are never captured back.
 
 Why: the archive is the layer between this service and the providers'
 raw data, and for some sources it will be the only durable record there
@@ -597,11 +591,17 @@ variables from the environment. What the suite pins:
 - The sweep never deletes the current generation, a retained one, an object
   a retained manifest references, or anything inside the safety window, and
   keeps every object when a manifest will not parse.
-- Archive contract tests pin the four columns, dtypes, units, and UTC
-  semantics; every read uses the normalizing reader; a fall-back hour archives
-  as two rows and serves as one; historical capture archives the native
-  cadence frame; merges classify new, overlap, and revised rows and refuse
+- Archive contract tests pin the columns, dtypes, units, and UTC semantics;
+  every read uses the normalizing reader, and an object written before the
+  product column reads back with null products; a fall-back hour archives as
+  two rows and serves as one; the historical top-up archives the native
+  cadence frame with its product; merges classify new, overlap, and revised
+  rows, rank products above retrieval time in both directions, and refuse
   equally authoritative conflicts.
+- The historical feed tops the archive up with the current year, serves every
+  year the archive holds, reports a year it lacks as a gap rather than a
+  failure, and fails only when the archive holds nothing in the range; a
+  capture-only run names the read locator itself.
 - Schedule restoration fetches a feed due before the next run and holds one
   due later; the local entry point floors the historical range and the job
   does not.

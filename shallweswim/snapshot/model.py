@@ -75,7 +75,11 @@ class FeedMetadata(_ManifestModel):
         ..., description="IANA zone name of the naive station-local time index"
     )
     historical: HistoricalTempStatus | None = Field(
-        ..., description="Year diagnostics for the historical temperature feed"
+        ...,
+        description=(
+            "Year diagnostics for the historical temperature feed: the years "
+            "the archive held and the year its top-up capture fetched"
+        ),
     )
 
 

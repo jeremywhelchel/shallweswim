@@ -27,9 +27,16 @@ from shallweswim.api_types import DataFrameSummary, FeedStatus, HistoricalTempSt
 from shallweswim.archive.capture import CaptureResult, capture_observations
 from shallweswim.archive.hydrate import hydrate_year
 from shallweswim.archive.observations import (
+    COOPS_HOURLY_PRODUCT,
+    COOPS_SIX_MINUTE_PRODUCT,
+    CSPF_PRODUCT,
     CURRENTS_MEASUREMENT,
     CURRENTS_UNIT,
     CURRENTS_VALUE_COLUMN,
+    IRISH_LIGHTS_PRODUCT,
+    NDBC_FILES_PRODUCT,
+    NDBC_REALTIME_PRODUCT,
+    NWIS_PRODUCT,
     TEMPERATURE_MEASUREMENT,
     TEMPERATURE_UNIT,
     TEMPERATURE_VALUE_COLUMN,
@@ -47,14 +54,13 @@ from shallweswim.util import fps_to_knots, summarize_dataframe, utc_now
 
 METERS_TO_FEET = 3.280839895013123
 
-
-class HistoricalTempsIncompleteError(StationUnavailableError):
-    """Raised when historical temperature data is incomplete for required years."""
-
-    def __init__(self, failed_years: dict[int, str]) -> None:
-        self.failed_years = failed_years
-        years = ", ".join(str(year) for year in sorted(failed_years))
-        super().__init__(f"Historical temperature fetch incomplete for years: {years}")
+# CO-OPS publishes one product per interval, and the archive records which one a
+# row came from. The hourly product is the on-the-hour six-minute sample, so the
+# merge ranks them equally; see `archive/merge.py`.
+COOPS_PRODUCT_BY_INTERVAL = {
+    "h": COOPS_HOURLY_PRODUCT,
+    "6-min": COOPS_SIX_MINUTE_PRODUCT,
+}
 
 
 class FeedName(StrEnum):
@@ -176,9 +182,9 @@ class Feed(BaseModel, abc.ABC):
     _ready_event: asyncio.Event = asyncio.Event()
     _last_error: Exception | None = None
     _consecutive_failures: int = 0
-    # Archive rows this update's captures added and revised, summed over every
-    # capture the update ran, or None when this feed has not captured (no
-    # archive bucket, or no capture attempted this update).
+    # Archive rows this update's capture added and revised, or None when this
+    # feed has not captured (no archive bucket, or no capture attempted this
+    # update).
     _last_capture: CaptureResult | None = None
 
     # Modern Pydantic v2 configuration using model_config
@@ -308,18 +314,25 @@ class Feed(BaseModel, abc.ABC):
         return self._data is not None
 
     @property
+    def archive_product(self) -> str:
+        """The provider product every row this feed archives records.
+
+        The archive ranks products per provider when two fetches disagree about
+        one instant, so a capturing feed must name the product its fetch
+        returns. A prediction feed never captures, so reaching this is a defect.
+
+        Raises:
+            NotImplementedError: If the feed does not archive observations.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} archives no observations")
+
+    @property
     def last_capture(self) -> CaptureResult | None:
         """Archive rows the last update added and revised.
 
-        A single update may capture more than once - the historical temperature
-        feed captures each freshly fetched year - so these counts sum every
-        capture of the most recent update. A capture that failed contributes
-        zeros, leaving the successful captures of the same update counted.
-
         Returns:
-            Summed counts from the most recent update's captures, zeros when
-            every one of them failed, or None when this feed has not captured
-            observations.
+            Counts from the most recent update's capture, zeros when it failed,
+            or None when this feed has not captured observations.
         """
         return self._last_capture
 
@@ -503,6 +516,7 @@ class Feed(BaseModel, abc.ABC):
                     measurement=TEMPERATURE_MEASUREMENT,
                     value_column=TEMPERATURE_VALUE_COLUMN,
                     unit=TEMPERATURE_UNIT,
+                    product=self.archive_product,
                 )
             elif (
                 isinstance(self, CurrentsFeed)
@@ -515,6 +529,7 @@ class Feed(BaseModel, abc.ABC):
                     measurement=CURRENTS_MEASUREMENT,
                     value_column=CURRENTS_VALUE_COLUMN,
                     unit=CURRENTS_UNIT,
+                    product=self.archive_product,
                 )
 
         except StationUnavailableError as e:
@@ -548,6 +563,7 @@ class Feed(BaseModel, abc.ABC):
         measurement: str,
         value_column: str,
         unit: str,
+        product: str,
     ) -> None:
         """Isolate all archive failures from feed publication and scheduling.
 
@@ -555,25 +571,32 @@ class Feed(BaseModel, abc.ABC):
         client returned it, indexed by timezone-aware UTC instants. Configured
         outlier removal is a serving concern and applies only to published data.
 
-        The resulting counts accumulate into _last_capture, which update resets
-        once per update, so a feed that captures several frames - one per
-        freshly fetched year - reports their sum rather than only the last.
+        The resulting counts become _last_capture, which the capture job sums
+        across feeds for its run summary.
+
+        Args:
+            frame: The client frame to archive, unconverted and unfiltered.
+            retrieved_at: When the fetch that returned the frame happened.
+            measurement: The archived measurement, such as `temperature`.
+            value_column: The frame column holding the scalar value.
+            unit: The canonical unit every archived row carries.
+            product: The provider product the fetch returned. A composite feed
+                passes the product of the member feed that fetched the frame.
         """
         locator = os.environ.get("SHALLWESWIM_ARCHIVE_BUCKET")
         if not locator:
             return
         started_at = time.monotonic()
         try:
-            self._record_capture(
-                await capture_observations(
-                    locator,
-                    frame=frame,
-                    source_identity=self.feed_config.citation_key,
-                    measurement=measurement,
-                    value_column=value_column,
-                    unit=unit,
-                    retrieved_at=retrieved_at,
-                )
+            self._last_capture = await capture_observations(
+                locator,
+                frame=frame,
+                source_identity=self.feed_config.citation_key,
+                measurement=measurement,
+                value_column=value_column,
+                unit=unit,
+                retrieved_at=retrieved_at,
+                product=product,
             )
         except Exception as error:
             self.log(
@@ -592,23 +615,8 @@ class Feed(BaseModel, abc.ABC):
                 },
             )
             # This capture archived nothing, which the run summary must still
-            # sum, and which must not discard the update's other captures.
-            self._record_capture(CaptureResult(0, 0))
-
-    def _record_capture(self, result: CaptureResult) -> None:
-        """Add one capture's counts to this update's running total.
-
-        Args:
-            result: Counts from a single capture, zeros when it failed.
-        """
-        previous = self._last_capture
-        if previous is None:
-            self._last_capture = result
-        else:
-            self._last_capture = CaptureResult(
-                previous.new_count + result.new_count,
-                previous.revised_count + result.revised_count,
-            )
+            # count as a capture that ran.
+            self._last_capture = CaptureResult(0, 0)
 
     @abc.abstractmethod
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
@@ -733,8 +741,8 @@ class TempFeed(Feed, abc.ABC):
             StationUnavailableError: When the provider has no data for this
                 window, which the caller counts as an empty request.
         """
-        # A capture accumulates into _last_capture, which the update path
-        # resets per update; this call is its own unit of work.
+        # A capture sets _last_capture, which the update path resets per
+        # update; this call is its own unit of work.
         self._last_capture = None
         frame = await self._fetch(clients=clients)
         await self._capture_observations(
@@ -743,6 +751,7 @@ class TempFeed(Feed, abc.ABC):
             measurement=TEMPERATURE_MEASUREMENT,
             value_column=TEMPERATURE_VALUE_COLUMN,
             unit=TEMPERATURE_UNIT,
+            product=self.archive_product,
         )
         return self._last_capture
 
@@ -777,6 +786,11 @@ class CoopsTempFeed(TempFeed):
     def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
+
+    @property
+    def archive_product(self) -> str:
+        """CO-OPS publishes one temperature product per interval."""
+        return COOPS_PRODUCT_BY_INTERVAL[self.interval]
 
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA CO-OPS API.
@@ -832,6 +846,31 @@ class NdbcTempFeed(TempFeed):
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
+    @property
+    def archive_product(self) -> str:
+        """NDBC's product is the kind of fetch, not the file each row came from.
+
+        The client answers a window that begins inside
+        `NDBC_HISTORICAL_THRESHOLD` from the realtime file alone, and any
+        longer one from the quality-controlled monthly and yearly files, with
+        the realtime tail appended when the window reaches to now. A year fetch
+        therefore mixes the two, and its rows are recorded as the files it
+        asked for: the merge ranks that above realtime, which is what makes a
+        later quality-controlled reading supersede a live one.
+        """
+        begin_date, _ = self._window()
+        if datetime.datetime.today() - begin_date < ndbc.NDBC_HISTORICAL_THRESHOLD:
+            return NDBC_REALTIME_PRODUCT
+        return NDBC_FILES_PRODUCT
+
+    def _window(self) -> tuple[datetime.datetime, datetime.datetime]:
+        """Return the request window, defaulting to the recent live window."""
+        begin_date = self.start or (
+            datetime.datetime.today() - datetime.timedelta(days=8)
+        )
+        end_date = self.end or datetime.datetime.today()
+        return begin_date, end_date
+
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from NOAA NDBC API.
 
@@ -842,11 +881,7 @@ class NdbcTempFeed(TempFeed):
             Exception: If fetching fails
         """
         station_id = self.feed_config.station
-        # Use parameters if provided, otherwise use defaults
-        begin_date = self.start or (
-            datetime.datetime.today() - datetime.timedelta(days=8)
-        )
-        end_date = self.end or datetime.datetime.today()
+        begin_date, end_date = self._window()
 
         try:
             # Fetch the data using the NDBC API client
@@ -888,6 +923,11 @@ class NwisTempFeed(TempFeed):
     def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
+
+    @property
+    def archive_product(self) -> str:
+        """NWIS publishes one product."""
+        return NWIS_PRODUCT
 
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch temperature data from USGS NWIS API.
@@ -942,6 +982,11 @@ class CspfTempFeed(TempFeed):
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
 
+    @property
+    def archive_product(self) -> str:
+        """CSPF publishes one product."""
+        return CSPF_PRODUCT
+
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch historical Sandettie temperatures from CSPF pages.
 
@@ -988,6 +1033,11 @@ class IrishLightsTempFeed(TempFeed):
     def data_model(self) -> type[DataFrameModel]:
         """The Pandera data model class used to validate the fetched data."""
         return df_models.WaterTempDataModel  # type: ignore[return-value]
+
+    @property
+    def archive_product(self) -> str:
+        """Irish Lights publishes one product."""
+        return IRISH_LIGHTS_PRODUCT
 
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch Irish Lights buoy water-temperature observations.
@@ -1580,6 +1630,11 @@ class NwisCurrentFeed(CurrentsFeed):
         """The Pandera data model class used to validate the fetched data."""
         return df_models.CurrentDataModel  # type: ignore[return-value]
 
+    @property
+    def archive_product(self) -> str:
+        """NWIS publishes one product."""
+        return NWIS_PRODUCT
+
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
         """Fetch currents data from NWIS.
 
@@ -1636,9 +1691,11 @@ class NwisCurrentFeed(CurrentsFeed):
 class HistoricalTempsFeed(CompositeFeed):
     """Feed for historical temperature data across multiple years.
 
-    Fetches temperature data for multiple years and combines them to provide
-    historical averages for each day of the year. This is useful for showing
-    typical temperatures for a given date based on historical records.
+    The archive is the only source of served history. Each refresh tops the
+    archive up with one fetch of the current year and then builds the served
+    frame from the years the archive holds, so the frame and the archive agree
+    by construction and a year no provider can supply is a gap rather than a
+    failure.
     """
 
     feed_config: config_lib.TempFeedConfig  # type: ignore[assignment]
@@ -1650,8 +1707,9 @@ class HistoricalTempsFeed(CompositeFeed):
     _last_fetched_years: tuple[int, ...] = ()
     _last_available_years: tuple[int, ...] = ()
     _last_failed_years: dict[int, str] = {}
+    # The years the published frame was built from. Every refresh hydrates the
+    # whole range, so this is replaced whole rather than accumulated.
     _year_cache: dict[int, pd.DataFrame] = {}
-    _year_cache_fetch_timestamp: dict[int, datetime.datetime] = {}
 
     @property
     def data_model(self) -> type[DataFrameModel]:
@@ -1660,38 +1718,36 @@ class HistoricalTempsFeed(CompositeFeed):
 
     @property
     def last_required_years(self) -> tuple[int, ...]:
-        """Years required by the last historical temperature fetch attempt."""
+        """Years the last historical temperature refresh required."""
         return self._last_required_years
 
     @property
     def last_successful_years(self) -> tuple[int, ...]:
-        """Years available after the last attempt; kept for compatibility."""
+        """Years the archive held on the last refresh; kept for compatibility."""
         return self._last_available_years
 
     @property
     def last_fetched_years(self) -> tuple[int, ...]:
-        """Years fetched successfully during the last historical temperature attempt."""
+        """Years the last refresh's top-up capture fetched from the provider."""
         return self._last_fetched_years
 
     @property
     def last_available_years(self) -> tuple[int, ...]:
-        """Required years currently available from the in-memory year cache."""
+        """Required years the archive held on the last refresh."""
         return self._last_available_years
 
     @property
     def last_failed_years(self) -> dict[int, str]:
-        """Year-to-error map from the last historical temperature fetch attempt."""
+        """Year-to-error map from the last refresh's top-up capture."""
         return dict(self._last_failed_years)
 
     @property
     def status(self) -> FeedStatus:
         """Get feed status with year-level historical temperature diagnostics."""
         required_years = self._last_required_years or self._required_years()
-        available_years = tuple(
-            year for year in required_years if year in self._year_cache
-        )
+        available_years = self._last_available_years
         missing_years = tuple(
-            year for year in required_years if year not in self._year_cache
+            year for year in required_years if year not in available_years
         )
         historical_temp_status = HistoricalTempStatus(
             required_years=list(required_years),
@@ -1710,198 +1766,180 @@ class HistoricalTempsFeed(CompositeFeed):
         return tuple(range(self.start_year, self.end_year + 1))
 
     def _current_historical_year(self) -> int:
-        """Return the current year for historical feed refresh policy."""
+        """Return the year the top-up capture fetches."""
         return utc_now().year
 
-    def _years_to_fetch(self, required_years: tuple[int, ...]) -> tuple[int, ...]:
-        """Return required years that are missing or need refresh."""
-        current_year = self._current_historical_year()
-        return tuple(
-            year
-            for year in required_years
-            if year not in self._year_cache or year == current_year
+    def _year_feed(self, year: int, clients: dict[str, BaseApiClient]) -> TempFeed:
+        """Build the one-year feed that fetches one year from the provider.
+
+        The window is the station-local year the provider would return, capped
+        at now for the current year so no request asks for future dates. Past
+        years never change, so their feeds never expire; the current year's
+        carries this feed's interval. The top-up and the backfill walk both
+        archive what these feeds return.
+
+        Args:
+            year: The year to fetch.
+            clients: Provider API clients keyed by provider name.
+
+        Returns:
+            A temperature feed bounded to that year.
+        """
+        current_date = utc_now()
+        start_date = datetime.datetime(year, 1, 1)
+        if year == current_date.year:
+            end_date = current_date
+        else:
+            end_date = datetime.datetime(year, 12, 31, 23, 59, 59)
+        expiration_interval = (
+            None if year < current_date.year else self.expiration_interval
+        )
+        return create_temp_feed(
+            location_config=self.location_config,
+            temp_config=self.feed_config,
+            start=start_date,
+            end=end_date,
+            interval="h",  # Use hourly data for historical feeds
+            expiration_interval=expiration_interval,
+            clients=clients,
         )
 
     def _get_feeds(self, clients: dict[str, BaseApiClient]) -> list[Feed]:
-        """Create temperature feeds for each year in the range.
-
-        For the current year, caps the end date to today to avoid requesting future dates
-        from the API, which would result in an error.
+        """Create one temperature feed for each year in the configured range.
 
         Returns:
             List of TempFeed instances, one for each year in the range
         """
-        feeds: list[Feed] = []
-        current_date = utc_now()
-
-        for year in range(self.start_year, self.end_year + 1):
-            # For each year, create a feed with start/end dates for that year
-            start_date = datetime.datetime(year, 1, 1)
-            # For the current year, cap the end date to today
-            if year == current_date.year:
-                end_date = current_date
-            else:
-                end_date = datetime.datetime(year, 12, 31, 23, 59, 59)
-
-            # Set expiration based on whether it's historical or current data
-            # Historical data won't change, so set expiration to None (never expire)
-            # Current year data should use the configured interval for the historical feed
-            expiration_interval = (
-                None  # Never expire for past years
-                if year < current_date.year
-                else self.expiration_interval  # Use configured interval for current year
-            )
-
-            # Create the appropriate feed using the factory function
-            feed = create_temp_feed(
-                location_config=self.location_config,
-                temp_config=self.feed_config,
-                start=start_date,
-                end=end_date,
-                interval="h",  # Use hourly data for historical feeds
-                expiration_interval=expiration_interval,
-                clients=clients,
-            )
-            feeds.append(feed)
-        return feeds
+        return [self._year_feed(year, clients) for year in self._required_years()]
 
     async def _fetch(self, clients: dict[str, BaseApiClient]) -> pd.DataFrame:
-        """Fetch all required historical years and publish only complete results."""
+        """Top the archive up with this year, then serve what the archive holds.
+
+        Nothing the top-up fetches reaches the served frame directly: hydration
+        reads it back with every other year, so the served current year also
+        carries the live feed's captures from the runs since the last refresh.
+
+        Returns:
+            The combined hourly frame of every year the archive held.
+
+        Raises:
+            StationUnavailableError: If the archive holds no year of the
+                configured range, which is this feed's only failure.
+        """
         required_years = self._required_years()
         self._last_required_years = required_years
         self._last_fetched_years = ()
         self._last_available_years = ()
         self._last_failed_years = {}
 
-        all_year_feeds = self._get_feeds(clients=clients)
-        if len(all_year_feeds) != len(required_years):
-            raise ValueError(
-                "Historical temperature feed construction mismatch: "
-                f"expected {len(required_years)} feeds for years {required_years}, "
-                f"got {len(all_year_feeds)}"
-            )
+        await self._top_up_current_year(clients, required_years)
+        hydrated = await self._hydrate_from_archive(required_years)
 
-        feed_by_year = dict(zip(required_years, all_year_feeds, strict=True))
-        # Hydration fills past years from the archive first, so only the
-        # current year and years the archive lacks reach the provider.
-        await self._hydrate_from_archive(required_years)
-        years_to_fetch = self._years_to_fetch(required_years)
-        year_feeds = [feed_by_year[year] for year in years_to_fetch]
-
-        tasks = [feed._fetch(clients=clients) for feed in year_feeds]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        successful_dataframes: dict[int, pd.DataFrame] = {}
-        # Provider-cadence frames for capture, keyed by the same successful years.
-        raw_dataframes: dict[int, pd.DataFrame] = {}
-        failed_years: dict[int, str] = {}
-        failed_exceptions: dict[int, Exception] = {}
-        for year, result in zip(years_to_fetch, results, strict=True):
-            if isinstance(result, Exception):
-                failed_years[year] = f"{result.__class__.__name__}: {result}"
-                failed_exceptions[year] = result
-                continue
-
-            try:
-                # Serving derives the naive local index before the hourly
-                # resample; raw_dataframes keeps the client frame for capture.
-                serving_result = to_serving_index(result, self.location_config.timezone)
-                normalized_result = self._combine_feeds([serving_result])
-                self._validate_frame(normalized_result)
-            except Exception as e:
-                failed_years[year] = f"{e.__class__.__name__}: {e}"
-                failed_exceptions[year] = e
-                continue
-
-            successful_dataframes[year] = normalized_result
-            raw_dataframes[year] = result
-
-        now = utc_now()
-        for year, dataframe in successful_dataframes.items():
-            self._year_cache[year] = dataframe
-            self._year_cache_fetch_timestamp[year] = now
-
-        self._last_fetched_years = tuple(sorted(successful_dataframes))
-        self._last_available_years = tuple(
-            year for year in required_years if year in self._year_cache
-        )
-        self._last_failed_years = failed_years
-
-        # Capture only fresh years, including successes in a partial fetch.
-        # Reusing a cached year must never make its retrieval time newer.
-        # Capture the provider's native cadence, before the hourly serving
-        # resample collapses the repeated daylight-saving fall-back hour. These
-        # frames are deliberately not run through _validate_frame: the serving
-        # model requires a unique local time index, which a fall-back day's
-        # native-cadence frame legitimately violates. normalize_observations
-        # still requires the value column and a timezone-aware DatetimeIndex.
-        for dataframe in raw_dataframes.values():
-            await self._capture_observations(
-                dataframe,
-                now,
-                measurement=TEMPERATURE_MEASUREMENT,
-                value_column=TEMPERATURE_VALUE_COLUMN,
-                unit=TEMPERATURE_UNIT,
-            )
-
-        missing_years = tuple(
-            year for year in required_years if year not in self._year_cache
-        )
-        if failed_years or missing_years:
+        self._last_available_years = tuple(sorted(hydrated))
+        missing_years = tuple(year for year in required_years if year not in hydrated)
+        if missing_years:
             self.log(
-                "Historical temperature fetch incomplete: "
-                f"available_years={list(self._last_available_years)}, "
-                f"fetched_years={list(self._last_fetched_years)}, "
-                f"failed_years={sorted(failed_years)}, "
-                f"missing_years={list(missing_years)}",
+                "Historical temperature archive holds no rows for years "
+                f"{list(missing_years)}; they are gaps in the served frame",
                 logging.WARNING,
             )
-            if all(
-                isinstance(error, StationUnavailableError)
-                for error in failed_exceptions.values()
-            ):
-                raise StationUnavailableError(
-                    "Historical temperature data unavailable for required years: "
-                    f"{sorted(set(failed_years) | set(missing_years))}"
-                )
-            incomplete_years = {
-                **dict.fromkeys(missing_years, "missing from cache"),
-                **failed_years,
-            }
-            raise HistoricalTempsIncompleteError(incomplete_years)
+        if not hydrated:
+            raise StationUnavailableError(
+                "Historical temperature archive holds none of the required "
+                f"years: {list(required_years)}"
+            )
 
-        return self._combine_feeds([self._year_cache[year] for year in required_years])
+        self._year_cache = hydrated
+        return self._combine_feeds([hydrated[year] for year in sorted(hydrated)])
 
-    async def _hydrate_from_archive(self, required_years: tuple[int, ...]) -> None:
-        """Load past years from the archive instead of refetching them.
+    async def _top_up_current_year(
+        self, clients: dict[str, BaseApiClient], required_years: tuple[int, ...]
+    ) -> None:
+        """Fetch the current year from the provider and merge it into the archive.
 
-        Local development sets SHALLWESWIM_ARCHIVE_READ_BUCKET to avoid the
-        multi-year cold-start refetch. Archived rows follow exactly the provider
-        path - serving index, hourly resample, validation - so a hydrated year
-        serves identically to a fetched one. Hydrated years never enter this
-        attempt's fetched years, so they are never captured back to the archive.
+        This is a capture only, so its failure is isolated exactly as any
+        capture failure is: it is logged, an expected no-data answer at WARNING
+        and anything else at ERROR, and the refresh continues into hydration,
+        which serves whatever the archive already holds. A provider that offers
+        no history is not a special case: its archive begins with its live
+        feed's first capture and grows from there.
+
+        The provider's native cadence is archived, before the hourly serving
+        resample collapses the repeated daylight-saving fall-back hour. The
+        frame is deliberately not validated against the serving model, which
+        requires a unique local time index that a fall-back day's native-cadence
+        frame legitimately violates.
+
+        Args:
+            clients: Provider API clients keyed by provider name.
+            required_years: The complete configured historical year range; a
+                range that ended before this year has nothing to top up.
+        """
+        year = self._current_historical_year()
+        if year not in required_years:
+            return
+        feed = self._year_feed(year, clients)
+        try:
+            frame = await feed._fetch(clients=clients)
+        except StationUnavailableError as error:
+            self._last_failed_years = {year: f"{error.__class__.__name__}: {error}"}
+            self.log(
+                f"Historical temperature top-up found no data for {year}: {error}",
+                logging.WARNING,
+            )
+            return
+        except Exception as error:
+            self._last_failed_years = {year: f"{error.__class__.__name__}: {error}"}
+            self.log(
+                f"Historical temperature top-up failed for {year}: {error}",
+                logging.ERROR,
+            )
+            return
+
+        await self._capture_observations(
+            frame,
+            utc_now(),
+            measurement=TEMPERATURE_MEASUREMENT,
+            value_column=TEMPERATURE_VALUE_COLUMN,
+            unit=TEMPERATURE_UNIT,
+            product=feed.archive_product,
+        )
+        self._last_fetched_years = (year,)
+
+    async def _hydrate_from_archive(
+        self, required_years: tuple[int, ...]
+    ) -> dict[int, pd.DataFrame]:
+        """Read every required year out of the archive as a served frame.
+
+        The current year is read like any other: its rows are the live feed's
+        captures from every run since the last refresh, plus this refresh's
+        top-up, so the served current year does not wait for the next one.
+        Archived rows follow exactly the provider path - serving index, hourly
+        resample keeping the first reading of each hour, validation - so a year
+        serves as the fetch that archived it would have, whatever cadence it
+        holds.
 
         Each year's archive reads run concurrently under a bounded number of
         slots, because a configured history can span many years.
 
-        Hydration never fails an update: a year the archive lacks, or one whose
-        read or validation fails, is simply left for the provider fetch.
-
         Args:
             required_years: The complete configured historical year range.
+
+        Returns:
+            The served frame of each year the archive held, keyed by year. A
+            year the archive lacks, or one whose read or validation fails, is
+            logged and absent: it is a gap in the frame and the plot.
         """
         locator = os.environ.get("SHALLWESWIM_ARCHIVE_READ_BUCKET")
         if not locator:
-            return
-        current_year = self._current_historical_year()
-        candidate_years = [
-            year
-            for year in required_years
-            # The current year keeps refreshing from the provider.
-            if year < current_year and year not in self._year_cache
-        ]
-        if not candidate_years:
-            return
+            # The read locator is required wherever this feed runs; without it
+            # there is no history to serve at all.
+            self.log(
+                "SHALLWESWIM_ARCHIVE_READ_BUCKET is unset, so no historical "
+                "temperature year can be read",
+                logging.WARNING,
+            )
+            return {}
 
         store = await asyncio.to_thread(object_store, locator)
         read_slots = asyncio.Semaphore(ARCHIVE_HYDRATION_CONCURRENCY)
@@ -1922,13 +1960,13 @@ class HistoricalTempsFeed(CompositeFeed):
         # Reads run concurrently; the serving conversion below stays sequential
         # because it is small CPU work, and results are consumed in year order.
         frames = await asyncio.gather(
-            *(read_year(year) for year in candidate_years), return_exceptions=True
+            *(read_year(year) for year in required_years), return_exceptions=True
         )
 
-        hydrated_years: list[int] = []
+        hydrated: dict[int, pd.DataFrame] = {}
         failed_years: list[int] = []
         record_count = 0
-        for year, frame in zip(candidate_years, frames, strict=True):
+        for year, frame in zip(required_years, frames, strict=True):
             try:
                 if isinstance(frame, BaseException):
                     raise frame
@@ -1945,16 +1983,14 @@ class HistoricalTempsFeed(CompositeFeed):
                     logging.WARNING,
                 )
                 continue
-            self._year_cache[year] = served
-            self._year_cache_fetch_timestamp[year] = utc_now()
-            hydrated_years.append(year)
+            hydrated[year] = served
             record_count += len(frame)
 
-        if not hydrated_years and not failed_years:
-            return
-        message = f"Archive hydration loaded years {hydrated_years}"
+        if not hydrated and not failed_years:
+            return hydrated
+        message = f"Archive hydration loaded years {sorted(hydrated)}"
         if failed_years:
-            message += f"; the provider fetch covers {failed_years}"
+            message += f"; years {failed_years} could not be read"
         self.log(
             message,
             extra={
@@ -1968,6 +2004,7 @@ class HistoricalTempsFeed(CompositeFeed):
                 "record_count": record_count,
             },
         )
+        return hydrated
 
     def _combine_feeds(self, dataframes: list[pd.DataFrame]) -> pd.DataFrame:
         """Combine temperature data from multiple years.

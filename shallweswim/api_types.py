@@ -73,28 +73,36 @@ class DataFrameSummary(BaseModel):
 
 
 class HistoricalTempStatus(BaseModel):
-    """Year-level diagnostics for the historical temperature feed."""
+    """Year-level diagnostics for the historical temperature feed.
+
+    Served history comes from the archive alone, so these report what the
+    archive held on the last refresh and what that refresh's top-up capture
+    fetched from the provider.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     required_years: list[int] = Field(
         ...,
-        description="Configured years required before historical data is published.",
+        description="Configured years the served historical frame covers.",
     )
     available_years: list[int] = Field(
-        ..., description="Required years currently available from the year cache."
+        ..., description="Required years the archive held on the last refresh."
     )
     cached_years: list[int] = Field(
-        ..., description="All years currently present in the year cache."
+        ..., description="Years the currently served frame was built from."
     )
     missing_years: list[int] = Field(
-        ..., description="Required years not currently available from the year cache."
+        ...,
+        description="Required years the archive lacked, which serve as gaps.",
     )
     fetched_years: list[int] = Field(
-        ..., description="Years fetched successfully during the latest attempt."
+        ...,
+        description="Years the last refresh's top-up capture fetched and archived.",
     )
     failed_years: dict[int, str] = Field(
-        ..., description="Year-to-error map from the latest historical fetch attempt."
+        ...,
+        description="Year-to-error map from the last refresh's top-up capture.",
     )
 
 

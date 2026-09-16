@@ -110,7 +110,9 @@ def seeded_manager() -> LocationDataManager:
     historic = manager._feeds[feeds.FeedName.HISTORIC_TEMPS]
     assert isinstance(historic, feeds.HistoricalTempsFeed)
     historic._last_required_years = (2025, 2026)
+    # The archive held both years this refresh, and the top-up captured this one.
     historic._year_cache = {2025: historic.values, 2026: historic.values}
+    historic._last_available_years = (2025, 2026)
     historic._last_fetched_years = (2026,)
     manager._plots = {
         feeds.PlotName.LIVE_TEMPS: b"<svg>live</svg>",

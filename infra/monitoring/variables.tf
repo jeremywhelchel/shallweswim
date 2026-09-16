@@ -14,3 +14,16 @@ variable "job_name" {
   type        = string
   default     = "shallweswim-capture"
 }
+
+variable "notification_channel_ids" {
+  description = <<-EOT
+    Notification channel resource names (projects/PROJECT/notificationChannels/ID)
+    that promoted alert policies notify. Channels are created in the console and
+    carry the addresses; this module only references them by id, and the ids are
+    passed on the plan command line from the operator's environment
+    (SHALLWESWIM_ALERT_NOTIFICATION_CHANNELS) so nothing personal enters the
+    repository. Empty means no promoted policy notifies anyone.
+  EOT
+  type        = list(string)
+  default     = []
+}

@@ -4,8 +4,9 @@ run "monitoring_plan" {
   command = plan
 
   variables {
-    project_id   = "test-project"
-    service_name = "shallweswim"
+    project_id               = "test-project"
+    service_name             = "shallweswim"
+    notification_channel_ids = ["projects/test-project/notificationChannels/1"]
   }
 
   assert {
@@ -264,7 +265,6 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.plot_generation_failure,
         google_monitoring_alert_policy.snapshot_load_lag,
         google_monitoring_alert_policy.snapshot_load_failures,
-        google_monitoring_alert_policy.capture_job_heartbeat,
         google_monitoring_alert_policy.archive_merge_failures,
         ], values(google_monitoring_alert_policy.snapshot_feed_freshness)) : (
         startswith(policy.display_name, "[Terraform][Shadow]") &&
@@ -273,6 +273,15 @@ run "monitoring_plan" {
       )
     ])
     error_message = "Baseline alert policies must remain visibly marked as shadow policies without notification channels."
+  }
+
+  assert {
+    condition = (
+      google_monitoring_alert_policy.capture_job_heartbeat.display_name == "[Terraform] Capture job heartbeat" &&
+      google_monitoring_alert_policy.capture_job_heartbeat.user_labels.mode == "paging" &&
+      tolist(google_monitoring_alert_policy.capture_job_heartbeat.notification_channels) == var.notification_channel_ids
+    )
+    error_message = "The promoted capture job heartbeat must notify the configured channels and carry no shadow marker."
   }
 
   assert {

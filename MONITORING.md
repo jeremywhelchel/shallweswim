@@ -122,17 +122,24 @@ outcome set gained `held`.
 ## Alert policies
 
 Fifteen policies concern the application. Twelve are Terraform's, in
-`infra/monitoring/alert_policies.tf`, enabled, and attached to no
-notification channel: they open and close incidents in Cloud Monitoring and
-page nobody. Their display names carry `[Terraform][Shadow]` and their
-`mode=shadow` label, and they stay that way until each is promoted. Three
-predate Terraform and notify the project's two email channels.
+`infra/monitoring/alert_policies.tf`. One of them, the capture job
+heartbeat, notifies the project's channels (`mode=paging`); the other eleven
+are enabled but attached to no channel, so they open and close incidents in
+Cloud Monitoring and page nobody, with `[Terraform][Shadow]` in their display
+names and a `mode=shadow` label until each is promoted. Three predate
+Terraform and notify the same channels from the console.
 
-Why the twelve notify nobody: each threshold is a first guess. A policy is
+Why the eleven notify nobody: each threshold is a first guess. A policy is
 promoted only after its incidents have been reviewed against a real baseline,
-by choosing its channels and removing the marker in a reviewed change. The
-capture job heartbeat is the first to promote, because the web servers serve
-only what the job publishes, so it is the pipeline's dead-man switch.
+by giving it the channels and removing the marker in a reviewed change
+(infra/monitoring/README.md). The heartbeat went first because the web
+servers serve only what the job publishes, so it is the pipeline's dead-man
+switch: with the job stopped, nothing else would complain.
+
+The channels are the project's `+shallweswim` email address and the Cloud
+Console mobile app on the operator's phone. They are created in the console
+and referenced by id from the operator's environment, so no address is in
+the repository.
 
 ### Terraform policies
 
@@ -167,9 +174,9 @@ archive, so the feed, plot, archive, and run policies watch the job resource.
 
 | Policy | Condition | Notifies |
 | --- | --- | --- |
-| Homepage uptime failure | the uptime check below fails for five minutes, with missing data counted as failure | both email channels |
-| 5xx error on shallweswim | any request in a one-minute window answered with a `5xx` other than `503`, from Cloud Run's request count | both email channels |
-| Error Log | any log entry with `severity=ERROR` whose request status is not `503`, at most one notification an hour | one email channel |
+| Homepage uptime failure | the uptime check below fails for five minutes, with missing data counted as failure | email and phone |
+| 5xx error on shallweswim | any request in a one-minute window answered with a `5xx` other than `503`, from Cloud Run's request count | email and phone |
+| Error Log | any log entry with `severity=ERROR` whose request status is not `503`, at most one notification an hour | email |
 
 These are the paging surface today. The last two page on a single error,
 which is why an unexpected exception can mean an email while the site stays

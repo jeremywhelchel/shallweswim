@@ -292,9 +292,9 @@ Notes:
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
-- Promote the twelve Terraform alert policies once each has a reviewed
-  baseline, starting with the capture job heartbeat, then retire the three
-  older console policies that page on a single error.
+- Promote the remaining eleven Terraform alert policies once each has a
+  reviewed baseline (the capture job heartbeat pages since 2026-09-16), then
+  retire the three older console policies that page on a single error.
 - Capture the archive validation checklist outcome after the first week:
   compare archived row counts with live feeds per source and record the result
   in DATA_PIPELINE.md's archive section.

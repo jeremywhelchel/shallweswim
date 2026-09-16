@@ -9,6 +9,10 @@ locals {
     managed_by = "terraform"
     mode       = "shadow"
   }
+  paging_alert_labels = {
+    managed_by = "terraform"
+    mode       = "paging"
+  }
 
   # Per-feed-type snapshot freshness thresholds, in seconds, from the existing
   # feed health rule: the feed's expiration interval plus 15 minutes. A feed
@@ -241,16 +245,16 @@ resource "google_monitoring_alert_policy" "snapshot_load_failures" {
 }
 
 resource "google_monitoring_alert_policy" "capture_job_heartbeat" {
-  display_name          = "[Terraform][Shadow] Capture job heartbeat"
+  display_name          = "[Terraform] Capture job heartbeat"
   combiner              = "OR"
   enabled               = true
-  notification_channels = []
+  notification_channels = var.notification_channel_ids
   severity              = "CRITICAL"
-  user_labels           = local.shadow_alert_labels
+  user_labels           = local.paging_alert_labels
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: the ten-minute capture job reported no success or partial run summary for 30 minutes, which is three missed runs. A partial run still proves the job executed. The web service serves only what this job publishes, so this is the pipeline's dead-man switch and the first shadow policy to promote. It deliberately sends no notifications while its window is baselined; it can only fire once the metric has produced data, so confirm the run counter is populated before trusting its silence."
+    content   = "The ten-minute capture job reported no success or partial run summary for 30 minutes, which is three missed runs. A partial run still proves the job executed. The web servers serve only what this job publishes, so the site is now aging silently: check the job's executions in Cloud Run and its run summaries in the logs (MONITORING.md). The condition evaluates only once the run counter has data."
   }
 
   conditions {

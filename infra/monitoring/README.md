@@ -102,7 +102,8 @@ GOOGLE_APPLICATION_CREDENTIALS="$SHALLWESWIM_TERRAFORM_CREDENTIALS" \
   terraform -chdir=infra/monitoring validate
 GOOGLE_APPLICATION_CREDENTIALS="$SHALLWESWIM_TERRAFORM_CREDENTIALS" \
   TF_VAR_project_id="$CLOUDSDK_CORE_PROJECT" \
-  terraform -chdir=infra/monitoring plan -out=monitoring.tfplan
+  terraform -chdir=infra/monitoring plan -out=monitoring.tfplan \
+  -var="notification_channel_ids=$SHALLWESWIM_ALERT_NOTIFICATION_CHANNELS"
 GOOGLE_APPLICATION_CREDENTIALS="$SHALLWESWIM_TERRAFORM_CREDENTIALS" \
   terraform -chdir=infra/monitoring show monitoring.tfplan
 ```
@@ -139,13 +140,22 @@ accepted.
 
 ## Promoting an alert policy
 
-The twelve Terraform policies are enabled with no notification channels, so
-they open incidents in Cloud Monitoring and page nobody; their display names
-carry `[Shadow]` and their `mode=shadow` label. To promote one: review its
-incidents over a real baseline period, choose its notification channels
-explicitly, and remove the marker and the label, in a separately reviewed
-change. Notification channels are not managed here, so their addresses never
-enter this module's state.
+A policy that has not been promoted is enabled with no notification channels,
+so it opens incidents in Cloud Monitoring and pages nobody; its display name
+carries `[Shadow]` and its `mode=shadow` label. To promote one: review its
+incidents over a real baseline period, then in a reviewed change set its
+`notification_channels` to `var.notification_channel_ids`, drop the marker,
+and switch its labels to `local.paging_alert_labels`.
+
+Notification channels are created in the console and carry the addresses;
+this module references them only by resource name, passed on the plan
+command line from `SHALLWESWIM_ALERT_NOTIFICATION_CHANNELS` in `.env` and
+never committed. The value is a JSON list of channel resource names on one
+line, and every plan and apply adds
+`-var="notification_channel_ids=$SHALLWESWIM_ALERT_NOTIFICATION_CHANNELS"`.
+List the channels with `gcloud beta monitoring channels list`. With the
+variable empty, a plan shows every promoted policy losing its channels: do
+not apply such a plan.
 
 ## Apply and integration-test
 

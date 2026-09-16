@@ -48,45 +48,30 @@ static/                  # CSS, JS, images
 
 **Backwards compatibility**: `api/__init__.py` and `config/__init__.py` re-export from `routes.py` and `locations.py` for import compatibility.
 
+**Subject documents**: [DATA_PIPELINE.md](DATA_PIPELINE.md) owns the job, the
+bundle, the web servers, and the archive; [README.md](README.md) owns how to
+run and operate them. This document is the map and the coding standards.
+
 ### Entry Points And Store Locators
 
 Three entry points run this code:
 
 - `shallweswim.web` is the web service: it loads published generations and
-  serves from them, and fetches nothing.
-  `SHALLWESWIM_SNAPSHOT_READ_BUCKET` is required, because a web process with no
-  store has nothing to serve; an unset variable fails startup with one message
-  naming it and pointing at `shallweswim.local`. Production runs it.
+  serves from them, and fetches nothing. Production runs it.
 - `shallweswim.update` is the bounded job: one capture cycle, and with
   `SHALLWESWIM_SNAPSHOT_PUBLISH=1` one published generation. It is the only
   process that contacts a provider. Production runs it on a schedule.
 - `shallweswim.local` is the clone-and-run local command: it runs the job's
-  publishing cycle (`update.publish_locations`) on a timer inside the web app's
-  process, against a local store, and serves that app. It composes rather than
-  branches: it wraps the app's lifespan, and inside it runs the first cycle and
-  loads the generation that cycle published before the server accepts a
-  request, then starts the cadence task and cancels it at shutdown, so
-  `web.py` holds no local mode. The web app opens no HTTP session, so this
-  module opens the one the cycles fetch over; the pool they plot in is the
-  app's. It runs the application object under uvicorn, not the factory string,
-  because the store lives in the process; `--reload` is therefore unsupported.
+  publishing cycle on a timer inside the web app's process, against a local
+  store, and serves that app. It composes rather than branches, so `web.py`
+  holds no local mode; it runs the application object under uvicorn rather
+  than the factory string, because the store lives in the process, so
+  `--reload` is unsupported.
 
 Every store the application builds comes from `archive/store.py`'s
-`object_store(locator)`: a bare name is a GCS bucket (with the per-bucket client
-cache), a locator containing `/` is a `FilesystemObjectStore` rooted there, and
-the literal `memory` is one process-wide `MemoryObjectStore`. The `ObjectStore`
-protocol is four operations - `read`, `compare_and_swap`, `list(prefix)`
-returning each key with a timezone-aware creation time, and `delete(key)`,
-which an absent key satisfies - and all three implementations answer them
-identically: memory records write times, the filesystem reports modification
-times and skips its dot-named locks and temporaries, and GCS reports
-`time_created` and tolerates a `NotFound` delete. The four
-environment-driven sites - archive capture, historical hydration, the snapshot
-publisher, and the web loader - call that helper and differ in nothing else, so
-a locator kind is never a code path. `shallweswim.local` sets
-`SHALLWESWIM_ARCHIVE_BUCKET`, `SHALLWESWIM_ARCHIVE_READ_BUCKET`, and
-`SHALLWESWIM_SNAPSHOT_READ_BUCKET` in its own process to one locator,
-unconditionally, so a local run can never reach the operator's bucket.
+`object_store(locator)`, so a locator kind is never a code path. The locator
+kinds, the three environment variables, and which process sets which are in
+[DATA_PIPELINE.md](DATA_PIPELINE.md#store-locators).
 
 ### Modular Design
 
@@ -132,90 +117,15 @@ outliers, so both folds of that hour are archived as the distinct instants they
 are. Composite feeds combine frames their member feeds already converted, so
 that step passes a naive frame through unchanged.
 
-When `SHALLWESWIM_ARCHIVE_BUCKET` is set, successful temperature updates and
-successful observational currents updates also merge observations into the
-private GCS archive. Production sets that variable only for the bounded capture
-job (`shallweswim/update.py`), never for the web service, so the web runtime
-never writes to the archive. The job builds feeds through the same
-`core.manager.build_feeds()` builder the web manager uses, updates each
-archivable feed once, and exits. Live feeds publish and schedule before capture; historical
-feeds capture only freshly fetched years, including successful years in a
-partial fetch, at the provider's native cadence, from the per-year frame before
-the hourly serving resample. Cached years retain their retrieval times. Merging is
-value-aware per observation instant: an unchanged reading keeps the stored row
-and its original retrieval time, a changed reading is replaced by the more
-recently retrieved claim, and a fetch with nothing new or revised leaves the
-partition byte-identical. Each merge event reports those row counts and the
-job's run summary reports their totals for the run.
-When the job definition also sets `SHALLWESWIM_SNAPSHOT_PUBLISH=1`, the job
-instead runs each location's full serving cycle through `LocationDataManager`
-(`update_once()`, then `wait_for_plots()` for the process-pool plots) and, after
-the cycle, publishes every location's served frames, plots, and feed metadata as
-one immutable content-addressed generation under `published/` in the same
-bucket (`shallweswim/snapshot/`); publication failure is isolated from the run's
-outcome, and the web service serves those generations, below.
-`snapshot/gc.py` then sweeps once per run, isolated the same way: it keeps the
-generation the current pointer names whatever its age and every generation
-published inside `RETAINED_GENERATION_AGE`, deletes the other manifests, and
-deletes only objects that no retained manifest references and that are older
-than `OBJECT_SAFETY_AGE`, because content addressing means a new generation may
-reference an old object. It deletes nothing it did not list in the same run,
-keeps every object when a retained manifest will not parse, never touches
-`archive/`, and logs one `snapshot.gc` event instead of raising.
-The builder reports every
-configured feed, as a served frame or as a failure, and manifest assembly
-resolves each failure against the generation the publisher observed at start:
-an entry published for the same `citation_key` is carried forward unchanged
-except for its accumulated failure count, this run's error, and this run's
-retry time, as is any plot the run did not produce whose feed the assembled
-manifest still publishes. Carried objects are
-referenced by key, never reread or rewritten, so a repeatedly failing feed
-publishes a manifest and no object. After assembly, and whether or not the
-generation is promoted, the job logs one `snapshot.freshness` event per
-location and feed with the served frame's `age_seconds` and a bounded
-`success`, `carried`, or `absent` outcome.
-A loaded generation can already serve: `snapshot/manager.py` builds a
-read-only `SnapshotLocationManager` per location from the manifest entry,
-restored frames, and plot bytes, computes the derived tide and current
-prediction frames once at construction, and derives each feed's status (age,
-expiry, health) from the manifest timestamps with the feed rules. It and
-`LocationDataManager` both satisfy `core/serving.py`'s `LocationServing`
-Protocol, which is what the API routes are typed against, and the query
-functions read any `FeedData` (a `has_data` flag and a `values` frame), which a
-fetched feed and a loaded snapshot feed both provide.
-`SHALLWESWIM_SNAPSHOT_READ_BUCKET`, which the web service and local runs set
-and the job never does, names the store the web service serves from. Its
-lifespan builds the store on a worker thread, runs one bounded (20-second)
-startup load, and starts the instance whether or not that load succeeded; a
-failed startup load is logged at ERROR, because the instance then has nothing
-to serve, while a failed refresh over a loaded generation stays WARNING. The
-lifespan constructs no `LocationDataManager`, opens no client session, and
-starts no update loop; the process pool it does create serves only the
-on-demand detail plots. An HTTP middleware elects one arriving request per
-60-second interval to check `published/current.json` before its handler runs,
-skipping when a check is already in flight. `snapshot/load.py` loads
-incrementally:
-objects are content-addressed, so a key the process already holds is reused and
-only new keys are read, eight at a time, each checked against the size and key
-the manifest recorded and validated through its feed model.
-`snapshot/refresh.py` holds that generation and the `SnapshotLocationManager`s
-built from it, publishing them with one assignment of an immutable mapping so a
-request in flight during a swap finishes on one whole generation, and logs one
-`snapshot.load` event per load that does work. That state is what every route
-reads; `app.state.data_managers` no longer exists.
-When `SHALLWESWIM_ARCHIVE_READ_BUCKET` is set, which local development and the
-publishing job do and the web service never does, the historical temperature
-feed first hydrates each
-required past year that is not already cached. Archive partitions are UTC years
-while a historical year frame is a station-local year, so hydration reads that
-year's partition and the next one, keeps the rows inside the local year, and
-runs them through the same serving index, hourly
-resample, and validation as a provider fetch; the current year, years the
-archive lacks, and years whose read fails still fetch from the provider, and
-hydrated years are never captured.
-Archive failures emit failed merge events without changing serving or retry
-state. Normalization, Parquet work, and synchronous GCS operations run in worker
-threads. Tide feeds and prediction currents feeds do not enter this archive.
+The job's cycle (schedule restoration, holding, carry-forward, publication,
+the sweep), the bundle's layout, the web servers' loading and refresh, the
+archive's partitions, merge semantics, and hydration are the rules in
+[DATA_PIPELINE.md](DATA_PIPELINE.md). In code: `update.py` runs the cycle,
+`snapshot/` builds, publishes, loads, and serves generations
+(`SnapshotLocationManager` satisfies the same `core/serving.py`
+`LocationServing` protocol as `LocationDataManager`, which is what the routes
+are typed against), `archive/` captures, merges, and hydrates, and
+`core/backfill.py` walks a source's full history.
 
 Keep user-facing condition endpoints on the fast path. Expensive, repeatable
 work that depends only on cached feed data should run during background updates
@@ -444,9 +354,8 @@ Two error types for data availability, at different layers:
   and log queries. NEW_LOCATION.md and NEW_DATA_FEED.md are task guides.
   TODO.md holds open items only. A fact lives in one of these and the others
   point to it; never restate a contract in a second document. Pending:
-  DATA_PIPELINE.md and MONITORING.md do not exist yet; their content still
-  sits in PERSISTENT_DATA_PIPELINE_DESIGN.md and OBSERVABILITY_DESIGN.md,
-  which are deleted once it has moved.
+  MONITORING.md does not exist yet; its content still sits in
+  OBSERVABILITY_DESIGN.md, which is deleted once it has moved.
 - **Reasons stay next to rules.** A design choice gets one paragraph of why
   inside the section that states it, so a reader meets the reason with the
   rule. Alternatives considered, incidents, and cost estimates are not kept.

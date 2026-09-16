@@ -1,4 +1,4 @@
-"""Measure serialized feed and plot sizes for the persistent data pipeline design.
+"""Measure serialized feed and plot sizes for the bundle.
 
 This is an operational, network-fetching investigation script (not a test). It
 fetches every configured feed for one or more locations through the existing
@@ -7,10 +7,10 @@ and serialized Parquet size (SVG size for plots). It never writes any file to
 disk and never writes to the observation archive; all serialization happens in
 memory via ``io.BytesIO``.
 
-It answers PERSISTENT_DATA_PIPELINE_DESIGN.md open questions 2 and 3: the
-measured serialized size of every current feed/plot, and whether any combined
-per-location historical frame is large enough to justify finer serving
-partitions than one object per feed. For historical temperature feeds, the
+It measures the serialized size of every current feed and plot, and whether
+any combined per-location historical frame is large enough to justify finer
+serving partitions than the one object per feed the bundle uses
+(DATA_PIPELINE.md, "The bundle"). For historical temperature feeds, the
 combined frame is also split by the feed's local-time calendar year and each
 year is measured separately as an approximation of a per-year serving
 partition. This differs from the archive's UTC year-boundary contract (see

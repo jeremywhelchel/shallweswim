@@ -103,13 +103,11 @@ serves stale data rather than none.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component documentation, coding standards, and error handling patterns.
 
-A proposed future separation of scheduled data materialization, durable
-observation storage, and request-serving is documented in
-[Persistent Data Pipeline Design](PERSISTENT_DATA_PIPELINE_DESIGN.md). It is a
-design proposal, not the current production architecture.
+The job, the bundle, and the web servers, with the archive and the rules that
+bind them, are documented in [DATA_PIPELINE.md](DATA_PIPELINE.md).
 
-The proposed provider-neutral telemetry contracts and managed GCP monitoring
-approach are documented in [Observability Design](OBSERVABILITY_DESIGN.md).
+The provider-neutral telemetry contracts and managed GCP monitoring approach
+are documented in [Observability Design](OBSERVABILITY_DESIGN.md).
 
 To add a new swim spot, start with [NEW_LOCATION.md](NEW_LOCATION.md). If the
 spot needs an unsupported upstream API or parser, use
@@ -524,14 +522,8 @@ has accessor permission scoped to that secret.
 
 Set `SHALLWESWIM_ARCHIVE_BUCKET` to a private GCS bucket name to preserve
 temperature and observational currents measurements after successful fetches.
-Leave it empty to disable capture. The service continues serving its in-memory
-data; archive failures are logged and do not change feed success or retry
-scheduling. Repeated fetches of unchanged readings leave the stored partition
-byte-identical, so only new observations and upstream revisions are written. Only fresh historical years are captured, so cached years keep their
-original retrieval times. Historical years are archived in UTC at the provider's
-native cadence, before the hourly serving resample, so both folds of a
-daylight-saving fall-back hour reach the archive. Prediction feeds, including
-tide and NOAA CO-OPS currents predictions, are excluded.
+Leave it empty to disable capture. What is archived, how partitions are laid
+out, and how merges behave is in [DATA_PIPELINE.md](DATA_PIPELINE.md#the-archive).
 
 Each of the three store variables holds a store *locator*, not only a bucket
 name: a bare name is a GCS bucket, a value containing `/` is a directory, and
@@ -554,10 +546,9 @@ SHALLWESWIM_ARCHIVE_BUCKET=my-archive-bucket \
 In this capture-only mode the job fetches only live temperatures, historical
 temperatures, and observational currents; it never fetches tide or current
 predictions, generates plots, or starts the web app. A missing bucket variable
-fails the run before any upstream request, because fetching without capturing
-has no purpose. Locations run concurrently and each location's feeds run in
-sequence. One failing feed leaves the run `partial` and still exits zero; a run
-that publishes nothing exits non-zero.
+fails the run before any upstream request. One failing feed leaves the run
+`partial` and still exits zero; a run that publishes nothing exits non-zero
+([run summary](DATA_PIPELINE.md#run-summary)).
 
 ##### Backfilling Deep History
 
@@ -608,124 +599,50 @@ in a reviewed change, so the served range and the plots follow.
 ##### Published Snapshots
 
 The deployed job also publishes a serving snapshot after its capture cycle, and
-runs every ten minutes.
-`SHALLWESWIM_SNAPSHOT_PUBLISH=1` switches a run to the full serving cycle of
-every location, exactly as the web service runs it: all four feeds including
-tide and current predictions, derived frames, and plots in a process pool. It
-then writes one immutable generation under `published/` in the archive bucket:
-content-addressed Parquet objects (one per served feed frame) and SVG objects
-(one per plot) under `published/objects/`, a manifest under
-`published/manifests/`, and finally the `published/current.json` pointer,
-replaced conditionally. A generation identical to the current one is not
-written. The web service loads these generations and serves only the loaded
-one, described below.
+runs every ten minutes. `SHALLWESWIM_SNAPSHOT_PUBLISH=1` switches a run to the
+full serving cycle of every location, all four feeds including tide and current
+predictions, derived frames, and plots in a process pool, and then writes one
+immutable generation under `published/` in the archive bucket. Publishing also
+requires `SHALLWESWIM_ARCHIVE_READ_BUCKET`, set to the same bucket, so the
+historical feed hydrates past years from the archive instead of refetching
+them. The web service sets neither variable.
 
-The current generation is also the job's feed schedule. Before running a
-location's cycle, the job restores each feed's next fetch time from the current
-manifest, for every entry that still names the feed's configured source. A feed
-that would not come due before the next run starts is not fetched — it is
-*held* — and the new manifest keeps its entry and its plots exactly as
-published; a feed due before the next run fetches on this one. Each feed thus
-keeps its own interval whatever the job cadence is: live temperature every ten
-minutes, historical temperature every three hours, tide and current predictions
-daily. A feed that is due, that the manifest does not describe, or whose source
-identity changed fetches as a fresh feed does. `--full-history` skips
-restoration entirely, so every feed fetches. A run in which no feed was due
-publishes nothing new and reports `outcome=unchanged`.
+```bash
+SHALLWESWIM_SNAPSHOT_PUBLISH=1 \
+SHALLWESWIM_ARCHIVE_BUCKET=my-archive-bucket \
+SHALLWESWIM_ARCHIVE_READ_BUCKET=my-archive-bucket \
+  uv run python -m shallweswim.update
+```
 
-Every configured feed of every enabled location is reported. A feed that was
-due and fetched nothing keeps the entry the current generation published for
-the same source: the object, its fetch timestamp, and its record count stay as
-published, while the failure count accumulates and the last error and next
-retry become this run's, so a transient provider failure never drops
-last-known-good data from a generation. A plot this run did not produce is
-copied the same way, but only while the feed it was drawn from is still
-published. A feed the current generation never published, one whose source
-identity changed, and a feed or location that is no longer configured are
-simply absent. A run in which nothing can be referenced at all publishes
-nothing. After assembly the job logs one `snapshot.freshness` event per
-location and feed with `outcome` `success`, `held`, `carried`, or `absent` and
-the served frame's `age_seconds`, at INFO when the feed was fetched or held and
-WARNING when it was carried or absent. A held feed counts as published in the
-run summary, because the generation keeps serving its frame. Publishing requires
-`SHALLWESWIM_ARCHIVE_READ_BUCKET`, set to the same bucket, so the historical
-feed restores past years from the archive instead of refetching them; a
-publishing run always uses the full historical range. A failed publish is
-logged, does not change the run's outcome or exit code, and is named in the run
-summary. The web service sets neither variable.
-
-After publishing, each run sweeps the generations that publication superseded.
-The generation the current pointer names is kept whatever its age, as is every
-generation published in the last 24 hours — the rollback window, and the window
-a slow instance could still be loading from. The manifests of older generations
-are deleted; `published/current.json` never is. Objects are content-addressed
-and shared between generations, so the sweep deletes an object only when no
-retained manifest references it and it was created more than an hour ago; that
-safety window protects a publisher that has written a generation's objects but
-has not promoted it yet. The sweep deletes nothing it did not list in that same
-run, never touches the `archive/` prefix, and logs one `snapshot.gc` event with
-`outcome` `success` or `failed` and the objects deleted as `record_count`. Like
-a failed publish, a failed sweep changes neither the run's outcome nor its exit
-code. The local entry point's cycle sweeps too, so a store directory does not
-grow without bound.
+The current generation is also the job's feed schedule: a feed not due before
+the next run is held and its published entry carried forward, so each feed
+keeps its own interval whatever the job cadence is, and `--full-history`
+fetches every feed regardless. The generation layout, schedule restoration,
+carry-forward, the freshness and publish events, and the sweep of superseded
+generations are in [DATA_PIPELINE.md](DATA_PIPELINE.md#the-jobs-cycle).
 
 ##### Serving From Published Snapshots
 
 `SHALLWESWIM_SNAPSHOT_READ_BUCKET` names the bucket whose `published/` prefix
 the app reads, and it is required: the web service serves every request from
-the generation it has loaded and contacts no provider, so a process with no
-store has nothing to serve and fails at startup with a message naming the
-variable. It is read-only: loading calls only the store's read operation, so
-the credential needs no more than `roles/storage.objectViewer` on the bucket.
-It is deliberately distinct from `SHALLWESWIM_ARCHIVE_BUCKET`, which enables
-writes, and from `SHALLWESWIM_ARCHIVE_READ_BUCKET`, which hydrates historical
-years; the deployed service sets only the snapshot read bucket, substituted
-from the same Cloud Build value as the job's bucket.
+the generation it has loaded and contacts no provider. It is read-only, so the
+credential needs no more than `roles/storage.objectViewer` on the bucket, and
+the deployed service sets only this variable, substituted from the same Cloud
+Build value as the job's bucket.
 
 ```bash
 SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
   uv run python -m shallweswim.web --port=12345
 ```
 
-Every response, health check, and status field comes from the loaded
-generation. The instance loads the current one at startup, bounded to 20
-seconds, and keeps it current; the only work it does per request that is not a
-lookup is the on-demand tide and current detail plot, drawn in its process pool
-from the loaded frames. A startup failure or timeout is logged at ERROR and the
-instance starts anyway: `/api/healthy` answers 503 until an elected request
-loads a generation, the startup probe elects itself every check interval, and
-the platform restarts an instance that never becomes ready.
-
-`/api/status` reports the served generation alongside the per-feed status:
-`generation_id`, `published_at`, and `loaded_at` on each location, and an empty
-object while no generation is loaded. `/api/locations` reports `has_data` for
-the locations the generation carries, and a request for any other location
-answers 503.
-
-Refresh is request-piggybacked. An HTTP middleware runs on every request,
-health checks included: when 60 seconds have elapsed since the last check and
-no check is in flight, that request is elected and awaits the check before its
-handler runs, and concurrent requests proceed immediately. A check reads
-`published/current.json`. If it names the loaded generation, nothing else
-happens. If it names a new one, the instance reads that manifest and only the
-objects whose content-addressed keys it does not already hold, eight at a time,
-validates every frame through its feed model, builds the read-only per-location
-managers, and swaps them in with one assignment, so a request running during
-the swap finishes on the generation it started with. A location the generation
-does not carry simply has no manager. A failed check schedules the next one a
-full interval later, never sooner. The app never lists `published/manifests/`
-and never deletes anything.
-
-Each load that does work logs one structured event with
-`component=snapshot operation=load`, `outcome` `success` or `failed`, the
-`generation_id`, `duration_ms`, `record_count` as the objects read, and
-`age_seconds` as the lag between the job publishing the generation and this
-instance picking it up. An unchanged check logs nothing above DEBUG. There is
-no new route: the load events carry the platform's instance identity, which
-answers "is every instance loading the bundle" better than an endpoint can.
-
-To roll back, route traffic to the previous revision, which fetches for itself.
-No store change is needed, and the job keeps publishing throughout.
+The instance loads the current generation at startup and starts even if that
+load fails, answering 503 from `/api/healthy` until one is loaded. One request
+a minute is elected to check for a new generation and load it; `/api/status`
+reports the served `generation_id`, `published_at`, and `loaded_at`. The load
+rules, the swap, and the load event are in
+[DATA_PIPELINE.md](DATA_PIPELINE.md#the-web-servers). To roll back a deploy,
+route traffic to the previous revision; the store needs no change, and the job
+keeps publishing throughout.
 
 ##### Comparing The Published Bundle With A Local Fetch
 

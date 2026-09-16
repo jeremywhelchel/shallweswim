@@ -27,9 +27,9 @@ log should not automatically page the operator.
 
 ## Relationship to the Data Pipeline Design
 
-[Persistent Data Pipeline Design](PERSISTENT_DATA_PIPELINE_DESIGN.md) proposes a
-bounded updater, durable observation archive, immutable serving snapshots, and a
-read-only web process. This observability design is separate because it:
+[DATA_PIPELINE.md](DATA_PIPELINE.md) owns the job, the durable observation
+archive, the immutable generations, and the read-only web servers. This
+observability design is separate because it:
 
 - Applies to the current architecture before that migration.
 - Covers both the web and updater lifecycles.

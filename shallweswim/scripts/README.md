@@ -59,11 +59,10 @@ source-specific plausible Celsius bounds as the runtime feeds.
 locations through the existing clients and feed classes, then reports row
 counts, in-memory DataFrame size, and serialized Parquet size (SVG size for
 live/historical temperature plots). It never writes any file to disk; all
-serialization happens in memory via `io.BytesIO`. This answers
-[PERSISTENT_DATA_PIPELINE_DESIGN.md](../../PERSISTENT_DATA_PIPELINE_DESIGN.md)
-open questions 2–3: the measured serialized size of every current feed/plot,
-and whether any combined per-location historical frame is large enough to
-justify finer serving partitions than one object per feed.
+serialization happens in memory via `io.BytesIO`. It measures the serialized
+size of every current feed and plot, and whether any combined per-location
+historical frame is large enough to justify finer serving partitions than the
+one object per feed the bundle uses ([DATA_PIPELINE.md](../../DATA_PIPELINE.md)).
 
 For historical temperature feeds, the combined frame is also split by the
 feed's local-time calendar year and each year is measured separately, as an

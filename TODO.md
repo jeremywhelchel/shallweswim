@@ -301,7 +301,7 @@ Notes:
   distribution or add counter-style metrics.
 - Capture the archive validation checklist outcome after the first week:
   compare archived row counts with live feeds per source and record the result
-  in the design doc's status notes.
+  in DATA_PIPELINE.md's archive section.
 
 ### Runtime And Deployment
 

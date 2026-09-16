@@ -1,5 +1,5 @@
 # Cloud Run service configuration
-# Deploy with: gcloud run services replace service.yaml --region=us-east4
+# Deploy with: gcloud run services replace service.yaml --region="$CLOUDSDK_RUN_REGION" (after the cloudbuild.yaml substitutions)
 # NOTE: ${IMAGE_TAG} and ${SHALLWESWIM_ARCHIVE_BUCKET} are substituted by
 # Cloud Build (see cloudbuild.yaml) before the file is applied, exactly as they
 # are for capture-job.yaml.
@@ -28,9 +28,9 @@ spec:
     spec:
       containerConcurrency: 80
       timeoutSeconds: 300
-      serviceAccountName: shallweswim-runtime@shallweswim.iam.gserviceaccount.com
+      serviceAccountName: shallweswim-runtime@${PROJECT_ID}.iam.gserviceaccount.com
       containers:
-        - image: us-east4-docker.pkg.dev/shallweswim/gcr/shallweswim:${IMAGE_TAG}
+        - image: ${REGION}-docker.pkg.dev/${PROJECT_ID}/gcr/shallweswim:${IMAGE_TAG}
           env:
             - name: SHALLWESWIM_LOG_FORMAT
               value: json

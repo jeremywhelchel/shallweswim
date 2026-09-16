@@ -28,7 +28,7 @@ configuration. Choose a globally unique bucket name and set
 ```bash
 gcloud storage buckets create "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
   --project="$CLOUDSDK_CORE_PROJECT" \
-  --location=us-east4 \
+  --location="$CLOUDSDK_RUN_REGION" \
   --uniform-bucket-level-access \
   --public-access-prevention
 ```
@@ -58,7 +58,7 @@ Example one-time setup, after choosing a globally unique bucket name:
 ```bash
 gcloud storage buckets create "gs://$SHALLWESWIM_TERRAFORM_STATE_BUCKET" \
   --project="$CLOUDSDK_CORE_PROJECT" \
-  --location=us-east4 \
+  --location="$CLOUDSDK_RUN_REGION" \
   --uniform-bucket-level-access \
   --public-access-prevention
 

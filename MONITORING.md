@@ -238,7 +238,7 @@ Service status and the serving revision:
 
 ```bash
 gcloud run services describe shallweswim \
-  --region=us-east4 \
+  --region="$CLOUDSDK_RUN_REGION" \
   --format='yaml(status.url,status.conditions,status.traffic,status.latestReadyRevisionName,status.latestCreatedRevisionName)'
 ```
 

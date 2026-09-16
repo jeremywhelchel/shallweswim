@@ -631,7 +631,7 @@ the deployed service sets only this variable, substituted from the same Cloud
 Build value as the job's bucket.
 
 ```bash
-SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
+SHALLWESWIM_SNAPSHOT_READ_BUCKET="$SHALLWESWIM_ARCHIVE_BUCKET" \
   uv run python -m shallweswim.web --port=12345
 ```
 
@@ -652,11 +652,11 @@ hold both sides in memory at once exactly as a production instance would. The
 command never runs in production:
 
 ```bash
-SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
+SHALLWESWIM_SNAPSHOT_READ_BUCKET="$SHALLWESWIM_ARCHIVE_BUCKET" \
   uv run python -m shallweswim.scripts.compare_snapshot
 
 # One location, at a chosen local instant
-SHALLWESWIM_SNAPSHOT_READ_BUCKET=shallweswim-archive \
+SHALLWESWIM_SNAPSHOT_READ_BUCKET="$SHALLWESWIM_ARCHIVE_BUCKET" \
   uv run python -m shallweswim.scripts.compare_snapshot \
   --location nyc --at 2026-06-01T04:00:00
 ```

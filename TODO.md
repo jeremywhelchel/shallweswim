@@ -305,7 +305,7 @@ Notes:
   returns to GitHub `main`. On 2026-09-14 the Cloud Build trigger was marked
   disabled and, because a disabled trigger still runs when Cloud Scheduler
   calls its run API (it deployed an older `main` twice over a
-  `build_and_deploy.sh` deploy), the Cloud Scheduler job in `us-east4` that
+  `build_and_deploy.sh` deploy), the Cloud Scheduler job in the deployment region that
   invokes it every eight hours was paused as well. Resuming means unpausing
   the scheduler job and clearing the trigger's disabled flag.
 - Evaluate Cloud Run second generation for performance, startup behavior, and
@@ -333,11 +333,6 @@ Notes:
   backend setting plus `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` for the provider)
   reads state and plans successfully; document that as the supported way to
   run Terraform without a key file.
-- Remove the temporary grants made for the 2026-09-13 deployment once no
-  longer needed: `roles/iam.serviceAccountTokenCreator` for the local operator
-  on `shallweswim-terraform` (still used to run Terraform from the sandbox)
-  and `roles/run.developer` on the project. The local operator's archive
-  bucket role was downgraded to `objectViewer` on 2026-09-14.
 - Consider enabling object versioning on the archive bucket as a safety net
   against a defective merge rewriting a partition; retention would need a
   matching lifecycle rule for noncurrent versions.

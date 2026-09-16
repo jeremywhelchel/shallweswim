@@ -3,7 +3,7 @@
 Every store the application reads or writes is named by one locator string,
 resolved by `object_store`:
 
-- a bare name, such as `shallweswim-archive`, is a GCS bucket
+- a bare name, such as `my-archive-bucket`, is a GCS bucket
 - a locator containing `/`, such as `./local-store` or `/tmp/swim`, is a
   `FilesystemObjectStore` rooted at that path
 - the literal `memory` is one process-wide `MemoryObjectStore`

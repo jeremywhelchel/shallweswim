@@ -47,7 +47,7 @@ The job manifest sets three application variables:
 only reads the generations this job publishes.
 
 **The invariant: this job is the only production writer to the archive.** The
-web runtime identity `shallweswim-runtime@shallweswim.iam.gserviceaccount.com`
+web runtime identity `shallweswim-runtime`
 holds `roles/storage.objectViewer` on the archive bucket and nothing more, and
 `service.yaml` never sets `SHALLWESWIM_ARCHIVE_BUCKET`, so the multi-instance
 web service can read published generations but cannot write archive objects even
@@ -57,7 +57,7 @@ reintroduce concurrent writers from every serving instance.
 ```bash
 gcloud storage buckets add-iam-policy-binding \
   "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
-  --member="serviceAccount:shallweswim-runtime@shallweswim.iam.gserviceaccount.com" \
+  --member="serviceAccount:shallweswim-runtime@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
   --role=roles/storage.objectViewer
 ```
 
@@ -70,6 +70,50 @@ variables (`GOOGLE_APPLICATION_CREDENTIALS`,
 `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`, `CLOUDSDK_CORE_PROJECT`,
 `SHALLWESWIM_ARCHIVE_BUCKET`). Do not use `gcloud auth` or modify global
 `gcloud` configuration.
+
+## Identities
+
+| Identity | Purpose | Holds |
+| --- | --- | --- |
+| `shallweswim-capture` | runs the job | `objectUser` on the archive bucket, read of the USGS key secret |
+| `shallweswim-capture-invoker` | triggers the job from Cloud Scheduler | invoker on the job |
+| `shallweswim-runtime` | runs the web service | `objectViewer` on the archive bucket |
+| `shallweswim-ci` | Cloud Build deploys | `run.developer`, `serviceAccountUser` on the job identity |
+| `shallweswim-terraform` | applies `infra/monitoring` | monitoring and state-bucket roles, see `../monitoring/README.md` |
+| `shallweswim-local-operator` | a person's machine or an agent's sandbox | below |
+
+The local operator is the identity operators and coding agents act as. It can
+read everything: project state, Cloud Run, logs, metrics, alert policies, and
+the archive bucket (`viewer`, `logging.viewer`, `iam.securityReviewer`,
+`serviceusage.serviceUsageConsumer`, `objectViewer` on the bucket). It
+changes the cloud only through named actions, each a command typed on
+purpose and never a side effect of running the app or the tests:
+
+| Action | Grant |
+| --- | --- |
+| deploy, by submitting a build (`build_and_deploy.sh`) | `cloudbuild.builds.editor` |
+| execute the capture job by hand, with argument overrides | `run.developer` |
+| apply monitoring Terraform, by impersonating `shallweswim-terraform` | `iam.serviceAccountTokenCreator` on that account |
+| open a bucket write window for itself | `bucketPolicyEditor` on the archive bucket, a custom role of `storage.buckets.getIamPolicy` and `storage.buckets.setIamPolicy` |
+
+It cannot write the archive by default, so no local run or test can touch
+the archive by accident. For a backfill, a repair, or deleting bad objects, a
+person opens a write window: a conditional grant that expires on its own, so
+nothing has to be revoked afterwards, and the audit log records who opened
+it and when.
+
+```bash
+gcloud storage buckets add-iam-policy-binding "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
+  --member="serviceAccount:shallweswim-local-operator@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
+  --role=roles/storage.objectUser \
+  --condition="expression=request.time < timestamp('2026-01-01T00:00:00Z'),title=operator-write-window"
+```
+
+Set the timestamp a few hours ahead. The expired binding stays listed in the
+policy until someone removes it, which is harmless; remove it with the
+matching `remove-iam-policy-binding` and the same `--condition` when tidying.
+Conditional bindings require uniform bucket-level access, which the archive
+bucket has.
 
 ## One-time identity setup
 
@@ -95,7 +139,7 @@ replacements the merge path needs without granting bucket administration.
 ```bash
 gcloud storage buckets add-iam-policy-binding \
   "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
-  --member="serviceAccount:shallweswim-capture@shallweswim.iam.gserviceaccount.com" \
+  --member="serviceAccount:shallweswim-capture@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
   --role=roles/storage.objectUser
 ```
 
@@ -105,7 +149,7 @@ Grant the job identity read access to the USGS API key secret referenced by
 ```bash
 gcloud secrets add-iam-policy-binding waterdata_usgs_gov_api_key \
   --project="$CLOUDSDK_CORE_PROJECT" \
-  --member="serviceAccount:shallweswim-capture@shallweswim.iam.gserviceaccount.com" \
+  --member="serviceAccount:shallweswim-capture@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
   --role=roles/secretmanager.secretAccessor
 ```
 
@@ -113,9 +157,9 @@ Let the Cloud Build identity deploy a job that runs as `shallweswim-capture`:
 
 ```bash
 gcloud iam service-accounts add-iam-policy-binding \
-  shallweswim-capture@shallweswim.iam.gserviceaccount.com \
+  "shallweswim-capture@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
   --project="$CLOUDSDK_CORE_PROJECT" \
-  --member="serviceAccount:shallweswim-ci@shallweswim.iam.gserviceaccount.com" \
+  --member="serviceAccount:shallweswim-ci@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
   --role=roles/iam.serviceAccountUser
 ```
 
@@ -125,22 +169,31 @@ deploy binding does not cover jobs. If the project policy contains conditional
 bindings, gcloud requires `--condition=None` for an unconditional grant.
 
 ```bash
-gcloud projects add-iam-policy-binding shallweswim \
-  --member="serviceAccount:shallweswim-ci@shallweswim.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding "$CLOUDSDK_CORE_PROJECT" \
+  --member="serviceAccount:shallweswim-ci@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
   --role=roles/run.developer \
   --condition=None
 ```
 
 Local development hydrates historical temperature years from the archive
 through `SHALLWESWIM_ARCHIVE_READ_BUCKET`, which only reads. Grant the local
-operator identity read access to the bucket, and no write role; this viewer
-grant is the intended steady state for local work.
+operator identity read access to the bucket, and the custom role that lets
+it open its own expiring write window (see [Identities](#identities)):
 
 ```bash
 gcloud storage buckets add-iam-policy-binding \
   "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
-  --member="serviceAccount:shallweswim-local-operator@shallweswim.iam.gserviceaccount.com" \
+  --member="serviceAccount:shallweswim-local-operator@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
   --role=roles/storage.objectViewer
+
+gcloud iam roles create bucketPolicyEditor --project="$CLOUDSDK_CORE_PROJECT" \
+  --title="Bucket IAM policy editor" \
+  --permissions=storage.buckets.getIamPolicy,storage.buckets.setIamPolicy \
+  --stage=GA
+gcloud storage buckets add-iam-policy-binding \
+  "gs://$SHALLWESWIM_ARCHIVE_BUCKET" \
+  --member="serviceAccount:shallweswim-local-operator@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
+  --role="projects/$CLOUDSDK_CORE_PROJECT/roles/bucketPolicyEditor"
 ```
 
 The web runtime identity takes the same read-only grant so the service can load
@@ -148,7 +201,8 @@ published generations (see the invariant above for the command).
 
 Do not grant `shallweswim-capture` anything else, do not grant the web runtime
 identity any role on the archive bucket beyond `roles/storage.objectViewer`, and
-do not leave any local identity holding a write role on the bucket.
+never give a local identity an unconditional write role on the bucket: a write
+window always carries an expiry.
 
 ## Continuous build trigger
 
@@ -176,11 +230,11 @@ substitution reaches Cloud Build empty.
 ```bash
 ./build_and_deploy.sh
 
-gcloud run jobs describe shallweswim-capture --region=us-east4
+gcloud run jobs describe shallweswim-capture --region="$CLOUDSDK_RUN_REGION"
 ```
 
 Confirm in the description that the image tag matches the build just deployed,
-the service account is `shallweswim-capture@shallweswim.iam.gserviceaccount.com`,
+the service account is `shallweswim-capture` in the project,
 `SHALLWESWIM_ARCHIVE_BUCKET` and `SHALLWESWIM_ARCHIVE_READ_BUCKET` both hold the
 intended bucket name, `SHALLWESWIM_SNAPSHOT_PUBLISH` is `1`, the task timeout is
 1200 seconds, and retries are limited to one.
@@ -190,7 +244,7 @@ intended bucket name, `SHALLWESWIM_SNAPSHOT_PUBLISH` is `1`, the task timeout is
 Run the scheduled cycle on demand and wait for it to finish:
 
 ```bash
-gcloud run jobs execute shallweswim-capture --region=us-east4 --wait
+gcloud run jobs execute shallweswim-capture --region="$CLOUDSDK_RUN_REGION" --wait
 ```
 
 The one-time historical backfill adds `--full-history`. A capture-only run then
@@ -204,7 +258,7 @@ definition (and therefore every scheduled run) unchanged. The `command` stays
 `python`, so the full argument vector must be given:
 
 ```bash
-gcloud run jobs execute shallweswim-capture --region=us-east4 --wait \
+gcloud run jobs execute shallweswim-capture --region="$CLOUDSDK_RUN_REGION" --wait \
   --args="-m,shallweswim.update,--full-history"
 ```
 
@@ -228,25 +282,25 @@ hourly minute-7 offset keeps the run clear of the top of the hour.
 ```bash
 gcloud run jobs add-iam-policy-binding shallweswim-capture \
   --project="$CLOUDSDK_CORE_PROJECT" \
-  --region=us-east4 \
-  --member="serviceAccount:shallweswim-capture-invoker@shallweswim.iam.gserviceaccount.com" \
+  --region="$CLOUDSDK_RUN_REGION" \
+  --member="serviceAccount:shallweswim-capture-invoker@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
   --role=roles/run.invoker
 
 gcloud scheduler jobs create http shallweswim-capture-hourly \
   --project="$CLOUDSDK_CORE_PROJECT" \
-  --location=us-east4 \
+  --location="$CLOUDSDK_RUN_REGION" \
   --schedule="7 * * * *" \
   --time-zone=Etc/UTC \
-  --uri="https://us-east4-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/shallweswim/jobs/shallweswim-capture:run" \
+  --uri="https://$CLOUDSDK_RUN_REGION-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$CLOUDSDK_CORE_PROJECT/jobs/shallweswim-capture:run" \
   --http-method=POST \
-  --oauth-service-account-email=shallweswim-capture-invoker@shallweswim.iam.gserviceaccount.com \
+  --oauth-service-account-email="shallweswim-capture-invoker@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
   --attempt-deadline=180s
 ```
 
 The `:run` endpoint returns as soon as the execution is created, so the attempt
 deadline covers only that API call and is unrelated to the job's 1200-second
 task timeout. Do not raise it to cover the run. (The equivalent v2 endpoint,
-`https://run.googleapis.com/v2/projects/PROJECT/locations/us-east4/jobs/shallweswim-capture:run`,
+`https://run.googleapis.com/v2/projects/PROJECT/locations/REGION/jobs/shallweswim-capture:run`,
 also works; the v1 namespaced form above is the one this deployment uses.)
 
 Creating a scheduler job with `--oauth-service-account-email` requires the
@@ -267,7 +321,7 @@ scheduler job means deleting and recreating it):
 ```bash
 gcloud scheduler jobs update http shallweswim-capture-hourly \
   --project="$CLOUDSDK_CORE_PROJECT" \
-  --location=us-east4 \
+  --location="$CLOUDSDK_RUN_REGION" \
   --schedule="*/10 * * * *" \
   --time-zone=Etc/UTC
 ```
@@ -292,7 +346,7 @@ action.
 
 After the first scheduled runs:
 
-1. `gcloud run jobs executions list --job=shallweswim-capture --region=us-east4`
+1. `gcloud run jobs executions list --job=shallweswim-capture --region="$CLOUDSDK_RUN_REGION"`
    shows recent executions and their task completion state.
 2. The run summary event is present and reports the expected outcome:
 
@@ -382,10 +436,10 @@ place:
 
 ```bash
 gcloud scheduler jobs pause shallweswim-capture-hourly \
-  --project="$CLOUDSDK_CORE_PROJECT" --location=us-east4
+  --project="$CLOUDSDK_CORE_PROJECT" --location="$CLOUDSDK_RUN_REGION"
 
 gcloud scheduler jobs resume shallweswim-capture-hourly \
-  --project="$CLOUDSDK_CORE_PROJECT" --location=us-east4
+  --project="$CLOUDSDK_CORE_PROJECT" --location="$CLOUDSDK_RUN_REGION"
 ```
 
 Never delete the archive bucket or its objects to stop capture, and do not add a

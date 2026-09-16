@@ -372,6 +372,15 @@ Two error types for data availability, at different layers:
   into the owning documents as pending passages from the start. Deleting the
   file is part of the effort's definition of done, in the commit that lands
   its last slice. An empty `design/` means nothing is in flight.
+- **Portable by default; one provider under `infra/`.** The application and
+  its owning documents are cloud-agnostic: they speak of an object store
+  with three locator kinds, a scheduled job, and web servers, never of a
+  provider. Everything about running it on one provider is the reference
+  deployment under `infra/`: manifests, build configuration, deploy script,
+  monitoring, and their documents. Nothing tracked carries an installation's
+  identifiers: no project id, account address, bucket name, region, or
+  numeric id. Documents use the environment variables the operator already
+  holds (`.env.example`), and manifests take them as build substitutions.
 - **Docstrings**: Use Google-style docstrings for all functions and classes.
   - **Args**: List arguments and their types.
   - **Returns**: Describe the return value.

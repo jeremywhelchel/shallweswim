@@ -3,7 +3,9 @@
 # https://cloud.google.com/build/docs/deploying-builds/deploy-cloud-run
 
 substitutions:
-  _REGION: "us-east4"
+  # Installation-local region, supplied by build_and_deploy.sh from
+  # CLOUDSDK_RUN_REGION; the repository hard-codes no region.
+  _REGION: ""
   _SERVICE_NAME: "shallweswim"
   _IMAGE_NAME: "${_REGION}-docker.pkg.dev/${PROJECT_ID}/gcr/${_SERVICE_NAME}"
   # Installation-local archive bucket for the capture job, and the bucket the
@@ -12,7 +14,9 @@ substitutions:
   # from SHALLWESWIM_ARCHIVE_BUCKET and both deploy steps fail if it is empty.
   _ARCHIVE_BUCKET: ""
 
-serviceAccount: "projects/shallweswim/serviceAccounts/shallweswim-ci@shallweswim.iam.gserviceaccount.com"
+# The build runs as the deploy identity, shallweswim-ci in the target project;
+# build_and_deploy.sh passes it with --service-account, derived from
+# CLOUDSDK_CORE_PROJECT, so no project id is written here.
 
 steps:
   - name: "gcr.io/cloud-builders/docker"
@@ -39,14 +43,16 @@ steps:
       - -c
       - |
         set -euo pipefail
-        if [ -z "${_ARCHIVE_BUCKET}" ]; then
-          echo "ERROR: _ARCHIVE_BUCKET substitution is empty." >&2
-          echo "Set SHALLWESWIM_ARCHIVE_BUCKET in the operator environment (see .env.example)" >&2
-          echo "and deploy with ./build_and_deploy.sh, which passes it as _ARCHIVE_BUCKET." >&2
+        if [ -z "${_ARCHIVE_BUCKET}" ] || [ -z "${_REGION}" ]; then
+          echo "ERROR: the _ARCHIVE_BUCKET or _REGION substitution is empty." >&2
+          echo "Set SHALLWESWIM_ARCHIVE_BUCKET and CLOUDSDK_RUN_REGION in the operator" >&2
+          echo "environment (see .env.example) and deploy with ./build_and_deploy.sh." >&2
           exit 1
         fi
         sed -e "s|\$${IMAGE_TAG}|${BUILD_ID}|g" \
             -e "s|\$${SHALLWESWIM_ARCHIVE_BUCKET}|${_ARCHIVE_BUCKET}|g" \
+            -e "s|\$${PROJECT_ID}|${PROJECT_ID}|g" \
+            -e "s|\$${REGION}|${_REGION}|g" \
             service.yaml > service-substituted.yaml
         gcloud run services replace service-substituted.yaml --region=${_REGION}
 
@@ -59,14 +65,16 @@ steps:
       - -c
       - |
         set -euo pipefail
-        if [ -z "${_ARCHIVE_BUCKET}" ]; then
-          echo "ERROR: _ARCHIVE_BUCKET substitution is empty." >&2
-          echo "Set SHALLWESWIM_ARCHIVE_BUCKET in the operator environment (see .env.example)" >&2
-          echo "and deploy with ./build_and_deploy.sh, which passes it as _ARCHIVE_BUCKET." >&2
+        if [ -z "${_ARCHIVE_BUCKET}" ] || [ -z "${_REGION}" ]; then
+          echo "ERROR: the _ARCHIVE_BUCKET or _REGION substitution is empty." >&2
+          echo "Set SHALLWESWIM_ARCHIVE_BUCKET and CLOUDSDK_RUN_REGION in the operator" >&2
+          echo "environment (see .env.example) and deploy with ./build_and_deploy.sh." >&2
           exit 1
         fi
         sed -e "s|\$${IMAGE_TAG}|${BUILD_ID}|g" \
             -e "s|\$${SHALLWESWIM_ARCHIVE_BUCKET}|${_ARCHIVE_BUCKET}|g" \
+            -e "s|\$${PROJECT_ID}|${PROJECT_ID}|g" \
+            -e "s|\$${REGION}|${_REGION}|g" \
             capture-job.yaml > capture-job-substituted.yaml
         gcloud run jobs replace capture-job-substituted.yaml --region=${_REGION}
 

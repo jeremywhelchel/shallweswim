@@ -23,7 +23,7 @@ import datetime
 import logging
 import time
 
-from shallweswim.core.feeds import FeedName, PlotName
+from shallweswim.core.feeds import HEALTH_CHECK_BUFFER, FeedName, PlotName
 from shallweswim.snapshot.model import (
     SCHEMA_VERSION,
     CurrentPointer,
@@ -45,6 +45,10 @@ from shallweswim.snapshot.store import PromotionConflictError, SnapshotStore, ob
 FRESHNESS_SUCCESS = "success"
 FRESHNESS_HELD = "held"
 FRESHNESS_CARRIED = "carried"
+# A carried feed whose served frame is older than its own interval plus the
+# health buffer, the rule /api/status applies. The verdict is the job's, from
+# the feed's own interval, so the one alert policy on it needs no thresholds.
+FRESHNESS_STALE = "stale"
 FRESHNESS_ABSENT = "absent"
 
 
@@ -178,7 +182,10 @@ def _log_freshness(
     promoted, so a feed stuck on carried-forward data shows a growing age even
     while nothing else about the snapshot changes. A held feed is serving the
     frame its own interval says is still current, so it is INFO like a fetched
-    one; only a failed or absent feed warns.
+    one; only a failed or absent feed warns. A carried feed whose age has
+    passed its own interval plus the health buffer is `stale`: the served
+    frame is older than the feed's rule allows, whatever the cause, and that
+    verdict is what pages.
 
     Args:
         manifest: The assembled manifest, whose entries name the served frames.
@@ -189,15 +196,23 @@ def _log_freshness(
     for code, location in manifest.locations.items():
         built = snapshot.locations[code]
         for feed_name, feed_object in location.feeds.items():
+            age_seconds = int((now - feed_object.fetch_timestamp).total_seconds())
             if feed_name in built.feeds:
                 outcome = FRESHNESS_SUCCESS
             elif feed_name in built.holds:
                 outcome = FRESHNESS_HELD
+            elif (
+                feed_object.expiration_seconds is not None
+                and age_seconds
+                > feed_object.expiration_seconds + HEALTH_CHECK_BUFFER.total_seconds()
+            ):
+                outcome = FRESHNESS_STALE
             else:
                 outcome = FRESHNESS_CARRIED
-            age_seconds = int((now - feed_object.fetch_timestamp).total_seconds())
             logging.log(
-                logging.WARNING if outcome == FRESHNESS_CARRIED else logging.INFO,
+                logging.WARNING
+                if outcome in (FRESHNESS_CARRIED, FRESHNESS_STALE)
+                else logging.INFO,
                 f"[{code}] {feed_name} freshness {outcome} (age {age_seconds}s)",
                 extra={
                     "component": "snapshot",

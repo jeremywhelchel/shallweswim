@@ -280,10 +280,13 @@ repeatedly failing feed publishes a manifest and no object.
 
 After assembly, whether or not the generation is promoted, the job logs one
 `component=snapshot` `operation=freshness` event per location and configured
-feed with `outcome` `success` (fetched), `held`, `carried`, or `absent` and
-the served frame's `age_seconds`. Fetched and held are INFO; carried and
-absent are WARNING. A feed stuck on carried data therefore shows a growing age
-even while nothing else changes.
+feed with `outcome` `success` (fetched), `held`, `carried`, `stale`, or
+`absent` and the served frame's `age_seconds`. A carried feed becomes `stale`
+once its age passes its own interval plus `HEALTH_CHECK_BUFFER`, the rule
+`/api/status` applies, so the verdict comes from the feed's own interval and
+the one alert policy on it needs no thresholds. Fetched and held are INFO;
+carried, stale, and absent are WARNING. A feed stuck on carried data
+therefore shows a growing age even while nothing else changes.
 
 ### Publish events
 

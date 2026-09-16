@@ -10,17 +10,6 @@ locals {
     mode       = "paging"
   }
 
-  # Per-feed-type snapshot freshness thresholds, in seconds, from the existing
-  # feed health rule: the feed's expiration interval plus 15 minutes. A feed
-  # whose published frame is older than its threshold is being carried forward
-  # across runs rather than refreshed. The capture job publishes every ten
-  # minutes, so an hour of samples holds six values per feed and location.
-  snapshot_freshness_thresholds = {
-    live_temps     = 1500
-    historic_temps = 11700
-    tides          = 87300
-    currents       = 87300
-  }
 }
 
 resource "google_monitoring_alert_policy" "live_feed_update_latency" {
@@ -315,10 +304,13 @@ resource "google_monitoring_alert_policy" "archive_merge_failures" {
   }
 }
 
-resource "google_monitoring_alert_policy" "snapshot_feed_freshness" {
-  for_each = local.snapshot_freshness_thresholds
-
-  display_name          = "[Terraform] Snapshot ${each.key} freshness"
+# The job decides freshness from each feed's own interval plus the health
+# buffer, the rule /api/status applies, and says so on the freshness event:
+# outcome "stale" means the served frame is older than that feed allows,
+# whatever the cause. So there is one policy and no threshold here; a new
+# feed or a changed interval changes what pages without touching monitoring.
+resource "google_monitoring_alert_policy" "snapshot_feed_stale" {
+  display_name          = "[Terraform] Snapshot feed stale"
   combiner              = "OR"
   enabled               = true
   notification_channels = var.notification_channel_ids
@@ -327,20 +319,14 @@ resource "google_monitoring_alert_policy" "snapshot_feed_freshness" {
 
   documentation {
     mime_type = "text/markdown"
-    content   = "The published snapshot served a `${each.key}` frame older than ${each.value} seconds, its expiration interval plus 15 minutes, which means the feed is being carried forward instead of refreshed. The matched log entry names the location and the exact age."
+    content   = "The published snapshot is serving a feed's frame older than that feed's interval plus fifteen minutes, so the feed is being carried forward instead of refreshed. The matched log entry names the location, the feed, and the exact age; the run's feed update events for that feed say why the fetch failed."
   }
 
-  # This condition matches the freshness events themselves rather than the
-  # snapshot_feed_age_seconds distribution, because the distribution's
-  # buckets double in size and a percentile of it rounds an age up to the
-  # next bucket edge: a normal 10,800-second historical hold reads as about
-  # 16,000 seconds and would trip an 11,700-second threshold on every hold.
-  # The event carries the exact age_seconds, so the comparison is exact.
   conditions {
-    display_name = "Snapshot ${each.key} age > ${each.value}s"
+    display_name = "Snapshot feed stale"
 
     condition_matched_log {
-      filter = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.component=\"snapshot\" AND jsonPayload.operation=\"freshness\" AND jsonPayload.feed=\"${each.key}\" AND jsonPayload.age_seconds > ${each.value}"
+      filter = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.component=\"snapshot\" AND jsonPayload.operation=\"freshness\" AND jsonPayload.outcome=\"stale\""
 
       label_extractors = {
         location = "EXTRACT(jsonPayload.location)"

@@ -54,7 +54,7 @@ pipeline event means; this table is the map from event to metric.
 | `updater` / `run` | the job's run summary (`update.py`) | `success`, `partial`, `failed` | `duration_ms`, `record_count`, `new_count`, `revised_count`, `run_id` | `updater_runs`, `updater_run_duration_ms` |
 | `updater` / `backfill` | the backfill walk's summary (`update.py`) | `success`, `partial`, `failed` | as `run` | none, deliberately: a hand-run walk must not look like a scheduled run |
 | `snapshot` / `publish` | each publish attempt (`snapshot/publish.py`) | `success`, `unchanged`, `skipped`, `failed` | `generation_id`, `duration_ms`, `record_count` as objects written, `run_id` | `snapshot_publishes`, `snapshot_publish_duration_ms` |
-| `snapshot` / `freshness` | one per location and configured feed per publish | `success`, `held`, `carried`, `absent` | `location`, `feed`, `age_seconds` (none when absent) | `snapshot_feed_age_seconds` |
+| `snapshot` / `freshness` | one per location and configured feed per publish | `success`, `held`, `carried`, `stale` (carried past the feed's own interval plus the health buffer), `absent` | `location`, `feed`, `age_seconds` (none when absent) | `snapshot_feed_age_seconds` |
 | `snapshot` / `gc` | the sweep after each publish (`snapshot/gc.py`) | `success`, `failed` | `duration_ms`, `record_count` as objects deleted | `snapshot_gcs` |
 | `snapshot` / `load` | each web server load that does work (`snapshot/refresh.py`) | `success`, `failed` | `generation_id`, `duration_ms`, `record_count` as objects read, `age_seconds` as publication-to-load lag | `snapshot_loads`, `snapshot_load_duration_ms`, `snapshot_load_lag_seconds` |
 
@@ -102,8 +102,8 @@ outcome set gained `held`.
 
 ## Alert policies
 
-Sixteen policies concern the application, all Terraform's, in
-`monitoring/alert_policies.tf` and `monitoring/uptime.tf`, and all sixteen
+Thirteen policies concern the application, all Terraform's, in
+`monitoring/alert_policies.tf` and `monitoring/uptime.tf`, and all thirteen
 notify the project's channels (`mode=paging`).
 
 Why they all page: each threshold was first run for forty hours of the
@@ -123,10 +123,7 @@ the operator's environment, so no address is in the repository.
 | --- | --- | --- | --- |
 | Capture job heartbeat | job | no `updater_runs` sample with outcome `success` or `partial` for 30 minutes, three missed runs; a partial run still proves the job ran | CRITICAL |
 | Archive merge failures | job | any `archive_merges` with outcome `failed` in a one-hour window, per source | WARNING |
-| Snapshot live_temps freshness | job | a freshness event with `age_seconds` above 1500, matched on the event itself, one notification an hour per location | WARNING |
-| Snapshot historic_temps freshness | job | the same above 11700 | WARNING |
-| Snapshot tides freshness | job | the same above 87300 | WARNING |
-| Snapshot currents freshness | job | the same above 87300 | WARNING |
+| Snapshot feed stale | job | a freshness event with outcome `stale`: the job's own verdict that a carried frame is older than that feed's interval plus fifteen minutes, so no threshold lives here | WARNING |
 | Snapshot load lag | service | a load event with `age_seconds` above 1800, three cadences; catches an instance whose refresh path is stuck, not a job that stopped publishing | WARNING |
 | Snapshot load failures | service | more than two `snapshot_loads` with outcome `failed` in fifteen minutes; one failure retries a check interval later, repeated ones mean the instance cannot read the store | WARNING |
 | Repeated feed failures | job | more than two `feed_updates` with outcome `failed` in ten minutes, per location and feed; `unavailable` is excluded | ERROR |
@@ -138,10 +135,12 @@ the operator's environment, so no address is in the repository.
 | Homepage uptime failure | uptime check | the uptime check below fails for five minutes, with missing data counted as failure | CRITICAL |
 | Archive read gap | job | a historical refresh's archive read event with any outcome but `success`: a configured year was absent from the archive or could not be read, so the plots have a gap they should not | WARNING |
 
-The freshness thresholds are each feed's interval plus fifteen minutes, the
-same rule `/api/status` applies. Every policy that compares a value with a
-threshold, the four freshness policies, the load lag, and the two latencies,
-matches the log entries themselves rather than a distribution metric: the
+Freshness has no threshold in monitoring: the job decides it from each
+feed's own interval plus fifteen minutes, the rule `/api/status` applies,
+and says `stale` on the event, so a new feed or a changed interval changes
+what pages without a monitoring change. Every policy that compares a value
+with a threshold, the load lag and the two latencies, matches the log
+entries themselves rather than a distribution metric: the
 distributions' buckets double in size, and a percentile of one rounds a value
 up to the next bucket edge, so a normal 10,800-second historical hold read as
 about 16,000 seconds and paged on every hold. The events carry the exact

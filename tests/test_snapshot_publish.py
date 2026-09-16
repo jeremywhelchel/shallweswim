@@ -402,7 +402,9 @@ async def test_failed_feed_carries_the_base_entry_forward(caplog) -> None:
     events = _freshness(caplog)
     assert set(events) == {name.value for name in FeedName}
     live = events[FeedName.LIVE_TEMPS]
-    assert live.outcome == "carried"
+    # The carried frame is months older than the feed's ten-minute interval
+    # plus the health buffer, so the verdict is stale.
+    assert live.outcome == "stale"
     assert live.levelno == logging.WARNING
     assert live.age_seconds == int((LATER - FETCHED_AT).total_seconds())
     assert live.location == "nyc"
@@ -738,3 +740,29 @@ async def test_a_held_feed_whose_source_identity_differs_is_not_carried() -> Non
     assert manifest is not None
     assert FeedName.LIVE_TEMPS not in manifest.locations["nyc"].feeds
     assert PlotName.LIVE_TEMPS not in manifest.locations["nyc"].plots
+
+
+@pytest.mark.asyncio
+async def test_carried_feed_within_its_interval_is_carried_not_stale(caplog) -> None:
+    """A failed fetch soon after the last good one is carried, not yet stale."""
+    objects = MemoryObjectStore()
+    store = SnapshotStore(objects)
+    await publish(store, sample_snapshot(), run_id="run-1", now=NOW)
+
+    failing = sample_snapshot(
+        failures={
+            FeedName.LIVE_TEMPS: feed_failure(
+                FeedName.LIVE_TEMPS, consecutive_failures=1, last_error="boom"
+            )
+        }
+    )
+    # Ten minutes after the frame was fetched: inside the live feed's
+    # 600-second interval plus the fifteen-minute health buffer.
+    soon = FETCHED_AT + datetime.timedelta(minutes=10)
+    with caplog.at_level(logging.INFO):
+        await publish(store, failing, run_id="run-2", now=soon)
+
+    live = _freshness(caplog)[FeedName.LIVE_TEMPS]
+    assert live.outcome == "carried"
+    assert live.levelno == logging.WARNING
+    assert live.age_seconds == 600

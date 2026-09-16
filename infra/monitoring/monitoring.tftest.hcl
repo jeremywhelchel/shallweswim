@@ -259,7 +259,7 @@ run "monitoring_plan" {
 
   assert {
     condition = alltrue([
-      for policy in concat([
+      for policy in [
         google_monitoring_alert_policy.live_feed_update_latency,
         google_monitoring_alert_policy.live_plot_availability_latency,
         google_monitoring_alert_policy.repeated_feed_failures,
@@ -272,7 +272,8 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.request_5xx,
         google_monitoring_alert_policy.homepage_uptime_failure,
         google_monitoring_alert_policy.archive_read_gap,
-        ], values(google_monitoring_alert_policy.snapshot_feed_freshness)) : (
+        google_monitoring_alert_policy.snapshot_feed_stale,
+        ] : (
         startswith(policy.display_name, "[Terraform] ") &&
         !strcontains(policy.display_name, "[Shadow]") &&
         tolist(policy.notification_channels) == var.notification_channel_ids &&
@@ -283,27 +284,12 @@ run "monitoring_plan" {
   }
 
   assert {
-    condition = (
-      length(google_monitoring_alert_policy.snapshot_feed_freshness) == 4 &&
-      alltrue([
-        for feed, policy in google_monitoring_alert_policy.snapshot_feed_freshness : (
-          strcontains(
-            policy.conditions[0].condition_matched_log[0].filter,
-            "jsonPayload.age_seconds > ${local.snapshot_freshness_thresholds[feed]}"
-          ) &&
-          strcontains(
-            policy.conditions[0].condition_matched_log[0].filter,
-            "jsonPayload.feed=\"${feed}\""
-          ) &&
-          strcontains(
-            policy.conditions[0].condition_matched_log[0].filter,
-            "resource.type=\"cloud_run_job\""
-          ) &&
-          policy.alert_strategy[0].notification_rate_limit[0].period == "3600s"
-        )
-      ])
-    )
-    error_message = "Each feed type must keep its reviewed snapshot freshness threshold over a one hour window on the capture job."
+    condition = alltrue([
+      strcontains(google_monitoring_alert_policy.snapshot_feed_stale.conditions[0].condition_matched_log[0].filter, "jsonPayload.operation=\"freshness\""),
+      strcontains(google_monitoring_alert_policy.snapshot_feed_stale.conditions[0].condition_matched_log[0].filter, "jsonPayload.outcome=\"stale\""),
+      google_monitoring_alert_policy.snapshot_feed_stale.alert_strategy[0].notification_rate_limit[0].period == "3600s",
+    ])
+    error_message = "The one freshness policy matches the job's own stale verdict and carries no threshold of its own."
   }
 
   assert {

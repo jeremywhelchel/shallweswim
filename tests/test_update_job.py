@@ -686,7 +686,7 @@ def test_a_due_feed_fetches_while_the_rest_are_held(
     base = asyncio.run(load_current(SnapshotStore(store)))
     assert base is not None
     calls_after_first = _provider_calls(coops_client, nwis_client)
-    # Live temperature came due; nothing else did.
+    # Live temperature came due; the daily feeds did not.
     _edit_published_feed(
         store,
         "obs",
@@ -700,7 +700,10 @@ def test_a_due_feed_fetches_while_the_rest_are_held(
 
     assert coops_client.live_temperature_calls == calls_after_first[2] + 1
     assert _provider_calls(coops_client, nwis_client)[:2] == calls_after_first[:2]
-    assert _provider_calls(coops_client, nwis_client)[3:] == calls_after_first[3:]
+    assert _provider_calls(coops_client, nwis_client)[3] == calls_after_first[3]
+    # The observed currents feed refreshes on the live interval, so it comes
+    # due before the next run starts and fetches on every run.
+    assert nwis_client.currents_calls == calls_after_first[4] + 1
 
     loaded = asyncio.run(load_current(SnapshotStore(store)))
     assert loaded is not None
@@ -743,9 +746,12 @@ def test_a_changed_source_identity_fetches_instead_of_holding(
     assert update.main([]) == 0
 
     # The entry no longer describes the configured source, so the feed is a
-    # fresh feed again and fetches; every other feed still holds.
+    # fresh feed again and fetches; the daily feeds still hold.
     assert coops_client.live_temperature_calls == calls_after_first[2] + 1
-    assert _provider_calls(coops_client, nwis_client)[3:] == calls_after_first[3:]
+    assert _provider_calls(coops_client, nwis_client)[3] == calls_after_first[3]
+    # The observed currents feed refreshes on the live interval, so it comes
+    # due before the next run starts and fetches on every run.
+    assert nwis_client.currents_calls == calls_after_first[4] + 1
 
 
 def test_a_run_without_a_published_generation_fetches_everything(
@@ -1849,4 +1855,28 @@ def test_backfill_walks_locations_one_after_another(
     assert coops_client.requests and nwis_client.requests
     assert order == ["coops"] * len(coops_client.requests) + ["nwis"] * len(
         nwis_client.requests
+    )
+
+
+def test_observed_currents_refresh_on_the_live_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An observed current is a reading, not a prediction, so it expires like one."""
+    coops_client, nwis_client, _ = _install_job_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS, TEST_CONFIG_FULL]
+    )
+    clients: dict[str, BaseApiClient] = {"coops": coops_client, "nwis": nwis_client}
+    observed = build_feeds(TEST_CONFIG_OBSERVATION_CURRENTS, clients)[
+        feeds.FEED_CURRENTS
+    ]
+    predicted = build_feeds(TEST_CONFIG_FULL, clients)[feeds.FEED_CURRENTS]
+
+    assert observed is not None and predicted is not None
+    assert (
+        observed.expiration_interval
+        == manager_module.EXPIRATION_PERIODS[feeds.FEED_LIVE_TEMPS]
+    )
+    assert (
+        predicted.expiration_interval
+        == manager_module.EXPIRATION_PERIODS[feeds.FEED_CURRENTS]
     )

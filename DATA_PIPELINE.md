@@ -144,6 +144,7 @@ otherwise wait a whole cadence past its interval.
 | historical temperature | 3 hours |
 | tide predictions | 24 hours |
 | current predictions | 24 hours |
+| observed currents | 10 minutes, the live temperature interval: a reading, not a prediction |
 
 ### The serving cycle
 

@@ -60,7 +60,9 @@ PLOT_HARD_TIMEOUT = 300.0
 EXPIRATION_PERIODS: dict[feeds.FeedName, datetime.timedelta] = {
     # Tidal predictions already cover a wide past/present window
     feeds.FEED_TIDES: datetime.timedelta(hours=24),
-    # Current predictions already cover a wide past/present window
+    # Current predictions already cover a wide past/present window. An
+    # observed currents feed is a live reading and takes the live temperature
+    # interval instead; see build_feeds.
     feeds.FEED_CURRENTS: datetime.timedelta(hours=24),
     # Live temperature readings occur every 6 minutes, and are
     # generally already 5 minutes old when a new reading first appears
@@ -108,11 +110,19 @@ def build_feeds(
 
     currents_feed: feeds.Feed | None = None
     if config.currents_source:
+        # A prediction covers days ahead and refreshes daily; an observed
+        # current is a reading like a live temperature, stale within minutes,
+        # so it refreshes on the live interval.
+        currents_interval = (
+            EXPIRATION_PERIODS[feeds.FEED_LIVE_TEMPS]
+            if config.currents_source.source_type == DataSourceType.OBSERVATION
+            else EXPIRATION_PERIODS[feeds.FEED_CURRENTS]
+        )
         try:
             currents_feed = feeds.create_current_feed(
                 location_config=config,
                 current_config=config.currents_source,
-                expiration_interval=EXPIRATION_PERIODS[feeds.FEED_CURRENTS],
+                expiration_interval=currents_interval,
                 clients=clients,
             )
         except TypeError as e:

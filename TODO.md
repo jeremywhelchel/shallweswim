@@ -292,9 +292,13 @@ Notes:
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
-- Promote the remaining eleven Terraform alert policies once each has a
-  reviewed baseline (the capture job heartbeat pages since 2026-09-16), then
-  retire the three older console policies that page on a single error.
+- Retire the three older console alert policies, uptime failure, 5xx, and
+  Error Log, which page on a single event, now that the twelve Terraform
+  policies notify the same channels; keep the uptime check itself.
+- Measure the live plot availability latency per plot rather than per
+  location cycle: the harvest waits for the location's slowest fetch, so one
+  slow fetch stamps every plot with its delay and can page the plot latency
+  policy for a fetch problem.
 - Capture the archive validation checklist outcome after the first week:
   compare archived row counts with live feeds per source and record the result
   in DATA_PIPELINE.md's archive section.

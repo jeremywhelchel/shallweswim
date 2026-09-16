@@ -135,14 +135,17 @@ run "monitoring_plan" {
   }
 
   assert {
-    condition = alltrue([
+    condition = alltrue(concat([
       for policy in [
-        google_monitoring_alert_policy.live_feed_update_latency,
-        google_monitoring_alert_policy.live_plot_availability_latency,
         google_monitoring_alert_policy.repeated_feed_failures,
         google_monitoring_alert_policy.plot_generation_failure,
       ] : strcontains(policy.conditions[0].condition_threshold[0].filter, "resource.type = \"cloud_run_job\"")
-    ])
+      ], [
+      for policy in [
+        google_monitoring_alert_policy.live_feed_update_latency,
+        google_monitoring_alert_policy.live_plot_availability_latency,
+      ] : strcontains(policy.conditions[0].condition_matched_log[0].filter, "resource.type=\"cloud_run_job\"")
+    ]))
     error_message = "The feed and plot policies must watch the job resource; only the job fetches feeds and draws scheduled plots."
   }
 
@@ -176,15 +179,13 @@ run "monitoring_plan" {
   }
 
   assert {
-    condition = (
-      google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].threshold_value == 1800 &&
-      google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].aggregations[0].alignment_period == "3600s" &&
-      strcontains(
-        google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_threshold[0].filter,
-        "resource.type = \"cloud_run_revision\""
-      )
-    )
-    error_message = "The snapshot load lag policy must watch the service resource with the reviewed 1800 second threshold over a one hour window."
+    condition = alltrue([
+      strcontains(google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_matched_log[0].filter, "jsonPayload.age_seconds > 1800"),
+      strcontains(google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_matched_log[0].filter, "resource.type=\"cloud_run_revision\""),
+      strcontains(google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_matched_log[0].filter, "jsonPayload.duration_ms > 45000"),
+      strcontains(google_monitoring_alert_policy.live_plot_availability_latency.conditions[0].condition_matched_log[0].filter, "jsonPayload.duration_ms > 45000"),
+    ])
+    error_message = "The load lag and latency policies must match the exact event values against the reviewed thresholds."
   }
 
   assert {
@@ -265,23 +266,16 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.plot_generation_failure,
         google_monitoring_alert_policy.snapshot_load_lag,
         google_monitoring_alert_policy.snapshot_load_failures,
+        google_monitoring_alert_policy.capture_job_heartbeat,
         google_monitoring_alert_policy.archive_merge_failures,
         ], values(google_monitoring_alert_policy.snapshot_feed_freshness)) : (
-        startswith(policy.display_name, "[Terraform][Shadow]") &&
-        length(policy.notification_channels) == 0 &&
-        policy.user_labels.mode == "shadow"
+        startswith(policy.display_name, "[Terraform] ") &&
+        !strcontains(policy.display_name, "[Shadow]") &&
+        tolist(policy.notification_channels) == var.notification_channel_ids &&
+        policy.user_labels.mode == "paging"
       )
     ])
-    error_message = "Baseline alert policies must remain visibly marked as shadow policies without notification channels."
-  }
-
-  assert {
-    condition = (
-      google_monitoring_alert_policy.capture_job_heartbeat.display_name == "[Terraform] Capture job heartbeat" &&
-      google_monitoring_alert_policy.capture_job_heartbeat.user_labels.mode == "paging" &&
-      tolist(google_monitoring_alert_policy.capture_job_heartbeat.notification_channels) == var.notification_channel_ids
-    )
-    error_message = "The promoted capture job heartbeat must notify the configured channels and carry no shadow marker."
+    error_message = "Every alert policy notifies the configured channels and carries no shadow marker."
   }
 
   assert {
@@ -289,17 +283,19 @@ run "monitoring_plan" {
       length(google_monitoring_alert_policy.snapshot_feed_freshness) == 4 &&
       alltrue([
         for feed, policy in google_monitoring_alert_policy.snapshot_feed_freshness : (
-          policy.conditions[0].condition_threshold[0].threshold_value ==
-          local.snapshot_freshness_thresholds[feed] &&
-          policy.conditions[0].condition_threshold[0].aggregations[0].alignment_period == "3600s" &&
           strcontains(
-            policy.conditions[0].condition_threshold[0].filter,
-            "metric.label.feed = \"${feed}\""
+            policy.conditions[0].condition_matched_log[0].filter,
+            "jsonPayload.age_seconds > ${local.snapshot_freshness_thresholds[feed]}"
           ) &&
           strcontains(
-            policy.conditions[0].condition_threshold[0].filter,
-            "resource.type = \"cloud_run_job\""
-          )
+            policy.conditions[0].condition_matched_log[0].filter,
+            "jsonPayload.feed=\"${feed}\""
+          ) &&
+          strcontains(
+            policy.conditions[0].condition_matched_log[0].filter,
+            "resource.type=\"cloud_run_job\""
+          ) &&
+          policy.alert_strategy[0].notification_rate_limit[0].period == "3600s"
         )
       ])
     )

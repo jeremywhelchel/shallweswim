@@ -5,10 +5,6 @@ locals {
   # archive, so the feed, plot, archive, and run policies watch the job.
   cloud_run_resource_filter     = "resource.type = \"cloud_run_revision\""
   cloud_run_job_resource_filter = "resource.type = \"cloud_run_job\""
-  shadow_alert_labels = {
-    managed_by = "terraform"
-    mode       = "shadow"
-  }
   paging_alert_labels = {
     managed_by = "terraform"
     mode       = "paging"
@@ -28,88 +24,96 @@ locals {
 }
 
 resource "google_monitoring_alert_policy" "live_feed_update_latency" {
-  display_name          = "[Terraform][Shadow] Live feed update latency"
+  display_name          = "[Terraform] Live feed update latency"
   combiner              = "OR"
   enabled               = true
-  notification_channels = []
+  notification_channels = var.notification_channel_ids
   severity              = "WARNING"
-  user_labels           = local.shadow_alert_labels
+  user_labels           = local.paging_alert_labels
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: live feed-update p95 exceeded 45 seconds for 10 minutes. This policy deliberately sends no notifications while its threshold is baselined."
+    content   = "A live temperature fetch took longer than 45 seconds. The matched log entry names the location and the exact duration; a single slow provider answer is expected now and then, a run of them is a provider or network problem."
   }
 
+  # Matches the events rather than the duration distribution, whose doubling
+  # buckets round a percentile up to the next bucket edge (a 33-second fetch
+  # reads as 65 seconds); the event carries the exact duration_ms.
   conditions {
-    display_name = "Live feed-update p95 > 45s for 10m"
+    display_name = "Live feed update over 45s"
 
-    condition_threshold {
-      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.feed_update_duration.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.feed = \"live_temps\""
-      comparison      = "COMPARISON_GT"
-      threshold_value = 45000
-      duration        = "600s"
+    condition_matched_log {
+      filter = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.operation=\"feed_update\" AND jsonPayload.feed=\"live_temps\" AND jsonPayload.duration_ms > 45000"
 
-      aggregations {
-        alignment_period     = "300s"
-        per_series_aligner   = "ALIGN_PERCENTILE_95"
-        cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["metric.label.location", "metric.label.feed"]
+      label_extractors = {
+        location = "EXTRACT(jsonPayload.location)"
       }
+    }
+  }
 
-      trigger {
-        count = 1
-      }
+  # A log-matching condition notifies per matching entry, rate-limited to one
+  # notification an hour, and the incident closes on its own once no entry
+  # has matched for a while.
+  alert_strategy {
+    auto_close = "1800s"
+
+    notification_rate_limit {
+      period = "3600s"
     }
   }
 }
 
 resource "google_monitoring_alert_policy" "live_plot_availability_latency" {
-  display_name          = "[Terraform][Shadow] Live plot availability latency"
+  display_name          = "[Terraform] Live plot availability latency"
   combiner              = "OR"
   enabled               = true
-  notification_channels = []
+  notification_channels = var.notification_channel_ids
   severity              = "WARNING"
-  user_labels           = local.shadow_alert_labels
+  user_labels           = local.paging_alert_labels
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: live plot submit-to-harvest p95 exceeded 45 seconds for 10 minutes. This policy deliberately sends no notifications while its threshold is baselined."
+    content   = "A live temperature plot took longer than 45 seconds from submission to harvest. The harvest waits for the location's whole cycle, so one slow fetch stamps every plot of that run with its delay; check the feed update durations of the same run first."
   }
 
+  # Matches the events rather than the duration distribution, whose doubling
+  # buckets round a percentile up to the next bucket edge (a 33-second fetch
+  # reads as 65 seconds); the event carries the exact duration_ms.
   conditions {
-    display_name = "Live plot availability p95 > 45s for 10m"
+    display_name = "Live plot availability over 45s"
 
-    condition_threshold {
-      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.plot_availability_latency.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.feed = \"live_temps\""
-      comparison      = "COMPARISON_GT"
-      threshold_value = 45000
-      duration        = "600s"
+    condition_matched_log {
+      filter = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.operation=\"plot_generation\" AND jsonPayload.feed=\"live_temps\" AND jsonPayload.duration_ms > 45000"
 
-      aggregations {
-        alignment_period     = "300s"
-        per_series_aligner   = "ALIGN_PERCENTILE_95"
-        cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["metric.label.location", "metric.label.feed"]
+      label_extractors = {
+        location = "EXTRACT(jsonPayload.location)"
       }
+    }
+  }
 
-      trigger {
-        count = 1
-      }
+  # A log-matching condition notifies per matching entry, rate-limited to one
+  # notification an hour, and the incident closes on its own once no entry
+  # has matched for a while.
+  alert_strategy {
+    auto_close = "1800s"
+
+    notification_rate_limit {
+      period = "3600s"
     }
   }
 }
 
 resource "google_monitoring_alert_policy" "repeated_feed_failures" {
-  display_name          = "[Terraform][Shadow] Repeated feed failures"
+  display_name          = "[Terraform] Repeated feed failures"
   combiner              = "OR"
   enabled               = true
-  notification_channels = []
+  notification_channels = var.notification_channel_ids
   severity              = "ERROR"
-  user_labels           = local.shadow_alert_labels
+  user_labels           = local.paging_alert_labels
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: at least three unexpected failures for the same feed and location in 10 minutes. Expected station-unavailable outcomes are excluded."
+    content   = "at least three unexpected failures for the same feed and location in 10 minutes. Expected station-unavailable outcomes are excluded."
   }
 
   conditions {
@@ -136,16 +140,16 @@ resource "google_monitoring_alert_policy" "repeated_feed_failures" {
 }
 
 resource "google_monitoring_alert_policy" "plot_generation_failure" {
-  display_name          = "[Terraform][Shadow] Plot generation failure"
+  display_name          = "[Terraform] Plot generation failure"
   combiner              = "OR"
   enabled               = true
-  notification_channels = []
+  notification_channels = var.notification_channel_ids
   severity              = "ERROR"
-  user_labels           = local.shadow_alert_labels
+  user_labels           = local.paging_alert_labels
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: a plot generation completed with a failed outcome. This policy deliberately sends no notifications during baseline evaluation."
+    content   = "a plot generation completed with a failed outcome."
   }
 
   conditions {
@@ -172,54 +176,52 @@ resource "google_monitoring_alert_policy" "plot_generation_failure" {
 }
 
 resource "google_monitoring_alert_policy" "snapshot_load_lag" {
-  display_name          = "[Terraform][Shadow] Snapshot load lag"
+  display_name          = "[Terraform] Snapshot load lag"
   combiner              = "OR"
   enabled               = true
-  notification_channels = []
+  notification_channels = var.notification_channel_ids
   severity              = "WARNING"
-  user_labels           = local.shadow_alert_labels
+  user_labels           = local.paging_alert_labels
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: the web service loaded a bundle generation whose publication lag exceeded 1800 seconds in the last hour, three ten-minute capture job cadences; the observed lag is under a minute. This catches an instance whose refresh path is stuck, not a job that stopped publishing, which the capture job heartbeat catches. This policy deliberately sends no notifications while its threshold is baselined."
+    content   = "A web server loaded a generation more than 1800 seconds after it was published, three job cadences; the ordinary lag is under a minute and a deploy's first load is about ten minutes. This catches an instance whose refresh path is stuck, not a job that stopped publishing, which the capture job heartbeat catches."
   }
 
+  # Matches the load events rather than the lag distribution, whose doubling
+  # buckets round a percentile up to the next bucket edge (an 1,100-second
+  # lag reads as 2,048); the event carries the exact age_seconds.
   conditions {
-    display_name = "Snapshot load lag p99 > 1800s in 1h"
+    display_name = "Snapshot load lag over 1800s"
 
-    condition_threshold {
-      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.snapshot_load_lag.name}\" AND ${local.cloud_run_resource_filter}"
-      comparison      = "COMPARISON_GT"
-      threshold_value = 1800
-      duration        = "0s"
+    condition_matched_log {
+      filter = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${var.service_name}\" AND jsonPayload.operation=\"load\" AND jsonPayload.age_seconds > 1800"
+    }
+  }
 
-      # The metric is a distribution, which has no max aligner; the hour's
-      # 99th percentile approximates that hour's maximum load lag.
-      aggregations {
-        alignment_period     = "3600s"
-        per_series_aligner   = "ALIGN_PERCENTILE_99"
-        cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["metric.label.outcome"]
-      }
+  # A log-matching condition notifies per matching entry, rate-limited to one
+  # notification an hour, and the incident closes on its own once no entry
+  # has matched for a while.
+  alert_strategy {
+    auto_close = "1800s"
 
-      trigger {
-        count = 1
-      }
+    notification_rate_limit {
+      period = "3600s"
     }
   }
 }
 
 resource "google_monitoring_alert_policy" "snapshot_load_failures" {
-  display_name          = "[Terraform][Shadow] Snapshot load failures"
+  display_name          = "[Terraform] Snapshot load failures"
   combiner              = "OR"
   enabled               = true
-  notification_channels = []
+  notification_channels = var.notification_channel_ids
   severity              = "WARNING"
-  user_labels           = local.shadow_alert_labels
+  user_labels           = local.paging_alert_labels
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: the web service logged three or more failed bundle loads within fifteen minutes. A single failure retries a check interval later and the instance keeps serving its loaded generation; repeated failures mean an instance cannot read the store at all. The load lag policy catches slowness, this catches inability. This policy deliberately sends no notifications while its threshold is baselined."
+    content   = "the web service logged three or more failed bundle loads within fifteen minutes. A single failure retries a check interval later and the instance keeps serving its loaded generation; repeated failures mean an instance cannot read the store at all. The load lag policy catches slowness, this catches inability."
   }
 
   conditions {
@@ -278,16 +280,16 @@ resource "google_monitoring_alert_policy" "capture_job_heartbeat" {
 }
 
 resource "google_monitoring_alert_policy" "archive_merge_failures" {
-  display_name          = "[Terraform][Shadow] Archive merge failures"
+  display_name          = "[Terraform] Archive merge failures"
   combiner              = "OR"
   enabled               = true
-  notification_channels = []
+  notification_channels = var.notification_channel_ids
   severity              = "WARNING"
-  user_labels           = local.shadow_alert_labels
+  user_labels           = local.paging_alert_labels
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: an archive partition merge completed with a failed outcome in the last hour. A conflicting equally recent claim is self-recovering, so this is a warn candidate rather than a page candidate. This policy deliberately sends no notifications during baseline evaluation."
+    content   = "an archive partition merge completed with a failed outcome in the last hour. A conflicting equally recent claim is self-recovering; repeated failures mean the store or the merge path is broken."
   }
 
   conditions {
@@ -316,40 +318,45 @@ resource "google_monitoring_alert_policy" "archive_merge_failures" {
 resource "google_monitoring_alert_policy" "snapshot_feed_freshness" {
   for_each = local.snapshot_freshness_thresholds
 
-  display_name          = "[Terraform][Shadow] Snapshot ${each.key} freshness"
+  display_name          = "[Terraform] Snapshot ${each.key} freshness"
   combiner              = "OR"
   enabled               = true
-  notification_channels = []
+  notification_channels = var.notification_channel_ids
   severity              = "WARNING"
-  user_labels           = local.shadow_alert_labels
+  user_labels           = local.paging_alert_labels
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Shadow policy: the published snapshot served a `${each.key}` frame older than ${each.value} seconds, its expiration interval plus 15 minutes, which means the feed is being carried forward instead of refreshed. This policy deliberately sends no notifications while its threshold is baselined on real data."
+    content   = "The published snapshot served a `${each.key}` frame older than ${each.value} seconds, its expiration interval plus 15 minutes, which means the feed is being carried forward instead of refreshed. The matched log entry names the location and the exact age."
   }
 
+  # This condition matches the freshness events themselves rather than the
+  # snapshot_feed_age_seconds distribution, because the distribution's
+  # buckets double in size and a percentile of it rounds an age up to the
+  # next bucket edge: a normal 10,800-second historical hold reads as about
+  # 16,000 seconds and would trip an 11,700-second threshold on every hold.
+  # The event carries the exact age_seconds, so the comparison is exact.
   conditions {
-    display_name = "Snapshot ${each.key} age > ${each.value}s in 1h"
+    display_name = "Snapshot ${each.key} age > ${each.value}s"
 
-    condition_threshold {
-      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.snapshot_feed_age.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.feed = \"${each.key}\""
-      comparison      = "COMPARISON_GT"
-      threshold_value = each.value
-      duration        = "0s"
+    condition_matched_log {
+      filter = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.component=\"snapshot\" AND jsonPayload.operation=\"freshness\" AND jsonPayload.feed=\"${each.key}\" AND jsonPayload.age_seconds > ${each.value}"
 
-      # The metric is a distribution, which has no max aligner; with six
-      # publishes per feed and location an hour, the hour's 99th percentile is
-      # effectively that hour's maximum sample.
-      aggregations {
-        alignment_period     = "3600s"
-        per_series_aligner   = "ALIGN_PERCENTILE_99"
-        cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["metric.label.location", "metric.label.feed"]
+      label_extractors = {
+        location = "EXTRACT(jsonPayload.location)"
+        feed     = "EXTRACT(jsonPayload.feed)"
       }
+    }
+  }
 
-      trigger {
-        count = 1
-      }
+  # A log-matching condition notifies per matching entry, so one stale feed
+  # publishing every ten minutes is rate-limited to one notification an hour
+  # and the incident closes on its own once no entry has matched for a while.
+  alert_strategy {
+    auto_close = "1800s"
+
+    notification_rate_limit {
+      period = "3600s"
     }
   }
 }

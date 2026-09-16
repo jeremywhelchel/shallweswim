@@ -103,24 +103,20 @@ outcome set gained `held`.
 ## Alert policies
 
 Fifteen policies concern the application. Twelve are Terraform's, in
-`infra/monitoring/alert_policies.tf`. One of them, the capture job
-heartbeat, notifies the project's channels (`mode=paging`); the other eleven
-are enabled but attached to no channel, so they open and close incidents in
-Cloud Monitoring and page nobody, with `[Terraform][Shadow]` in their display
-names and a `mode=shadow` label until each is promoted. Three predate
-Terraform and notify the same channels from the console.
+`monitoring/alert_policies.tf`, and all twelve notify the project's channels
+(`mode=paging`). Three predate Terraform and notify the same channels from
+the console.
 
-Why the eleven notify nobody: each threshold is a first guess. A policy is
-promoted only after its incidents have been reviewed against a real baseline,
-by giving it the channels and removing the marker in a reviewed change
-(infra/monitoring/README.md). The heartbeat went first because the web
-servers serve only what the job publishes, so it is the pipeline's dead-man
-switch: with the job stopped, nothing else would complain.
+Why they all page: each threshold was first run for forty hours of the
+ten-minute cadence with no channel attached, and none fired except the load
+lag policy at the cutover itself, which was a real gap. A page that turns out
+to be an operator's own deploy is acceptable, because it is easy to
+attribute; a policy that pages nobody catches nothing. A new policy starts
+without channels and is promoted the same way (monitoring/README.md).
 
-The channels are the project's `+shallweswim` email address and the Cloud
-Console mobile app on the operator's phone. They are created in the console
-and referenced by id from the operator's environment, so no address is in
-the repository.
+The channels are an email address and the Cloud Console mobile app on the
+operator's phone. They are created in the console and referenced by id from
+the operator's environment, so no address is in the repository.
 
 ### Terraform policies
 
@@ -128,23 +124,29 @@ the repository.
 | --- | --- | --- | --- |
 | Capture job heartbeat | job | no `updater_runs` sample with outcome `success` or `partial` for 30 minutes, three missed runs; a partial run still proves the job ran | CRITICAL |
 | Archive merge failures | job | any `archive_merges` with outcome `failed` in a one-hour window, per source | WARNING |
-| Snapshot live_temps freshness | job | `snapshot_feed_age_seconds` p99 over an hour above 1500 s, per location | WARNING |
-| Snapshot historic_temps freshness | job | the same above 11700 s | WARNING |
-| Snapshot tides freshness | job | the same above 87300 s | WARNING |
-| Snapshot currents freshness | job | the same above 87300 s | WARNING |
-| Snapshot load lag | service | `snapshot_load_lag_seconds` p99 over an hour above 1800 s, three cadences; catches an instance whose refresh path is stuck, not a job that stopped publishing | WARNING |
+| Snapshot live_temps freshness | job | a freshness event with `age_seconds` above 1500, matched on the event itself, one notification an hour per location | WARNING |
+| Snapshot historic_temps freshness | job | the same above 11700 | WARNING |
+| Snapshot tides freshness | job | the same above 87300 | WARNING |
+| Snapshot currents freshness | job | the same above 87300 | WARNING |
+| Snapshot load lag | service | a load event with `age_seconds` above 1800, three cadences; catches an instance whose refresh path is stuck, not a job that stopped publishing | WARNING |
 | Snapshot load failures | service | more than two `snapshot_loads` with outcome `failed` in fifteen minutes; one failure retries a check interval later, repeated ones mean the instance cannot read the store | WARNING |
 | Repeated feed failures | job | more than two `feed_updates` with outcome `failed` in ten minutes, per location and feed; `unavailable` is excluded | ERROR |
 | Plot generation failure | job | any `plot_generations` with outcome `failed` in five minutes | ERROR |
-| Live feed update latency | job | `feed_update_duration_ms` p95 for `live_temps` above 45 s for ten minutes | WARNING |
-| Live plot availability latency | job | `plot_availability_latency_ms` p95 for `live_temps` above 45 s for ten minutes | WARNING |
+| Live feed update latency | job | a `live_temps` feed update event with `duration_ms` above 45 s | WARNING |
+| Live plot availability latency | job | a `live_temps` plot event with `duration_ms` above 45 s; the harvest waits for the location's slowest fetch, so check the feed durations of the same run first | WARNING |
 
 The freshness thresholds are each feed's interval plus fifteen minutes, the
-same rule `/api/status` applies. The job publishes every ten minutes, so an
-hour holds six samples per feed and location and the hour's 99th percentile
-is in effect its maximum. The heartbeat is an absence condition, and an
-absence condition evaluates only a metric that has produced data, so its
-silence means nothing until `updater_runs` has samples.
+same rule `/api/status` applies. Every policy that compares a value with a
+threshold, the four freshness policies, the load lag, and the two latencies,
+matches the log entries themselves rather than a distribution metric: the
+distributions' buckets double in size, and a percentile of one rounds a value
+up to the next bucket edge, so a normal 10,800-second historical hold read as
+about 16,000 seconds and paged on every hold. The events carry the exact
+values, so the comparisons are exact; the distributions stay for the
+dashboard, where the rounding is visible but harmless. The counters are
+exact and their policies use them. The heartbeat is an absence condition,
+and an absence condition evaluates only a metric that has produced data, so
+its silence means nothing until `updater_runs` has samples.
 
 Only the two snapshot load policies watch the service resource, because
 loading is the web servers' work. Everything else is the job's: it is the
@@ -159,10 +161,10 @@ archive, so the feed, plot, archive, and run policies watch the job resource.
 | 5xx error on shallweswim | any request in a one-minute window answered with a `5xx` other than `503`, from Cloud Run's request count | email and phone |
 | Error Log | any log entry with `severity=ERROR` whose request status is not `503`, at most one notification an hour | email |
 
-These are the paging surface today. The last two page on a single error,
-which is why an unexpected exception can mean an email while the site stays
-healthy. They stay until the Terraform policies have been promoted and have
-shown equal or better coverage.
+The last two page on a single event, which is why an unexpected exception
+can mean an email while the site stays healthy. Retiring them, now that the
+Terraform policies page, is an open item in TODO.md; the uptime check itself
+stays.
 
 The project also holds two YouTube livestream uptime checks and their
 policies. They are unrelated to the application and stay separate.

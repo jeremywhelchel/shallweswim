@@ -268,6 +268,8 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.snapshot_load_failures,
         google_monitoring_alert_policy.capture_job_heartbeat,
         google_monitoring_alert_policy.archive_merge_failures,
+        google_monitoring_alert_policy.application_errors,
+        google_monitoring_alert_policy.request_5xx,
         ], values(google_monitoring_alert_policy.snapshot_feed_freshness)) : (
         startswith(policy.display_name, "[Terraform] ") &&
         !strcontains(policy.display_name, "[Shadow]") &&
@@ -300,5 +302,18 @@ run "monitoring_plan" {
       ])
     )
     error_message = "Each feed type must keep its reviewed snapshot freshness threshold over a one hour window on the capture job."
+  }
+
+  assert {
+    condition = alltrue([
+      strcontains(google_monitoring_alert_policy.application_errors.conditions[0].condition_matched_log[0].filter, "severity>=ERROR"),
+      strcontains(google_monitoring_alert_policy.application_errors.conditions[0].condition_matched_log[0].filter, "NOT logName:\"run.googleapis.com%2Frequests\""),
+      strcontains(google_monitoring_alert_policy.application_errors.conditions[0].condition_matched_log[0].filter, "resource.labels.job_name=\"shallweswim-capture\""),
+      strcontains(google_monitoring_alert_policy.application_errors.conditions[0].condition_matched_log[0].filter, "resource.labels.service_name=\"shallweswim\""),
+      google_monitoring_alert_policy.application_errors.alert_strategy[0].auto_close == "1800s",
+      strcontains(google_monitoring_alert_policy.request_5xx.conditions[0].condition_threshold[0].filter, "metric.labels.response_code != \"503\""),
+      strcontains(google_monitoring_alert_policy.request_5xx.conditions[0].condition_threshold[0].filter, "run.googleapis.com/request_count"),
+    ])
+    error_message = "The catch-all policies must cover both application resources, exclude request logs and 503s, and close on their own."
   }
 }

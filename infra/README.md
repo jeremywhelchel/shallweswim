@@ -62,7 +62,7 @@ purpose and never a side effect of running the app or the tests:
 | --- | --- |
 | deploy, by submitting a build (`build_and_deploy.sh`) | `cloudbuild.builds.editor` |
 | execute the capture job by hand, with argument overrides | `run.developer` |
-| apply monitoring Terraform, by impersonating `shallweswim-terraform` | `iam.serviceAccountTokenCreator` on that account |
+| manage monitoring by impersonating `shallweswim-terraform`: Terraform applies, and `gcloud ... --impersonate-service-account` for the few console-owned monitoring resources | `iam.serviceAccountTokenCreator` on that account |
 | open a bucket write window for itself | `bucketPolicyEditor` on the archive bucket, a custom role of `storage.buckets.getIamPolicy` and `storage.buckets.setIamPolicy` |
 
 It cannot write the archive by default, so no local run or test can touch

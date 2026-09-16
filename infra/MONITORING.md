@@ -102,10 +102,10 @@ outcome set gained `held`.
 
 ## Alert policies
 
-Fifteen policies concern the application. Twelve are Terraform's, in
-`monitoring/alert_policies.tf`, and all twelve notify the project's channels
-(`mode=paging`). Three predate Terraform and notify the same channels from
-the console.
+Fifteen policies concern the application. Fourteen are Terraform's, in
+`monitoring/alert_policies.tf`, and all fourteen notify the project's
+channels (`mode=paging`). One, the uptime failure, predates Terraform and
+notifies the same channels from the console.
 
 Why they all page: each threshold was first run for forty hours of the
 ten-minute cadence with no channel attached, and none fired except the load
@@ -134,6 +134,8 @@ the operator's environment, so no address is in the repository.
 | Plot generation failure | job | any `plot_generations` with outcome `failed` in five minutes | ERROR |
 | Live feed update latency | job | a `live_temps` feed update event with `duration_ms` above 45 s | WARNING |
 | Live plot availability latency | job | a `live_temps` plot event with `duration_ms` above 45 s; the harvest waits for the location's slowest fetch, so check the feed durations of the same run first | WARNING |
+| Application error | service and job | any application log entry at ERROR or above, request logs excluded; the application logs ERROR only for a defect or an exhausted critical operation, so this is the catch-all for failures no other policy anticipated; one notification an hour | ERROR |
+| Request 5xx | service | any response in a minute with a `5xx` status other than `503`, from Cloud Run's request count; `503` is the deliberate no-data answer | ERROR |
 
 The freshness thresholds are each feed's interval plus fifteen minutes, the
 same rule `/api/status` applies. Every policy that compares a value with a
@@ -153,21 +155,16 @@ loading is the web servers' work. Everything else is the job's: it is the
 only process that fetches feeds, draws scheduled plots, and writes the
 archive, so the feed, plot, archive, and run policies watch the job resource.
 
-### Older policies
+### The console policy
 
 | Policy | Condition | Notifies |
 | --- | --- | --- |
 | Homepage uptime failure | the uptime check below fails for five minutes, with missing data counted as failure | email and phone |
-| 5xx error on shallweswim | any request in a one-minute window answered with a `5xx` other than `503`, from Cloud Run's request count | email and phone |
-| Error Log | any log entry with `severity=ERROR` whose request status is not `503`, at most one notification an hour | email |
 
-The last two page on a single event, which is why an unexpected exception
-can mean an email while the site stays healthy. Retiring them, now that the
-Terraform policies page, is an open item in TODO.md; the uptime check itself
-stays.
-
-The project also holds two YouTube livestream uptime checks and their
-policies. They are unrelated to the application and stay separate.
+It is managed in the console with the uptime check it watches. Its two
+former neighbours, a project-wide error-log match that never closed and a
+5xx policy with the project id in its filter, are replaced by the
+application error and request 5xx policies above.
 
 ## Dashboard
 

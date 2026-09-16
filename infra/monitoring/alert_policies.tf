@@ -360,3 +360,87 @@ resource "google_monitoring_alert_policy" "snapshot_feed_freshness" {
     }
   }
 }
+
+# The application logs ERROR only for a defect or an exhausted critical
+# operation (ARCHITECTURE.md "Logging"), so any application ERROR is worth a
+# page: it is the catch-all for failures no specific policy anticipated. Cloud
+# Run's request logs also carry ERROR for every 5xx response; those are
+# excluded here and covered by the request 5xx policy below.
+resource "google_monitoring_alert_policy" "application_errors" {
+  display_name          = "[Terraform] Application error"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = var.notification_channel_ids
+  severity              = "ERROR"
+  user_labels           = local.paging_alert_labels
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "The web service or the capture job logged an ERROR, which the application reserves for a defect or an exhausted critical operation. The matched entry carries the message; the labels name the component, location, and feed when the entry has them. One notification an hour; the incident closes on its own once the errors stop."
+  }
+
+  conditions {
+    display_name = "Any application ERROR"
+
+    condition_matched_log {
+      filter = "((resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${var.service_name}\") OR (resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\")) AND severity>=ERROR AND NOT logName:\"run.googleapis.com%2Frequests\""
+
+      label_extractors = {
+        component = "EXTRACT(jsonPayload.component)"
+        location  = "EXTRACT(jsonPayload.location)"
+        feed      = "EXTRACT(jsonPayload.feed)"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+
+    notification_rate_limit {
+      period = "3600s"
+    }
+  }
+}
+
+# Cloud Run counts every response by class; a 5xx other than 503 is an
+# unexpected failure to serve. 503 is the deliberate answer for a location or
+# a feed with no data, which the freshness and load policies cover.
+resource "google_monitoring_alert_policy" "request_5xx" {
+  display_name          = "[Terraform] Request 5xx"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = var.notification_channel_ids
+  severity              = "ERROR"
+  user_labels           = local.paging_alert_labels
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "The web service answered a request with a 5xx status other than 503 in the last minute. Read the request log for the revision (MONITORING.md \"Log queries\") to find the URL and the traceback."
+  }
+
+  conditions {
+    display_name = "Any 5xx other than 503 in 1m"
+
+    condition_threshold {
+      filter          = "metric.type = \"run.googleapis.com/request_count\" AND ${local.cloud_run_resource_filter} AND resource.labels.service_name = \"${var.service_name}\" AND metric.labels.response_code_class = \"5xx\" AND metric.labels.response_code != \"503\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["metric.labels.response_code"]
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+}

@@ -111,11 +111,21 @@ three steps of that ladder mean "next run".
 
 When a temperature feed or an observational currents feed fetches
 successfully, its raw client frame is merged into the archive (see
-[The archive](#the-archive)) before the feed's serving frame is derived. The
-historical feed captures only the years it fetched this run, never a hydrated
-one. Prediction feeds, tides and NOAA current predictions, never enter the
+[The archive](#the-archive)) before the feed's serving frame is derived.
+Prediction feeds, tides and NOAA current predictions, never enter the
 archive. Archive failures are logged as failed merge events and change neither
 the feed's success nor its schedule.
+
+Pending: the historical temperature feed's refresh becomes a top-up capture
+followed by hydration, so that the archive is the only source of served
+history (see [Hydration](#hydration)). On its interval the feed fetches the
+current year from the provider and merges it into the archive, as a capture
+only; it then builds its served frame from the archive. A provider that
+offers no history is not a special case: its archive begins with its live
+feed's first capture and its history grows from there. Today the current
+year is fetched from the provider and served directly, with the archive
+written as a side effect, and a year the archive lacks that the provider
+cannot supply makes the whole feed unavailable.
 
 ### Publishing and the sweep
 
@@ -345,6 +355,28 @@ A merge with nothing new or revised leaves the partition byte-identical, so
 re-archiving a year already held changes nothing. Merges from the scheduled
 job and a backfill run interleave safely through the conditional write.
 
+Pending: every row records the provider product it came from, in a
+nullable `product` column added under the schema evolution rule, and the
+merge ranks products before it compares retrieval times. For one instant:
+a value from a higher-ranked product replaces a lower-ranked one whichever
+was fetched first; within one product the later retrieval wins, which is a
+provider revising its own reading; the same product at the same retrieval
+time with different values stays an integrity error. The ranks are one
+named table in the archive module, per provider: NDBC's quality-controlled
+yearly and monthly files above its realtime file; CO-OPS hourly and
+six-minute equal, since the hourly product is the on-the-hour six-minute
+sample; every single-product provider is its one product. A row archived
+before the column existed reads back with no product and ranks lowest, so
+one backfill or top-up with a known product supersedes it. Only within one
+source identity: the merge never combines two stations or two providers.
+
+Why: with served history coming from the archive, the merge rule is the
+serving rule, and "later retrieval wins" across products would let fetch
+timing decide what the site shows. Ranking makes that choice a stated fact
+about each provider. In practice the only revisions seen since the cutover
+are one provider firming up its latest reading each run, which the
+within-product rule keeps.
+
 ### Merge events
 
 Each merge logs one `component=archive` `operation=merge` event with
@@ -367,6 +399,32 @@ identically. The current year always refetches from the provider; a year the
 archive lacks, or whose read or validation fails, is left for the provider
 fetch; hydrated years are never captured back. Hydration never fails an
 update.
+
+Pending: served history comes from the archive alone. Providers feed the
+archive three ways, the live feed's capture every run, the historical
+feed's top-up capture of the current year on its interval, and the one-time
+backfill; nothing else reaches the served frame. The historical feed's
+refresh is then: run the top-up capture, with its failure isolated exactly
+as any capture failure is; read every year of the configured range from
+the archive, the current year included, so the served current year carries
+the live feed's readings from the last run rather than waiting for the
+three-hourly fetch; combine what the archive holds. A year the archive
+lacks, or whose read fails, is a gap in the frame and the plot, never a
+failure of the feed, which fails only when the archive holds nothing in the
+range. The feed's year diagnostics report the years the archive holds and
+the years it lacks; "fetched" and "failed" years describe the top-up
+capture. The read bucket is therefore required wherever the historical
+feed runs, which is already so for the job and the local entry point.
+
+Why: the archive is the layer between this service and the providers'
+raw data, and for some sources it will be the only durable record there
+is. Serving history from it, rather than from the provider with the
+archive as a side effect, makes every source the same, makes the served
+frame agree with the archive by construction, and turns a provider outage
+or a missing year into a gap rather than a blank plot. The two-path shape
+it replaces dates from when the archive was unproven and serving was kept
+independent of it on purpose; that reason ended with validation and the
+backfill.
 
 ## Garbage collection and retention
 

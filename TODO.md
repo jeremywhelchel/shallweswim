@@ -292,10 +292,6 @@ Notes:
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
-- Measure the live plot availability latency per plot rather than per
-  location cycle: the harvest waits for the location's slowest fetch, so one
-  slow fetch stamps every plot with its delay and can page the plot latency
-  policy for a fetch problem.
 - Capture the archive validation checklist outcome after the first week:
   compare archived row counts with live feeds per source and record the result
   in DATA_PIPELINE.md's archive section.

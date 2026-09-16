@@ -73,17 +73,17 @@ resource "google_monitoring_alert_policy" "live_plot_availability_latency" {
 
   documentation {
     mime_type = "text/markdown"
-    content   = "A live temperature plot took longer than 45 seconds from submission to harvest. The harvest waits for the location's whole cycle, so one slow fetch stamps every plot of that run with its delay; check the feed update durations of the same run first."
+    content   = "A live temperature plot took longer than 120 seconds from submission to harvest. The duration includes queueing in the process pool on purpose: it is how long the plot took to become available. The first run after a deploy redraws every plot at once and queues live plots for about 80 seconds, which stays under this threshold; anything over it means the pool is stuck or starved."
   }
 
   # Matches the events rather than the duration distribution, whose doubling
   # buckets round a percentile up to the next bucket edge (a 33-second fetch
   # reads as 65 seconds); the event carries the exact duration_ms.
   conditions {
-    display_name = "Live plot availability over 45s"
+    display_name = "Live plot availability over 120s"
 
     condition_matched_log {
-      filter = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.operation=\"plot_generation\" AND jsonPayload.feed=\"live_temps\" AND jsonPayload.duration_ms > 45000"
+      filter = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.operation=\"plot_generation\" AND jsonPayload.feed=\"live_temps\" AND jsonPayload.duration_ms > 120000"
 
       label_extractors = {
         location = "EXTRACT(jsonPayload.location)"

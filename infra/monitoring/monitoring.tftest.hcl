@@ -183,7 +183,7 @@ run "monitoring_plan" {
       strcontains(google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_matched_log[0].filter, "jsonPayload.age_seconds > 1800"),
       strcontains(google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_matched_log[0].filter, "resource.type=\"cloud_run_revision\""),
       strcontains(google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_matched_log[0].filter, "jsonPayload.duration_ms > 45000"),
-      strcontains(google_monitoring_alert_policy.live_plot_availability_latency.conditions[0].condition_matched_log[0].filter, "jsonPayload.duration_ms > 45000"),
+      strcontains(google_monitoring_alert_policy.live_plot_availability_latency.conditions[0].condition_matched_log[0].filter, "jsonPayload.duration_ms > 120000"),
     ])
     error_message = "The load lag and latency policies must match the exact event values against the reviewed thresholds."
   }

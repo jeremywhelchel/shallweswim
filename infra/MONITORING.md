@@ -132,7 +132,7 @@ the operator's environment, so no address is in the repository.
 | Repeated feed failures | job | more than two `feed_updates` with outcome `failed` in ten minutes, per location and feed; `unavailable` is excluded | ERROR |
 | Plot generation failure | job | any `plot_generations` with outcome `failed` in five minutes | ERROR |
 | Live feed update latency | job | a `live_temps` feed update event with `duration_ms` above 45 s | WARNING |
-| Live plot availability latency | job | a `live_temps` plot event with `duration_ms` above 45 s; the harvest waits for the location's slowest fetch, so check the feed durations of the same run first | WARNING |
+| Live plot availability latency | job | a `live_temps` plot event with `duration_ms` above 120 s; the duration is submission to collection and includes queueing in the process pool on purpose, and the first run after a deploy queues live plots for about 80 s behind every historical plot | WARNING |
 | Application error | service and job | any application log entry at ERROR or above, request logs excluded; the application logs ERROR only for a defect or an exhausted critical operation, so this is the catch-all for failures no other policy anticipated; one notification an hour | ERROR |
 | Request 5xx | service | any response in a minute with a `5xx` status other than `503`, from Cloud Run's request count; `503` is the deliberate no-data answer | ERROR |
 | Homepage uptime failure | uptime check | the uptime check below fails for five minutes, with missing data counted as failure | CRITICAL |

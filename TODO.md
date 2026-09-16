@@ -257,10 +257,6 @@ Notes:
   index, so `Feed.status` (and therefore `/api/status` and the snapshot
   builder) raises `ValueError: Need at least 3 dates` for a frame with one or
   two rows. Guard the call so short frames report no frequency.
-- A snapshot generation omits any feed that failed during that run. Before
-  web servers read snapshots, the publisher should carry forward the previous
-  generation's object and metadata for a feed with no new data, so a transient
-  provider failure never removes last-known-good data from serving.
 - Decide, per feed type, when stale data stops being shown. Carry-forward
   keeps last-known-good data in the bundle without limit and the freshness
   metric alerts on its age; whether the site still displays it is open. A
@@ -278,23 +274,15 @@ Notes:
 
 ### Monitoring And Alerting
 
-- Set up Cloud Monitoring coverage for `/api/status`. The status endpoint already
-  exposes per-feed `is_healthy`, `is_expired`, `age_seconds`,
-  `consecutive_failures`, and next-fetch scheduling state; production monitoring
-  should retain that feed-level visibility rather than relying only on the coarse
-  service health check.
-- Add alerting policies for stale or unhealthy critical feeds. Start with NYC
-  feeds as the highest-priority alerts, then use lower-priority policies for
-  other locations once the signal/noise balance is understood.
-- Build a feed-health visibility dashboard that tracks `age_seconds`,
-  `is_healthy`, `is_expired`, `consecutive_failures`, and historical temperature
-  missing/failed years over time across all feeds. Use the observed outage
-  patterns to guide future health-policy decisions rather than guessing which
-  feeds should be mandatory for each location.
-- Revisit stricter location health rules after monitoring data exists. The
-  current app treats a location as having data if any feed works; future policy
-  may need per-location critical feeds, but that should be driven by production
-  data and user impact.
+- Decide which feeds are critical per location, NYC first, once the shadow
+  alert policies are promoted and their signal is understood. Feed health is
+  monitored from the job's and the web service's structured logs (feed
+  updates by outcome, snapshot freshness and load lag, archive merges) on the
+  dashboard and the shadow policies, so the per-feed `/api/status` fields
+  (`is_healthy`, `is_expired`, `age_seconds`, `consecutive_failures`, missing
+  and failed years) are not in Cloud Monitoring; add them only if the logs
+  leave a gap. The app treats a location as having data if any feed works;
+  per-location critical feeds should follow production data and user impact.
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
@@ -307,20 +295,10 @@ Notes:
   distribution or add counter-style metrics.
 - Capture the archive validation checklist outcome after the first week:
   compare archived row counts with live feeds per source and record the result
-  in the design doc's Phase 1 status.
+  in the design doc's status notes.
 
 ### Runtime And Deployment
 
-- Tighten the snapshot load lag shadow alert for the ten-minute job cadence:
-  its 7200-second threshold was sized for the hourly job; the observed lag is
-  under a minute, so something like 1800 seconds pages on a real stall
-  without firing on a slow run.
-- Garbage-collect old published generations. Nothing deletes them yet: on
-  2026-09-14 the published prefix held 497 MB across 27 hourly generations,
-  and the ten-minute cadence adds a small generation every run. Keep the
-  active generation and a day of predecessors with a reachability-aware
-  sweep as the design describes; the cost is cents, the object count is the
-  reason.
 - Resume the GitHub continuous-deployment schedule once active development
   returns to GitHub `main`. On 2026-09-14 the Cloud Build trigger was marked
   disabled and, because a disabled trigger still runs when Cloud Scheduler

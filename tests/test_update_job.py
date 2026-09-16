@@ -585,7 +585,13 @@ def _manifest_entry(
         key="published/objects/sha256-0.parquet",
         size_bytes=1,
         source_identity=source_identity or feed.feed_config.citation_key,
-        fetch_timestamp=datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC),
+        # A real entry's due time is its fetch time plus the feed's interval;
+        # restoration caps a restored due time at that, so keep them consistent.
+        fetch_timestamp=(
+            next_fetch_after - feed.expiration_interval
+            if next_fetch_after is not None and feed.expiration_interval is not None
+            else datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
+        ),
         next_fetch_after=next_fetch_after,
         expiration_seconds=600.0,
         record_count=1,
@@ -1880,3 +1886,29 @@ def test_observed_currents_refresh_on_the_live_interval(
         predicted.expiration_interval
         == manager_module.EXPIRATION_PERIODS[feeds.FEED_CURRENTS]
     )
+
+
+def test_a_restored_due_time_never_exceeds_the_feed_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A due time written under a longer interval does not hold the feed."""
+    coops_client, nwis_client, store = _install_publish_environment(
+        monkeypatch, [TEST_CONFIG_OBSERVATION_CURRENTS]
+    )
+
+    assert update.main([]) == 0
+    calls_after_first = _provider_calls(coops_client, nwis_client)
+    # As if the last run had scheduled the live feed a day out, the way a
+    # feed whose interval has since been shortened would carry.
+    _edit_published_feed(
+        store,
+        "obs",
+        feeds.FeedName.LIVE_TEMPS,
+        next_fetch_after=utc_now().replace(tzinfo=datetime.UTC)
+        + datetime.timedelta(days=1),
+    )
+
+    assert update.main([]) == 0
+
+    # The frame is older than the live interval, so the feed is due now.
+    assert coops_client.live_temperature_calls == calls_after_first[2] + 1

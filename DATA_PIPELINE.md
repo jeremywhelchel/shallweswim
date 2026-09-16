@@ -131,7 +131,10 @@ fetch time falls before the next run starts (now plus the cadence) is due now;
 a feed due later is **held**: it is not fetched, and the new manifest keeps its
 entry and its plots exactly as published. A feed the manifest does not
 describe, or describes from a different source, fetches as a fresh feed does.
-`--full-history` skips restoration, so every feed fetches.
+A restored due time is never later than the frame's fetch time plus the
+feed's current interval, so a changed interval takes effect on the next run
+rather than after the old one elapses. `--full-history` skips restoration,
+so every feed fetches.
 
 Why: a fresh feed is always due, so without restoration a bounded run would
 refetch everything every ten minutes. With it each feed keeps its own

@@ -290,6 +290,16 @@ def restore_schedule(
             continue
         # Feeds keep naive UTC; the manifest states the same instant.
         due_at = entry.next_fetch_after.astimezone(datetime.UTC).replace(tzinfo=None)
+        # The feed's own interval is the ceiling: a due time the last run
+        # wrote under a longer interval would otherwise hold the feed until
+        # that old interval elapsed, so a changed interval took a day to take
+        # effect. Failed feeds are unaffected, their retry delay never exceeds
+        # the interval.
+        if feed.expiration_interval is not None and entry.fetch_timestamp is not None:
+            fetched_at = entry.fetch_timestamp.astimezone(datetime.UTC).replace(
+                tzinfo=None
+            )
+            due_at = min(due_at, fetched_at + feed.expiration_interval)
         if due_at <= next_run:
             # Due before the next run starts: fetch now (a fresh feed is due).
             continue

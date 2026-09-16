@@ -292,11 +292,6 @@ Notes:
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
-- The CO-OPS tide predictions client lets the provider's "No Predictions
-  data was found" answer reach the date parser, which raises a ValueError
-  and logs ERROR ("Unknown datetime string format") instead of the
-  station-unavailable WARNING the other no-data answers get; seen for NYC,
-  San Diego, Lake Worth, and San Francisco on 2026-09-13 and 14.
 - Measure the live plot availability latency per plot rather than per
   location cycle: the harvest waits for the location's slowest fetch, so one
   slow fetch stamps every plot with its delay and can page the plot latency

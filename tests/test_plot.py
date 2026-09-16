@@ -95,8 +95,8 @@ def test_historic_year_alpha_fades_linearly_to_a_floor(
     assert plot.historic_year_alpha(age_years) == pytest.approx(expected)
 
 
-def test_yearly_plot_fades_older_years_and_monthly_plot_does_not() -> None:
-    """The twelve-month plot fades with age; the two-month plot is unchanged."""
+def test_both_historic_plots_fade_older_years() -> None:
+    """The twelve-month and two-month plots fade each year with its age alike."""
     current_year = util.utc_now().year
     index = pd.date_range(f"{current_year - 12}-01-01", periods=3 * 366 * 24, freq="h")
     hist_temps = pd.DataFrame(
@@ -106,13 +106,41 @@ def test_yearly_plot_fades_older_years_and_monthly_plot_does_not() -> None:
     yearly = plot.create_historic_yearly_plot(hist_temps, "Test Station")
     monthly = plot.create_historic_monthly_plot(hist_temps, "Test Station")
 
-    yearly_alphas = {
-        int(line.get_label()): line.get_alpha() for line in yearly.axes[0].lines[:3]
-    }
-    assert yearly_alphas[current_year - 12] == pytest.approx(plot.FADE_FLOOR)
-    assert yearly_alphas[current_year - 11] == pytest.approx(plot.FADE_FLOOR)
-    assert yearly_alphas[current_year - 10] == pytest.approx(plot.FADE_FLOOR)
-    assert [line.get_alpha() for line in monthly.axes[0].lines[:3]] == [0.75] * 3
+    for figure in (yearly, monthly):
+        alphas = [line.get_alpha() for line in figure.axes[0].lines[:3]]
+        assert alphas == pytest.approx([plot.FADE_FLOOR] * 3)
+
+
+def test_multi_year_plot_legend_names_only_the_years_still_fading() -> None:
+    """Years at the floor are drawn but left out of the legend."""
+    current_year = util.utc_now().year
+    years = list(range(current_year - 14, current_year + 1))
+    index = pd.date_range("2020-01-01", periods=4, freq="h")
+    df = pd.DataFrame({year: [50.0, 51.0, 52.0, 53.0] for year in years}, index=index)
+
+    ax = plot.multi_year_plot(df, plot.create_standard_figure(), "Title", "Subtitle")
+
+    labels = [text.get_text() for text in ax.get_legend().get_texts()]
+    assert labels == [
+        str(year)
+        for year in range(current_year - plot.FADE_YEARS + 1, current_year + 1)
+    ]
+    assert len(ax.lines) == len(years)
+
+
+@pytest.mark.parametrize(
+    ("years", "expected"),
+    [
+        ([1997, 2026], "1997\u20132026, 24-hour mean"),
+        ([2026], "2026, 24-hour mean"),
+        ([], "24-hour mean"),
+    ],
+)
+def test_year_range_subtitle_names_the_span(years: list[int], expected: str) -> None:
+    df = pd.DataFrame(
+        {year: [50.0] for year in years}, index=[pd.Timestamp("2020-01-01")]
+    )
+    assert plot.year_range_subtitle(df, "24-hour mean") == expected
 
 
 def test_multi_year_plot_styles_same_year_consistently_when_columns_differ() -> None:

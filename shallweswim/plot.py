@@ -54,15 +54,14 @@ MAX_HISTORIC_TEMP_PLOT_SMOOTHED_RANGE_F = 6.0
 MIN_HISTORIC_TEMP_PLOT_SEGMENT = datetime.timedelta(hours=48)
 HISTORIC_TEMP_LINE_STYLES = ["--", ":", "-."]
 HISTORIC_TEMP_COLOR_PALETTE = sns.color_palette(n_colors=20)
-# The twelve-month plot draws one line per archived year, now decades of
-# them. Older years fade with their age so every year is still drawn while
-# the recent ones dominate. One treatment for every location: these are not
+# The historical plots draw one line per archived year, now decades of them.
+# Older years fade with their age so every year is still drawn while the
+# recent ones dominate. The legend names only the years still fading, because
+# a reader cannot tell the years at the floor apart on the plot; the subtitle
+# states the full range. One treatment for every location: these are not
 # per-source plot policy overrides.
 FADE_YEARS = 10
 FADE_FLOOR = 0.15
-# Entries the legend stacks in one column before it wraps into another; a
-# thirty-year legend would otherwise run past the bottom of the axes.
-HISTORIC_TEMP_LEGEND_MAX_ROWS = 12
 
 
 @dataclass(frozen=True)
@@ -272,26 +271,23 @@ def historic_year_alpha(age_years: int) -> float:
     return 1.0 - (1.0 - FADE_FLOOR) * (age_years / FADE_YEARS)
 
 
-def multi_year_plot(
-    df: pd.DataFrame,
-    fig: Figure,
-    title: str,
-    subtitle: str,
-    *,
-    fade_by_age: bool = False,
-) -> Axes:
+def multi_year_plot(df: pd.DataFrame, fig: Figure, title: str, subtitle: str) -> Axes:
     """Create a multi-year line plot for temperature data.
 
     Historical station feeds can have long gaps. Plot with matplotlib directly
     so NaN gaps remain in the line data and render as visual breaks.
+
+    Every year is drawn, with each earlier year's opacity falling with its age
+    (`historic_year_alpha`). The legend names the current year and the years
+    still fading; the years already at the floor are left out of it, since
+    their lines are indistinguishable on the plot, and the caller's subtitle
+    states the full range (`year_range_subtitle`).
 
     Args:
         df: DataFrame containing temperature data with date index
         fig: Figure object to draw the plot on
         title: Main title for the plot
         subtitle: Subtitle/description for the plot
-        fade_by_age: Whether each earlier year's opacity falls with its age
-            (`historic_year_alpha`) instead of one shared historical opacity.
 
     Returns:
         Axes object with the configured plot
@@ -301,27 +297,23 @@ def multi_year_plot(
     for column in df.columns:
         year = int(column)
         is_current_year = year == current_year
+        age_years = current_year - year
         historic_style_index = year % len(HISTORIC_TEMP_LINE_STYLES)
         historic_color = HISTORIC_TEMP_COLOR_PALETTE[
             year % len(HISTORIC_TEMP_COLOR_PALETTE)
         ]
-        if is_current_year:
-            alpha = 1.0
-        elif fade_by_age:
-            alpha = historic_year_alpha(current_year - year)
-        else:
-            alpha = 0.75
         ax.plot(
             df.index,
             pd.to_numeric(df[column], errors="coerce"),
-            label=str(column),
+            # A leading underscore keeps a floor year out of the legend.
+            label=f"_{year}" if age_years >= FADE_YEARS else str(year),
             linestyle=(
                 "-"
                 if is_current_year
                 else HISTORIC_TEMP_LINE_STYLES[historic_style_index]
             ),
             linewidth=3 if is_current_year else 1.2,
-            alpha=alpha,
+            alpha=historic_year_alpha(age_years),
             color="r" if is_current_year else historic_color,
         )
 
@@ -333,14 +325,34 @@ def multi_year_plot(
     # Add second Y axis with Celsius
     add_celsius_axis(ax)
 
-    # Wrap a deep year list into columns rather than one tall stack.
-    legend_columns = max(1, math.ceil(len(df.columns) / HISTORIC_TEMP_LEGEND_MAX_ROWS))
-    ax.legend(
-        loc="upper right",
-        ncol=legend_columns,
-        fontsize="small" if legend_columns > 1 else None,
-    )
+    # A frame of only floor years has no legend entries, and matplotlib warns
+    # about an empty legend, so it is drawn only when a year is named.
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(handles, labels, loc="upper right")
     return ax
+
+
+def year_range_subtitle(df: pd.DataFrame, detail: str) -> str:
+    """Return a plot subtitle naming the years a frame spans.
+
+    The legend names only the recent years, so the subtitle is where the plot
+    says how far back it reaches.
+
+    Args:
+        df: Frame with one column per year, as `multi_year_plot` draws.
+        detail: Text that follows the range, such as `24-hour mean`.
+
+    Returns:
+        The first and last year joined by an en dash, then the detail, such as
+        `1997-2026, 24-hour mean` with an en dash; the single year alone when
+        the frame holds one, and just the detail when it holds none.
+    """
+    years = sorted(int(column) for column in df.columns)
+    if not years:
+        return detail
+    span = str(years[0]) if len(years) == 1 else f"{years[0]}\u2013{years[-1]}"
+    return f"{span}, {detail}"
 
 
 def _historic_temperature_plot_frame(
@@ -793,7 +805,7 @@ def create_historic_monthly_plot(
         df,
         fig,
         f"{station_name} Water Temperature" if station_name else "Water Temperature",
-        "2 month, all years, 24-hour mean",
+        year_range_subtitle(df, "24-hour mean"),
     )
 
     # Set x-axis formatting with weekly ticks
@@ -811,8 +823,7 @@ def create_historic_yearly_plot(
     """Create a plot showing historical temperature data for the full year.
 
     Creates a plot showing water temperature data across the entire year
-    with a 24-hour rolling mean. Every configured year is drawn, with older
-    years fading toward `FADE_FLOOR` so the recent ones stay legible.
+    with a 24-hour rolling mean.
 
     Args:
         hist_temps: DataFrame containing historical temperature data
@@ -839,9 +850,7 @@ def create_historic_yearly_plot(
         df,  # type: ignore[arg-type] # pyright thinks df might be a Series, but it's a DataFrame
         fig,
         f"{station_name} Water Temperature" if station_name else "Water Temperature",
-        "all years, 24-hour mean",
-        # Decades of years share this plot; the older ones recede.
-        fade_by_age=True,
+        year_range_subtitle(df, "24-hour mean"),  # type: ignore[arg-type]
     )
 
     # Set x-axis formatting with month locators

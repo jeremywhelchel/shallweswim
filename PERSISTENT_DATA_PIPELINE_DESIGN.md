@@ -1955,13 +1955,17 @@ carries the header marker the client looks for.
   larger N with `--store-dir` takes the one-time fetch and hydrates after.
   The job and the web service are unaffected: the web never fetches, and the
   job hydrates from the archive and fetches only what it lacks.
-- The twelve-month plot keeps one line per year. The current year is fully
+- Both historical plots keep one line per year. The current year is fully
   opaque; each earlier year's opacity falls linearly with its age to a floor
   (`FADE_FLOOR`, 0.15) reached at `FADE_YEARS` (10) and held there for all
   older years, so every archived year is drawn and the recent ones dominate.
-  Line width and colour policy are unchanged. The two-month plot is
-  unchanged. Both are named constants in the plot policy, one treatment for
-  every location.
+  The two-month plot was first left unchanged and proved unreadable with
+  thirty equal lines, so it takes the same fade. The legend names the
+  current year and the years still fading; the years at the floor are drawn
+  but left out of the legend, since a reader cannot tell their lines apart,
+  and the subtitle states the plot's full year range instead.
+  Line width and colour policy are unchanged. Both are named constants in
+  the plot module, one treatment for every location.
 - Provider-side gaps in old years appear as gaps in the line, as they do
   today.
 

@@ -172,3 +172,8 @@ terraform.rc
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Local publish and archive store directories for shallweswim.local and
+# the publish-into-a-directory workflow in README.md
+local-store/
+.local-store/

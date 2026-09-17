@@ -5,7 +5,12 @@ import { useLocationConditions } from "../api/conditions";
 import type { components } from "../api/generated";
 import { PageMessage } from "../components/PageMessage";
 import { usePageTitle } from "../hooks/usePageTitle";
-import { formatMagnitude, formatTime, formatTimestamp } from "../lib/format";
+import {
+  formatAge,
+  formatMagnitude,
+  formatTime,
+  formatTimestamp,
+} from "../lib/format";
 import { locationPageTitle } from "../lib/pageTitle";
 import type { TemperatureUnit } from "../lib/preferences";
 import { TemperatureSummary, WindyEmbed } from "./LocationPage";
@@ -84,6 +89,9 @@ function EmbedConditions({ location }: { location: Location }) {
         ? "Some conditions are currently unavailable."
         : "";
   const events = [tides?.past.at(-1), tides?.next[0], tides?.next[1]];
+  // The conditions loaded, so a missing tide or current is a prediction the
+  // server does not hold for this time, not a failed load.
+  const predictionAbsent = Boolean(conditions.data) && !conditions.isError;
 
   return (
     <>
@@ -118,37 +126,41 @@ function EmbedConditions({ location }: { location: Location }) {
             {features.tides ? (
               <section aria-label="Tides" className="embed-card">
                 <h2 className="mb-2 font-semibold">Tides</h2>
-                <div className="grid grid-cols-3 gap-2">
-                  {events.map((event, index) => (
-                    <div
-                      className="embed-tide"
-                      key={["Last", "Next", "Following"][index]}
-                    >
-                      <h3 className="font-semibold capitalize">
-                        {["Last", "Next", "Following"][index]} {event?.type}{" "}
-                        tide
-                      </h3>
-                      {event ? (
-                        <time dateTime={event.time} className="mt-2 block">
-                          <span className="block">
-                            {formatTimestamp(event.time, {
-                              weekday: "short",
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </span>
-                          <strong className="mt-1 block tabular-nums">
-                            {formatTime(event.time)}
-                          </strong>
-                        </time>
-                      ) : (
-                        <p className="mt-2">
-                          {conditions.isPending ? "Loading…" : "Unavailable"}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                {predictionAbsent && !tides ? (
+                  <p className="text-sm">No tide prediction for this time.</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    {events.map((event, index) => (
+                      <div
+                        className="embed-tide"
+                        key={["Last", "Next", "Following"][index]}
+                      >
+                        <h3 className="font-semibold capitalize">
+                          {["Last", "Next", "Following"][index]} {event?.type}{" "}
+                          tide
+                        </h3>
+                        {event ? (
+                          <time dateTime={event.time} className="mt-2 block">
+                            <span className="block">
+                              {formatTimestamp(event.time, {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                            <strong className="mt-1 block tabular-nums">
+                              {formatTime(event.time)}
+                            </strong>
+                          </time>
+                        ) : (
+                          <p className="mt-2">
+                            {conditions.isPending ? "Loading…" : "Unavailable"}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             ) : null}
             {features.currents ? (
@@ -159,7 +171,9 @@ function EmbedConditions({ location }: { location: Location }) {
                     <p className="mt-2 text-base">
                       {current.state_description ??
                         current.direction ??
-                        "Observed flow"}
+                        (current.freshness?.state === "old"
+                          ? "Last observed flow"
+                          : "Observed flow")}
                     </p>
                     <p className="mt-1 text-sm">
                       <strong className="font-mono text-xl">
@@ -167,10 +181,23 @@ function EmbedConditions({ location }: { location: Location }) {
                       </strong>{" "}
                       knots
                     </p>
+                    {current.freshness &&
+                    current.freshness.state !== "fresh" ? (
+                      <p className="mt-1 text-sm">
+                        Last reading {formatAge(current.freshness.age_seconds)}
+                        {current.freshness.state === "old"
+                          ? ". No newer reading is available."
+                          : "."}
+                      </p>
+                    ) : null}
                   </>
                 ) : (
                   <p className="mt-2 text-sm">
-                    {conditions.isPending ? "Loading…" : "Unavailable"}
+                    {conditions.isPending
+                      ? "Loading…"
+                      : predictionAbsent
+                        ? "No current prediction for this time."
+                        : "Unavailable"}
                   </p>
                 )}
                 {features.water_movement_detail ? (

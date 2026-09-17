@@ -2027,3 +2027,124 @@ test("describes mid-cycle tide-only water movement with target tide", () => {
     screen.getByText("The tide is rising toward high tide."),
   ).toBeVisible();
 });
+
+test("shows a stale temperature reading's age beside the value", () => {
+  renderConditions({
+    temperature: {
+      ...(conditionsPayload.temperature as components["schemas"]["TemperatureInfo"]),
+      freshness: { state: "stale", age_seconds: 3 * 3600 + 20 * 60 },
+    },
+  });
+
+  expect(screen.getByText("The water is currently")).toBeVisible();
+  expect(screen.getByText("61.4°F")).toBeVisible();
+  expect(screen.getByText(/Last reading/)).toBeVisible();
+  expect(screen.getByText("3 hours ago")).toBeVisible();
+  expect(screen.getByText(/as of/)).toBeVisible();
+});
+
+test("stops presenting an old temperature reading as the current condition", () => {
+  renderConditions({
+    temperature: {
+      ...(conditionsPayload.temperature as components["schemas"]["TemperatureInfo"]),
+      freshness: { state: "old", age_seconds: 2 * 86400 + 3600 },
+    },
+  });
+
+  expect(screen.queryByText("The water is currently")).toBeNull();
+  expect(screen.getByText("The last reading was")).toBeVisible();
+  expect(screen.getByText("61.4°F")).toBeVisible();
+  expect(screen.getByText("2 days ago")).toBeVisible();
+  expect(screen.getByText(/No newer reading is available/)).toBeVisible();
+  expect(screen.getByText(/as of/)).toBeVisible();
+});
+
+test("says when there is no prediction for the requested time", () => {
+  renderConditions({ tides: null, current: null });
+
+  expect(
+    screen.getByText("There's no tide or current prediction for this time."),
+  ).toBeVisible();
+  expect(
+    screen.queryByText("Water movement is unavailable right now."),
+  ).toBeNull();
+});
+
+function riverCurrentBootstrap(): components["schemas"]["AppBootstrapResponse"] {
+  return {
+    ...bootstrapPayload,
+    location_order: ["nyc", "sdf"],
+    locations: {
+      ...bootstrapPayload.locations,
+      sdf: {
+        ...bootstrapPayload.locations.nyc,
+        metadata: {
+          ...bootstrapPayload.locations.nyc.metadata,
+          code: "sdf",
+          name: "Louisville",
+          nav_label: "Louisville",
+          swim_location: "Community Boathouse",
+          features: {
+            ...bootstrapPayload.locations.nyc.metadata.features,
+            currents: true,
+            tides: false,
+            water_movement_planning: false,
+            water_movement_detail: false,
+            water_movement_detail_plot_type: null,
+          },
+        },
+      },
+    },
+  };
+}
+
+function observedFlow(
+  freshness: components["schemas"]["Freshness"],
+): components["schemas"]["LocationConditions"] {
+  return {
+    ...conditionsPayload,
+    current: {
+      timestamp: "2026-05-13T07:30:00-04:00",
+      direction: null,
+      phase: null,
+      strength: null,
+      trend: null,
+      magnitude: 0.82,
+      magnitude_pct: null,
+      state_description: null,
+      range: null,
+      source_type: "observation",
+      freshness,
+    },
+    tides: null,
+  };
+}
+
+test("shows a stale observed flow's age", () => {
+  renderLocation({
+    bootstrap: riverCurrentBootstrap(),
+    conditions: observedFlow({ state: "stale", age_seconds: 5 * 3600 }),
+    initialEntry: "/sdf",
+    locationCode: "sdf",
+  });
+
+  expect(screen.getByText("The river current is currently")).toBeVisible();
+  expect(screen.getByText("0.8 kt")).toBeVisible();
+  expect(screen.getByText(/Last reading/)).toBeVisible();
+  expect(screen.getByText("5 hours ago")).toBeVisible();
+});
+
+test("stops presenting an old observed flow as the current condition", () => {
+  renderLocation({
+    bootstrap: riverCurrentBootstrap(),
+    conditions: observedFlow({ state: "old", age_seconds: 3 * 86400 }),
+    initialEntry: "/sdf",
+    locationCode: "sdf",
+  });
+
+  expect(screen.queryByText("The river current is currently")).toBeNull();
+  expect(screen.getByText("The last observed river current was")).toBeVisible();
+  expect(screen.getByText("0.8 kt")).toBeVisible();
+  expect(screen.getByText("3 days ago")).toBeVisible();
+  expect(screen.getByText(/No newer reading is available/)).toBeVisible();
+});

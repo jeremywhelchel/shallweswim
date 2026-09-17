@@ -388,13 +388,17 @@ The fresh threshold is deliberately looser than the fetch interval: a
 healthy NDBC buoy reports hourly and posts with a lag, so its latest
 reading is routinely thirty to ninety minutes old.
 
-Pending: the page renders the three states differently: `fresh` as today,
-the value with its time; `stale` with the age made visible, "last reading 3
-hours ago"; `old` with the headline no longer presenting the value as the
-current condition, and a secondary line keeping the last reading, its time,
-and its age; an absent prediction reads as no prediction for that time. The
-historical plots are never marked: they are history by nature, and a
-missing recent stretch shows as the line ending.
+The page and the embed render the three states differently, wording the
+age from the server's `age_seconds` without clock arithmetic of their own.
+`fresh` is as before: the value as the current condition, with its station
+and observation time. `stale` keeps that headline and leads the secondary
+line with the age, "Last reading 3 hours ago at The Battery, NY as of ...".
+`old` changes the headline to "The last reading was" with the value in a
+muted colour, and the secondary line gives the age and the observation time
+and says no newer reading is available. An absent prediction reads as
+"There's no tide or current prediction for this time." in place of the water
+movement description. The historical plots are never marked: they are
+history by nature, and a missing recent stretch shows as the line ending.
 
 Predictions, tides and predicted currents, are not old, they are present or
 absent. A prediction is answered only when the requested time, now or the

@@ -16,6 +16,7 @@ import { useTransitRoute } from "../api/transit";
 import { useDeferredImage } from "../hooks/useDeferredImage";
 import { usePageTitle } from "../hooks/usePageTitle";
 import {
+  formatAge,
   formatMagnitude,
   formatStationTimestamp,
   formatTideHeight,
@@ -37,6 +38,7 @@ type AppBootstrapLocation = components["schemas"]["AppBootstrapLocation"];
 type AppLocationMetadata = components["schemas"]["AppLocationMetadata"];
 type LocationConditions = components["schemas"]["LocationConditions"];
 type CurrentInfo = components["schemas"]["CurrentInfo"];
+type Freshness = components["schemas"]["Freshness"];
 type TideEntry = components["schemas"]["TideEntry"];
 type TideState = components["schemas"]["TideState"];
 type TransitRouteConfig = components["schemas"]["TransitRouteConfig"];
@@ -361,6 +363,18 @@ export function ConditionsSummary({
     );
   }
 
+  // The server answers a prediction only inside the window it holds. When the
+  // conditions loaded but carry no tide or current for a location that has
+  // them, the prediction is absent for this time, not unavailable.
+  const absentPredictionMessage =
+    showWaterMovement &&
+    conditions &&
+    !hasError &&
+    !conditions.tides &&
+    !conditions.current
+      ? absentPredictionWording(location.metadata.features)
+      : null;
+
   return (
     <section className={summaryClassName}>
       <TemperatureSummary
@@ -375,6 +389,7 @@ export function ConditionsSummary({
           className={detailMode ? "md:col-span-2 md:col-start-1" : undefined}
         >
           <WaterMovementSummary
+            absentPredictionMessage={absentPredictionMessage}
             current={hasError ? undefined : conditions?.current}
             tides={hasError ? undefined : conditions?.tides}
             waterMovementControls={waterMovementControls}
@@ -470,26 +485,37 @@ function ObservedFlowSummary({
       : "Unavailable";
   const timestamp =
     hasCurrent && current ? formatStationTimestamp(current.timestamp) : null;
+  const freshness = hasCurrent ? (current?.freshness ?? null) : null;
+  const isOld = freshness?.state === "old";
 
   return (
     <div className="border-swim-line border-b p-3 md:rounded md:border md:bg-white md:p-4">
       <WaterMovementHeader badge="Observed" />
       <p className="mt-1 text-sm text-slate-700 md:mt-2 md:text-base">
-        The river current is currently
+        {isOld
+          ? "The last observed river current was"
+          : "The river current is currently"}
       </p>
-      <p className="font-mono font-semibold text-2xl text-swim-current md:mt-1 md:text-3xl">
+      <p
+        className={`font-mono font-semibold text-2xl md:mt-1 md:text-3xl ${
+          isOld ? "text-slate-500" : "text-swim-current"
+        }`}
+      >
         {currentValue}
       </p>
       <p className="mt-2 text-sm text-slate-600">
         {hasCurrent ? (
           <>
-            Latest observed flow
+            <ReadingAge freshness={freshness} noun="observed flow" />
             {timestamp ? (
               <>
                 {" as of "}
-                <span className="font-mono">{timestamp}</span>
+                <span className="font-mono">{timestamp}</span>.
               </>
-            ) : null}
+            ) : (
+              "."
+            )}
+            {isOld ? " No newer reading is available." : null}
           </>
         ) : (
           "Recent observed flow is unavailable right now."
@@ -497,6 +523,48 @@ function ObservedFlowSummary({
       </p>
     </div>
   );
+}
+
+/**
+ * The lead of an observation's secondary line, worded by the server's
+ * freshness verdict: "Latest observed flow" when fresh, "Last reading 3 hours
+ * ago" when stale, "2 days ago" when old (the headline already says it is the
+ * last reading). The age is the server's number; the page does no clock
+ * arithmetic.
+ */
+function ReadingAge({
+  freshness,
+  noun,
+}: {
+  freshness: Freshness | null;
+  noun: string;
+}) {
+  if (!freshness || freshness.state === "fresh") {
+    return <>Latest {noun}</>;
+  }
+  const age = formatAge(freshness.age_seconds);
+  if (freshness.state === "stale") {
+    return (
+      <>
+        Last reading <span className="font-semibold">{age}</span>
+      </>
+    );
+  }
+  return (
+    <span className="font-semibold">
+      {age.replace(/^./, (c) => c.toUpperCase())}
+    </span>
+  );
+}
+
+function absentPredictionWording(features: AppLocationMetadata["features"]) {
+  const subject =
+    features.tides && features.currents
+      ? "tide or current"
+      : features.tides
+        ? "tide"
+        : "current";
+  return `There's no ${subject} prediction for this time.`;
 }
 
 function SourceBadge({ label }: { label: "Observed" | "Predicted" }) {
@@ -572,6 +640,11 @@ export function TemperatureSummary({
     conditions?.temperature && !hasError
       ? formatStationTimestamp(conditions.temperature.timestamp)
       : null;
+  const freshness =
+    conditions?.temperature && !hasError
+      ? conditions.temperature.freshness
+      : null;
+  const isOld = freshness?.state === "old";
   const temperatureMayDiffer = shouldShowTemperatureMayDifferNote({
     location,
     stationName,
@@ -609,15 +682,24 @@ export function TemperatureSummary({
       </div>
       <div className="mt-1 flex items-baseline gap-2 md:block">
         <p className="text-sm text-slate-700 md:mt-2 md:text-base">
-          The water is currently
+          {isOld ? "The last reading was" : "The water is currently"}
         </p>
-        <p className="font-mono font-semibold text-2xl text-swim-blue md:mt-1 md:text-3xl">
+        <p
+          className={`font-mono font-semibold text-2xl md:mt-1 md:text-3xl ${
+            isOld ? "text-slate-500" : "text-swim-blue"
+          }`}
+        >
           {temperatureValue}
         </p>
       </div>
       <p className="mt-1 text-xs text-slate-600 md:mt-2 md:text-sm">
         {stationName ? (
           <>
+            {freshness && freshness.state !== "fresh" ? (
+              <>
+                <ReadingAge freshness={freshness} noun="reading" />{" "}
+              </>
+            ) : null}
             at <span>{stationName}</span>
             {stationTimestamp ? (
               <>
@@ -627,6 +709,7 @@ export function TemperatureSummary({
             ) : (
               "."
             )}
+            {isOld ? " No newer reading is available." : null}
             {temperatureMayDiffer ? (
               <>
                 {" "}
@@ -711,10 +794,12 @@ function TemperatureUnitToggle({
 }
 
 function WaterMovementSummary({
+  absentPredictionMessage,
   current,
   tides,
   waterMovementControls,
 }: {
+  absentPredictionMessage?: string | null;
   current?: CurrentInfo | null;
   tides?: LocationConditions["tides"];
   waterMovementControls?: WaterMovementControls;
@@ -723,7 +808,9 @@ function WaterMovementSummary({
   const nextTide = tides?.next?.[0];
   const movementCurrent =
     waterMovementControls?.plotType === "tide" ? null : current;
-  const description = describeWaterMovement(tides?.state, movementCurrent);
+  const description =
+    absentPredictionMessage ??
+    describeWaterMovement(tides?.state, movementCurrent);
   const plannedLabel = waterMovementControls?.at
     ? waterMovementControls.label
     : null;

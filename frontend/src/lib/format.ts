@@ -51,3 +51,22 @@ export function formatTideHeight(value: number | undefined) {
     ? value.toFixed(1)
     : "N/A";
 }
+
+/**
+ * Render an observation's age, as the server reports it, for display.
+ *
+ * The server decides freshness and the age; the page never does clock
+ * arithmetic of its own, so this only words a number of seconds.
+ */
+export function formatAge(ageSeconds: number) {
+  const minutes = Math.floor(ageSeconds / 60);
+  if (minutes < 60) {
+    return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) {
+    return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days} days ago`;
+}

@@ -292,7 +292,11 @@ Notes:
   calls its run API (it deployed an older `main` twice over a
   `infra/build_and_deploy.sh` deploy), the Cloud Scheduler job in the deployment region that
   invokes it every eight hours was paused as well. Resuming means unpausing
-  the scheduler job and clearing the trigger's disabled flag.
+  the scheduler job and clearing the trigger's disabled flag. First add the
+  `_REGION` substitution: the trigger carries `_ARCHIVE_BUCKET` but not
+  `_REGION`, and the build fails fast when either is empty, so a resumed
+  schedule would build and then fail to deploy. The command is in
+  `infra/README.md` under continuous deployment.
 - Evaluate Cloud Run second generation for performance, startup behavior, and
   operational simplicity. Compare with the current generation under a realistic
   startup and plotting workload before changing production.

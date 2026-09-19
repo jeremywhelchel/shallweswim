@@ -263,18 +263,9 @@ Notes:
   index, so `Feed.status` (and therefore `/api/status` and the snapshot
   builder) raises `ValueError: Need at least 3 dates` for a frame with one or
   two rows. Guard the call so short frames report no frequency.
-- Decide, per feed type, when stale data stops being shown. Carry-forward
-  keeps last-known-good data in the bundle without limit and the freshness
-  metric alerts on its age; whether the site still displays it is open. A
-  prediction feed is stale when the requested time leaves the fetched window,
-  an observation feed by the age of its latest observation. Decide with
-  shadow-mode data, not before.
 - NWIS returns an empty body for years before a site's record begins (Austin
   2011 and 2012); the client reports it as a JSON parse error instead of
   station-unavailable, which logs at ERROR and lists the years as failed.
-- NDBC station 46237 (SFO live temperature) has returned no data since at
-  least 2026-09-12; confirm the upstream outage and consider an alternate live
-  source or a documented seasonal gap.
 
 ## Operations And Infrastructure
 
@@ -292,9 +283,6 @@ Notes:
 - Evaluate dead-link monitoring for configured source, swim-location, webcam,
   and citation URLs. Keep it separate from data-feed health so broken reference
   links do not page like production data outages.
-- Capture the archive validation checklist outcome after the first week:
-  compare archived row counts with live feeds per source and record the result
-  in DATA_PIPELINE.md's archive section.
 
 ### Runtime And Deployment
 

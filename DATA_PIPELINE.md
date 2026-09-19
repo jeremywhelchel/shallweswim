@@ -496,6 +496,18 @@ Each merge logs one `component=archive` `operation=merge` event with
 `attempt_count`, `incoming_count`, `new_count`, `overlap_count`, and
 `revised_count`. A capture's new and revised counts sum into the run summary.
 
+### What the archive holds
+
+Every observation a provider still serves is in the archive, at the
+provider's native cadence, with the provider's own value. Checking that
+means fetching what each live source returns right now and looking for each
+of those rows in the archived year: the rows are there and the values agree,
+and the only rows a fetch finds that the archive lacks are ones the provider
+published after the last capture run, which the next run merges. The
+partitions carry no duplicate instants and no null values, so the merge's
+key rule holds across every year the backfill wrote. How far back each
+source goes is its `start_year` in the location config.
+
 ### Reading from the archive
 
 Served history comes from the archive alone. Providers feed the archive three

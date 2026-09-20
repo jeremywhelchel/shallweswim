@@ -1,7 +1,5 @@
 # AI CODER RULES
 
-> **IMPORTANT:** `CLAUDE.md` and `GEMINI.md` are symlinks to this file. Edit `AGENTS.md` in place to update rules for all AI tools.
-
 **For full documentation, see [README.md](README.md).** This file contains quick-reference rules for AI coders.
 
 ## Project Overview

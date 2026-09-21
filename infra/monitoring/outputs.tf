@@ -7,6 +7,7 @@ output "logging_metric_names" {
   description = "User-defined log-based metrics created by this module."
   value = [
     google_logging_metric.feed_updates.name,
+    google_logging_metric.slow_live_feed_updates.name,
     google_logging_metric.feed_update_duration.name,
     google_logging_metric.feed_records.name,
     google_logging_metric.plot_generations.name,

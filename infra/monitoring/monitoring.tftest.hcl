@@ -10,6 +10,31 @@ run "monitoring_plan" {
   }
 
   assert {
+    condition = (
+      google_logging_metric.slow_live_feed_updates.filter == "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"shallweswim-capture\" AND jsonPayload.operation=\"feed_update\" AND jsonPayload.feed=\"live_temps\" AND jsonPayload.duration_ms > 45000" &&
+      google_logging_metric.slow_live_feed_updates.metric_descriptor[0].metric_kind == "DELTA" &&
+      google_logging_metric.slow_live_feed_updates.metric_descriptor[0].value_type == "INT64" &&
+      length(google_logging_metric.slow_live_feed_updates.metric_descriptor[0].labels) == 1 &&
+      google_logging_metric.slow_live_feed_updates.label_extractors.location == "EXTRACT(jsonPayload.location)" &&
+      strcontains(google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_threshold[0].filter, google_logging_metric.slow_live_feed_updates.name)
+    )
+    error_message = "Count exact slow live job events by location, including successful retries, for the latency policy."
+  }
+
+  assert {
+    condition = (
+      google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_threshold[0].threshold_value == 2 &&
+      google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_threshold[0].comparison == "COMPARISON_GT" &&
+      google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_threshold[0].duration == "0s" &&
+      google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_threshold[0].aggregations[0].alignment_period == "1800s" &&
+      google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_threshold[0].aggregations[0].per_series_aligner == "ALIGN_SUM" &&
+      google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_threshold[0].aggregations[0].cross_series_reducer == "REDUCE_SUM" &&
+      toset(google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_threshold[0].aggregations[0].group_by_fields) == toset(["metric.label.location"])
+    )
+    error_message = "Slow updates must alert only at three per location within thirty minutes."
+  }
+
+  assert {
     condition = alltrue([
       for metric in [
         google_logging_metric.feed_updates,
@@ -137,12 +162,12 @@ run "monitoring_plan" {
   assert {
     condition = alltrue(concat([
       for policy in [
+        google_monitoring_alert_policy.live_feed_update_latency,
         google_monitoring_alert_policy.repeated_feed_failures,
         google_monitoring_alert_policy.plot_generation_failure,
       ] : strcontains(policy.conditions[0].condition_threshold[0].filter, "resource.type = \"cloud_run_job\"")
       ], [
       for policy in [
-        google_monitoring_alert_policy.live_feed_update_latency,
         google_monitoring_alert_policy.live_plot_availability_latency,
       ] : strcontains(policy.conditions[0].condition_matched_log[0].filter, "resource.type=\"cloud_run_job\"")
     ]))
@@ -182,7 +207,7 @@ run "monitoring_plan" {
     condition = alltrue([
       strcontains(google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_matched_log[0].filter, "jsonPayload.age_seconds > 1800"),
       strcontains(google_monitoring_alert_policy.snapshot_load_lag.conditions[0].condition_matched_log[0].filter, "resource.type=\"cloud_run_revision\""),
-      strcontains(google_monitoring_alert_policy.live_feed_update_latency.conditions[0].condition_matched_log[0].filter, "jsonPayload.duration_ms > 45000"),
+      strcontains(google_logging_metric.slow_live_feed_updates.filter, "jsonPayload.duration_ms > 45000"),
       strcontains(google_monitoring_alert_policy.live_plot_availability_latency.conditions[0].condition_matched_log[0].filter, "jsonPayload.duration_ms > 120000"),
     ])
     error_message = "The load lag and latency policies must match the exact event values against the reviewed thresholds."

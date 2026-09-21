@@ -96,7 +96,7 @@ ownership marker, the per-feed snapshot freshness thresholds, and the
 dashboard's fifteen tiles, including the two MQL `sum_from` data sets. It
 cannot emulate Cloud Logging ingestion.
 
-Review the plan before every apply. The module owns the eighteen log-based
+Review the plan before every apply. The module owns the nineteen log-based
 metrics, the dashboard, and the twelve alert policies listed in
 MONITORING.md; it does not change pre-Terraform monitoring.
 
@@ -143,7 +143,7 @@ the proposed API operations. The GCP integration test is a controlled apply:
 
 1. Confirm the apply creates only the expected resources listed in the plan.
 2. Generate or wait for new events of each kind; metrics do not backfill.
-3. Verify the eighteen metrics appear with bounded labels and the dashboard
+3. Verify the nineteen metrics appear with bounded labels and the dashboard
    charts populate after several minutes.
 4. Compare metric counts with a Cloud Logging query over the same interval.
 5. Confirm the policies have no notification channels before applying them.

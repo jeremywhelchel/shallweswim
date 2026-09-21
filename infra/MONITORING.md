@@ -64,7 +64,7 @@ while the events describe the job's and every instance's work.
 
 ## Metrics
 
-Eighteen log-based metrics, all named `shallweswim_<name>` under
+Nineteen log-based metrics, all named `shallweswim_<name>` under
 `logging.googleapis.com/user`, all `DELTA`, defined in
 `infra/monitoring/logging_metrics.tf`. Every filter first restricts to the
 Cloud Run service `shallweswim` or the Cloud Run job `shallweswim-capture`,
@@ -75,6 +75,7 @@ from one (row counts).
 | Metric | Event | Kind, unit | Value | Labels |
 | --- | --- | --- | --- | --- |
 | `feed_updates` | feed_update | counter | one per event | location, feed, provider, outcome |
+| `slow_live_feed_updates` | job live_temps feed_update above 45 s | counter | one per event | location |
 | `feed_update_duration_ms` | feed_update | distribution, ms | `duration_ms` | location, feed, provider, outcome |
 | `feed_records` | feed_update with outcome success | distribution, records | `record_count` | location, feed, provider |
 | `plot_generations` | plot_generation | counter | one per event | location, feed, outcome |
@@ -128,7 +129,7 @@ the operator's environment, so no address is in the repository.
 | Snapshot load failures | service | more than two `snapshot_loads` with outcome `failed` in fifteen minutes; one failure retries a check interval later, repeated ones mean the instance cannot read the store | WARNING |
 | Repeated feed failures | job | more than two `feed_updates` with outcome `failed` in ten minutes, per location and feed; `unavailable` is excluded | ERROR |
 | Plot generation failure | job | any `plot_generations` with outcome `failed` in five minutes | ERROR |
-| Live feed update latency | job | a `live_temps` feed update event with `duration_ms` above 45 s | WARNING |
+| Live feed update latency | job | at least three `live_temps` updates with `duration_ms` above 45 s within thirty minutes, per location | WARNING |
 | Live plot availability latency | job | a `live_temps` plot event with `duration_ms` above 120 s; the duration is submission to collection and includes queueing in the process pool on purpose, and the first run after a deploy queues live plots for about 80 s behind every historical plot | WARNING |
 | Application error | service and job | any application log entry at ERROR or above, request logs excluded; the application logs ERROR only for a defect or an exhausted critical operation, so this is the catch-all for failures no other policy anticipated; one notification an hour | ERROR |
 | Request 5xx | service | any response in a minute with a `5xx` status other than `503`, from Cloud Run's request count; `503` is the deliberate no-data answer | ERROR |
@@ -138,9 +139,12 @@ the operator's environment, so no address is in the repository.
 Freshness has no threshold in monitoring: the job decides it from each
 feed's own interval plus fifteen minutes, the rule `/api/status` applies,
 and says `stale` on the event, so a new feed or a changed interval changes
-what pages without a monitoring change. Every policy that compares a value
-with a threshold, the load lag and the two latencies, matches the log
-entries themselves rather than a distribution metric: the
+what pages without a monitoring change. The load lag and plot latency
+policies match exact log values; the live
+feed latency policy counts exact over-45-second events by location over
+thirty minutes, so an isolated successful retry does not page. Individual
+slow updates remain in logs and the duration dashboard. None uses a
+distribution percentile for alerting: the
 distributions' buckets double in size, and a percentile of one rounds a value
 up to the next bucket edge, so a normal 10,800-second historical hold read as
 about 16,000 seconds and paged on every hold. The events carry the exact

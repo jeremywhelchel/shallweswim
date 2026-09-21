@@ -574,3 +574,24 @@ resource "google_logging_metric" "snapshot_load_lag" {
     }
   }
 }
+
+
+// Count exact durations so histogram rounding cannot generate false alerts.
+resource "google_logging_metric" "slow_live_feed_updates" {
+  name        = "shallweswim_slow_live_feed_updates"
+  description = "Live temperature updates taking over 45 seconds. Managed by Terraform."
+  filter      = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.operation=\"feed_update\" AND jsonPayload.feed=\"live_temps\" AND jsonPayload.duration_ms > 45000"
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+    labels {
+      key         = "location"
+      value_type  = "STRING"
+      description = "Configured swimming location code."
+    }
+  }
+  label_extractors = {
+    location = "EXTRACT(jsonPayload.location)"
+  }
+}

@@ -22,33 +22,29 @@ resource "google_monitoring_alert_policy" "live_feed_update_latency" {
 
   documentation {
     mime_type = "text/markdown"
-    content   = "A live temperature fetch took longer than 45 seconds. The matched log entry names the location and the exact duration; a single slow provider answer is expected now and then, a run of them is a provider or network problem."
+    content   = "At least three live temperature updates for the same location took longer than 45 seconds within 30 minutes. Individual slow requests remain in logs and the dashboard without paging. Check feed_update logs for repeated provider timeouts or slow responses."
   }
 
-  # Matches the events rather than the duration distribution, whose doubling
-  # buckets round a percentile up to the next bucket edge (a 33-second fetch
-  # reads as 65 seconds); the event carries the exact duration_ms.
   conditions {
-    display_name = "Live feed update over 45s"
-
-    condition_matched_log {
-      filter = "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\" AND jsonPayload.operation=\"feed_update\" AND jsonPayload.feed=\"live_temps\" AND jsonPayload.duration_ms > 45000"
-
-      label_extractors = {
-        location = "EXTRACT(jsonPayload.location)"
+    display_name = "At least 3 live feed updates over 45s in 30m"
+    condition_threshold {
+      filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.slow_live_feed_updates.name}\" AND ${local.cloud_run_job_resource_filter}"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 2
+      duration        = "0s"
+      aggregations {
+        alignment_period     = "1800s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["metric.label.location"]
+      }
+      trigger {
+        count = 1
       }
     }
   }
-
-  # A log-matching condition notifies per matching entry, rate-limited to one
-  # notification an hour, and the incident closes on its own once no entry
-  # has matched for a while.
   alert_strategy {
     auto_close = "1800s"
-
-    notification_rate_limit {
-      period = "3600s"
-    }
   }
 }
 

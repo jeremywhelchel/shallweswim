@@ -742,7 +742,7 @@ class PresentationLinkConfig(BaseModel, frozen=True):
 
 
 class WebcamConfig(BaseModel, frozen=True):
-    """Webcam provider configuration for a swimming location."""
+    """Webcam presentation; the label also heads the React webcam section."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1295,6 +1295,27 @@ _CONFIG_LIST = [
             ),
         ),
         presentation=LocationPresentationConfig(
+            webcam=WebcamConfig(
+                provider=types.WebcamProvider.IFRAME,
+                label="Recent beach views",
+                embed_url=(
+                    "https://video-monitoring.com/beachcams/lakeworthinlet/"
+                    "mobile.htm?station=North%20Shore"
+                ),
+                watch_url="https://video-monitoring.com/beachcams/lakeworthinlet/",
+                note=(
+                    "Beach north of Lake Worth Inlet, south of Loggerhead Park. "
+                    "Periodic still images may be delayed; check the capture time "
+                    "in the viewer."
+                ),
+                source=PresentationLinkConfig(
+                    label="Lake Worth Inlet beach camera and clips",
+                    url="https://video-monitoring.com/beachcams/lakeworthinlet/",
+                    description=(
+                        "Camera: Palm Beach County ERM. Viewer: Erdman Video Systems."
+                    ),
+                ),
+            ),
             water_quality_info=PresentationLinkConfig(
                 label="Palm Beach County beach conditions",
                 url=("https://discover.pbc.gov/parks/Locations/Beach-Conditions.aspx"),

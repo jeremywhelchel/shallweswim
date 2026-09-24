@@ -296,7 +296,7 @@ export function LocationPage({ bootstrap, locationCode }: LocationPageProps) {
       ) : null}
 
       {location.metadata.features.webcam && location.integrations.webcam ? (
-        <Section title="Live Webcam">
+        <Section title={location.integrations.webcam.label}>
           <WebcamEmbed config={location.integrations.webcam} />
         </Section>
       ) : null}

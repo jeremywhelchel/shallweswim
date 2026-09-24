@@ -934,7 +934,9 @@ test("renders optional page sections from synthetic feature capabilities", async
     const updatedWindyUrl = new URL(windyFrame.getAttribute("src") ?? "");
     expect(updatedWindyUrl.searchParams.get("metricTemp")).toBe("°C");
   });
-  expect(screen.getByRole("heading", { name: "Live Webcam" })).toBeVisible();
+  expect(
+    screen.getByRole("heading", { name: "Synthetic webcam" }),
+  ).toBeVisible();
   expect(screen.getByTitle("Synthetic webcam")).toHaveAttribute(
     "src",
     "https://example.com/synthetic-webcam",
@@ -987,7 +989,7 @@ test("omits optional page sections when synthetic capabilities are disabled", ()
     screen.queryByRole("heading", { name: "Forecast" }),
   ).not.toBeInTheDocument();
   expect(
-    screen.queryByRole("heading", { name: "Live Webcam" }),
+    screen.queryByRole("heading", { name: /webcam/i }),
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("heading", { name: "Temperature Trends" }),
@@ -1214,7 +1216,7 @@ test("renders a YouTube live webcam from provider-aware integration config", asy
   });
 
   expect(
-    await screen.findByRole("heading", { name: "Live Webcam" }),
+    await screen.findByRole("heading", { name: "Live webcam" }),
   ).toBeVisible();
   expect(screen.getByTitle("Live webcam")).toHaveAttribute(
     "src",
@@ -1280,7 +1282,7 @@ test("renders an iframe webcam provider for non-NYC locations", async () => {
   renderLocation({ bootstrap, locationCode: "chi" });
 
   expect(
-    await screen.findByRole("heading", { name: "Live Webcam" }),
+    await screen.findByRole("heading", { name: "Live webcam" }),
   ).toBeVisible();
   expect(screen.getByTitle("Live webcam")).toHaveAttribute(
     "src",
@@ -1343,7 +1345,7 @@ test("renders a named EarthCam provider as a contained iframe", async () => {
   renderLocation({ bootstrap, locationCode: "sdf" });
 
   expect(
-    await screen.findByRole("heading", { name: "Live Webcam" }),
+    await screen.findByRole("heading", { name: "Live webcam" }),
   ).toBeVisible();
   const embedRoot = document.querySelector("[data-earthcam-embed-root]");
   expect(embedRoot).not.toBeNull();

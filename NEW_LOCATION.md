@@ -222,6 +222,9 @@ Presentation notes:
 
 - Keep descriptions to one sentence.
 - Prefer authoritative local links.
+- The React webcam section uses `WebcamConfig.label` as its heading. For
+  recorded images, use a label such as "Recent beach views" and a note asking
+  swimmers to check the capture time shown by the provider.
 - Webcam embeds need technical validation and permission/licensing review before
   production use.
 

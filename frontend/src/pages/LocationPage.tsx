@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Anchor,
-  Droplet,
   GitHub,
   Map as MapIcon,
   Shuffle,
@@ -2549,13 +2548,23 @@ function SourcesList({
 }) {
   const citations = location.metadata.citations;
   return (
-    <Section title="Sources">
+    <Section title="Local Info & Data Sources">
       <div className="overflow-hidden rounded border border-swim-line bg-white">
         <SourceHtml
           icon={<MapIcon aria-hidden="true" />}
           label="Location info"
           html={citations.location_info}
         />
+        {location.integrations.resources?.map((link) => (
+          <SourceLink
+            key={link.url}
+            icon={<MapIcon aria-hidden="true" />}
+            label={link.label}
+            includeLabel={false}
+            link={link}
+            linkFirst
+          />
+        ))}
         <SourceHtml
           icon={<Thermometer aria-hidden="true" />}
           label="Temperature"
@@ -2630,11 +2639,6 @@ function SourcesList({
           includeLabel={false}
           label="Transit"
           link={location.integrations.transit_source}
-        />
-        <SourceLink
-          icon={<Droplet aria-hidden="true" />}
-          label="Water quality"
-          link={location.integrations.water_quality_info}
         />
         <SourceLink
           icon={<GitHub aria-hidden="true" />}

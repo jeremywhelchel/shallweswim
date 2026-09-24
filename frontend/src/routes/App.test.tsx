@@ -79,11 +79,13 @@ const bootstrapPayload: components["schemas"]["AppBootstrapResponse"] = {
         webcam: null,
         transit_routes: [],
         transit_source: null,
-        water_quality_info: {
-          label: "NYC Health beach information",
-          url: "https://www.nyc.gov/site/doh/health/health-topics/beach-homepage.page",
-          description: "Periodic samples and official beach status:",
-        },
+        resources: [
+          {
+            label: "NYC Health beach information",
+            url: "https://www.nyc.gov/site/doh/health/health-topics/beach-homepage.page",
+            description: "Water quality samples and official beach status.",
+          },
+        ],
         windy: null,
       },
     },
@@ -540,7 +542,9 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
   ).toBeVisible();
   expect(screen.getByText("1.3 kt")).toBeVisible();
   expect(screen.getByText(/peak 1.8 kt/)).toBeVisible();
-  expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
+  expect(
+    screen.getByRole("heading", { name: "Local Info & Data Sources" }),
+  ).toBeVisible();
   expect(screen.getByRole("link", { name: "Temp source" })).toHaveAttribute(
     "target",
     "_blank",
@@ -582,7 +586,6 @@ test("renders the NYC location page from bootstrap and conditions metadata", asy
     }).length,
   ).toBeGreaterThan(0);
   expect(screen.getByRole("img", { name: "Map credit" })).toBeVisible();
-  expect(screen.getByRole("img", { name: "Water quality" })).toBeVisible();
   expect(
     screen.getByRole("link", { name: "NYC Health beach information" }),
   ).toHaveAttribute(
@@ -709,7 +712,9 @@ test("does not label observed current sources as predictions", async () => {
     locationCode: "riv",
   });
 
-  expect(await screen.findByRole("heading", { name: "Sources" })).toBeVisible();
+  expect(
+    await screen.findByRole("heading", { name: "Local Info & Data Sources" }),
+  ).toBeVisible();
   expect(screen.getByRole("link", { name: "Current source" })).toBeVisible();
   expect(screen.queryByText(/Predictions are model guidance/)).toBeNull();
 });
@@ -890,6 +895,18 @@ test("renders optional page sections from synthetic feature capabilities", async
         url: "https://example.com/transit",
         description: "Synthetic transit source.",
       },
+      resources: [
+        {
+          label: "Local beach guide",
+          url: "https://example.com/beach-guide",
+          description: "Local guidance and flag meanings.",
+        },
+        {
+          label: "Local swim group",
+          url: "https://example.com/swim-group",
+          description: null,
+        },
+      ],
       windy: {
         overlay: "wind",
         product: "ecmwf",
@@ -947,7 +964,25 @@ test("renders optional page sections from synthetic feature capabilities", async
   expect(screen.getByRole("button", { name: "12 mo" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "Transit Status" })).toBeVisible();
   expect(screen.getByText("Good Service")).toBeVisible();
-  expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
+  const resourcesAndSources = screen.getByRole("heading", {
+    name: "Local Info & Data Sources",
+  }).parentElement as HTMLElement;
+  const links = within(resourcesAndSources).getAllByRole("link");
+  expect(links.slice(0, 4).map((link) => link.textContent)).toEqual([
+    "Test Beach",
+    "Local beach guide",
+    "Local swim group",
+    "Temp source",
+  ]);
+  expect(links[1]).toHaveAttribute("href", "https://example.com/beach-guide");
+  expect(links[1]).toHaveAttribute("target", "_blank");
+  expect(links[1]).toHaveAttribute("rel", "noopener noreferrer");
+  expect(
+    within(resourcesAndSources).getByText(/Local guidance and flag meanings/),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { name: "Local information" }),
+  ).not.toBeInTheDocument();
   expect(
     screen.getByRole("link", { name: "Synthetic webcam source" }),
   ).toHaveAttribute("href", "https://example.com/synthetic-webcam");
@@ -992,12 +1027,17 @@ test("omits optional page sections when synthetic capabilities are disabled", ()
     screen.queryByRole("heading", { name: /webcam/i }),
   ).not.toBeInTheDocument();
   expect(
+    screen.queryByRole("heading", { name: "Local information" }),
+  ).not.toBeInTheDocument();
+  expect(
     screen.queryByRole("heading", { name: "Temperature Trends" }),
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("heading", { name: "Transit Status" }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Sources" })).toBeVisible();
+  expect(
+    screen.getByRole("heading", { name: "Local Info & Data Sources" }),
+  ).toBeVisible();
 });
 
 test("renders only live temperature plot controls when historic plots are disabled", async () => {

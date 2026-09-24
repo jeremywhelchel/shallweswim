@@ -529,9 +529,14 @@ def register_routes(app: fastapi.FastAPI) -> None:
                     if cfg.presentation.transit
                     else None
                 ),
-                water_quality_info=presentation_link(
-                    cfg.presentation.water_quality_info
-                ),
+                resources=[
+                    AppPresentationLink(
+                        label=link.label,
+                        url=link.url,
+                        description=link.description,
+                    )
+                    for link in cfg.presentation.resources
+                ],
                 windy=(
                     AppWindyConfig(
                         overlay=cfg.presentation.windy.overlay,

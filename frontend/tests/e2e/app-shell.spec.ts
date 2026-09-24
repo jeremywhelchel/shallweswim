@@ -508,7 +508,9 @@ test("renders the NYC location vertical slice", async ({ page }) => {
     page.getByRole("heading", { name: "Transit Status" }),
   ).toBeVisible();
   await expect(page.getByText("Coney Island-Stillwell Av")).toHaveCount(2);
-  await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Local Info & Data Sources" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Water Movement" }),
   ).toBeVisible();

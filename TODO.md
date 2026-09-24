@@ -4,6 +4,9 @@
 
 ### Location Page Experience
 
+- Evaluate a dedicated local swimming resources section across all locations:
+  review existing guides, official advisories, and community links, and decide
+  placement and content coverage before separating them from the sources area.
 - Support multiple swim spots per city/region. Today the app mostly behaves as
   if one location is one city, but swimmers often choose between multiple spots
   in the same region. For example, NYC should be able to show Grimaldo's Chair

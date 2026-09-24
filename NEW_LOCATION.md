@@ -222,6 +222,12 @@ Presentation notes:
 
 - Keep descriptions to one sentence.
 - Prefer authoritative local links.
+- Use `presentation.resources` for ordered links to local guidance,
+  beach-condition reports, water-quality information, and swim communities.
+  They follow the primary `swim_location_link` in "Local Info & Data Sources",
+  before data credits. Keep the primary guide in `swim_location_link` only.
+  Resource descriptions are static context; label private groups and dated
+  reports clearly.
 - The React webcam section uses `WebcamConfig.label` as its heading. For
   recorded images, use a label such as "Recent beach views" and a note asking
   swimmers to check the capture time shown by the provider.

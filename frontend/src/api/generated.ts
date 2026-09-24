@@ -723,14 +723,17 @@ export interface components {
          */
         AppExternalIntegrations: {
             /**
+             * Resources
+             * @description Ordered resources supplementing the primary location guide
+             */
+            resources?: components["schemas"]["AppPresentationLink"][];
+            /**
              * Transit Routes
              * @description Transit routes to show for a location
              */
             transit_routes?: components["schemas"]["TransitRouteConfig"][];
             /** @description Transit source or citation link */
             transit_source?: components["schemas"]["AppPresentationLink"] | null;
-            /** @description External water-quality information link */
-            water_quality_info?: components["schemas"]["AppPresentationLink"] | null;
             /** @description Provider-aware webcam configuration */
             webcam?: components["schemas"]["AppWebcamConfig"] | null;
             /** @description Windy forecast iframe configuration */

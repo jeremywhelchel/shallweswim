@@ -890,10 +890,10 @@ class LocationPresentationConfig(BaseModel, frozen=True):
         TransitPresentationConfig | None,
         Field(description="Optional transit integration"),
     ] = None
-    water_quality_info: Annotated[
-        PresentationLinkConfig | None,
-        Field(description="Optional external water-quality information link"),
-    ] = None
+    resources: Annotated[
+        list[PresentationLinkConfig],
+        Field(description="Ordered resources supplementing the primary location guide"),
+    ] = Field(default_factory=list)
     windy: Annotated[
         WindyForecastConfig,
         Field(description="Windy forecast integration settings"),
@@ -1165,14 +1165,16 @@ _CONFIG_LIST = [
             ),
         ),
         presentation=LocationPresentationConfig(
-            water_quality_info=PresentationLinkConfig(
-                label="NYC Health beach information",
-                url=(
-                    "https://www.nyc.gov/site/doh/health/health-topics/"
-                    "beach-homepage.page"
+            resources=[
+                PresentationLinkConfig(
+                    label="NYC Health beach information",
+                    url=(
+                        "https://www.nyc.gov/site/doh/health/health-topics/"
+                        "beach-homepage.page"
+                    ),
+                    description="Water quality samples and official beach status.",
                 ),
-                description="Periodic samples and official beach status:",
-            ),
+            ],
             webcam=WebcamConfig(
                 provider=types.WebcamProvider.YOUTUBE_LIVE,
                 channel_id="UChh9yX1PSFFreQFmnnIPGuQ",
@@ -1316,11 +1318,37 @@ _CONFIG_LIST = [
                     ),
                 ),
             ),
-            water_quality_info=PresentationLinkConfig(
-                label="Palm Beach County beach conditions",
-                url=("https://discover.pbc.gov/parks/Locations/Beach-Conditions.aspx"),
-                description="Daily swimming conditions and beach hazards:",
-            ),
+            resources=[
+                PresentationLinkConfig(
+                    label="Beach flag guide",
+                    url=(
+                        "https://discover.pbc.gov/parks/Aquatics/About-Our-Beaches.aspx"
+                    ),
+                    description=(
+                        "Purple means dangerous marine life, including man-of-war, "
+                        "and can accompany other flags. Double red means the water "
+                        "is closed to the public."
+                    ),
+                ),
+                PresentationLinkConfig(
+                    label="Palm Beach County beach conditions",
+                    url=(
+                        "https://discover.pbc.gov/parks/Locations/Beach-Conditions.aspx"
+                    ),
+                    description=(
+                        "Daily district reports and advisories. Check the report "
+                        "date and on-site flags for current conditions."
+                    ),
+                ),
+                PresentationLinkConfig(
+                    label="Juno Beach Open Water Swim Group",
+                    url="https://www.facebook.com/groups/1658895994581240/",
+                    description=(
+                        "Swim meetups around Jupiter and Juno Beach. "
+                        "Private Facebook group; membership required to view posts."
+                    ),
+                ),
+            ],
         ),
         description=(
             "Atlantic open-water swimming along the northern Palm Beach County "

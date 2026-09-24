@@ -18,6 +18,7 @@ from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
 from freezegun import freeze_time
 
+from shallweswim import config as config_lib
 from shallweswim import types as sw_types
 
 # Local imports
@@ -34,8 +35,10 @@ from shallweswim.config import (
     CoopsTempFeedConfig,
     CoopsTideFeedConfig,
     LocationConfig,
+    LocationPresentationConfig,
     NdbcTempFeedConfig,
     NwisCurrentFeedConfig,
+    PresentationLinkConfig,
 )
 from shallweswim.core.feeds import FEED_CURRENTS, FEED_TIDES
 from shallweswim.core.manager import LocationDataManager
@@ -360,13 +363,15 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert "webcam_alternative" not in nyc["integrations"]
     assert "webcam_source" not in nyc["integrations"]
     assert nyc["integrations"]["transit_source"]["url"] == "https://goodservice.io"
-    assert nyc["integrations"]["water_quality_info"] == {
-        "label": "NYC Health beach information",
-        "url": (
-            "https://www.nyc.gov/site/doh/health/health-topics/beach-homepage.page"
-        ),
-        "description": "Periodic samples and official beach status:",
-    }
+    assert nyc["integrations"]["resources"] == [
+        {
+            "label": "NYC Health beach information",
+            "url": (
+                "https://www.nyc.gov/site/doh/health/health-topics/beach-homepage.page"
+            ),
+            "description": "Water quality samples and official beach status.",
+        }
+    ]
     assert nyc["integrations"]["transit_routes"][0]["goodservice_route_id"] == "B"
     assert nyc["integrations"]["transit_routes"][0]["goodservice_direction"] == "south"
     assert nyc["integrations"]["windy"] == {
@@ -420,6 +425,48 @@ def test_app_bootstrap_endpoint(test_client: TestClient) -> None:
     assert dov["metadata"]["citations"]["temperature"] is None
     assert dov["metadata"]["citations"]["live_temperature"] is not None
     assert dov["metadata"]["citations"]["historical_temperature"] is not None
+
+
+@pytest.mark.parametrize("has_links", [False, True])
+def test_bootstrap_resources(
+    test_client: TestClient, monkeypatch: pytest.MonkeyPatch, has_links: bool
+) -> None:
+    """Bootstrap preserves ordered resources, including an empty default."""
+    links = (
+        [
+            PresentationLinkConfig(
+                label="Beach guidance",
+                url="https://example.com/guidance",
+                description="Read the local guidance.",
+            ),
+            PresentationLinkConfig(
+                label="Swim community", url="https://example.com/community"
+            ),
+        ]
+        if has_links
+        else []
+    )
+    cfg = LocationConfig(
+        code="nyc",
+        name="Test location",
+        swim_location="Test beach",
+        swim_location_link="https://example.com/beach",
+        description="A test location with optional resources.",
+        latitude=40.0,
+        longitude=-70.0,
+        timezone=pytz.timezone("UTC"),
+        default_temperature_unit="F",
+        presentation=LocationPresentationConfig(resources=links)
+        if has_links
+        else LocationPresentationConfig(),
+    )
+    monkeypatch.setattr(config_lib, "CONFIGS", {cfg.code: cfg})
+
+    response = test_client.get("/api/app/bootstrap")
+
+    assert response.status_code == 200
+    integrations = response.json()["locations"][cfg.code]["integrations"]
+    assert integrations["resources"] == [link.model_dump() for link in links]
 
 
 def test_app_source_citations_split_different_temperature_sources() -> None:

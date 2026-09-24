@@ -74,6 +74,14 @@
         "additionalProperties": false,
         "description": "External presentation integrations used by the React app.",
         "properties": {
+          "resources": {
+            "description": "Ordered resources supplementing the primary location guide",
+            "items": {
+              "$ref": "#/components/schemas/AppPresentationLink"
+            },
+            "title": "Resources",
+            "type": "array"
+          },
           "transit_routes": {
             "description": "Transit routes to show for a location",
             "items": {
@@ -92,17 +100,6 @@
               }
             ],
             "description": "Transit source or citation link"
-          },
-          "water_quality_info": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AppPresentationLink"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "External water-quality information link"
           },
           "webcam": {
             "anyOf": [

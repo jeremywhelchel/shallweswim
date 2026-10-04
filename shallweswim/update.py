@@ -326,9 +326,6 @@ async def _current_manifest(store: SnapshotStore) -> Manifest | None:
 async def serve_location(manager: LocationDataManager) -> None:
     """Run one location's serving cycle to completion.
 
-    The comparison command (`scripts/compare_snapshot.py`) reuses this so its
-    legacy side is exactly the state the publisher publishes from.
-
     A feed whose update raises has already logged the failure at ERROR and
     scheduled its retry a minute out, so re-entering the cycle skips it and
     updates the feeds after it, as the web loop's next tick would. One entry
@@ -345,6 +342,23 @@ async def serve_location(manager: LocationDataManager) -> None:
             # The web loop records an interrupted cycle the same way; a feed
             # failure has also been logged by the feed itself.
             manager.log(f"Error in serving cycle: {error}", level=logging.ERROR)
+
+
+async def serve_location_and_collect_plots(manager: LocationDataManager) -> None:
+    """Run one location's serving cycle, then collect the plots it submitted.
+
+    Each location collects its own plots as soon as its own cycle ends, so a
+    location held up by a slow or failing provider delays only its own plots
+    and never inflates another location's submit-to-harvest latency.
+
+    The comparison command (`scripts/compare_snapshot.py`) reuses this so its
+    legacy side is exactly the state the publisher publishes from.
+
+    Args:
+        manager: The location's data manager, freshly built for this run.
+    """
+    await serve_location(manager)
+    await manager.wait_for_plots(PLOT_HARD_TIMEOUT)
 
 
 async def publish_locations(
@@ -423,9 +437,8 @@ async def publish_locations(
             None if base is None else base.locations.get(manager.config.code),
             cadence=cadence,
         )
-    await asyncio.gather(*(serve_location(manager) for manager in managers))
     await asyncio.gather(
-        *(manager.wait_for_plots(PLOT_HARD_TIMEOUT) for manager in managers)
+        *(serve_location_and_collect_plots(manager) for manager in managers)
     )
     # The feeds themselves carry the capture counts; the manager exposes no
     # other accessor for them.

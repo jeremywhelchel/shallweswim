@@ -40,7 +40,7 @@ from shallweswim import logging_utils
 from shallweswim.archive.store import object_store
 from shallweswim.clients import create_api_clients
 from shallweswim.core.feeds import FeedName, PlotName
-from shallweswim.core.manager import PLOT_HARD_TIMEOUT, LocationDataManager
+from shallweswim.core.manager import LocationDataManager
 from shallweswim.core.serving import LocationServing
 from shallweswim.snapshot.load import LoadedSnapshot, load_current
 from shallweswim.snapshot.manager import SnapshotLocationManager
@@ -50,7 +50,7 @@ from shallweswim.types import DataSourceType
 
 # The job's serving cycle, reused rather than restated: the legacy side must be
 # the state the publisher itself would have published from.
-from shallweswim.update import serve_location
+from shallweswim.update import serve_location_and_collect_plots
 
 # Archive variables the comparison run must not act on; see `_isolate_legacy`.
 ARCHIVE_BUCKET_ENV_VAR = "SHALLWESWIM_ARCHIVE_BUCKET"
@@ -620,9 +620,8 @@ async def _fetch_legacy(
                 LocationDataManager(location_config, clients, pool)
                 for location_config in configs
             ]
-            await asyncio.gather(*(serve_location(manager) for manager in managers))
             await asyncio.gather(
-                *(manager.wait_for_plots(PLOT_HARD_TIMEOUT) for manager in managers)
+                *(serve_location_and_collect_plots(manager) for manager in managers)
             )
     finally:
         pool.shutdown(wait=True)

@@ -154,7 +154,9 @@ otherwise wait a whole cadence past its interval.
 Locations run concurrently, each in the same `LocationDataManager` the web
 servers once used: `update_once()` updates the feeds that are due, and
 `wait_for_plots()` awaits the plots it submitted to the process pool, bounded
-by `PLOT_HARD_TIMEOUT` (300 s). A feed whose update raises has already logged
+by `PLOT_HARD_TIMEOUT` (300 s). Each location collects its own plots as soon
+as its own feeds finish, so a provider that holds one location up delays only
+that location's plots. A feed whose update raises has already logged
 the failure at ERROR and scheduled its retry; the cycle re-enters and updates
 the feeds after it, one re-entry per feed at most.
 

@@ -18,6 +18,7 @@ from shallweswim.clients.coops import CoopsApi
 from shallweswim.core import feeds
 from shallweswim.core import manager as manager_module
 from shallweswim.core.manager import LocationDataManager
+from shallweswim.update import serve_location_and_collect_plots
 from shallweswim.util import utc_now
 from tests.conftest import TEST_CONFIG_FULL
 
@@ -206,3 +207,33 @@ async def test_wait_for_plots_abandons_a_hung_worker_like_the_loop(
     assert manager._pending_plot_futures == {}
     assert any("abandoning" in record.getMessage() for record in caplog.records)
     hung.cancel()
+
+
+@pytest.mark.asyncio
+async def test_a_slow_location_does_not_delay_another_locations_plots() -> None:
+    fast, slow = _manager(), _manager()
+    slow_may_finish = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    async def fast_cycle() -> None:
+        plot: asyncio.Future[bytes] = loop.create_future()
+        plot.set_result(b"<svg>live</svg>")
+        fast._pending_plot_futures[feeds.FEED_LIVE_TEMPS] = (plot, utc_now())
+
+    fast.update_once = AsyncMock(side_effect=fast_cycle)  # type: ignore[method-assign]
+    slow.update_once = AsyncMock(side_effect=slow_may_finish.wait)  # type: ignore[method-assign]
+
+    run = asyncio.gather(
+        serve_location_and_collect_plots(fast),
+        serve_location_and_collect_plots(slow),
+    )
+    try:
+        async with asyncio.timeout(2.0):
+            while fast._pending_plot_futures or not fast.update_once.await_count:
+                await asyncio.sleep(0.01)
+        # The fast location's plot is collected while the slow one still runs.
+        assert fast.get_plot(feeds.PLOT_LIVE_TEMPS) == b"<svg>live</svg>"
+        assert not run.done()
+    finally:
+        slow_may_finish.set()
+        await run

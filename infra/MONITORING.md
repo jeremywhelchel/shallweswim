@@ -114,9 +114,8 @@ to be an operator's own deploy is acceptable, because it is easy to
 attribute; a policy that pages nobody catches nothing. A new policy starts
 without channels and is promoted the same way (monitoring/README.md).
 
-The channels are an email address and the Cloud Console mobile app on the
-operator's phone. They are created in the console and referenced by id from
-the operator's environment, so no address is in the repository.
+The channels are created in the console and referenced by id from the
+operator's environment, so no address is in the repository.
 
 ### Terraform policies
 

@@ -35,6 +35,19 @@ run "monitoring_plan" {
   }
 
   assert {
+    condition = (
+      google_monitoring_alert_policy.repeated_feed_failures.conditions[0].condition_threshold[0].threshold_value == 2 &&
+      google_monitoring_alert_policy.repeated_feed_failures.conditions[0].condition_threshold[0].comparison == "COMPARISON_GT" &&
+      google_monitoring_alert_policy.repeated_feed_failures.conditions[0].condition_threshold[0].aggregations[0].alignment_period == "2400s" &&
+      toset(google_monitoring_alert_policy.repeated_feed_failures.conditions[0].condition_threshold[0].aggregations[0].group_by_fields) == toset(["metric.label.location", "metric.label.feed"]) &&
+      google_monitoring_alert_policy.repeated_feed_failures.alert_strategy[0].auto_close == "1800s" &&
+      strcontains(google_monitoring_alert_policy.repeated_feed_failures.documentation[0].subject, "$${metric.label.location}") &&
+      strcontains(google_monitoring_alert_policy.repeated_feed_failures.documentation[0].subject, "$${metric.label.feed}")
+    )
+    error_message = "Feed failures must alert per location and feed at three within forty minutes: the job attempts a feed once per ten-minute run, so a thirty-minute window holds two or three failures and flaps."
+  }
+
+  assert {
     condition = alltrue([
       for metric in [
         google_logging_metric.feed_updates,

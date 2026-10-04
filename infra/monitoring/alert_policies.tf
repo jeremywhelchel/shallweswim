@@ -96,13 +96,20 @@ resource "google_monitoring_alert_policy" "repeated_feed_failures" {
   severity              = "ERROR"
   user_labels           = local.paging_alert_labels
 
+  # The default subject names only the job, so the subject carries the
+  # location and feed the incident is for.
   documentation {
+    subject   = "Feed failing: $${metric.label.location} $${metric.label.feed}"
     mime_type = "text/markdown"
-    content   = "at least three unexpected failures for the same feed and location in 10 minutes. Expected station-unavailable outcomes are excluded."
+    content   = "At least three unexpected failures for the same feed and location within 40 minutes, which is three consecutive runs of the ten-minute job. Expected station-unavailable outcomes are excluded. The incident names the location and feed; that feed's feed_update events say why the fetch failed (MONITORING.md \"Log queries\")."
   }
 
+  # The job attempts each due feed once per ten-minute run, so a feed that
+  # keeps failing produces one failure per run. The window is forty minutes
+  # so it always holds at least three of them: a thirty-minute window holds
+  # two or three as it slides, and the incident flaps open and closed.
   conditions {
-    display_name = "At least 3 feed failures in 10m"
+    display_name = "At least 3 feed failures in 40m"
 
     condition_threshold {
       filter          = "metric.type = \"${local.metric_prefix}/${google_logging_metric.feed_updates.name}\" AND ${local.cloud_run_job_resource_filter} AND metric.label.outcome = \"failed\""
@@ -111,7 +118,7 @@ resource "google_monitoring_alert_policy" "repeated_feed_failures" {
       duration        = "0s"
 
       aggregations {
-        alignment_period     = "600s"
+        alignment_period     = "2400s"
         per_series_aligner   = "ALIGN_SUM"
         cross_series_reducer = "REDUCE_SUM"
         group_by_fields      = ["metric.label.location", "metric.label.feed"]
@@ -121,6 +128,12 @@ resource "google_monitoring_alert_policy" "repeated_feed_failures" {
         count = 1
       }
     }
+  }
+
+  # A recovered feed stops producing failed samples, so the series goes
+  # absent and the incident would otherwise stay open.
+  alert_strategy {
+    auto_close = "1800s"
   }
 }
 

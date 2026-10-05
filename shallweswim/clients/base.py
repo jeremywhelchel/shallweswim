@@ -204,11 +204,20 @@ class BaseApiClient:
         message: str,
         level: int = logging.INFO,
         location_code: str | None = None,
+        *,
+        extra: dict[str, object] | None = None,
     ) -> None:
-        """Log a message with standardized formatting including client type and location."""
+        """Log a message with standardized formatting including client type and location.
+
+        Args:
+            message: The message to log
+            level: The logging level (default: INFO)
+            location_code: The location the request was made for
+            extra: Approved structured fields to attach to the log record
+        """
         prefix = f"[{location_code or 'general'}][{self.client_type}]"
         formatted_message = f"{prefix} {message}"
-        logging.log(level, formatted_message)
+        logging.log(level, formatted_message, extra=extra)
 
     def _log_retry(self, retry_state: tenacity.RetryCallState) -> None:
         """Log retry attempts using tenacity's state and the instance's log method."""
@@ -283,12 +292,19 @@ class BaseApiClient:
             )
             return result
         except RetryableClientError as e:
-            # Log final failure after all retries
+            # Log final failure after all retries. The fields mark it as a
+            # provider's exhausted request, which monitoring routes to the
+            # per-feed failure policy rather than the application error one.
             self.log(
                 f"API request failed after {self.MAX_RETRIES + 1} attempts due to retryable errors: "
                 f"{e.__class__.__name__}: {e}",
                 level=logging.ERROR,
                 location_code=location_code,
+                extra={
+                    "component": "client",
+                    "location": location_code,
+                    "outcome": "failed",
+                },
             )
             raise  # Re-raise the final RetryableClientError
         except StationUnavailableError:

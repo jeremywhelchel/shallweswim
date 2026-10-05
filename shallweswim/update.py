@@ -331,6 +331,10 @@ async def serve_location(manager: LocationDataManager) -> None:
     updates the feeds after it, as the web loop's next tick would. One entry
     per feed bounds the re-entry.
 
+    The cycle's own ERROR names the feed whose failure interrupted it, so
+    monitoring can tell a feed failure restated from a defect in the cycle
+    itself, which carries no feed.
+
     Args:
         manager: The location's data manager, freshly built for this run.
     """
@@ -341,7 +345,26 @@ async def serve_location(manager: LocationDataManager) -> None:
         except Exception as error:
             # The web loop records an interrupted cycle the same way; a feed
             # failure has also been logged by the feed itself.
-            manager.log(f"Error in serving cycle: {error}", level=logging.ERROR)
+            failed_feed = next(
+                (
+                    name
+                    for name, feed in manager._feeds.items()
+                    if feed is not None and feed._last_error is error
+                ),
+                None,
+            )
+            manager.log(
+                f"Error in serving cycle: {error}",
+                level=logging.ERROR,
+                extra=None
+                if failed_feed is None
+                else {
+                    "component": "updater",
+                    "location": manager.config.code,
+                    "feed": failed_feed.value,
+                    "outcome": "failed",
+                },
+            )
 
 
 async def serve_location_and_collect_plots(manager: LocationDataManager) -> None:

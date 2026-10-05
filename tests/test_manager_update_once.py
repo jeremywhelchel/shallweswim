@@ -18,7 +18,7 @@ from shallweswim.clients.coops import CoopsApi
 from shallweswim.core import feeds
 from shallweswim.core import manager as manager_module
 from shallweswim.core.manager import LocationDataManager
-from shallweswim.update import serve_location_and_collect_plots
+from shallweswim.update import serve_location, serve_location_and_collect_plots
 from shallweswim.util import utc_now
 from tests.conftest import TEST_CONFIG_FULL
 
@@ -237,3 +237,45 @@ async def test_a_slow_location_does_not_delay_another_locations_plots() -> None:
     finally:
         slow_may_finish.set()
         await run
+
+
+@pytest.mark.asyncio
+async def test_serving_cycle_error_names_the_feed_whose_failure_it_restates(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    manager = _manager()
+    error = RuntimeError("tides boom")
+    tides = manager._feeds[feeds.FEED_TIDES]
+    assert tides is not None
+    tides._last_error = error
+    manager.update_once = AsyncMock(side_effect=[error, None])  # type: ignore[method-assign]
+
+    with caplog.at_level(logging.ERROR):
+        await serve_location(manager)
+
+    [record] = caplog.records
+    assert (record.component, record.location, record.feed, record.outcome) == (  # type: ignore[attr-defined]
+        "updater",
+        manager.config.code,
+        feeds.FEED_TIDES.value,
+        "failed",
+    )
+    assert not hasattr(record, "operation")
+
+
+@pytest.mark.asyncio
+async def test_serving_cycle_error_outside_a_feed_carries_no_feed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    manager = _manager()
+    manager.update_once = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[RuntimeError("precompute boom"), None]
+    )
+
+    with caplog.at_level(logging.ERROR):
+        await serve_location(manager)
+
+    [record] = caplog.records
+    # A defect in the cycle itself must stay an unattributed application error.
+    assert not hasattr(record, "feed")
+    assert not hasattr(record, "outcome")

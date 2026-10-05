@@ -336,6 +336,12 @@ Two error types for data availability, at different layers:
   maps each to the metrics built on it. Request starts and
   provider-specific details remain DEBUG diagnostics rather than routine
   INFO events.
+- An ERROR that restates a feed's failed update carries the fields that say
+  so, and no `operation`, so it is counted by no metric: the client's
+  exhausted request has `component=client` and `outcome=failed`, and the
+  job's interrupted cycle has `component=updater`, `outcome=failed`, and the
+  `feed` whose failure interrupted it. A cycle error with no `feed` is a
+  defect in the cycle itself.
 - Successful route-entry and response events rely on platform-native request
   logs rather than duplicate application INFO messages. Application logs record
   domain work, state changes, degraded availability, and failures.

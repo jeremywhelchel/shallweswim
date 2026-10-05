@@ -325,7 +325,7 @@ run "monitoring_plan" {
     condition = alltrue([
       strcontains(google_monitoring_alert_policy.snapshot_feed_stale.conditions[0].condition_matched_log[0].filter, "jsonPayload.operation=\"freshness\""),
       strcontains(google_monitoring_alert_policy.snapshot_feed_stale.conditions[0].condition_matched_log[0].filter, "jsonPayload.outcome=\"stale\""),
-      google_monitoring_alert_policy.snapshot_feed_stale.alert_strategy[0].notification_rate_limit[0].period == "3600s",
+      google_monitoring_alert_policy.snapshot_feed_stale.alert_strategy[0].notification_rate_limit[0].period == "43200s",
     ])
     error_message = "The one freshness policy matches the job's own stale verdict and carries no threshold of its own."
   }
@@ -334,6 +334,7 @@ run "monitoring_plan" {
     condition = alltrue([
       strcontains(google_monitoring_alert_policy.application_errors.conditions[0].condition_matched_log[0].filter, "severity>=ERROR"),
       strcontains(google_monitoring_alert_policy.application_errors.conditions[0].condition_matched_log[0].filter, "NOT logName:\"run.googleapis.com%2Frequests\""),
+      strcontains(google_monitoring_alert_policy.application_errors.conditions[0].condition_matched_log[0].filter, "NOT (jsonPayload.outcome=\"failed\" AND ((jsonPayload.component=\"updater\" AND jsonPayload.feed:*) OR jsonPayload.component=\"client\"))"),
       strcontains(google_monitoring_alert_policy.application_errors.conditions[0].condition_matched_log[0].filter, "resource.labels.job_name=\"shallweswim-capture\""),
       strcontains(google_monitoring_alert_policy.application_errors.conditions[0].condition_matched_log[0].filter, "resource.labels.service_name=\"shallweswim\""),
       google_monitoring_alert_policy.application_errors.alert_strategy[0].auto_close == "1800s",

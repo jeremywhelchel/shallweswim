@@ -344,14 +344,16 @@ resource "google_monitoring_alert_policy" "snapshot_feed_stale" {
     }
   }
 
-  # A log-matching condition notifies per matching entry, so one stale feed
-  # publishing every ten minutes is rate-limited to one notification an hour
-  # and the incident closes on its own once no entry has matched for a while.
+  # A log-matching condition notifies per matching entry, and the limit is
+  # per location and feed, so a feed going stale notifies at once and then at
+  # most every twelve hours: a stale feed is carried data, which nobody can
+  # act on hourly, and the feed failure policy reports the cause. The
+  # incident closes on its own once no entry has matched for a while.
   alert_strategy {
     auto_close = "1800s"
 
     notification_rate_limit {
-      period = "3600s"
+      period = "43200s"
     }
   }
 }
@@ -360,7 +362,11 @@ resource "google_monitoring_alert_policy" "snapshot_feed_stale" {
 # operation (ARCHITECTURE.md "Logging"), so any application ERROR is worth a
 # page: it is the catch-all for failures no specific policy anticipated. Cloud
 # Run's request logs also carry ERROR for every 5xx response; those are
-# excluded here and covered by the request 5xx policy below.
+# excluded here and covered by the request 5xx policy below. A feed's failed
+# update is excluded too, with the two lines that restate it (the client's
+# exhausted request and the cycle error naming the feed): the repeated feed
+# failures policy owns those, one incident per location and feed, so a
+# provider outage does not hold this policy open and bury a defect.
 resource "google_monitoring_alert_policy" "application_errors" {
   display_name          = "[Terraform] Application error"
   combiner              = "OR"
@@ -371,14 +377,14 @@ resource "google_monitoring_alert_policy" "application_errors" {
 
   documentation {
     mime_type = "text/markdown"
-    content   = "The web service or the capture job logged an ERROR, which the application reserves for a defect or an exhausted critical operation. The matched entry carries the message; the labels name the component, location, and feed when the entry has them. One notification an hour; the incident closes on its own once the errors stop."
+    content   = "The web service or the capture job logged an ERROR other than a feed's failed update, which the repeated feed failures policy reports. The application reserves ERROR for a defect or an exhausted critical operation. The matched entry carries the message; the labels name the component, location, and feed when the entry has them. One notification an hour; the incident closes on its own once the errors stop."
   }
 
   conditions {
     display_name = "Any application ERROR"
 
     condition_matched_log {
-      filter = "((resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${var.service_name}\") OR (resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\")) AND severity>=ERROR AND NOT logName:\"run.googleapis.com%2Frequests\""
+      filter = "((resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${var.service_name}\") OR (resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${var.job_name}\")) AND severity>=ERROR AND NOT logName:\"run.googleapis.com%2Frequests\" AND NOT (jsonPayload.outcome=\"failed\" AND ((jsonPayload.component=\"updater\" AND jsonPayload.feed:*) OR jsonPayload.component=\"client\"))"
 
       label_extractors = {
         component = "EXTRACT(jsonPayload.component)"

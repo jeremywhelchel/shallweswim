@@ -877,3 +877,26 @@ async def test_execute_request_parses_ordinary_tide_csv(
 
     assert list(df.columns) == ["Date Time", " Prediction", " Type"]
     assert df.iloc[0][" Type"] == "H"
+
+
+@pytest.mark.asyncio
+async def test_exhausted_retries_log_one_error_marked_as_a_client_failure(
+    coops_client: CoopsApi,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(coops_client, "INITIAL_RETRY_DELAY", 0.0)
+    execute_request = AsyncMock(side_effect=RetryableClientError("timed out"))
+
+    with caplog.at_level(logging.ERROR), pytest.raises(RetryableClientError):
+        await coops_client.request_with_retry("nyc", execute_request)
+
+    [record] = [r for r in caplog.records if r.levelno == logging.ERROR]
+    # Monitoring keys on these fields to tell a provider's exhausted request
+    # from a defect, so the per-feed failure policy owns it.
+    assert (record.component, record.location, record.outcome) == (  # type: ignore[attr-defined]
+        "client",
+        "nyc",
+        "failed",
+    )
+    assert not hasattr(record, "operation")

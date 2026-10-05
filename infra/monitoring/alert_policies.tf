@@ -10,6 +10,15 @@ locals {
     mode       = "paging"
   }
 
+  # What each policy asks of the operator, carried by its notification: the
+  # subject leads with the urgency so an inbox triages itself, and the body
+  # ends with what to do. The wording is alert_responses.json, which the
+  # table in MONITORING.md "Responding to alerts" repeats for a reader and
+  # tests/test_alert_responses.py holds to it, so the notification, this
+  # module, and the document cannot disagree.
+  alert_response = jsondecode(file("${path.module}/alert_responses.json"))
+  alert_subject  = { for key, response in local.alert_response : key => "[${response.urgency}] ${response.title}" }
+  alert_guidance = { for key, response in local.alert_response : key => "**${response.urgency}.** ${response.action}\n\nPlaybook: infra/MONITORING.md, \"Responding to alerts\"." }
 }
 
 resource "google_monitoring_alert_policy" "live_feed_update_latency" {
@@ -21,8 +30,12 @@ resource "google_monitoring_alert_policy" "live_feed_update_latency" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.live_feed_update_latency
     mime_type = "text/markdown"
-    content   = "At least three live temperature updates for the same location took longer than 45 seconds within 30 minutes. Individual slow requests remain in logs and the dashboard without paging. Check feed_update logs for repeated provider timeouts or slow responses."
+    content = join("\n\n", [
+      "At least three live temperature updates for the same location took longer than 45 seconds within 30 minutes. Individual slow requests remain in logs and the dashboard without paging. Check feed_update logs for repeated provider timeouts or slow responses.",
+      local.alert_guidance.live_feed_update_latency,
+    ])
   }
 
   conditions {
@@ -57,8 +70,12 @@ resource "google_monitoring_alert_policy" "live_plot_availability_latency" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.live_plot_availability_latency
     mime_type = "text/markdown"
-    content   = "A live temperature plot took longer than 120 seconds from submission to harvest. The duration includes queueing in the process pool on purpose: it is how long the plot took to become available. The first run after a deploy redraws every plot at once and queues live plots for about 80 seconds, which stays under this threshold; anything over it means the pool is stuck or starved."
+    content = join("\n\n", [
+      "A live temperature plot took longer than 120 seconds from submission to harvest. The duration includes queueing in the process pool on purpose: it is how long the plot took to become available. The first run after a deploy redraws every plot at once and queues live plots for about 80 seconds, which stays under this threshold; anything over it means the pool is stuck or starved.",
+      local.alert_guidance.live_plot_availability_latency,
+    ])
   }
 
   # Matches the events rather than the duration distribution, whose doubling
@@ -96,12 +113,13 @@ resource "google_monitoring_alert_policy" "repeated_feed_failures" {
   severity              = "ERROR"
   user_labels           = local.paging_alert_labels
 
-  # The default subject names only the job, so the subject carries the
-  # location and feed the incident is for.
   documentation {
-    subject   = "Feed failing: $${metric.label.location} $${metric.label.feed}"
+    subject   = local.alert_subject.repeated_feed_failures
     mime_type = "text/markdown"
-    content   = "At least three unexpected failures for the same feed and location within 40 minutes, which is three consecutive runs of the ten-minute job. Expected station-unavailable outcomes are excluded. The incident names the location and feed; that feed's feed_update events say why the fetch failed (MONITORING.md \"Log queries\")."
+    content = join("\n\n", [
+      "At least three unexpected failures for the same feed and location within 40 minutes, which is three consecutive runs of the ten-minute job. Expected station-unavailable outcomes are excluded. The incident names the location and feed; that feed's feed_update events say why the fetch failed (MONITORING.md \"Log queries\").",
+      local.alert_guidance.repeated_feed_failures,
+    ])
   }
 
   # The job attempts each due feed once per ten-minute run, so a feed that
@@ -146,8 +164,12 @@ resource "google_monitoring_alert_policy" "plot_generation_failure" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.plot_generation_failure
     mime_type = "text/markdown"
-    content   = "a plot generation completed with a failed outcome."
+    content = join("\n\n", [
+      "a plot generation completed with a failed outcome.",
+      local.alert_guidance.plot_generation_failure,
+    ])
   }
 
   conditions {
@@ -182,8 +204,12 @@ resource "google_monitoring_alert_policy" "snapshot_load_lag" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.snapshot_load_lag
     mime_type = "text/markdown"
-    content   = "A web server loaded a generation more than 1800 seconds after it was published, three job cadences; the ordinary lag is under a minute and a deploy's first load is about ten minutes. This catches an instance whose refresh path is stuck, not a job that stopped publishing, which the capture job heartbeat catches."
+    content = join("\n\n", [
+      "A web server loaded a generation more than 1800 seconds after it was published, three job cadences; the ordinary lag is under a minute and a deploy's first load is about ten minutes. This catches an instance whose refresh path is stuck, not a job that stopped publishing, which the capture job heartbeat catches.",
+      local.alert_guidance.snapshot_load_lag,
+    ])
   }
 
   # Matches the load events rather than the lag distribution, whose doubling
@@ -218,8 +244,12 @@ resource "google_monitoring_alert_policy" "snapshot_load_failures" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.snapshot_load_failures
     mime_type = "text/markdown"
-    content   = "the web service logged three or more failed bundle loads within fifteen minutes. A single failure retries a check interval later and the instance keeps serving its loaded generation; repeated failures mean an instance cannot read the store at all. The load lag policy catches slowness, this catches inability."
+    content = join("\n\n", [
+      "the web service logged three or more failed bundle loads within fifteen minutes. A single failure retries a check interval later and the instance keeps serving its loaded generation; repeated failures mean an instance cannot read the store at all. The load lag policy catches slowness, this catches inability.",
+      local.alert_guidance.snapshot_load_failures,
+    ])
   }
 
   conditions {
@@ -253,8 +283,12 @@ resource "google_monitoring_alert_policy" "capture_job_heartbeat" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.capture_job_heartbeat
     mime_type = "text/markdown"
-    content   = "The ten-minute capture job reported no success or partial run summary for 30 minutes, which is three missed runs. A partial run still proves the job executed. The web servers serve only what this job publishes, so the site is now aging silently: check the job's executions in Cloud Run and its run summaries in the logs (MONITORING.md). The condition evaluates only once the run counter has data."
+    content = join("\n\n", [
+      "The ten-minute capture job reported no success or partial run summary for 30 minutes, which is three missed runs. A partial run still proves the job executed. The web servers serve only what this job publishes, so the site is now aging silently: check the job's executions in Cloud Run and its run summaries in the logs (MONITORING.md). The condition evaluates only once the run counter has data.",
+      local.alert_guidance.capture_job_heartbeat,
+    ])
   }
 
   conditions {
@@ -286,8 +320,12 @@ resource "google_monitoring_alert_policy" "archive_merge_failures" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.archive_merge_failures
     mime_type = "text/markdown"
-    content   = "an archive partition merge completed with a failed outcome in the last hour. A conflicting equally recent claim is self-recovering; repeated failures mean the store or the merge path is broken."
+    content = join("\n\n", [
+      "an archive partition merge completed with a failed outcome in the last hour. A conflicting equally recent claim is self-recovering; repeated failures mean the store or the merge path is broken.",
+      local.alert_guidance.archive_merge_failures,
+    ])
   }
 
   conditions {
@@ -327,8 +365,12 @@ resource "google_monitoring_alert_policy" "snapshot_feed_stale" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.snapshot_feed_stale
     mime_type = "text/markdown"
-    content   = "The published snapshot is serving a feed's frame older than that feed's interval plus fifteen minutes, so the feed is being carried forward instead of refreshed. The matched log entry names the location, the feed, and the exact age; the run's feed update events for that feed say why the fetch failed."
+    content = join("\n\n", [
+      "The published snapshot is serving a feed's frame older than that feed's interval plus fifteen minutes, so the feed is being carried forward instead of refreshed. The matched log entry names the location, the feed, and the exact age; the run's feed update events for that feed say why the fetch failed.",
+      local.alert_guidance.snapshot_feed_stale,
+    ])
   }
 
   conditions {
@@ -376,8 +418,12 @@ resource "google_monitoring_alert_policy" "application_errors" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.application_errors
     mime_type = "text/markdown"
-    content   = "The web service or the capture job logged an ERROR other than a feed's failed update, which the repeated feed failures policy reports. The application reserves ERROR for a defect or an exhausted critical operation. The matched entry carries the message; the labels name the component, location, and feed when the entry has them. One notification an hour; the incident closes on its own once the errors stop."
+    content = join("\n\n", [
+      "The web service or the capture job logged an ERROR other than a feed's failed update, which the repeated feed failures policy reports. The application reserves ERROR for a defect or an exhausted critical operation. The matched entry carries the message; the labels name the component, location, and feed when the entry has them. One notification an hour; the incident closes on its own once the errors stop.",
+      local.alert_guidance.application_errors,
+    ])
   }
 
   conditions {
@@ -415,8 +461,12 @@ resource "google_monitoring_alert_policy" "request_5xx" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.request_5xx
     mime_type = "text/markdown"
-    content   = "The web service answered a request with a 5xx status other than 503 in the last minute. Read the request log for the revision (MONITORING.md \"Log queries\") to find the URL and the traceback."
+    content = join("\n\n", [
+      "The web service answered a request with a 5xx status other than 503 in the last minute. Read the request log for the revision (MONITORING.md \"Log queries\") to find the URL and the traceback.",
+      local.alert_guidance.request_5xx,
+    ])
   }
 
   conditions {
@@ -460,8 +510,12 @@ resource "google_monitoring_alert_policy" "archive_read_gap" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.archive_read_gap
     mime_type = "text/markdown"
-    content   = "A historical temperature refresh served fewer years than it was configured to. The matched entry names the location and the years that were absent from the archive or could not be read; the plots show them as gaps. Check the archive objects for that source (DATA_PIPELINE.md \"The archive\")."
+    content = join("\n\n", [
+      "A historical temperature refresh served fewer years than it was configured to. The matched entry names the location and the years that were absent from the archive or could not be read; the plots show them as gaps. Check the archive objects for that source (DATA_PIPELINE.md \"The archive\").",
+      local.alert_guidance.archive_read_gap,
+    ])
   }
 
   conditions {

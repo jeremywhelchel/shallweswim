@@ -1,0 +1,80 @@
+{
+  "homepage_uptime_failure": {
+    "policy": "Homepage uptime failure",
+    "urgency": "Act now",
+    "title": "Site unreachable",
+    "action": "Check the service's status and serving revision, then its request log. Revert the last deploy if it started there."
+  },
+  "capture_job_heartbeat": {
+    "policy": "Capture job heartbeat",
+    "urgency": "Act now",
+    "title": "Capture job has stopped running",
+    "action": "Check the job's executions and whether its scheduler job is paused, then run the job by hand to see the failure."
+  },
+  "request_5xx": {
+    "policy": "Request 5xx",
+    "urgency": "Act today",
+    "title": "Request failed with ${metric.label.response_code}",
+    "action": "Read the request log for the URL and traceback. This is a defect."
+  },
+  "application_errors": {
+    "policy": "Application error",
+    "urgency": "Act today",
+    "title": "Application error",
+    "action": "Read the matched entry and fix the defect it names. A feed's failed update never reaches this policy."
+  },
+  "plot_generation_failure": {
+    "policy": "Plot generation failure",
+    "urgency": "Act today",
+    "title": "Plot failed: ${metric.label.location} ${metric.label.feed}",
+    "action": "Read the plot event. The last good plot stays up; a failure that repeats for one location is a defect in that plot's data handling."
+  },
+  "snapshot_load_failures": {
+    "policy": "Snapshot load failures",
+    "urgency": "Act today",
+    "title": "Web servers cannot load the snapshot",
+    "action": "Check the service identity's access to the bucket and that the published pointer exists. Instances keep serving the generation they have."
+  },
+  "snapshot_load_lag": {
+    "policy": "Snapshot load lag",
+    "urgency": "Act today if it repeats",
+    "title": "Web server loaded a late snapshot",
+    "action": "One after a deploy or a cold start is expected. Repeats mean the refresh path is stuck; a new revision clears it."
+  },
+  "archive_merge_failures": {
+    "policy": "Archive merge failures",
+    "urgency": "Act when it repeats",
+    "title": "Archive merge failed: ${metric.label.source}",
+    "action": "A single failure against an equally recent claim recovers on the next run. Repeats mean the store or the merge path is broken."
+  },
+  "archive_read_gap": {
+    "policy": "Archive read gap",
+    "urgency": "Act this week",
+    "title": "Historical year missing: ${log.extracted_label.location}",
+    "action": "Check the archive objects for that source. The plots show the year as a gap until it is restored."
+  },
+  "repeated_feed_failures": {
+    "policy": "Repeated feed failures",
+    "urgency": "Wait, then check once",
+    "title": "Feed failing: ${metric.label.location} ${metric.label.feed}",
+    "action": "Request the URL in the feed's error by hand. A timeout, refused connection, or 5xx is the provider's outage and needs nothing; a 4xx, a changed format, or a validation error is a code change. The incident closes on its own after the feed recovers."
+  },
+  "snapshot_feed_stale": {
+    "policy": "Snapshot feed stale",
+    "urgency": "Wait",
+    "title": "Feed stale: ${log.extracted_label.location} ${log.extracted_label.feed}",
+    "action": "Nothing while the provider is down: the site is serving the feed's last good frame. Act only if the outage outlasts the carried predictions."
+  },
+  "live_feed_update_latency": {
+    "policy": "Live feed update latency",
+    "urgency": "Wait",
+    "title": "Live feed slow: ${metric.label.location}",
+    "action": "Nothing unless it lasts days; the fetches are succeeding. Then look at the provider's response times."
+  },
+  "live_plot_availability_latency": {
+    "policy": "Live plot availability latency",
+    "urgency": "Wait once",
+    "title": "Live plots slow: ${log.extracted_label.location}",
+    "action": "A single run is noise. Every run means the process pool is starved, which is a defect."
+  }
+}

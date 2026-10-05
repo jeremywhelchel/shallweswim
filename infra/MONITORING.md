@@ -158,6 +158,82 @@ loading is the web servers' work. Everything else is the job's: it is the
 only process that fetches feeds, draws scheduled plots, and writes the
 archive, so the feed, plot, archive, and run policies watch the job resource.
 
+## Responding to alerts
+
+Most notifications describe a provider's outage, which nobody here can fix,
+and a few describe a fault in the deployment, which only the operator can.
+The policy that fired says which, so the first question is always which
+policy, not how many emails.
+
+Why the split is reliable: a feed's failed update is reported only by the
+repeated feed failures policy, so the application error policy fires only
+for an error that is not a feed failure, and the uptime, heartbeat, and
+request policies watch things no provider can break.
+
+### Triage
+
+1. Read the latest run summary ([Log queries](#log-queries)). "28 of 29
+   feeds published; snapshot publish success" is one feed down and everything
+   else served. A missing summary or a failed publish is the deployment.
+2. Read the failing feed's `feed_update` event: it names the location, the
+   feed, the provider, and the error.
+3. Request the URL in that error by hand. A timeout, a refused connection,
+   or a `5xx` is the provider's outage. A `4xx`, a changed format, or a
+   validation error is a change this code has to follow.
+
+### What each policy asks of the operator
+
+Every notification carries its own answer. The subject leads with the
+urgency and names the location and feed where the policy has them, as in
+`[Wait] Feed stale: nyc tides`, and the body ends with what to do.
+
+The wording has one source, `monitoring/alert_responses.json`: Terraform
+builds each policy's subject and body from it, and
+`tests/test_alert_responses.py` fails when this table, the file, and the
+policies in the module stop agreeing. Change the file and this table
+together.
+
+| Policy | Urgency | What to do |
+| --- | --- | --- |
+| Homepage uptime failure | Act now | Check the service's status and serving revision, then its request log. Revert the last deploy if it started there. |
+| Capture job heartbeat | Act now | Check the job's executions and whether its scheduler job is paused, then run the job by hand to see the failure. |
+| Request 5xx | Act today | Read the request log for the URL and traceback. This is a defect. |
+| Application error | Act today | Read the matched entry and fix the defect it names. A feed's failed update never reaches this policy. |
+| Plot generation failure | Act today | Read the plot event. The last good plot stays up; a failure that repeats for one location is a defect in that plot's data handling. |
+| Snapshot load failures | Act today | Check the service identity's access to the bucket and that the published pointer exists. Instances keep serving the generation they have. |
+| Snapshot load lag | Act today if it repeats | One after a deploy or a cold start is expected. Repeats mean the refresh path is stuck; a new revision clears it. |
+| Archive merge failures | Act when it repeats | A single failure against an equally recent claim recovers on the next run. Repeats mean the store or the merge path is broken. |
+| Archive read gap | Act this week | Check the archive objects for that source. The plots show the year as a gap until it is restored. |
+| Repeated feed failures | Wait, then check once | Request the URL in the feed's error by hand. A timeout, refused connection, or 5xx is the provider's outage and needs nothing; a 4xx, a changed format, or a validation error is a code change. The incident closes on its own after the feed recovers. |
+| Snapshot feed stale | Wait | Nothing while the provider is down: the site is serving the feed's last good frame. Act only if the outage outlasts the carried predictions. |
+| Live feed update latency | Wait | Nothing unless it lasts days; the fetches are succeeding. Then look at the provider's response times. |
+| Live plot availability latency | Wait once | A single run is noise. Every run means the process pool is starved, which is a defect. |
+
+### A provider outage
+
+The expected one: a single provider stops answering. One feed fails on every
+run, the job reports a partial run, every other location is served on time,
+and the affected location keeps its last good frame, marked stale.
+
+Notifications: one from repeated feed failures at the third failed run,
+naming the location and feed; one from snapshot feed stale when the frame
+ages past its interval, then at most every twelve hours; and one resolution
+when the feed recovers. Nothing else should fire. An application error
+arriving alongside is a separate problem and deserves its own look.
+
+Nothing needs doing while the provider is down, with three exceptions:
+
+- **The carried frame runs out.** Predictions are fetched for a few days
+  ahead, so a tide or current feed down for longer than that has nothing
+  left to show. Live temperature is stale as soon as it is carried.
+- **The error is not the provider's.** Triage step 3 says so, and then it
+  is a code change, not a wait.
+- **Several providers fail at once.** Unrelated providers do not go down
+  together; suspect the deployment's network or a dependency instead.
+
+A provider that stays down for days is a decision about the location's
+source, which is a configuration change (NEW_LOCATION.md), not an incident.
+
 ## Dashboard
 
 One dashboard, "Shall We Swim Operations [Terraform]", fifteen tiles from

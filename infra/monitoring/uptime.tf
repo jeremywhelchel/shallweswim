@@ -45,8 +45,12 @@ resource "google_monitoring_alert_policy" "homepage_uptime_failure" {
   user_labels           = local.paging_alert_labels
 
   documentation {
+    subject   = local.alert_subject.homepage_uptime_failure
     mime_type = "text/markdown"
-    content   = "The uptime check on /api/healthy has failed for five minutes from Google's checkers, or stopped reporting. The endpoint answers 200 while any location has data, so this is the site being unreachable or every instance having nothing to serve; check the Cloud Run service's revisions and the web servers' load events (MONITORING.md)."
+    content = join("\n\n", [
+      "The uptime check on /api/healthy has failed for five minutes from Google's checkers, or stopped reporting. The endpoint answers 200 while any location has data, so this is the site being unreachable or every instance having nothing to serve; check the Cloud Run service's revisions and the web servers' load events (MONITORING.md).",
+      local.alert_guidance.homepage_uptime_failure,
+    ])
   }
 
   conditions {

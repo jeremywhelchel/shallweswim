@@ -312,6 +312,8 @@ run "monitoring_plan" {
         google_monitoring_alert_policy.archive_read_gap,
         google_monitoring_alert_policy.snapshot_feed_stale,
         ] : (
+        startswith(policy.documentation[0].subject, "[") &&
+        strcontains(policy.documentation[0].content, "Playbook: infra/MONITORING.md") &&
         startswith(policy.display_name, "[Terraform] ") &&
         !strcontains(policy.display_name, "[Shadow]") &&
         tolist(policy.notification_channels) == var.notification_channel_ids &&

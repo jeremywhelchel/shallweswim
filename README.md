@@ -797,7 +797,7 @@ The test suite uses a tiered strategy:
 **Key principles:**
 
 - **Unit/E2E tests are deterministic** - No external dependencies, fake configs defined in `tests/conftest.py`
-- **Integration tests validate real-world compatibility** - May fail due to external factors (station outages, API changes). NWIS integration tests must fail, not skip, if the live USGS API returns retryable failures such as rate limiting.
+- **Integration tests validate real-world compatibility** - May fail due to external factors (station outages, API changes). NWIS integration tests must fail, not skip, if the live USGS API returns retryable failures such as rate limiting. The client tests for providers that serve no `test_required` location (Marine Institute, Irish Lights, CSPF) skip on that provider's outage; see ARCHITECTURE.md "Testing".
 - **Fake configs are explicit** - Each test controls exactly what scenario it tests, independent of production config
 
 ## Monitoring & Station Outages

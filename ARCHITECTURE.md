@@ -353,6 +353,7 @@ Two error types for data availability, at different layers:
   - Each feed (temperature, tides, currents) is validated independently per location
   - Locations with `test_required=True` (e.g., NYC): any missing or stale feed fails the test
   - Other locations: unavailable feeds are collected as skip reasons; test skips if any feed is unavailable but never blocks validation of other feeds
+  - Client tests follow the same split. A provider that serves no `test_required` location (Marine Institute, Irish Lights, CSPF) wraps its live call in `skip_on_provider_outage` (`tests/helpers.py`): a timeout, a connection failure, or a `5xx` after the client's retries skips with the error as the reason, and a `429`, a `4xx`, a changed format, or a validation error still fails. CO-OPS, NDBC, and NWIS client tests fail on any error.
   - Run with: `uv run pytest -m integration --run-integration`
   - Teardown intentionally uses bounded waits for blocking external-API worker threads. Earlier unbounded cleanup caused GitHub Actions integration jobs to stall when live NOAA/USGS/NDBC calls hung. Local full-suite integration runs may finish all tests and still report unclosed socket `ResourceWarning`s during pytest teardown; preserve bounded cleanup unless CI behavior is revalidated.
 - **Performance Tests**: Marked with `@pytest.mark.performance` and kept in `tests/performance/`.

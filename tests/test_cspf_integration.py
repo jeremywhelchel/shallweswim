@@ -11,6 +11,7 @@ import pytest
 import pytz
 
 from shallweswim.clients.cspf import CspfApi
+from tests.helpers import skip_on_provider_outage
 
 pytestmark = pytest.mark.integration
 
@@ -22,13 +23,14 @@ async def test_sandettie_monthly_temperature_fetch_is_dense_and_utc() -> None:
     timezone = pytz.timezone("Europe/London")
     async with aiohttp.ClientSession() as session:
         client = CspfApi(session)
-        df = await client.sandettie_temperature(
-            begin_date=datetime.datetime(2026, 1, 1),
-            end_date=datetime.datetime(2026, 12, 31, 23, 59, 59),
-            station_slug="sandettie-data",
-            timezone=timezone,
-            location_code="dov",
-        )
+        with skip_on_provider_outage("CSPF"):
+            df = await client.sandettie_temperature(
+                begin_date=datetime.datetime(2026, 1, 1),
+                end_date=datetime.datetime(2026, 12, 31, 23, 59, 59),
+                station_slug="sandettie-data",
+                timezone=timezone,
+                location_code="dov",
+            )
 
     assert isinstance(df, pd.DataFrame)
     assert len(df) > 300

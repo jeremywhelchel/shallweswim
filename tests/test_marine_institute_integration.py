@@ -9,6 +9,7 @@ import pytest
 
 from shallweswim import config
 from shallweswim.clients.marine_institute import MarineInstituteApi
+from tests.helpers import skip_on_provider_outage
 
 pytestmark = pytest.mark.integration
 
@@ -23,11 +24,12 @@ async def test_kinsale_tide_high_low_fetch_matches_cork_config() -> None:
 
     async with aiohttp.ClientSession() as session:
         client = MarineInstituteApi(session)
-        df = await client.tides(
-            station_id=cork.tide_source.station_id,
-            height_offset_m=cork.tide_source.height_offset_m,
-            location_code=cork.code,
-        )
+        with skip_on_provider_outage("Marine Institute"):
+            df = await client.tides(
+                station_id=cork.tide_source.station_id,
+                height_offset_m=cork.tide_source.height_offset_m,
+                location_code=cork.code,
+            )
 
     assert isinstance(df, pd.DataFrame)
     assert len(df) >= 8

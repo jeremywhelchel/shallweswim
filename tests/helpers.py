@@ -1,15 +1,18 @@
 """Utility functions for tests."""
 
+import contextlib
 import datetime
 import json
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from types import MappingProxyType
 from typing import Any, cast
 
+import pytest
 from fastapi import FastAPI
 
 from shallweswim.archive.store import MemoryObjectStore
+from shallweswim.clients.base import RetryableClientError
 from shallweswim.core.manager import LocationDataManager
 from shallweswim.core.serving import LocationServing
 from shallweswim.snapshot.build import build_location_snapshot
@@ -18,6 +21,30 @@ from shallweswim.snapshot.model import Snapshot
 from shallweswim.snapshot.publish import publish
 from shallweswim.snapshot.refresh import SnapshotState
 from shallweswim.snapshot.store import SnapshotStore
+
+
+@contextlib.contextmanager
+def skip_on_provider_outage(provider: str) -> Iterator[None]:
+    """Skip the test when `provider` is down, and fail on anything else.
+
+    A request that exhausts its retries on a timeout, a connection failure, or
+    a `5xx` is the provider's outage: the client is not at fault and production
+    monitoring already reports it, so the test skips with the error as its
+    reason. A `429` is a retryable status too, but it is an answer about this
+    caller, so it still fails, as does every non-retryable error (a `4xx`, a
+    changed format, a validation error).
+
+    Only tests of providers that serve no `test_required` location use this.
+
+    Args:
+        provider: The provider's name, for the skip reason.
+    """
+    try:
+        yield
+    except RetryableClientError as e:
+        if e.status is not None and e.status < 500:
+            raise
+        pytest.skip(f"{provider} outage: {e}")
 
 
 def install_managers(

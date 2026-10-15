@@ -7,7 +7,7 @@ on:
 
 jobs:
   pyrefly:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Run pyrefly type checker
     steps:
       - name: Checkout repository

@@ -14,7 +14,7 @@ jobs:
   integration-tests:
     # Only run on PRs with specific label
     if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-integration-tests') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Long timeout for slow CI runners. Tests typically finish in <5min locally,
     # but GitHub's shared runners can be extremely slow (long tail).
     timeout-minutes: 30

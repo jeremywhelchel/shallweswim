@@ -364,10 +364,10 @@ gcloud logging read \
 
 ## Applying changes
 
-The metrics, the dashboard, and the twelve Terraform policies are applied
-from `monitoring/` with a dedicated Terraform identity;
+The metrics, the dashboard, the uptime check, and the thirteen policies are
+applied from `monitoring/` with a dedicated Terraform identity;
 [monitoring/README.md](monitoring/README.md) is the how-to,
 including the state bucket, impersonation, the plan and apply commands, the
 mock-provider test, the ten-minute wait before a new metric's policies can be
-applied, and how a policy is promoted. Everything else here, the uptime check
-and the three older policies, is managed in the console.
+applied, and how a policy is promoted. Only the notification channels are
+managed in the console.

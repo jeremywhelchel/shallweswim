@@ -8,7 +8,7 @@ directional until implementation validates them.
 ## Goals
 
 - Keep the existing Python/FastAPI backend as the source of truth for data,
-  domain logic, API routes, caching, background updates, and plot generation.
+  domain logic, API routes, caching, the serving cycle, and plot generation.
 - Build a frontend application that consumes the existing JSON API instead of
   replacing backend responsibilities.
 - Allow the current Jinja-rendered site to stay live while the new frontend is

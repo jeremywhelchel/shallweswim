@@ -635,7 +635,7 @@ async def test_all_feeds_expired_but_have_stale_data(
     """
     client, _mock_coops, manager, app = mock_api_client_with_controls
 
-    # Data is loaded (fixture waits for ready)
+    # Data is loaded by the fixture
     assert manager.has_data is True
 
     # Manually expire all feeds by setting timestamps to past

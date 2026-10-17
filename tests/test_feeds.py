@@ -779,58 +779,6 @@ class TestFeedBase:
         # Check that the result is the same as the input (no outliers removed)
         pd.testing.assert_frame_equal(result, df)
 
-    @pytest.mark.asyncio
-    async def test_wait_until_ready_with_data_already_available(
-        self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
-    ) -> None:
-        """Test that wait_until_ready returns immediately when data is already available."""
-        # Set data directly
-        concrete_feed._data = valid_temp_dataframe
-        concrete_feed._ready_event.set()  # This should already be set in __init__ when data is available
-
-        # Call wait_until_ready with a short timeout
-        result = await concrete_feed.wait_until_ready(timeout=0.1)
-
-        # Check that it returned True immediately
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_wait_until_ready_with_data_becoming_available(
-        self, concrete_feed: Feed, valid_temp_dataframe: pd.DataFrame
-    ) -> None:
-        """Test that wait_until_ready waits until data becomes available."""
-        # Ensure no data is available initially
-        concrete_feed._data = None
-        concrete_feed._ready_event.clear()
-
-        # Set up a task to set the event after a short delay
-        async def set_data_after_delay() -> None:
-            await asyncio.sleep(0.1)
-            concrete_feed._data = valid_temp_dataframe
-            concrete_feed._ready_event.set()
-
-        # Start the task
-        task = asyncio.create_task(set_data_after_delay())
-
-        # Call wait_until_ready with a longer timeout
-        result = await concrete_feed.wait_until_ready(timeout=0.5)
-
-        # Clean up the task
-        await task
-
-        # Check that it returned True after waiting
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_wait_until_ready_timeout(self, concrete_feed: Feed) -> None:
-        """Test that wait_until_ready returns False when timeout occurs."""
-        # Set a very short timeout
-        result = await concrete_feed.wait_until_ready(timeout=0.1)
-
-        # Since the feed has no data and no one is setting the event,
-        # wait_until_ready should timeout and return False
-        assert result is False
-
     def test_age_with_no_timestamp(self, concrete_feed: Feed) -> None:
         """Test that age returns None when no timestamp is available."""
         # Ensure the feed has no timestamp
@@ -881,7 +829,6 @@ class TestFeedBase:
         concrete_feed._fetch_timestamp = util.utc_now()
         # Set next fetch to future so is_expired is False
         concrete_feed._next_fetch_after = util.utc_now() + datetime.timedelta(hours=1)
-        concrete_feed._ready_event.set()
 
         # Get the status dictionary
         status = concrete_feed.status
@@ -917,7 +864,6 @@ class TestFeedBase:
         # Set data and timestamp
         concrete_feed._data = valid_temp_dataframe
         concrete_feed._fetch_timestamp = util.utc_now()
-        concrete_feed._ready_event.set()
 
         # Get the status object
         status = concrete_feed.status

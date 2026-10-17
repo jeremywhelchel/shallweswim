@@ -186,8 +186,6 @@ class Feed(BaseModel, abc.ABC):
         None  # When to try again (for scheduling)
     )
     _data: pd.DataFrame | None = None
-    # Event used to signal when data is ready
-    _ready_event: asyncio.Event = asyncio.Event()
     _last_error: Exception | None = None
     _consecutive_failures: int = 0
     # Archive rows this update's capture added and revised, or None when this
@@ -204,17 +202,6 @@ class Feed(BaseModel, abc.ABC):
         # Forbid extra fields not defined in the model
         extra="forbid",
     )
-
-    def __init__(self, **data: Any) -> None:
-        """Initialize the feed with configuration data.
-
-        Args:
-            **data: Configuration parameters for the feed
-        """
-        super().__init__(**data)
-        # If we already have data, set the ready event
-        if self._data is not None:
-            self._ready_event.set()
 
     @property
     def age(self) -> datetime.timedelta | None:
@@ -433,33 +420,6 @@ class Feed(BaseModel, abc.ABC):
 
         return status_obj
 
-    async def wait_until_ready(self, timeout: float | None = None) -> bool:
-        """Wait until the feed has data available.
-
-        This method waits until the feed has successfully fetched data and is ready to use.
-        It's useful for coordinating dependent operations that need feed data to be available.
-
-        Args:
-            timeout: Maximum time to wait in seconds, or None to wait indefinitely
-
-        Returns:
-            True if the feed is ready, False if timeout occurred
-        """
-        # If data is already available, return immediately
-        if self._data is not None:
-            return True
-
-        try:
-            # Wait for the ready event to be set
-            await asyncio.wait_for(self._ready_event.wait(), timeout)
-            return True
-        except TimeoutError:
-            self.log(
-                f"Timeout waiting for {self.__class__.__name__} to be ready",
-                logging.WARNING,
-            )
-            return False
-
     async def update(
         self,
         clients: dict[str, BaseApiClient],
@@ -508,8 +468,6 @@ class Feed(BaseModel, abc.ABC):
             self._data = df
             now = utc_now()
             self._fetch_timestamp = now  # Track when data was fetched (for age)
-            # Set the ready event to signal that data is available
-            self._ready_event.set()
             self._schedule_after_success(now)
             fields = self._update_event_fields(feed_name, "success", started_at)
             fields["record_count"] = len(df)

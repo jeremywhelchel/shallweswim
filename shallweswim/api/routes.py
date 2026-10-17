@@ -591,16 +591,6 @@ def register_routes(app: fastapi.FastAPI) -> None:
         """
         ctx = resolve_location_time(app, location, shift=shift, at=at)
 
-        # Check if location has data before attempting to serve
-        # Use has_data (not ready) to serve stale data during brief refresh windows
-        # Freshness comes from the published generation - serve any available data
-        if not ctx.data_manager.has_data:
-            logging.warning(f"[{location}] No data available for conditions request")
-            raise HTTPException(
-                status_code=503,
-                detail=f"{ctx.cfg.name} data temporarily unavailable",
-            )
-
         # Return structured response using Pydantic models
         return LocationConditions(
             location=api_location_info(location, ctx.cfg),

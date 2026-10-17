@@ -220,8 +220,8 @@ class LocationDataManager:
 
     This class manages all the data feeds for one location. It handles fetching, processing,
     and storing data from various NOAA sources, including tides, currents, and temperature
-    readings. It maintains data freshness and provides methods to access processed data
-    for the web application.
+    readings. It maintains data freshness and provides methods to access processed data,
+    which the capture job builds into a published snapshot.
     """
 
     def __init__(
@@ -283,28 +283,11 @@ class LocationDataManager:
         self._tide_prediction_source_data_id: int | None = None
 
     @property
-    def ready(self) -> bool:
-        """Check if all configured datasets have been fetched and are not expired.
-
-        Returns:
-            True if all configured datasets have been fetched and are not expired, False otherwise
-        """
-        # Only check feeds that have been configured (non-None values in _feeds)
-        configured_feeds = [feed for feed in self._feeds.values() if feed is not None]
-
-        # If no feeds are configured, we're technically ready (nothing to wait for)
-        if not configured_feeds:
-            return True
-
-        # All configured feeds must not be expired
-        return all(not feed.is_expired for feed in configured_feeds)
-
-    @property
     def has_data(self) -> bool:
         """Check if any configured feed has data (fresh or stale).
 
-        This is a lenient check used for health endpoints - returns True if
-        the location can serve any data at all, even if some feeds are expired.
+        This is the lenient `LocationServing` check - returns True if the
+        location can serve any data at all, even if some feeds are expired.
 
         Returns:
             True if at least one feed has data, False if no data available

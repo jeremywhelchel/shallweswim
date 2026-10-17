@@ -151,8 +151,8 @@ otherwise wait a whole cadence past its interval.
 
 ### The serving cycle
 
-Locations run concurrently, each in the same `LocationDataManager` the web
-servers once used: `update_once()` updates the feeds that are due, and
+Locations run concurrently, each in its own `LocationDataManager`:
+`update_once()` updates the feeds that are due, and
 `wait_for_plots()` awaits the plots it submitted to the process pool, bounded
 by `PLOT_HARD_TIMEOUT` (300 s). Each location collects its own plots as soon
 as its own feeds finish, so a provider that holds one location up delays only

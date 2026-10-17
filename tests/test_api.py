@@ -187,7 +187,6 @@ def mock_data_managers(
             ),
         }
     )
-    nyc_data.ready = True
 
     sf_data = MagicMock(spec=LocationDataManager)
     sf_data.config = sf_config
@@ -214,7 +213,6 @@ def mock_data_managers(
             )
         }
     )
-    sf_data.ready = True
 
     # Patch the config.get function to return our mock configs
     try:

@@ -88,7 +88,7 @@ kinds, the three environment variables, and which process sets which are in
   configuration.
 - **Core Manager (`core/manager.py`)**: `LocationDataManager` is the facade for all data operations per location. It coordinates multiple `Feed`s and runs one serving cycle per call to `update_once()`, which the capture job drives.
 - **Core Queries (`core/queries.py`)**: Standalone functions for querying feed data (temperature, tide info, current predictions).
-- **Core Updater (`core/updater.py`)**: Helper functions for the serving cycle (expiration checks, dataset updates).
+- **Core Updater (`core/updater.py`)**: `update_dataset()`, which updates one feed during the serving cycle.
 - **Feeds (`core/feeds.py`)**: Encapsulates data fetching, caching, and validation. Each data source type (e.g., `CoopsTidesFeed`) is a separate class inheriting from `Feed`.
 - **Config (`config/locations.py`)**: Location configurations, station IDs, and feed settings using Pydantic models.
 - **Clients (`clients/`)**: Pure API clients. They handle HTTP requests, retries, and raw data parsing, but know nothing about the application's business logic (caching, expiration).

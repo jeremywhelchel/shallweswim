@@ -220,7 +220,6 @@ async def test_archive_failure_keeps_success_state(
         await feed.update({})
     assert feed._last_error is None
     assert feed._consecutive_failures == 0
-    assert feed._ready_event.is_set()
     assert feed._fetch_timestamp is not None
     assert feed._next_fetch_after == feed._fetch_timestamp + feed.expiration_interval
     # A naive frame passes through the serving step; a UTC frame is converted.

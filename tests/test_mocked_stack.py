@@ -2,17 +2,17 @@
 
 These tests use mock API clients to test the full data flow without hitting
 live NOAA/USGS APIs:
-- Real update loop starts feeds
+- The job's real serving cycle runs the feeds
 - Mock clients return controlled test data
 - Real feeds process the data
 - Real API handlers serve the data
 - TestClient verifies correct responses
 
 This validates the complete stack including error handling scenarios
-like startup race conditions, partial data, and recovery from failures.
+like requests before anything is published, partial data, and recovery from
+failures.
 """
 
-import asyncio
 import contextlib
 import datetime
 import math
@@ -38,6 +38,7 @@ from shallweswim.clients.nwis import NwisApi
 from shallweswim.core import feeds
 from shallweswim.core.manager import LocationDataManager
 from shallweswim.types import TIDE_TYPE_CATEGORIES
+from shallweswim.update import serve_location, serve_location_and_collect_plots
 from tests.conftest import (
     TEST_CONFIG_FULL,
     TEST_CONFIG_OBSERVATION_CURRENTS,
@@ -297,22 +298,8 @@ async def mock_api_client(memory_archive: None) -> AsyncGenerator[TestClient]:
             manager = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            manager.start()
-
-            # Wait for data to load (should be fast with mocks)
-            await manager.wait_until_ready(timeout=10.0)
-
-            # Wait for fire-and-forget plot generation to complete.
-            # Plots are submitted to the configured executor after feeds load
-            # and collected on subsequent loop iterations.
-            for _ in range(60):
-                has_live = manager.get_plot(feeds.PLOT_LIVE_TEMPS) is not None
-                has_historic = (
-                    manager.get_plot(feeds.PLOT_HISTORIC_TEMPS_12MO) is not None
-                )
-                if has_live and has_historic:
-                    break
-                await asyncio.sleep(0.5)
+            # Run the cycle and collect its plots, as the job does
+            await serve_location_and_collect_plots(manager)
 
             await serve_manager(app, manager)
             api.register_routes(app)
@@ -320,7 +307,6 @@ async def mock_api_client(memory_archive: None) -> AsyncGenerator[TestClient]:
             yield TestClient(app)
 
             # Cleanup
-            await manager.stop()
             app.state.process_pool.shutdown(wait=False)
 
 
@@ -357,10 +343,7 @@ async def mock_api_client_with_controls() -> AsyncGenerator[
             manager = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            manager.start()
-
-            # Wait for data to load (should be fast with mocks)
-            await manager.wait_until_ready(timeout=10.0)
+            await serve_location(manager)
 
             await serve_manager(app, manager)
             api.register_routes(app)
@@ -368,7 +351,6 @@ async def mock_api_client_with_controls() -> AsyncGenerator[
             yield TestClient(app), mock_coops, manager, app
 
             # Cleanup
-            await manager.stop()
             app.state.process_pool.shutdown(wait=False)
 
 
@@ -405,13 +387,12 @@ async def mock_api_client_no_wait() -> AsyncGenerator[
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
 
-            # DON'T start the manager yet - let tests control this
+            # DON'T run the cycle yet - let tests control this
             api.register_routes(app)
 
             yield TestClient(app), mock_coops, manager, app
 
             # Cleanup
-            await manager.stop()
             app.state.process_pool.shutdown(wait=False)
 
 
@@ -598,7 +579,7 @@ async def test_startup_before_data_fetched(
     """
     client, _mock_coops, _manager, _app = mock_api_client_no_wait
 
-    # Manager not started yet - no data loaded
+    # Cycle not run yet - no data loaded
     response = client.get("/api/nyc/conditions")
 
     assert response.status_code == 503
@@ -620,11 +601,8 @@ async def test_partial_feeds_loaded(
     # Configure: tides works, temps fails
     mock_coops.should_fail_temperature = True
 
-    # Start the manager
-    manager.start()
-
-    # Wait a bit for tides to load (but temps will fail)
-    await asyncio.sleep(1.0)
+    # Run the cycle: tides load, temps fail
+    await serve_location(manager)
 
     # Publish whatever the run produced, as the job would
     await serve_manager(app, manager)
@@ -713,11 +691,8 @@ async def test_station_unavailable_during_startup(
     mock_coops.should_fail_temperature = True
     mock_coops.failure_exception = StationUnavailableError("Station under maintenance")
 
-    # Start the manager
-    manager.start()
-
-    # Wait for update attempt
-    await asyncio.sleep(1.0)
+    # Run the cycle; every fetch fails
+    await serve_location(manager)
 
     # A run that fetched nothing publishes nothing to serve
     await serve_manager(app, manager)
@@ -766,13 +741,11 @@ async def test_recovery_after_failure() -> None:
             manager1 = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            manager1.start()
-
             api.register_routes(app)
             client = TestClient(app)
 
-            # Wait for initial (failed) fetch attempt
-            await asyncio.sleep(1.0)
+            # Run the initial cycle; every fetch fails
+            await serve_location(manager1)
 
             # A run that fetched nothing publishes nothing to serve
             await serve_manager(app, manager1)
@@ -780,9 +753,6 @@ async def test_recovery_after_failure() -> None:
             # Should return 503 initially
             response = client.get("/api/nyc/conditions")
             assert response.status_code == 503
-
-            # Stop the failed manager
-            await manager1.stop()
 
             # === Simulate service restart with station back online ===
 
@@ -800,10 +770,7 @@ async def test_recovery_after_failure() -> None:
             manager2 = LocationDataManager(
                 cfg, clients=mock_clients2, process_pool=app.state.process_pool
             )
-            manager2.start()
-
-            # Wait for data to load
-            await manager2.wait_until_ready(timeout=10.0)
+            await serve_location(manager2)
             await serve_manager(app, manager2)
 
             # Should now return 200
@@ -816,7 +783,6 @@ async def test_recovery_after_failure() -> None:
             assert data["current"] is not None
 
             # Cleanup
-            await manager2.stop()
             app.state.process_pool.shutdown(wait=False)
 
 
@@ -835,11 +801,8 @@ async def test_plot_with_missing_currents(
     # Configure: tides works, currents fails
     mock_coops.should_fail_currents = True
 
-    # Start the manager
-    manager.start()
-
-    # Wait for tides to load
-    await asyncio.sleep(1.0)
+    # Run the cycle: tides load, currents fail
+    await serve_location(manager)
 
     await serve_manager(app, manager)
 
@@ -865,7 +828,7 @@ async def test_feed_update_fails_during_refresh(
     """
     client, mock_coops, manager, _app = mock_api_client_with_controls
 
-    # Data is loaded and published (fixture waits for ready)
+    # Data is loaded and published by the fixture
     response = client.get("/api/nyc/conditions")
     assert response.status_code == 200
 
@@ -873,17 +836,21 @@ async def test_feed_update_fails_during_refresh(
     mock_coops.fail_tides_after_n_calls = mock_coops.call_count_tides
     mock_coops.fail_currents_after_n_calls = mock_coops.call_count_currents
 
-    # Force feeds to be marked as expired
+    # Make every feed due so the next cycle refetches
     old_time = datetime.datetime.now(datetime.UTC).replace(
         tzinfo=None
     ) - datetime.timedelta(days=1)
     for feed in manager._feeds.values():
         if feed is not None:
             feed._fetch_timestamp = old_time
+            feed._next_fetch_after = old_time
 
-    # Let the update loop attempt to refresh (it will fail); nothing new is
-    # published, so the served generation is untouched.
-    await asyncio.sleep(1.0)
+    # The next cycle's refresh fails; nothing new is published, so the
+    # served generation is untouched.
+    tides_calls = mock_coops.call_count_tides
+    await serve_location(manager)
+    assert mock_coops.call_count_tides > tides_calls
+    assert manager._feeds[feeds.FEED_TIDES]._last_error is not None  # type: ignore[union-attr]
 
     # Old data should still be served
     response = client.get("/api/nyc/conditions")
@@ -923,10 +890,8 @@ async def test_currents_endpoint_observation_source_returns_404() -> None:
             manager = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            manager.start()
-
             try:
-                await manager.wait_until_ready(timeout=10.0)
+                await serve_location(manager)
                 await serve_manager(app, manager)
                 api.register_routes(app)
 
@@ -935,7 +900,6 @@ async def test_currents_endpoint_observation_source_returns_404() -> None:
                     assert response.status_code == 404
                     assert "observation-only" in response.json()["detail"]
             finally:
-                await manager.stop()
                 app.state.process_pool.shutdown(wait=False)
 
 
@@ -963,10 +927,8 @@ async def test_currents_endpoint_prediction_no_charts_returns_null_charts() -> N
             manager = LocationDataManager(
                 cfg, clients=mock_clients, process_pool=app.state.process_pool
             )
-            manager.start()
-
             try:
-                await manager.wait_until_ready(timeout=10.0)
+                await serve_location(manager)
                 await serve_manager(app, manager)
                 api.register_routes(app)
 
@@ -981,5 +943,4 @@ async def test_currents_endpoint_prediction_no_charts_returns_null_charts() -> N
                     assert data["legacy_chart"] is None
                     assert data["current_chart_filename"] is None
             finally:
-                await manager.stop()
                 app.state.process_pool.shutdown(wait=False)

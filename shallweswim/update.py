@@ -8,8 +8,8 @@ observations into the archive, while this module is the host process that makes
 the feeds fetch in the first place.
 
 When ``SHALLWESWIM_SNAPSHOT_PUBLISH=1`` the job is also the snapshot publisher:
-it runs the full serving cycle of every location through the same
-``LocationDataManager`` the web service uses, including tide and prediction
+it runs the full serving cycle of every location through a
+``LocationDataManager``, including tide and prediction
 feeds, derived frames, and plots in a process pool, and then publishes one
 snapshot generation under ``published/`` in the archive bucket and sweeps the
 generations that publication superseded. Archive capture still happens inside
@@ -328,8 +328,7 @@ async def serve_location(manager: LocationDataManager) -> None:
 
     A feed whose update raises has already logged the failure at ERROR and
     scheduled its retry a minute out, so re-entering the cycle skips it and
-    updates the feeds after it, as the web loop's next tick would. One entry
-    per feed bounds the re-entry.
+    updates the feeds after it. One entry per feed bounds the re-entry.
 
     The cycle's own ERROR names the feed whose failure interrupted it, so
     monitoring can tell a feed failure restated from a defect in the cycle
@@ -343,8 +342,7 @@ async def serve_location(manager: LocationDataManager) -> None:
             await manager.update_once()
             return
         except Exception as error:
-            # The web loop records an interrupted cycle the same way; a feed
-            # failure has also been logged by the feed itself.
+            # A feed failure has also been logged by the feed itself.
             failed_feed = next(
                 (
                     name
@@ -396,8 +394,7 @@ async def publish_locations(
 ) -> tuple[list[tuple[int, int, int, CaptureResult]], str]:
     """Run every location's full serving cycle, then publish one snapshot.
 
-    Locations run concurrently in the same managers the web service uses, so
-    archive capture happens inside each feed's update as it does in the
+    Locations run concurrently, each in its own manager, so archive capture happens inside each feed's update as it does in the
     capture-only path. Each location's schedule is restored from the current
     generation first, so only feeds that are due fetch and the rest keep the
     entries and plots they already published. Plots are generated in the

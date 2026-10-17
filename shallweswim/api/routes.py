@@ -593,7 +593,7 @@ def register_routes(app: fastapi.FastAPI) -> None:
 
         # Check if location has data before attempting to serve
         # Use has_data (not ready) to serve stale data during brief refresh windows
-        # Background updater handles freshness - user-facing endpoints serve any available data
+        # Freshness comes from the published generation - serve any available data
         if not ctx.data_manager.has_data:
             logging.warning(f"[{location}] No data available for conditions request")
             raise HTTPException(

@@ -36,6 +36,7 @@ from shallweswim.types import (
     CurrentStrength,
     CurrentTrend,
 )
+from shallweswim.update import serve_location_and_collect_plots
 from shallweswim.util import utc_now
 from tests.helpers import create_test_app, install_managers
 
@@ -101,45 +102,20 @@ async def test_app(
             )
             for code in TEST_LOCATIONS
         }
-        for manager in managers.values():
-            manager.start()
         install_managers(app, managers)
 
-        # Wait for all locations to become ready in parallel (longest pole)
-        async def wait_for_location(location_code: str) -> None:
-            data_manager = managers[location_code]
-            try:
-                await asyncio.wait_for(
-                    data_manager.wait_until_ready(timeout=15.0),
-                    timeout=20.0,
-                )
-            except (TimeoutError, Exception):
-                # Location failed to load - tests will skip/fail based on test_required
-                pass
-
-        await asyncio.gather(*[wait_for_location(loc) for loc in TEST_LOCATIONS])
-
-        # Wait for fire-and-forget plot generation to complete.
-        # Must happen in the fixture (not test functions) because the
-        # module-scoped event loop drives process pool completion callbacks.
-        nyc_manager = managers.get("nyc")
-        if nyc_manager is not None:
-            for _ in range(180):
-                has_live = nyc_manager.get_plot("live_temps") is not None
-                has_historic = nyc_manager.get_plot("historic_temps_12mo") is not None
-                if has_live and has_historic:
-                    break
-                await asyncio.sleep(1)
+        # Run each location's cycle and collect its plots in parallel, as the
+        # job does. A location whose feeds fail logs it and keeps what loaded;
+        # tests skip or fail based on test_required.
+        await asyncio.gather(
+            *(serve_location_and_collect_plots(m) for m in managers.values())
+        )
 
         # Register only the API routes
         api.register_routes(app)
 
         # Yield the app to allow tests to run
         yield app
-
-        # Clean up all data managers after tests are complete
-        for data_manager in managers.values():
-            await data_manager.stop()
 
         # Shut down the process pool
         pool.shutdown(wait=False)

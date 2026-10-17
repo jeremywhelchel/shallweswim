@@ -52,7 +52,7 @@ shallweswim/
 ├── core/             # Business logic
 │   ├── manager.py    # LocationDataManager coordinates feeds
 │   ├── queries.py    # Query functions (temp, tide, current info)
-│   ├── updater.py    # Background update helpers
+│   ├── updater.py    # Serving cycle helpers
 │   └── feeds.py      # Feed classes with caching/expiration
 ├── clients/          # Pure API clients (coops, ndbc, nwis)
 └── plot.py           # Chart generation (process pool)

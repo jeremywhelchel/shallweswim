@@ -1,8 +1,7 @@
 """The manager's single serving cycle and bounded plot wait.
 
-`update_once` is the body of the background loop's tick, shared with the
-publishing job; `wait_for_plots` lets a bounded host collect every submitted
-plot before it reads them, which the loop never needs.
+`update_once` is the publishing job's serving cycle; `wait_for_plots` lets the
+job collect every submitted plot before it reads them.
 """
 
 import asyncio
@@ -87,29 +86,10 @@ async def test_update_once_runs_the_cycle_in_order(
 
 
 @pytest.mark.asyncio
-async def test_background_loop_tick_is_update_once(
+async def test_update_once_propagates_a_feed_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The loop's first tick performs exactly the sequence update_once does."""
-    manager = _manager()
-    calls = _record_cycle(manager, monkeypatch)
-
-    manager.start()
-    try:
-        assert await manager.wait_until_ready(timeout=5.0)
-    finally:
-        await manager.stop()
-
-    assert calls[: len(EXPECTED_CYCLE)] == EXPECTED_CYCLE
-    # Any later ticks repeat the same cycle; the loop adds nothing between them.
-    assert len(calls) % len(EXPECTED_CYCLE) == 0
-
-
-@pytest.mark.asyncio
-async def test_update_once_propagates_a_feed_failure(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """A raising feed ends the cycle; the loop logs it and still becomes ready."""
+    """A raising feed ends the cycle before the later steps run."""
     manager = _manager()
     calls = _record_cycle(manager, monkeypatch)
     failing = AsyncMock(side_effect=RuntimeError("currents boom"))
@@ -118,17 +98,6 @@ async def test_update_once_propagates_a_feed_failure(
     with pytest.raises(RuntimeError, match="currents boom"):
         await manager.update_once()
     assert calls == []
-
-    with caplog.at_level(logging.ERROR):
-        manager.start()
-        try:
-            assert await manager.wait_until_ready(timeout=5.0)
-        finally:
-            await manager.stop()
-    assert any(
-        "Error in data update loop: currents boom" in record.getMessage()
-        for record in caplog.records
-    )
 
 
 @pytest.mark.asyncio
@@ -189,7 +158,7 @@ async def test_wait_for_plots_warns_on_timeout_and_leaves_the_future(
 
 
 @pytest.mark.asyncio
-async def test_wait_for_plots_abandons_a_hung_worker_like_the_loop(
+async def test_wait_for_plots_abandons_a_hung_worker(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A future past the hard timeout is dropped by the shared harvest."""

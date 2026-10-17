@@ -2,13 +2,11 @@
 
 Verifies:
 - has_feed_data() correctly checks specific feeds
-- handle_task_exception() uses correct log levels
-- Update loop continues after external API failures (doesn't crash)
+- A feed update failure propagates out of update_dataset()
 
 These tests emulate the conditions from production bugs to prevent regressions.
 """
 
-import logging
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 from unittest.mock import MagicMock
@@ -54,36 +52,6 @@ def create_manager_with_feeds(feeds_dict: dict[FeedName, Any]) -> LocationDataMa
     # Override the auto-configured feeds with our test feeds
     manager._feeds = feeds_dict
     return manager
-
-
-def create_mock_task_with_exception(exception: BaseException) -> MagicMock:
-    """Create a mock asyncio.Task that raises an exception on result().
-
-    Args:
-        exception: The exception to raise when task.result() is called
-
-    Returns:
-        A MagicMock that behaves like an asyncio.Task with an exception
-    """
-    mock_task = MagicMock()
-    mock_task.get_name.return_value = "TestTask"
-    mock_task.result.side_effect = exception
-    return mock_task
-
-
-def create_log_fn_for_caplog(
-    caplog: pytest.LogCaptureFixture,
-) -> Any:
-    """Create a log function compatible with handle_task_exception().
-
-    The updater.handle_task_exception() expects a log_fn(message, level) signature.
-    This creates one that logs to the standard logging module so caplog can capture it.
-    """
-
-    def log_fn(message: str, level: int) -> None:
-        logging.log(level, message)
-
-    return log_fn
 
 
 # =============================================================================
@@ -138,109 +106,6 @@ class TestHasFeedData:
         manager = create_manager_with_feeds({FEED_TIDES: None})
 
         assert manager.has_feed_data(FEED_TIDES) is False
-
-
-# =============================================================================
-# updater.handle_task_exception() log level tests
-# =============================================================================
-
-
-class TestHandleTaskException:
-    """Tests for updater.handle_task_exception() log levels.
-
-    Verifies our error handling philosophy:
-    - StationUnavailableError → WARNING (expected operational condition)
-    - BaseClientError → ERROR (unexpected, triggers alerts)
-    - Other exceptions → ERROR (bugs, triggers alerts)
-    """
-
-    def test_station_unavailable_logs_warning(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """StationUnavailableError → WARNING (not ERROR).
-
-        Station unavailability is expected (maintenance, no recent data).
-        Should log WARNING to avoid triggering alerts for normal conditions.
-        """
-        task = create_mock_task_with_exception(
-            StationUnavailableError("Station 12345 has no data for requested period")
-        )
-
-        with caplog.at_level(logging.DEBUG):
-            # Should NOT raise - station unavailable is handled gracefully
-            updater.handle_task_exception(task, create_log_fn_for_caplog(caplog))
-
-        # Verify WARNING level was used
-        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
-
-        assert len(warning_records) >= 1, "Expected WARNING log for station unavailable"
-        assert any("Station unavailable" in r.message for r in warning_records)
-        assert len(error_records) == 0, "Should NOT log ERROR for expected condition"
-
-    def test_client_error_logs_error_and_reraises(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """BaseClientError → ERROR and re-raises.
-
-        Upstream API errors (unexpected responses, parsing failures) should
-        log ERROR to trigger alerts, then re-raise for visibility.
-        """
-        task = create_mock_task_with_exception(
-            BaseClientError("Unexpected API response format")
-        )
-
-        with caplog.at_level(logging.DEBUG):
-            # Should re-raise the exception
-            with pytest.raises(BaseClientError):
-                updater.handle_task_exception(task, create_log_fn_for_caplog(caplog))
-
-        # Verify ERROR level was used
-        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
-        assert len(error_records) >= 1, "Expected ERROR log for client error"
-        assert any("Upstream error" in r.message for r in error_records)
-
-    def test_generic_exception_logs_error_and_reraises(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Generic Exception → ERROR and re-raises.
-
-        Unexpected exceptions (bugs in our code) should log ERROR and re-raise.
-        This follows fail-fast for internal errors.
-        """
-        task = create_mock_task_with_exception(ValueError("Unexpected internal error"))
-
-        with caplog.at_level(logging.DEBUG):
-            with pytest.raises(ValueError):
-                updater.handle_task_exception(task, create_log_fn_for_caplog(caplog))
-
-        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
-        assert len(error_records) >= 1, "Expected ERROR log for generic exception"
-        assert any("Unhandled exception" in r.message for r in error_records)
-
-    def test_cancelled_error_logs_debug(self, caplog: pytest.LogCaptureFixture) -> None:
-        """CancelledError → DEBUG (normal during shutdown).
-
-        Task cancellation is expected during graceful shutdown.
-        Should log at DEBUG level, not trigger alerts.
-        """
-        import asyncio
-
-        task = create_mock_task_with_exception(asyncio.CancelledError())
-
-        with caplog.at_level(logging.DEBUG):
-            # Should NOT raise - cancellation is handled gracefully
-            updater.handle_task_exception(task, create_log_fn_for_caplog(caplog))
-
-        # Verify DEBUG level was used (not WARNING or ERROR)
-        debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
-        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
-
-        assert len(debug_records) >= 1, "Expected DEBUG log for cancellation"
-        assert any("cancelled" in r.message for r in debug_records)
-        assert len(warning_records) == 0, "Should NOT log WARNING for cancellation"
-        assert len(error_records) == 0, "Should NOT log ERROR for cancellation"
 
 
 # =============================================================================
@@ -322,27 +187,20 @@ class TestHasData:
 
 
 # =============================================================================
-# Update loop resilience tests
+# Serving cycle resilience tests
 # =============================================================================
 
 
-class TestUpdateLoopResilience:
-    """Tests for update loop error handling.
+class TestServingCycleResilience:
+    """Tests for the serving cycle's update helpers.
 
-    Verifies the update loop continues after external API failures
-    instead of crashing (the "update loop crash bug" fix).
+    serve_location()'s handling of a propagated failure is tested in
+    tests/test_manager_update_once.py.
     """
 
     @pytest.mark.asyncio
-    async def test_update_dataset_handles_exception_gracefully(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Feed update raises exception → logs error, doesn't crash.
-
-        This tests the updater.update_dataset() function which is called
-        by the update loop. If a feed's update() raises, it should be
-        caught and logged, not crash the loop.
-        """
+    async def test_update_dataset_propagates_feed_failure(self) -> None:
+        """Feed update raises → update_dataset() re-raises it to the cycle."""
         from shallweswim.core.feeds import Feed
 
         # Create a mock feed that raises on update
@@ -353,7 +211,7 @@ class TestUpdateLoopResilience:
         manager = create_manager_with_feeds({FEED_TIDES: mock_feed})
 
         # The update should raise (feed.update() raises)
-        # This is expected - the update loop catches this
+        # This is expected - serve_location() catches this
         with pytest.raises(BaseClientError):
             await updater.update_dataset(manager._feeds, {}, FEED_TIDES)
 
@@ -591,7 +449,7 @@ class TestRunawayRetryPrevention:
 
         Unlike StationUnavailableError, other errors (network issues, parsing
         failures) are propagated for visibility, but still schedule retry to
-        prevent runaway loops in the update loop.
+        prevent runaway retries in the serving cycle.
         """
         feed = create_test_feed()
 
@@ -608,7 +466,7 @@ class TestRunawayRetryPrevention:
         # CRITICAL: is_expired should still be False (prevents runaway retry)
         assert feed.is_expired is False, (
             "Feed should NOT be expired immediately after error. "
-            "This would cause runaway retries in update loop."
+            "This would cause runaway retries in the serving cycle."
         )
 
         # Verify scheduling state

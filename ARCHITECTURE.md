@@ -26,7 +26,7 @@ shallweswim/
 │   ├── manager.py       # LocationDataManager - coordinates feeds
 │   ├── queries.py       # Query functions (temp, tide, current info)
 │   ├── serving.py       # FeedData and LocationServing Protocols the routes and queries read through
-│   ├── updater.py       # Background update helpers
+│   ├── updater.py       # Serving cycle helpers
 │   └── feeds.py         # Feed classes with caching/expiration
 ├── clients/             # External API clients
 │   ├── __init__.py      # create_api_clients() provider client-set factory
@@ -86,9 +86,9 @@ kinds, the three environment variables, and which process sets which are in
   It consumes the FastAPI JSON API and generated OpenAPI types. It must not own
   NOAA/USGS fetching, feed orchestration, caching, plotting logic, or station
   configuration.
-- **Core Manager (`core/manager.py`)**: `LocationDataManager` is the facade for all data operations per location. It coordinates multiple `Feed`s and manages the background update loop.
+- **Core Manager (`core/manager.py`)**: `LocationDataManager` is the facade for all data operations per location. It coordinates multiple `Feed`s and runs one serving cycle per call to `update_once()`, which the capture job drives.
 - **Core Queries (`core/queries.py`)**: Standalone functions for querying feed data (temperature, tide info, current predictions).
-- **Core Updater (`core/updater.py`)**: Helper functions for the background update loop (expiration checks, dataset updates, exception handling).
+- **Core Updater (`core/updater.py`)**: Helper functions for the serving cycle (expiration checks, dataset updates).
 - **Feeds (`core/feeds.py`)**: Encapsulates data fetching, caching, and validation. Each data source type (e.g., `CoopsTidesFeed`) is a separate class inheriting from `Feed`.
 - **Config (`config/locations.py`)**: Location configurations, station IDs, and feed settings using Pydantic models.
 - **Clients (`clients/`)**: Pure API clients. They handle HTTP requests, retries, and raw data parsing, but know nothing about the application's business logic (caching, expiration).
@@ -133,7 +133,7 @@ are typed against), `archive/` captures, merges, and reads years back, and
 `core/backfill.py` walks a source's full history.
 
 Keep user-facing condition endpoints on the fast path. Expensive, repeatable
-work that depends only on cached feed data should run during background updates
+work that depends only on cached feed data should run during the serving cycle
 or immediately after a feed changes, not on every request. Request handlers may
 perform cheap point-in-time lookups and response serialization, but should not
 loop across full feed DataFrames for high-traffic or above-the-fold endpoints
@@ -674,8 +674,8 @@ Timeouts raise `RetryableClientError` and are automatically retried by `request_
 
 Plot generation runs in a `ProcessPoolExecutor` (bounded to `os.cpu_count()` workers) using a fire-and-forget pattern:
 
-- **Submit**: Each update loop iteration submits plot tasks to the pool via `loop.run_in_executor()` and returns immediately (no awaiting)
-- **Collect**: On the next iteration, completed futures are harvested and results stored. The async loop is never blocked by plot generation
+- **Submit**: Each serving cycle (`update_once()`) submits plot tasks to the pool via `loop.run_in_executor()` and returns immediately (no awaiting)
+- **Collect**: The capture job then calls `wait_for_plots()`, which harvests completed futures and stores the results until none are pending or the timeout passes. The event loop is never blocked by plot generation
 - **Guard**: `_pending_plot_futures` tracks in-flight work per feed — prevents duplicate submissions while a worker is still running
 - **Hard timeout** (`PLOT_HARD_TIMEOUT`, 300s): If a worker hasn't finished, tracking is dropped (orphaned worker cannot be killed — Python limitation) and the location can retry
 - **Key constraint**: `ProcessPoolExecutor` futures cannot be cancelled. Never use `asyncio.wait_for` or `asyncio.gather` on them — cancelled futures appear "done" but the worker keeps running, causing task stacking
@@ -830,7 +830,7 @@ Each feed has an **expiration interval** that determines how often it refreshes:
 - `historical_temp_status`: Optional diagnostics for the `historic_temps` feed,
   exposing year-cache progress without changing the public swimming data API.
 
-Background tasks continuously check feeds. Successful fetches schedule the next
+Each serving cycle checks every feed. Successful fetches schedule the next
 normal refresh; failed fetches leave the feed stale (serving old data) and
 schedule a bounded retry.
 

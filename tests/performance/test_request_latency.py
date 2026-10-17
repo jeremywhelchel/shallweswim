@@ -159,7 +159,7 @@ def _build_manager(process_pool: ProcessPoolExecutor) -> LocationDataManager:
 
 @pytest.fixture
 def performance_manager() -> Generator[LocationDataManager]:
-    """Provide a loaded manager without starting background tasks."""
+    """Provide a loaded manager without running a serving cycle."""
     process_pool = ProcessPoolExecutor(max_workers=1)
     try:
         yield _build_manager(process_pool)

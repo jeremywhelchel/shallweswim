@@ -304,7 +304,7 @@ promotion conflict, the pointer having moved since the publisher started, is
 ## The web servers
 
 A web server serves only the generation it has loaded. It fetches nothing,
-opens no client session, and starts no update loop. Its lifespan builds the
+opens no client session, and runs no serving cycle. Its lifespan builds the
 store on a worker thread, runs one startup load bounded by
 `INITIAL_LOAD_TIMEOUT_SECONDS` (20), and starts whether or not that load
 succeeded. A failed or timed-out startup load is ERROR, because the instance

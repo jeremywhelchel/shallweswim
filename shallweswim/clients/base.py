@@ -309,7 +309,6 @@ class BaseApiClient:
             raise  # Re-raise the final RetryableClientError
         except StationUnavailableError:
             # Expected operational condition - already logged as WARNING by the request helper.
-            # Just propagate to _handle_task_exception which logs at WARNING level
             raise
         except Exception as e:
             # Log non-retryable failures immediately

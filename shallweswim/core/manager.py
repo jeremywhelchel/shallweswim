@@ -254,10 +254,6 @@ class LocationDataManager:
             config, clients, historic_start_year=historic_start_year
         )
 
-        # Background update task
-        self._update_task: asyncio.Task[None] | None = None
-        self._ready_event = asyncio.Event()
-
         # In-memory storage for generated plots (eliminates filesystem race condition)
         self._plots: dict[feeds.PlotName, bytes] = {}
 
@@ -409,141 +405,6 @@ class LocationDataManager:
         log_message = f"[{self.config.code}] {message}"
         logging.log(level, log_message, extra=extra)
 
-    async def wait_until_ready(self, timeout: float | None = None) -> bool:
-        """Wait until the initial data update is complete and the manager is ready.
-
-        NOTE: This method's complexity stems from the need to simultaneously monitor
-        both the `_ready_event` and the completion/exception state of the background
-        `_update_task`. This ensures that if the `_update_task` fails with an
-        exception during its initial run (before setting `_ready_event`), this
-        method raises that specific exception immediately, rather than waiting for
-        the timeout. This aligns with the project's 'fail fast' principle for
-        internal errors.
-
-        TODO: Explore potential simplifications or alternative designs for this
-        synchronization logic in the future (e.g., using a dedicated error future).
-
-        Monitors both the ready event and the background update task, failing fast
-        on any internal errors.
-
-        Args:
-            timeout: Maximum time to wait in seconds, or None to wait indefinitely
-
-        Returns:
-            True if the manager is ready within the timeout.
-
-        Raises:
-            Exception: If the background update task raises an exception.
-            RuntimeError: If the background update task finishes unexpectedly
-                          without setting the ready event.
-        """
-        if self._ready_event.is_set():
-            self.log("Manager already ready.", level=logging.DEBUG)
-            return True
-
-        if self._update_task is None:
-            raise RuntimeError("Update task has not been started.")
-
-        if self._update_task.done():
-            self.log(
-                "Update task finished before ready event was set.",
-                level=logging.WARNING,
-            )
-            # Task is already done, check for exceptions
-            exc = self._update_task.exception()
-            if exc:
-                self.log(
-                    f"Update task failed with exception: {exc}", level=logging.ERROR
-                )
-                raise exc  # Re-raise the original exception
-            else:
-                # Should not happen if ready_event wasn't set, but handle defensively
-                raise RuntimeError(
-                    "Data update task finished unexpectedly before data was ready."
-                )
-
-        # Create waiters for the ready event and the update task completion
-        ready_waiter = asyncio.create_task(
-            self._ready_event.wait(), name=f"ReadyWait_{self.config.code}"
-        )
-        # We wait directly on the existing update task future
-        update_task_waiter = self._update_task
-
-        waiters = {ready_waiter, update_task_waiter}
-
-        self.log(
-            f"Waiting for ready event or update task completion (timeout={timeout}s)...",
-            level=logging.DEBUG,
-        )
-        done, pending = await asyncio.wait(
-            waiters,
-            timeout=timeout,
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        # --- Cleanup and Result Handling ---
-
-        # Cancel any pending waiters (if one finished, the other might still be pending)
-        for task in pending:
-            # Don't cancel the main update task, just the waiter we created
-            if task is ready_waiter:
-                self.log(
-                    f"Cancelling pending ready_waiter task: {task.get_name()}",
-                    level=logging.DEBUG,
-                )
-                task.cancel()
-                # Suppress CancelledError if cancellation is successful
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-
-        if not done:
-            # This means timeout occurred before either task completed
-            self.log(
-                f"Timed out after {timeout}s waiting for ready signal or task completion.",
-                level=logging.WARNING,
-            )
-            return False
-
-        # --- Check which task completed ---
-
-        if update_task_waiter in done:
-            # The main update task finished first. Check for exceptions.
-            self.log(
-                "Update task finished while waiting for ready signal.",
-                level=logging.WARNING,
-            )
-            exc = update_task_waiter.exception()
-            if exc:
-                self.log(
-                    f"Update task failed with exception: {exc}", level=logging.ERROR
-                )
-                raise exc  # Re-raise the original exception
-            else:
-                # Task finished without error, but ready event wasn't set.
-                raise RuntimeError(
-                    "Data update task finished unexpectedly before data was ready."
-                )
-
-        if ready_waiter in done:
-            # The ready event was set successfully
-            if self._ready_event.is_set():
-                self.log("Ready event received.", level=logging.DEBUG)
-                return True
-            else:
-                # Should not be possible if ready_waiter completed normally
-                self.log(
-                    "Ready waiter finished but event not set!", level=logging.ERROR
-                )
-                raise RuntimeError(
-                    "Internal error: Ready waiter finished but event not set."
-                )
-
-        # Should be unreachable, but handle defensively
-        self.log("Unexpected state reached in wait_until_ready.", level=logging.ERROR)
-        return False
-
     def _get_feed_data(
         self, feed_name: feeds.FeedName, min_rows: int = 0
     ) -> Any | None:
@@ -594,10 +455,9 @@ class LocationDataManager:
         than the current plot. Existing plots continue to be served while stale.
 
         This method never awaits executor results. It checks for completed
-        futures from previous iterations and submits new work if needed.
-        Running executor futures may not be cancellable, so we never use
-        asyncio.wait_for/gather on them — instead we poll
-        future.done() each loop tick.
+        futures from earlier cycles and submits new work if needed. Running
+        executor futures may not be cancellable, so nothing awaits them with
+        asyncio.wait_for/gather; wait_for_plots() polls with asyncio.wait.
         """
         self._collect_completed_plots()
         self._submit_plot_tasks(loop)
@@ -668,8 +528,8 @@ class LocationDataManager:
         """Submit new plot generation tasks to the executor if needed.
 
         Checks each plot type and submits work for any that need regeneration.
-        Returns immediately — results are collected by _collect_completed_plots()
-        on the next loop iteration.
+        Returns immediately — results are collected by _collect_completed_plots(),
+        which wait_for_plots() and the next update_once() both call.
         """
         need_live = self._needs_plot(feeds.FEED_LIVE_TEMPS, [feeds.PLOT_LIVE_TEMPS])
         need_historic = self._needs_plot(
@@ -790,7 +650,6 @@ class LocationDataManager:
         Each feed's update is a no-op unless the feed is expired, so a fresh
         manager fetches everything and a running one only what is due. Plot
         generation is decoupled and non-blocking; see _generate_plots(). The
-        background loop runs this every tick, and a bounded host such as the
         publishing job runs it once and then awaits wait_for_plots().
 
         Raises:
@@ -815,9 +674,8 @@ class LocationDataManager:
     async def wait_for_plots(self, timeout: float) -> None:
         """Harvest plot results until none are pending or `timeout` elapses.
 
-        The background loop never calls this; it harvests one tick at a time.
-        A bounded host calls it after update_once() so every submitted plot is
-        stored before the host reads them. Waiting uses asyncio.wait, which
+        The publishing job calls it after update_once() so every submitted
+        plot is stored before the job reads them. Waiting uses asyncio.wait, which
         leaves a still-running executor future untouched on timeout.
 
         Args:
@@ -841,86 +699,6 @@ class LocationDataManager:
                 timeout=remaining,
                 return_when=asyncio.FIRST_COMPLETED,
             )
-
-    async def __update_loop(self) -> None:
-        """Background task that refreshes feed data and regenerates plots.
-
-        Runs continuously, checking each feed's expiration on every iteration.
-        Feed updates respect the feed's own scheduling semantics (see feeds.py).
-        Plot generation is decoupled — see _generate_plots().
-        """
-        try:
-            while True:
-                try:
-                    await self.update_once()
-
-                except Exception as e:
-                    self.log(f"Error in data update loop: {e}", level=logging.ERROR)
-
-                # Signal readiness after first iteration completes
-                if not self._ready_event.is_set():
-                    self._ready_event.set()
-
-                await asyncio.sleep(1)
-        except asyncio.CancelledError:
-            raise
-
-    def start(self) -> None:
-        """Start the background data fetching process.
-
-        This creates and starts an asyncio task that periodically fetches
-        and processes new data.
-
-        Raises:
-            RuntimeError: If a task for this location is already running.
-        """
-        task_name = f"DataUpdateTask_{self.config.code}"
-        # Check if task already exists
-        for task in asyncio.all_tasks():
-            if task.get_name() == task_name and not task.done():
-                raise RuntimeError("Data update task already running")
-
-        self.log("Starting data fetch task")
-        self._update_task = asyncio.create_task(self.__update_loop())
-        self._update_task.set_name(task_name)
-
-        # Add exception handling to the task
-        self._update_task.add_done_callback(self._handle_task_exception)
-
-    async def stop(self, timeout: float = 5.0) -> None:
-        """Stop the background data fetching process.
-
-        This cancels the background task if it's running and waits for it to finish.
-        It's important to call this method when the LocationDataManager
-        is no longer needed to prevent task leaks.
-
-        Args:
-            timeout: Max seconds to wait for task cancellation. If exceeded,
-                    the task is abandoned so shutdown is not blocked.
-        """
-        if self._update_task and not self._update_task.done():
-            self.log("Stopping data fetch task")
-            self._update_task.cancel()
-            try:
-                # Wait for the task to finish cancelling, but don't block forever.
-                await asyncio.wait_for(self._update_task, timeout=timeout)
-            except asyncio.CancelledError:
-                # This is expected, signifies successful cancellation
-                self.log("Data fetch task successfully cancelled")
-            except TimeoutError:
-                # Task didn't finish in time - likely stuck in a blocking thread
-                self.log(
-                    f"Data fetch task did not finish within {timeout}s, abandoning",
-                    level=logging.WARNING,
-                )
-            except Exception as e:
-                # Log any other unexpected error during task finalization
-                self.log(
-                    f"Error awaiting cancelled data fetch task: {e}",
-                    level=logging.ERROR,
-                )
-                # Optionally re-raise depending on desired shutdown behavior
-                # raise
 
     def get_current_temperature(self) -> TemperatureReading:
         """Get the most recent water temperature reading.
@@ -1047,7 +825,3 @@ class LocationDataManager:
                 )
 
         return queries.predict_flow_at_time(self._feeds, self.config, t)
-
-    def _handle_task_exception(self, task: asyncio.Task[Any]) -> None:
-        """Handle exceptions from asyncio tasks with appropriate logging levels."""
-        updater.handle_task_exception(task, self.log)

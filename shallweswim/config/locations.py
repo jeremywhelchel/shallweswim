@@ -1370,6 +1370,11 @@ _CONFIG_LIST = [
             NdbcTempFeedConfig(
                 station="45198",
                 name="Chicago Buoy",
+                # A seasonal buoy, in the lake roughly May to late October or
+                # early November (2021-2025 records). Its last 2026 report was
+                # 2026-10-19, so it is out for the winter. Disabled 2026-10-21;
+                # see TODO.md to re-enable.
+                live_enabled=False,
                 # Currently the only data is available for this range.
                 start_year=2021,
             )
@@ -1442,11 +1447,6 @@ _CONFIG_LIST = [
                     "San Francisco Bar Buoy is outside the Golden Gate; "
                     "Aquatic Park is sheltered inside the bay."
                 ),
-                # The buoy has reported no water temperature since 2026-08-03
-                # (waves and direction still arrive, so the sensor is out, not
-                # the buoy); the live fetch failed every run for six weeks.
-                # Disabled 2026-09-16; see TODO.md to re-enable.
-                live_enabled=False,
                 # Earliest year the provider holds, from the 2026-09-15 backfill.
                 start_year=2007,
             )

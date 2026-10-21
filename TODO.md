@@ -216,12 +216,11 @@ Notes:
 
 ### Source Client Work
 
-- Re-enable the San Francisco live temperature feed (NDBC 46237,
-  `live_enabled=False` since 2026-09-16) once the buoy reports water
-  temperature again. Its last reading was 2026-08-03; waves and direction
-  kept arriving, so the temperature sensor failed rather than the buoy. Check
-  the `WTMP` column of <https://www.ndbc.noaa.gov/data/realtime2/46237.txt>;
-  the historical yearly files were unaffected and stay enabled.
+- Re-enable the Chicago live temperature feed (NDBC 45198,
+  `live_enabled=False` since 2026-10-21) when the buoy goes back in the lake,
+  usually in May. Its last 2026 report was 2026-10-19; check for current rows
+  in <https://www.ndbc.noaa.gov/data/realtime2/45198.txt>. The historical yearly
+  files stay enabled.
 - Consider adding direct NDBC data-file availability checks to the debug script
   for configured stations and years. Prefer probing the same text files the
   runtime client consumes; avoid scraping NDBC station HTML pages unless direct

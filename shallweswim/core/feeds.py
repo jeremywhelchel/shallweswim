@@ -43,7 +43,11 @@ from shallweswim.archive.observations import (
 )
 from shallweswim.archive.store import object_store
 from shallweswim.clients import coops, cspf, irish_lights, marine_institute, ndbc, nwis
-from shallweswim.clients.base import BaseApiClient, StationUnavailableError
+from shallweswim.clients.base import (
+    BaseApiClient,
+    RetryableClientError,
+    StationUnavailableError,
+)
 from shallweswim.clients.coops import CoopsApi
 from shallweswim.clients.cspf import CspfApi
 from shallweswim.clients.irish_lights import IrishLightsApi
@@ -1844,6 +1848,16 @@ class HistoricalTempsFeed(CompositeFeed):
             self._last_failed_years = {year: f"{error.__class__.__name__}: {error}"}
             self.log(
                 f"Historical temperature top-up found no data for {year}: {error}",
+                logging.WARNING,
+            )
+            return
+        except RetryableClientError as error:
+            # A provider outage after the client's retries. The client has
+            # already logged the exhausted request at ERROR, and the next
+            # top-up refetches the whole year, so a missed one loses nothing.
+            self._last_failed_years = {year: f"{error.__class__.__name__}: {error}"}
+            self.log(
+                f"Historical temperature top-up failed for {year}: {error}",
                 logging.WARNING,
             )
             return

@@ -2474,9 +2474,10 @@ class TestHistoricalTempsFeed:
         ("error", "level"),
         [
             (StationUnavailableError("Station has no data"), logging.WARNING),
+            (RetryableClientError("HTTP error 504", status=504), logging.WARNING),
             (ValueError("provider changed its columns"), logging.ERROR),
         ],
-        ids=["unavailable", "unexpected"],
+        ids=["unavailable", "outage", "unexpected"],
     )
     async def test_top_up_failure_is_isolated_from_the_served_frame(
         self,

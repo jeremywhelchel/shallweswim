@@ -59,7 +59,7 @@ jobs:
     needs: frontend
     container:
       # Keep aligned with pyproject.toml playwright and frontend @playwright/test.
-      image: mcr.microsoft.com/playwright:v1.62.0-noble
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
       options: --ipc=host
     steps:
       - name: Checkout repository

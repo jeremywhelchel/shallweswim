@@ -263,7 +263,10 @@ def summarize_dataframe(df: pd.DataFrame | None) -> api_types.DataFrameSummary:
     # Infer index frequency
     index_frequency: str | None = None
     if isinstance(df.index, pd.DatetimeIndex) and not df.index.empty:
-        index_frequency = pd.infer_freq(df.index)
+        # Opt into pandas' offset return type; read the string form from it.
+        with pd.option_context("future.infer_freq_returns_offset", True):
+            inferred = pd.infer_freq(df.index)
+        index_frequency = inferred.freqstr if inferred is not None else None
 
     # Calculate missing values (convert Series result to dict)
     missing_values = df.isnull().sum().astype(int).to_dict()

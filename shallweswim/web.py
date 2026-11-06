@@ -28,6 +28,7 @@ from typing import (
 import fastapi
 import uvicorn
 from fastapi import HTTPException, Request, Response, responses, templating
+from starlette.middleware.gzip import GZipMiddleware
 
 # Local imports
 from shallweswim import api, canonical, config
@@ -35,7 +36,7 @@ from shallweswim import api, canonical, config
 # Local imports
 from shallweswim.archive.store import object_store
 from shallweswim.assets import AssetManager, FingerprintStaticFiles, load_asset_manifest
-from shallweswim.compression import SelectiveGZipMiddleware
+from shallweswim.compression import GZIP_EXCLUDED_CONTENT_TYPES
 from shallweswim.logging_utils import setup_logging
 from shallweswim.snapshot.refresh import SnapshotState
 from shallweswim.snapshot.store import SNAPSHOT_READ_BUCKET_ENV_VAR, SnapshotStore
@@ -118,7 +119,11 @@ app = fastapi.FastAPI(lifespan=lifespan)
 # Declared before any request can arrive, so routes and middleware always find
 # the attribute, whether or not the lifespan has run.
 app.state.snapshot = None
-app.add_middleware(SelectiveGZipMiddleware, minimum_size=1000)
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=1000,
+    exclude_content_types=GZIP_EXCLUDED_CONTENT_TYPES,
+)
 
 
 # API response headers for preventing caching

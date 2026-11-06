@@ -119,7 +119,9 @@ def test_pivot_year() -> None:
     )
     got = util.pivot_year(df)
 
-    pd.testing.assert_index_equal(pd.date_range("2020-01-01", "2020-12-31"), got.index)
+    # pivot_year output carries no index frequency.
+    expected = pd.DatetimeIndex(pd.date_range("2020-01-01", "2020-12-31"), freq=None)
+    pd.testing.assert_index_equal(expected, got.index)
 
     cols = ["air_temp", "water_temp"]
     years = pd.Series(range(2011, 2023 + 1), dtype="int32")

@@ -487,7 +487,7 @@ class NdbcApi(BaseApiClient):
 
             temp_df.index.name = "time"
             # Order by the absolute instant, which is what the UTC index is.
-            temp_df.sort_index(inplace=True)
+            temp_df = temp_df.sort_index()
 
             self.log(
                 (

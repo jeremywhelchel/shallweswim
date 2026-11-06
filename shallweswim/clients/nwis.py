@@ -453,7 +453,7 @@ class NwisApi(BaseApiClient):
             temp_df = self._fix_time(temp_df)
 
             # Sort by the absolute instant to ensure chronological order
-            temp_df.sort_index(inplace=True)
+            temp_df = temp_df.sort_index()
 
             self.log(
                 f"Successfully processed {len(temp_df)} temperature readings for NWIS site {site_no} from {begin_date_str} to {end_date_str}",
@@ -566,7 +566,7 @@ class NwisApi(BaseApiClient):
             current_df = self._fix_time(current_df)
 
             # Sort by the absolute instant
-            current_df.sort_index(inplace=True)
+            current_df = current_df.sort_index()
 
             self.log(
                 f"Successfully processed {len(current_df)} current readings for NWIS site {site_no} (param {parameter_cd})",

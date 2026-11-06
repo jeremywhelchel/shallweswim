@@ -269,6 +269,11 @@ gcloud run jobs describe shallweswim-capture --region="$CLOUDSDK_RUN_REGION"
 
 ### Continuous build trigger
 
+Continuous deployment is paused: the trigger is disabled and the Cloud
+Scheduler job that invokes it is paused, so every deploy is a manual
+`build_and_deploy.sh`. Resuming it is tracked in [TODO.md](../TODO.md)
+"Runtime And Deployment".
+
 A GitHub-triggered Cloud Build on `main` runs the same `cloudbuild.yaml`, so
 it must carry the bucket and region substitutions or its deploy steps fail
 after the image is built. Set them once on the trigger (find the trigger id

@@ -574,6 +574,11 @@ initial implementation. The missing backend work is not a generator; it is a
 small deterministic script that exports the current FastAPI schema to
 `frontend/openapi.json` without requiring a running development server.
 
+`openapi-typescript` generates code through the TypeScript 5 compiler API,
+which TypeScript 7 no longer ships. `frontend/.pnpmfile.cjs` gives it its own
+pinned TypeScript 5 while the project's `tsc` runs TypeScript 7; the Dockerfile
+copies that file because the lockfile records its checksum.
+
 ## Backend Support Work
 
 The frontend can and should drive small backend additions when the current JSON

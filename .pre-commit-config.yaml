@@ -21,7 +21,7 @@ repos:
 
   # Biome for frontend linting and formatting
   - repo: https://github.com/biomejs/pre-commit
-    rev: v2.6.5
+    rev: v2.6.6
     hooks:
       - id: biome-check
         files: ^(shallweswim/static|frontend)/.*\.(jsx?|tsx?|cjs|mjs|jsonc?|css|graphql|gql|vue|svelte|astro)$
@@ -38,7 +38,7 @@ repos:
 
   # Ruff - fast Python linter and formatter (no venv needed)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.3
+    rev: v0.17.4
     hooks:
       - id: ruff
         args: [--fix]
